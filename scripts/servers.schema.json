@@ -1,0 +1,113 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://bastion.mgcrea.io/servers.schema.json",
+  "title": "Bastion server manifest",
+  "description": "The closed list of MCP servers Bastion is allowed to supervise. Enforced by scripts/generate-servers.mjs before it writes anything.",
+  "type": "object",
+  "required": ["servers"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "$comment": { "type": "array", "items": { "type": "string" } },
+    "servers": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/server" }
+    }
+  },
+  "definitions": {
+    "server": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "displayName",
+        "summary",
+        "npmName",
+        "binName",
+        "distribution",
+        "localPath",
+        "docsUrl",
+        "dialect",
+        "writeGate",
+        "authModes",
+        "stateEnv",
+        "callbackEnv",
+        "env",
+        "notes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "Kebab-case. Becomes a URL path segment, a profile directory name and a JSON key."
+        },
+        "displayName": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string", "minLength": 1 },
+        "npmName": { "type": "string", "pattern": "^(@[a-z0-9-]+/)?[a-z0-9-]+$" },
+        "binName": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "distribution": {
+          "enum": ["npm", "local"],
+          "description": "npm means published and installable; local means a private checkout under the mgcrea-ai directory."
+        },
+        "localPath": { "type": "string", "minLength": 1 },
+        "docsUrl": { "type": ["string", "null"], "pattern": "^https://" },
+        "dialect": {
+          "enum": ["2025-06-18", "2026-07-28"],
+          "description": "The MCP protocol dialect the server itself speaks. Bastion translates to whatever the client asks for."
+        },
+        "writeGate": {
+          "type": ["string", "null"],
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "description": "Env var that enables destructive tools, or null when the server has no write path."
+        },
+        "authModes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "displayName", "env"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$" },
+              "displayName": { "type": "string", "minLength": 1 },
+              "env": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" }
+              }
+            }
+          }
+        },
+        "stateEnv": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+          "description": "Env vars naming on-disk state that must be redirected per profile."
+        },
+        "callbackEnv": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+          "description": "Env vars naming a loopback OAuth callback URL, whose port must be unique per profile."
+        },
+        "env": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "required", "secret", "description"],
+            "properties": {
+              "name": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+              "required": { "type": "boolean" },
+              "secret": {
+                "type": "boolean",
+                "description": "Kept in the Keychain and never written to a config file, never echoed in the Activity window."
+              },
+              "description": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "notes": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

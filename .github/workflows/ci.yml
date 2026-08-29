@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["app-v*.*.*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # The manifest gate. Cheap, fast, and the reason `servers.json` is a source of
+  # truth rather than a suggestion: without this, a generated copy can drift and
+  # nothing anywhere says so, because nothing breaks when a table is wrong.
+  #
+  # ubuntu on purpose. The check is `node` reading JSON and comparing strings —
+  # putting it on a macOS runner would make the fastest signal in the repo wait
+  # behind the scarcest queue.
+  manifest:
+    name: Manifest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v5
+      - name: Setup pnpm 🔧
+        uses: pnpm/action-setup@v6
+      - name: Setup node 🔧
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          check-latest: true
+          cache: "pnpm"
+      - name: Install 🪄
+        run: pnpm install --frozen-lockfile
+      - name: Lint 🔍
+        run: pnpm run lint
+      - name: Format 🔍
+        run: pnpm run format:check
+      - name: Servers drift 🔍
+        run: pnpm run servers:check
+
+  app:
+    name: App
+    runs-on: macos-latest
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v5
+      - name: Build 📦
+        run: make app
