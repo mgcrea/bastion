@@ -1,0 +1,29 @@
+.DS_Store
+*.swp
+
+# Xcode
+build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.moved-aside
+*.hmap
+*.dSYM
+*.dSYM.zip
+
+# SwiftPM
+.build/
+.swiftpm/
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Secrets — never commit real credentials (see mgcrea-ai/.mcp.json for why)
+.env
+.env.*
+!.env.example
+.mcp.json
+*.p8
+*.p12
