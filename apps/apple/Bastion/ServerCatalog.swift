@@ -76,9 +76,34 @@ nonisolated struct BastionServer: Identifiable, Hashable {
     case local
   }
 
-  enum Dialect: String, Hashable {
+  /// An MCP protocol revision.
+  ///
+  /// The 2026-07-28 spec divides these into two eras, and the distinction is
+  /// the whole reason `Dialect.swift` exists:
+  ///
+  /// - **legacy** (`2025-11-25` and earlier) opens with an `initialize`
+  ///   handshake and carries version, identity and capabilities in the session
+  ///   it establishes.
+  /// - **modern** (`2026-07-28` and later) has no handshake at all. Every
+  ///   request declares its own version, client identity and capabilities in
+  ///   `_meta`, so any request can be served by any instance.
+  ///
+  /// Bastion is what the spec calls a **dual-era server**: it selects its
+  /// behaviour from how the client opens, and fronts legacy children either
+  /// way.
+  enum Dialect: String, Hashable, Comparable {
+    case v2024_11_05 = "2024-11-05"
+    case v2025_03_26 = "2025-03-26"
     case v2025_06_18 = "2025-06-18"
+    case v2025_11_25 = "2025-11-25"
     case v2026_07_28 = "2026-07-28"
+
+    /// Modern versions convey version, identity and capabilities as
+    /// per-request metadata; legacy ones establish a session.
+    var isModern: Bool { self >= .v2026_07_28 }
+
+    /// Date-ordered, which is what the version strings are for.
+    static func < (a: Dialect, b: Dialect) -> Bool { a.rawValue < b.rawValue }
   }
 
   struct AuthMode: Identifiable, Hashable {
@@ -113,7 +138,7 @@ nonisolated enum ServerCatalog {
       distribution: .npm,
       localPath: "mcp-shopify",
       docsURL: URL(string: "https://github.com/mgcrea/mcp-shopify"),
-      dialect: .v2025_06_18,
+      dialect: .v2025_11_25,
       writeGate: nil,
       authModes: [],
       stateEnv: [],
@@ -153,7 +178,7 @@ nonisolated enum ServerCatalog {
       distribution: .npm,
       localPath: "mcp-appstore-connect",
       docsURL: URL(string: "https://github.com/mgcrea/mcp-appstore-connect"),
-      dialect: .v2025_06_18,
+      dialect: .v2025_11_25,
       writeGate: "APP_STORE_CONNECT_ALLOW_WRITES",
       authModes: [
         .init(
@@ -216,7 +241,7 @@ nonisolated enum ServerCatalog {
       distribution: .local,
       localPath: "mcp-keycloak",
       docsURL: nil,
-      dialect: .v2025_06_18,
+      dialect: .v2025_11_25,
       writeGate: "KEYCLOAK_ALLOW_WRITES",
       authModes: [
         .init(
@@ -284,7 +309,7 @@ nonisolated enum ServerCatalog {
       distribution: .npm,
       localPath: "mcp-ovh-api",
       docsURL: nil,
-      dialect: .v2025_06_18,
+      dialect: .v2025_11_25,
       writeGate: "OVH_ALLOW_WRITES",
       authModes: [
         .init(
@@ -366,7 +391,7 @@ nonisolated enum ServerCatalog {
       distribution: .local,
       localPath: "mcp-reddit",
       docsURL: URL(string: "https://github.com/mgcrea/mcp-reddit"),
-      dialect: .v2025_06_18,
+      dialect: .v2025_11_25,
       writeGate: "REDDIT_ALLOW_WRITES",
       authModes: [],
       stateEnv: ["REDDIT_TOKEN_PATH"],
@@ -419,7 +444,7 @@ nonisolated enum ServerCatalog {
       distribution: .local,
       localPath: "mcp-x-api",
       docsURL: URL(string: "https://github.com/mgcrea/mcp-x-api"),
-      dialect: .v2025_06_18,
+      dialect: .v2025_11_25,
       writeGate: "X_API_ALLOW_WRITES",
       authModes: [
         .init(
@@ -498,7 +523,7 @@ nonisolated enum ServerCatalog {
       distribution: .local,
       localPath: "mcp-tastytrade",
       docsURL: nil,
-      dialect: .v2025_06_18,
+      dialect: .v2025_11_25,
       writeGate: "TASTYTRADE_ALLOW_TRADING",
       authModes: [],
       stateEnv: [],
@@ -545,7 +570,7 @@ nonisolated enum ServerCatalog {
       distribution: .local,
       localPath: "mcp-boursobank",
       docsURL: nil,
-      dialect: .v2025_06_18,
+      dialect: .v2025_11_25,
       writeGate: "BOURSOBANK_ALLOW_TRADING",
       authModes: [],
       stateEnv: ["BOURSOBANK_SESSION_PATH", "BOURSOBANK_DOCUMENTS_DIR"],
@@ -592,7 +617,7 @@ nonisolated enum ServerCatalog {
       distribution: .local,
       localPath: "mcp-buzzberg",
       docsURL: nil,
-      dialect: .v2025_06_18,
+      dialect: .v2025_11_25,
       writeGate: nil,
       authModes: [],
       stateEnv: [],
@@ -626,7 +651,7 @@ nonisolated enum ServerCatalog {
       distribution: .local,
       localPath: "mcp-yahoo-finance",
       docsURL: nil,
-      dialect: .v2025_06_18,
+      dialect: .v2025_11_25,
       writeGate: nil,
       authModes: [],
       stateEnv: [],

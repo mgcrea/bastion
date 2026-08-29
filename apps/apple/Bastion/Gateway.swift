@@ -256,19 +256,26 @@ nonisolated final class Gateway: @unchecked Sendable {
       return HTTPResponse(
         json: [
           "ok": true, "version": AppInfo.version,
+          "protocolVersions": Dialect.supportedVersions.map(\.rawValue),
           "servers": ServerCatalog.all.map(\.id),
         ])
 
     case ("POST", let path) where path.count == 3 && path[0] == "s":
       return handleRPC(profile: path[1], server: path[2], request: request, client: client)
 
-    case ("GET", let path) where path.count == 3 && path[0] == "s":
-      // The 2026-07-28 spec retired HTTP+SSE and it is on a one-year offramp,
-      // so Bastion never implements it. Saying so is more useful than 404: a
-      // client that falls back to SSE on a 404 would keep trying.
+    // 2026-07-28 removed the GET stream endpoint and protocol-level sessions.
+    // The spec names the answer for a client still speaking an earlier
+    // Streamable HTTP revision — "HTTP GET or DELETE to the MCP endpoint:
+    // respond with 405 Method Not Allowed" — and says why 405 rather than 404:
+    // a 404 sends an old client hunting for the deprecated HTTP+SSE endpoint,
+    // and it would keep trying.
+    case ("GET", let path) where path.count == 3 && path[0] == "s",
+      ("DELETE", let path) where path.count == 3 && path[0] == "s":
       return HTTPResponse(
         status: 405,
-        message: "Bastion speaks Streamable HTTP only — the SSE transport is deprecated")
+        message:
+          "Bastion speaks Streamable HTTP (2026-07-28) on POST only: there is no GET stream and no session to DELETE"
+      )
 
     default:
       return HTTPResponse(status: 404, message: "no route for \(request.method) \(request.path)")
@@ -318,11 +325,50 @@ nonisolated final class Gateway: @unchecked Sendable {
     return nil
   }
 
+  /// One JSON-RPC frame, in whichever era the client wrote it.
+  ///
+  /// Everything era-specific happens here, before the supervisor is reached:
+  /// the supervisor talks to a legacy child and should not have to know which
+  /// kind of client is on the other end.
   private func handleRPC(profile: String, server: String, request: HTTPRequest, client: String)
     -> HTTPResponse
   {
     guard !request.body.isEmpty else {
       return HTTPResponse(status: 400, message: "empty body")
+    }
+    guard let frame = try? JSONSerialization.jsonObject(with: request.body) as? [String: Any] else {
+      return HTTPResponse(status: 400, message: "the body is not a JSON object")
+    }
+
+    // `Mcp-Session-Id` and `Last-Event-ID` are deliberately not read anywhere.
+    // The spec's instruction for a server on this revision is to ignore both
+    // and never mint or echo a session id — and for Bastion that is not merely
+    // compliance. A session id is per-client state on a shared instance, which
+    // is the thing the stateless revision removed and the thing that made this
+    // architecture possible.
+
+    let era = Dialect.era(of: frame)
+
+    switch era {
+    case .unsupported(let requested):
+      // 400 with a RECOGNISED modern error. That combination is load-bearing:
+      // a dual-era client inspects the body of a 400 to decide whether it has
+      // found a modern server to retry against or a legacy one to fall back
+      // to. A bare 400 would send it back to `initialize`.
+      hostLog("gateway", .info, "\(client) asked for protocol \(requested), which Bastion does not implement")
+      return HTTPResponse(
+        status: 400,
+        json: rpcFrame(id: frame["id"], error: Dialect.unsupportedVersionError(requested: requested)))
+
+    case .modern(let version):
+      if let mismatch = Dialect.validateHeaders(
+        request: request, frame: frame, declaredVersion: version.rawValue)
+      {
+        return HTTPResponse(status: 400, json: rpcFrame(id: frame["id"], error: mismatch))
+      }
+
+    case .legacy:
+      break
     }
 
     // Called straight through on this connection's own thread. The supervisor
@@ -334,17 +380,46 @@ nonisolated final class Gateway: @unchecked Sendable {
     do {
       guard
         let data = try Supervisor.shared.call(
-          profile: profile, server: server, request: request.body)
+          profile: profile, server: server, frame: frame, era: era)
       else {
-        // A notification. 202 rather than 200 with an empty body, because the
-        // difference between "accepted, nothing to say" and "here is your empty
-        // answer" is one a client can act on.
-        return HTTPResponse(status: 202, message: "accepted")
+        // A notification. The spec is exact here: "the server MUST return HTTP
+        // status code 202 Accepted with no body." An empty body, not a JSON
+        // acknowledgement — which is what this returned before, and which a
+        // strict client is entitled to reject.
+        return HTTPResponse(status: 202, body: Data(), contentType: "application/json")
       }
-      return HTTPResponse(status: 200, body: data, contentType: "application/json")
+      return modernise(data, era: era)
     } catch {
       return rpcError(error, profile: profile, server: server, client: client, request: request)
     }
+  }
+
+  /// Shape a child's reply for the era the client is speaking.
+  ///
+  /// Two things happen only for a modern client: every result gains
+  /// `resultType`, and an unknown method becomes `404`. That second one is not
+  /// cosmetic — the spec gives `404` + `-32601` a specific job, distinguishing
+  /// a modern server that does not implement a method from a legacy HTTP+SSE
+  /// server that does not host the endpoint at all.
+  private func modernise(_ data: Data, era: Dialect.Era) -> HTTPResponse {
+    guard case .modern = era,
+      let frame = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else {
+      return HTTPResponse(status: 200, body: data, contentType: "application/json")
+    }
+
+    if let error = frame["error"] as? [String: Any],
+      let code = error["code"] as? Int, code == Dialect.methodNotFound
+    {
+      return HTTPResponse(status: 404, json: frame)
+    }
+    return HTTPResponse(status: 200, json: Dialect.modernise(result: frame))
+  }
+
+  /// A JSON-RPC error frame. `id` is `null` when the request had none, which
+  /// the spec explicitly permits for a transport-level refusal.
+  private func rpcFrame(id: Any?, error: [String: Any]) -> [String: Any] {
+    ["jsonrpc": "2.0", "id": id ?? NSNull(), "error": error]
   }
 
   private func rpcError(

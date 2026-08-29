@@ -29,6 +29,25 @@ server then does over the network or on the filesystem. A server that reads a
 file it was never asked about does so out of Bastion's sight. The Activity
 window is a record of requests, not a sandbox.
 
+## Two protocol eras
+
+The 2026-07-28 revision removed the `initialize` handshake: a modern client
+declares its protocol version, identity and capabilities in each request's
+`_meta`, so any request can be served by any instance. That is what makes one
+shared server instance correct rather than a hack, and it is why Bastion fronts
+clients with it.
+
+None of the servers below are modern. Every one runs an SDK whose newest
+protocol is `2025-11-25`, and `server/discover` against one returns `-32601` —
+the exact signal the spec names for recognising a legacy server. Bastion is
+therefore what the spec calls a **dual-era server**: it answers modern requests
+statelessly and legacy `initialize` handshakes too, and translates either onto
+the one handshake it performed with the child at spawn.
+
+The `dialect` column is the newest version the server itself speaks, measured
+by handshaking with it — not the version Bastion offers clients. `make dialect`
+asserts both eras against a running build.
+
 ## Reading the table
 
 - **Write gate** — the environment variable that turns the destructive tools on.

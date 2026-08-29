@@ -48,6 +48,9 @@ clean: ## Remove the app build output
 smoke: app ## Prove one supervised server end to end (PROFILE=prod SERVER=shopify)
 	@scripts/smoke.sh
 
+dialect: app ## Assert Bastion serves both protocol eras (needs a profile)
+	@scripts/dialect-check.sh
+
 audit: app ## Assert the listener is loopback-only and refuses foreign Origin/Host
 	@scripts/audit-listener.sh
 
@@ -70,4 +73,4 @@ format: ## oxfmt the repo
 format-check: ## Fail on unformatted files
 	@pnpm format:check
 
-.PHONY: help app run stop clean smoke audit servers servers-check lint format format-check
+.PHONY: help app run stop clean smoke dialect audit servers servers-check lint format format-check

@@ -53,8 +53,8 @@
         "localPath": { "type": "string", "minLength": 1 },
         "docsUrl": { "type": ["string", "null"], "pattern": "^https://" },
         "dialect": {
-          "enum": ["2025-06-18", "2026-07-28"],
-          "description": "The MCP protocol dialect the server itself speaks. Bastion translates to whatever the client asks for."
+          "enum": ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"],
+          "description": "The newest MCP protocol version the server itself speaks. Bastion translates to whatever each client asks for."
         },
         "writeGate": {
           "type": ["string", "null"],

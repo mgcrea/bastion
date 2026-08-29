@@ -51,6 +51,9 @@ const manifest = JSON.parse(read("servers.json"));
  *               the server does not read is a gate that gates nothing, and it
  *               would look completely fine in every editor.
  */
+/** Every revision the manifest may name, oldest first. */
+const DIALECTS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"];
+
 const validate = (servers) => {
   const problems = [];
   const seen = new Set();
@@ -69,7 +72,7 @@ const validate = (servers) => {
       if (typeof s[key] !== "string" || !s[key]) p(`${key} is required`);
     }
     if (!["npm", "local"].includes(s.distribution)) p('distribution must be "npm" or "local"');
-    if (!["2025-06-18", "2026-07-28"].includes(s.dialect)) p("dialect must be a known MCP version");
+    if (!DIALECTS.includes(s.dialect)) p(`dialect must be one of ${DIALECTS.join(", ")}`);
     if (s.docsUrl !== null && !(s.docsUrl ?? "").startsWith("https://")) {
       p("docsUrl must be an https URL or null");
     }
@@ -205,7 +208,8 @@ const swiftEnvVar = (e) =>
     `          summary: ${swiftString(e.description)}),`,
   ].join("\n");
 
-const swiftDialect = { "2025-06-18": ".v2025_06_18", "2026-07-28": ".v2026_07_28" };
+/** `2025-11-25` → `.v2025_11_25`. Derived, so a new revision needs no edit here. */
+const swiftDialect = (dialect) => `.v${dialect.replaceAll("-", "_")}`;
 
 const swiftServer = (s) => {
   const lines = [];
@@ -221,7 +225,7 @@ const swiftServer = (s) => {
     `      distribution: .${s.distribution},`,
     `      localPath: ${swiftString(s.localPath)},`,
     `      docsURL: ${swiftOptionalURL(s.docsUrl)},`,
-    `      dialect: ${swiftDialect[s.dialect]},`,
+    `      dialect: ${swiftDialect(s.dialect)},`,
     `      writeGate: ${swiftOptionalString(s.writeGate)},`,
     s.authModes.length === 0
       ? `      authModes: [],`

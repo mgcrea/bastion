@@ -85,7 +85,9 @@ nonisolated final class Supervisor: @unchecked Sendable {
   /// blocking still happened, it just happened on Swift's cooperative pool,
   /// where a handful of slow server startups can starve everything else in the
   /// process.
-  func call(profile profileName: String, server serverID: String, request: Data) throws -> Data? {
+  func call(
+    profile profileName: String, server serverID: String, frame: [String: Any], era: Dialect.Era
+  ) throws -> Data? {
     guard let server = ServerCatalog.byID[serverID] else {
       throw SupervisorError.unknownServer(serverID)
     }
@@ -94,7 +96,7 @@ nonisolated final class Supervisor: @unchecked Sendable {
     }
 
     let instance = try instanceFor(profile: profile, server: server)
-    return try instance.handle(request)
+    return try instance.handle(frame, era: era)
   }
 
   /// Stop everything. Called when the app quits.
@@ -426,27 +428,65 @@ nonisolated extension Supervisor {
 
     /// Handle one client frame, returning the response frame or `nil` for a
     /// notification.
-    func handle(_ request: Data) throws -> Data? {
-      guard var frame = try? JSONSerialization.jsonObject(with: request) as? [String: Any] else {
-        throw SupervisorError.malformedRequest("not a JSON object")
-      }
+    ///
+    /// `era` decides what the client is owed. The child below is legacy either
+    /// way — every server in the manifest is — so this is where the two eras
+    /// stop being different.
+    func handle(_ incoming: [String: Any], era: Dialect.Era) throws -> Data? {
+      var frame = incoming
       guard let method = frame["method"] as? String else {
         throw SupervisorError.malformedRequest("no method")
       }
       let clientID = frame["id"]
 
-      // The handshake never reaches the child. It happened once, at spawn, and
-      // answering every client from that one result is precisely what makes a
-      // shared instance possible: the old dialect's `initialize` is stateful,
-      // and letting each client run its own would re-initialize a server other
-      // clients are mid-conversation with.
-      if method == "initialize" {
-        guard let clientID else { throw SupervisorError.malformedRequest("initialize without id") }
-        return try handshakeReply(to: clientID, from: frame)
+      if let name = Dialect.clientName(of: frame) {
+        let announced = state.withLock { $0.clients.insert(name).inserted }
+        if announced { hostLog(key, .info, "client attached: \(name)") }
       }
-      // Same reason, in the other direction: a second `initialized` is a
-      // protocol error to a server that has already had one.
-      if method == "notifications/initialized" { return nil }
+
+      if case .modern = era {
+        // `server/discover` is mandatory in the modern revision and no legacy
+        // child implements one — asking mcp-shopify returns -32601, which is
+        // exactly how the spec says to recognise a legacy server. Bastion
+        // answers it from the handshake it already took at spawn.
+        if method == "server/discover" {
+          guard let clientID else {
+            throw SupervisorError.malformedRequest("server/discover without id")
+          }
+          return try discoverReply(to: clientID)
+        }
+        // A modern frame naming a legacy method. Not forwarded: the child was
+        // initialized once at spawn and a second `initialize` is a protocol
+        // error to it, so the honest answer is that Bastion does not implement
+        // this method on this era — which the gateway turns into the 404 the
+        // spec asks for.
+        if method == "initialize" || method == "notifications/initialized" {
+          guard let clientID else { return nil }
+          return try encode([
+            "jsonrpc": "2.0", "id": clientID,
+            "error": Dialect.methodNotFoundError(method),
+          ])
+        }
+        // Strip the three namespaced keys the child has never heard of, and
+        // nothing else — `_meta` is an open extension field in the legacy
+        // revisions too, and it is where a progress token lives.
+        frame = Dialect.stripModernMeta(from: frame)
+      } else {
+        // The legacy handshake never reaches the child. It happened once, at
+        // spawn, and answering every client from that one result is precisely
+        // what makes a shared instance possible: `initialize` is stateful, and
+        // letting each client run its own would re-initialize a server other
+        // clients are mid-conversation with.
+        if method == "initialize" {
+          guard let clientID else {
+            throw SupervisorError.malformedRequest("initialize without id")
+          }
+          return try handshakeReply(to: clientID, from: frame)
+        }
+        // Same reason, in the other direction: a second `initialized` is a
+        // protocol error to a server that has already had one.
+        if method == "notifications/initialized" { return nil }
+      }
 
       LogStore.record(origin: key, frame: frame)
 
@@ -505,23 +545,34 @@ nonisolated extension Supervisor {
       return try result.get()
     }
 
-    /// Answer a client's `initialize` from the child's, with the client's id.
+    /// Answer a legacy client's `initialize` from the child's, with the
+    /// client's id.
     private func handshakeReply(to clientID: Any, from request: [String: Any]) throws -> Data {
       try ensureRunning()
       guard let result = state.withLock({ $0.handshake }) else {
         throw SupervisorError.startFailed("the server did not complete its handshake")
       }
+      return try encode(["jsonrpc": "2.0", "id": clientID, "result": result])
+    }
 
-      if let params = request["params"] as? [String: Any],
-        let info = params["clientInfo"] as? [String: Any],
-        let name = info["name"] as? String
-      {
-        state.withLock { _ = $0.clients.insert(name) }
-        hostLog(key, .info, "client attached: \(name)")
+    /// Answer a modern client's `server/discover` from the same handshake.
+    ///
+    /// The child is started first if it is not running. Discovery is the one
+    /// modern request that has to spawn something before it can be answered,
+    /// because what it describes — capabilities, identity — is the child's, and
+    /// only the child can say.
+    private func discoverReply(to clientID: Any) throws -> Data {
+      try ensureRunning()
+      guard let handshake = state.withLock({ $0.handshake }) else {
+        throw SupervisorError.startFailed("the server did not complete its handshake")
       }
+      let result = Dialect.discoverResult(fromHandshake: handshake, serverID: server.id)
+      hostLog(key, .info, "server/discover")
+      return try encode(["jsonrpc": "2.0", "id": clientID, "result": result])
+    }
 
-      let reply: [String: Any] = ["jsonrpc": "2.0", "id": clientID, "result": result]
-      return try JSONSerialization.data(withJSONObject: reply)
+    private func encode(_ frame: [String: Any]) throws -> Data {
+      try JSONSerialization.data(withJSONObject: frame)
     }
 
     /// Both halves, because a running child that has not completed its
@@ -591,7 +642,18 @@ nonisolated extension Supervisor {
         "jsonrpc": "2.0", "method": "notifications/initialized",
       ])
       noteSuccess()
-      hostLog(key, .info, "handshake complete")
+
+      // The version the child actually agreed to, not the one it was asked
+      // for. Worth a line: the manifest said 2025-06-18 for every server until
+      // a live handshake showed they all negotiate 2025-11-25, and a pin that
+      // silently costs a year of protocol is exactly the kind of thing that is
+      // only ever noticed if something says it out loud.
+      let negotiated = payload["protocolVersion"] as? String ?? "unknown"
+      let asked = server.dialect.rawValue
+      hostLog(
+        key, negotiated == asked ? .info : .error,
+        "handshake complete (protocol \(negotiated)"
+          + (negotiated == asked ? "" : ", but the manifest says \(asked)") + ")")
     }
 
     // MARK: Wire
