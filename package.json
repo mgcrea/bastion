@@ -1,0 +1,36 @@
+{
+  "name": "@mgcrea/bastion",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A local MCP gateway for macOS: one supervised instance per server, credentials in the Keychain, every tool call visible",
+  "license": "MIT",
+  "author": "Olivier Louvignes <olivier@mgcrea.io>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mgcrea/bastion.git"
+  },
+  "os": [
+    "darwin"
+  ],
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test && pnpm test:scripts",
+    "test:scripts": "node --test \"scripts/**/*.test.mjs\"",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "servers": "node scripts/generate-servers.mjs",
+    "servers:check": "node scripts/generate-servers.mjs --check"
+  },
+  "devDependencies": {
+    "oxfmt": "^0.62.0",
+    "oxlint": "^1.77.0"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.13.1"
+}
