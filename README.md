@@ -121,27 +121,45 @@ audit asserts the setting is absent rather than empty.
 
 Built and verified:
 
-|                  |                                                                                     |
-| ---------------- | ----------------------------------------------------------------------------------- |
-| **Gateway**      | loopback HTTP, `Origin` / `Host` / bearer, hand-written so the checks are auditable |
-| **Supervisor**   | one child per profile, id remapping, backoff, circuit breaker, idle stop            |
-| **Manifest**     | ten servers, a generator, and a CI drift check                                      |
-| **Keychain**     | per-profile credentials, per-client tokens                                          |
-| **`make smoke`** | four concurrent clients, colliding ids, exactly one child, `kill -9` recovery       |
-| **`make audit`** | the five security rules, against the real bundle                                    |
+|                    |                                                                                     |
+| ------------------ | ----------------------------------------------------------------------------------- |
+| **Gateway**        | loopback HTTP, `Origin` / `Host` / bearer, hand-written so the checks are auditable |
+| **Supervisor**     | one child per profile, id remapping, backoff, circuit breaker, idle stop            |
+| **Dialect**        | dual-era: modern 2026-07-28 and legacy `initialize`, onto legacy children           |
+| **Manifest**       | ten servers, a generator, and a CI drift check                                      |
+| **Keychain**       | per-profile credentials, per-client tokens                                          |
+| **`make smoke`**   | four concurrent clients, colliding ids, exactly one child, `kill -9` recovery       |
+| **`make audit`**   | the five security rules, against the real bundle                                    |
+| **`make dialect`** | 24 conformance checks across both eras                                              |
 
-Not built yet, in build order: the dialect layer (2025-06-18 ↔ 2026-07-28 translation — the hard
-part), profile migration off the leaking `.mcp.json` files, the Activity window, client wiring,
-`bastion-bridge` for stdio-only clients like Claude Desktop, and the signed release path.
+Bastion is what the 2026-07-28 spec calls a **dual-era server**. A modern client declares its
+protocol version, identity and capabilities in each request's `_meta` and needs no handshake at
+all; a legacy client opens with `initialize` and is served that way. Both land on the one handshake
+Bastion took with the child at spawn, and `server/discover` — mandatory in the modern revision, and
+implemented by none of these servers — is synthesised from it.
 
-Two limitations worth knowing now:
+None of the ten servers are modern. Every one runs an SDK whose newest protocol is `2025-11-25`,
+which is what they negotiate. The manifest said `2025-06-18` until a live handshake was actually
+run against one; that was Bastion's own pin masquerading as a fact about the servers.
+
+Not built yet, in build order: profile migration off the leaking `.mcp.json` files, the Activity
+window, client wiring, `bastion-bridge` for stdio-only clients like Claude Desktop, and the signed
+release path.
+
+Three limitations worth knowing now:
 
 - **Server-initiated requests are refused, not routed.** Sampling, elicitation and roots get a
   JSON-RPC error explaining why: a shared instance has no single client to ask, and picking one
   would hand one project's agent a prompt raised on behalf of another's. The 2026-07-28 spec
-  replaces all three with Multi Round-Trip Requests and puts them on a ~12-month offramp.
-- **Clients are fronted with the servers' own 2025-06-18 dialect** until the translation layer
-  lands.
+  replaces all three with Multi Round-Trip Requests and puts them on a ~12-month offramp. No server
+  in the manifest uses any of the three, so the full MRTR resume path is unbuilt rather than
+  broken: building it would mean untestable code for a case the closed manifest makes impossible.
+- **Responses are a single JSON object, never an SSE stream.** That means no
+  `notifications/progress` on a long call and no `subscriptions/listen`. Both are optional in the
+  spec, and both are real gaps.
+- **`Mcp-Param-*` headers are forwarded but not validated.** Doing it needs a cached per-profile
+  tool list to read `x-mcp-header` annotations from. No server in the manifest annotates a
+  parameter, so it cannot currently be reached.
 
 ## Working on it
 
@@ -153,6 +171,7 @@ make app            # build Bastion.app (Debug)
 make run            # build and launch the menu bar agent
 make stop           # quit it
 make audit          # assert the listener is loopback-only and refuses foreign Origin/Host
+make dialect        # assert both protocol eras against a running build
 make smoke          # prove one supervised server end to end
 ```
 
