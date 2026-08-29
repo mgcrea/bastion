@@ -13,7 +13,7 @@ import Foundation
 /// **`ServerCatalog.all` below is generated from `servers.json`** by
 /// `make servers`. Edit the manifest, not the array — CI regenerates and fails
 /// on any drift.
-struct BastionServer: Identifiable, Hashable {
+nonisolated struct BastionServer: Identifiable, Hashable {
   /// The wire name. It is a URL path segment (`/s/<profile>/<server>`), a
   /// profile directory name and a `bastion-bridge --server=` argument, which is
   /// why the manifest constrains it to kebab-case and nothing else.
@@ -98,7 +98,7 @@ struct BastionServer: Identifiable, Hashable {
   }
 }
 
-enum ServerCatalog {
+nonisolated enum ServerCatalog {
   // <generated:servers> generated from servers.json by `make servers` — do not edit by hand
   static let all: [BastionServer] = [
     // No write gate because there is no write path: every tool is a read.

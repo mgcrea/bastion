@@ -45,6 +45,12 @@ stop: ## Quit the app
 clean: ## Remove the app build output
 	@rm -rf apps/apple/.build
 
+smoke: app ## Prove one supervised server end to end (PROFILE=prod SERVER=shopify)
+	@scripts/smoke.sh
+
+audit: app ## Assert the listener is loopback-only and refuses foreign Origin/Host
+	@scripts/audit-listener.sh
+
 # ─── the manifest ────────────────────────────────────────────────────────────
 
 servers: ## Regenerate every copy of the server list from servers.json
@@ -64,4 +70,4 @@ format: ## oxfmt the repo
 format-check: ## Fail on unformatted files
 	@pnpm format:check
 
-.PHONY: help app run stop clean servers servers-check lint format format-check
+.PHONY: help app run stop clean smoke audit servers servers-check lint format format-check
