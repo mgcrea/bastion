@@ -213,8 +213,22 @@ nonisolated enum ProfileEnvironment {
     // Last, and unconditionally in both directions. Setting the gate only when
     // it is on would let a stale value in `profiles.json` leave writes enabled
     // on a profile whose toggle reads as off.
+    //
+    // Being unconditional also closes a second hole, in mcp-appstore-connect
+    // and mcp-x-api: both read `parseBool(env.X) ?? file.allowWrites`, so an
+    // UNSET variable falls through to a value in a config file on disk. An
+    // explicit "0" never falls through.
     if let gate = server.writeGate {
       env[gate] = profile.allowWrites ? "1" : "0"
+    }
+
+    // And after the gate, never before: anything that could turn writes on
+    // around it. mcp-tastytrade ORs a second variable into its trading flag, so
+    // without this a profile showing "writes off" could still place orders.
+    // Forced off even when the gate is on, because the gate is then already
+    // doing the job and two switches for one wire is how they drift.
+    for bypass in server.gateBypass {
+      env[bypass] = "0"
     }
 
     return env

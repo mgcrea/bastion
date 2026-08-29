@@ -94,7 +94,7 @@ echo "Two clients, colliding ids"
 # than merely suspected. The first attempt paired tools/list with resources/list
 # and prompts/list, which this server does not implement — the relay was fine
 # and the test was measuring the server's "Method not found".
-CALL_TOOL="${CALL_TOOL:-get_shop}"
+CALL_TOOL="${CALL_TOOL:-shopify_get_shop}"
 post /tmp/smoke-a.json '{"jsonrpc":"2.0","id":7,"method":"tools/list"}' & A=$!
 post /tmp/smoke-b.json '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"'"$CALL_TOOL"'","arguments":{}}}' & B=$!
 post /tmp/smoke-c.json '{"jsonrpc":"2.0","id":8,"method":"tools/list"}' & C=$!

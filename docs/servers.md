@@ -224,6 +224,8 @@ makes it unexpressible.
 | `TASTYTRADE_SCOPE` | — | — | OAuth scope. Defaults to `read trade`; narrow it to `read` for a read-only profile. |
 | `TASTYTRADE_ALLOW_TRADING` | — | — | Enables order entry. The highest-consequence gate in the manifest. |
 
+Forced off by Bastion so the write gate is the only switch: `TASTYTRADE_DANGEROUSLY_ALLOW_TRADING`
+
 ### BoursoBank
 
 BoursoBank customer API: accounts, transactions, statements, market data.

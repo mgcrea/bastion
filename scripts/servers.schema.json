@@ -30,6 +30,7 @@
         "docsUrl",
         "dialect",
         "writeGate",
+        "gateBypass",
         "authModes",
         "stateEnv",
         "callbackEnv",
@@ -60,6 +61,11 @@
           "type": ["string", "null"],
           "pattern": "^[A-Z][A-Z0-9_]*$",
           "description": "Env var that enables destructive tools, or null when the server has no write path."
+        },
+        "gateBypass": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+          "description": "Env vars that enable writes independently of the write gate. Bastion always forces these to \"0\"; they are never settable by a profile."
         },
         "authModes": {
           "type": "array",

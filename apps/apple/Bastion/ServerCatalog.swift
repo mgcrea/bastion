@@ -47,6 +47,17 @@ nonisolated struct BastionServer: Identifiable, Hashable {
   /// reason `ServerHost.swift` gives for one process per connection: write
   /// permissions do not have to be shared just because a process is.
   let writeGate: String?
+  /// Env vars that would turn writes on **independently of `writeGate`**.
+  /// Bastion always forces these to `"0"`.
+  ///
+  /// Found by migrating a real config rather than by design. mcp-tastytrade
+  /// computes `allowTrading` as `ALLOW_TRADING || DANGEROUSLY_ALLOW_TRADING`,
+  /// so a profile able to set the second would have live order entry on while
+  /// its own toggle, and the Activity window, both showed the gate as off.
+  ///
+  /// Never settable — only neutralised. That is why these are not in `env`, and
+  /// the generator fails if one appears in both.
+  let gateBypass: [String]
   /// Credential shapes the server accepts, when it accepts more than one. A
   /// profile fills exactly one; empty means there is only one shape.
   let authModes: [AuthMode]
@@ -140,6 +151,7 @@ nonisolated enum ServerCatalog {
       docsURL: URL(string: "https://github.com/mgcrea/mcp-shopify"),
       dialect: .v2025_11_25,
       writeGate: nil,
+      gateBypass: [],
       authModes: [],
       stateEnv: [],
       callbackEnv: [],
@@ -180,6 +192,7 @@ nonisolated enum ServerCatalog {
       docsURL: URL(string: "https://github.com/mgcrea/mcp-appstore-connect"),
       dialect: .v2025_11_25,
       writeGate: "APP_STORE_CONNECT_ALLOW_WRITES",
+      gateBypass: [],
       authModes: [
         .init(
           id: "inline-key",
@@ -243,6 +256,7 @@ nonisolated enum ServerCatalog {
       docsURL: nil,
       dialect: .v2025_11_25,
       writeGate: "KEYCLOAK_ALLOW_WRITES",
+      gateBypass: [],
       authModes: [
         .init(
           id: "client_credentials",
@@ -311,6 +325,7 @@ nonisolated enum ServerCatalog {
       docsURL: nil,
       dialect: .v2025_11_25,
       writeGate: "OVH_ALLOW_WRITES",
+      gateBypass: [],
       authModes: [
         .init(
           id: "oauth2",
@@ -393,6 +408,7 @@ nonisolated enum ServerCatalog {
       docsURL: URL(string: "https://github.com/mgcrea/mcp-reddit"),
       dialect: .v2025_11_25,
       writeGate: "REDDIT_ALLOW_WRITES",
+      gateBypass: [],
       authModes: [],
       stateEnv: ["REDDIT_TOKEN_PATH"],
       callbackEnv: ["REDDIT_REDIRECT_URI"],
@@ -446,6 +462,7 @@ nonisolated enum ServerCatalog {
       docsURL: URL(string: "https://github.com/mgcrea/mcp-x-api"),
       dialect: .v2025_11_25,
       writeGate: "X_API_ALLOW_WRITES",
+      gateBypass: [],
       authModes: [
         .init(
           id: "bearer",
@@ -525,6 +542,7 @@ nonisolated enum ServerCatalog {
       docsURL: nil,
       dialect: .v2025_11_25,
       writeGate: "TASTYTRADE_ALLOW_TRADING",
+      gateBypass: ["TASTYTRADE_DANGEROUSLY_ALLOW_TRADING"],
       authModes: [],
       stateEnv: [],
       callbackEnv: [],
@@ -572,6 +590,7 @@ nonisolated enum ServerCatalog {
       docsURL: nil,
       dialect: .v2025_11_25,
       writeGate: "BOURSOBANK_ALLOW_TRADING",
+      gateBypass: [],
       authModes: [],
       stateEnv: ["BOURSOBANK_SESSION_PATH", "BOURSOBANK_DOCUMENTS_DIR"],
       callbackEnv: [],
@@ -619,6 +638,7 @@ nonisolated enum ServerCatalog {
       docsURL: nil,
       dialect: .v2025_11_25,
       writeGate: nil,
+      gateBypass: [],
       authModes: [],
       stateEnv: [],
       callbackEnv: [],
@@ -653,6 +673,7 @@ nonisolated enum ServerCatalog {
       docsURL: nil,
       dialect: .v2025_11_25,
       writeGate: nil,
+      gateBypass: [],
       authModes: [],
       stateEnv: [],
       callbackEnv: [],

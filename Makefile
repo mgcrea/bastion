@@ -56,6 +56,9 @@ audit: app ## Assert the listener is loopback-only and refuses foreign Origin/Ho
 
 # ─── the manifest ────────────────────────────────────────────────────────────
 
+migrate: ## Plan the .mcp.json credential migration (add REPOINT=1 to rewrite them)
+	@node scripts/migrate-mcp-json.mjs $(if $(REPOINT),--repoint,--plan)
+
 servers: ## Regenerate every copy of the server list from servers.json
 	@node scripts/generate-servers.mjs
 
@@ -73,4 +76,4 @@ format: ## oxfmt the repo
 format-check: ## Fail on unformatted files
 	@pnpm format:check
 
-.PHONY: help app run stop clean smoke dialect audit servers servers-check lint format format-check
+.PHONY: help app run stop clean smoke dialect audit migrate servers servers-check lint format format-check

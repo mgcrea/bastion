@@ -125,7 +125,10 @@ console.log("Modern era");
 }
 
 {
-  const { status, json } = await modern(2, "tools/call", { name: "get_shop", arguments: {} });
+  const { status, json } = await modern(2, "tools/call", {
+    name: "shopify_get_shop",
+    arguments: {},
+  });
   check(
     "tools/call with a matching Mcp-Name",
     status === 200 && !json?.error,
@@ -137,11 +140,11 @@ console.log("Modern era");
   // The spec requires clients to Base64-encode a name that is not header-safe,
   // and servers to decode before comparing. A server that compares the raw
   // header rejects every conforming client that has a non-ASCII tool name.
-  const encoded = `=?base64?${Buffer.from("get_shop", "utf8").toString("base64")}?=`;
+  const encoded = `=?base64?${Buffer.from("shopify_get_shop", "utf8").toString("base64")}?=`;
   const { status, json } = await modern(
     3,
     "tools/call",
-    { name: "get_shop", arguments: {} },
+    { name: "shopify_get_shop", arguments: {} },
     {
       headers: { "Mcp-Name": encoded },
     },
@@ -177,9 +180,9 @@ for (const [what, headers] of [
   const { status, json } = await modern(
     11,
     "tools/call",
-    { name: "get_shop", arguments: {} },
+    { name: "shopify_get_shop", arguments: {} },
     {
-      headers: { "Mcp-Name": "list_products" },
+      headers: { "Mcp-Name": "shopify_list_products" },
     },
   );
   check(

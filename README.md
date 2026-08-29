@@ -128,6 +128,7 @@ Built and verified:
 | **Dialect**        | dual-era: modern 2026-07-28 and legacy `initialize`, onto legacy children           |
 | **Manifest**       | ten servers, a generator, and a CI drift check                                      |
 | **Keychain**       | per-profile credentials, per-client tokens                                          |
+| **Migration**      | four `.mcp.json` credential sets moved into the Keychain, configs repointed         |
 | **`make smoke`**   | four concurrent clients, colliding ids, exactly one child, `kill -9` recovery       |
 | **`make audit`**   | the five security rules, against the real bundle                                    |
 | **`make dialect`** | 24 conformance checks across both eras                                              |
@@ -142,11 +143,14 @@ None of the ten servers are modern. Every one runs an SDK whose newest protocol 
 which is what they negotiate. The manifest said `2025-06-18` until a live handshake was actually
 run against one; that was Bastion's own pin masquerading as a fact about the servers.
 
-Not built yet, in build order: profile migration off the leaking `.mcp.json` files, the Activity
-window, client wiring, `bastion-bridge` for stdio-only clients like Claude Desktop, and the signed
+Not built yet, in build order: the Activity window, client wiring, `bastion-bridge` for stdio-only clients like Claude Desktop, and the signed
 release path.
 
-Three limitations worth knowing now:
+Four limitations worth knowing now:
+
+- **The repointed repos need Bastion running.** `mgcrea-ai/mcp-{shopify,keycloak,tastytrade,appstore-connect}/.mcp.json`
+  now call `http://127.0.0.1:8720/...` instead of spawning anything, so with Bastion stopped those
+  four servers are simply unreachable. There is no login item yet; that lands with the release path.
 
 - **Server-initiated requests are refused, not routed.** Sampling, elicitation and roots get a
   JSON-RPC error explaining why: a shared instance has no single client to ask, and picking one

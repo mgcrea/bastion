@@ -79,7 +79,7 @@ const validate = (servers) => {
     if (s.writeGate !== null && !ENV_NAME.test(s.writeGate ?? "")) {
       p("writeGate must be an env var name or null");
     }
-    for (const key of ["authModes", "stateEnv", "callbackEnv", "env", "notes"]) {
+    for (const key of ["gateBypass", "authModes", "stateEnv", "callbackEnv", "env", "notes"]) {
       if (!Array.isArray(s[key])) p(`${key} must be an array`);
     }
     if (Array.isArray(s.env) && s.env.length === 0) p("env must not be empty");
@@ -120,6 +120,20 @@ const validate = (servers) => {
       for (const name of s[key] ?? []) {
         if (!envNames.has(name)) p(`${key} names ${name}, which is not in env`);
       }
+    }
+
+    // The opposite rule to the one above, and for the opposite reason. A bypass
+    // that appeared in `env` would be settable by a profile — which is exactly
+    // the hole it exists to close, since setting it would enable writes while
+    // the profile's own gate read as off.
+    for (const name of s.gateBypass ?? []) {
+      if (!ENV_NAME.test(name)) p(`gateBypass ${name} is not an env var name`);
+      if (envNames.has(name)) {
+        p(`gateBypass ${name} must not also be in env — a bypass is neutralised, never set`);
+      }
+    }
+    if (s.writeGate === null && (s.gateBypass ?? []).length) {
+      p("gateBypass has no meaning without a writeGate");
     }
 
     const modeIds = new Set();
@@ -227,6 +241,7 @@ const swiftServer = (s) => {
     `      docsURL: ${swiftOptionalURL(s.docsUrl)},`,
     `      dialect: ${swiftDialect(s.dialect)},`,
     `      writeGate: ${swiftOptionalString(s.writeGate)},`,
+    `      gateBypass: ${swiftStringList(s.gateBypass)},`,
     s.authModes.length === 0
       ? `      authModes: [],`
       : `      authModes: [\n${s.authModes.map(swiftAuthMode).join("\n")}\n      ],`,
@@ -289,6 +304,12 @@ const mdDetail = (s) => {
   }
   if (s.callbackEnv.length) {
     out.push(`Per-profile OAuth callback: ${s.callbackEnv.map(mdCode).join(", ")}`, "");
+  }
+  if (s.gateBypass.length) {
+    out.push(
+      `Forced off by Bastion so the write gate is the only switch: ${s.gateBypass.map(mdCode).join(", ")}`,
+      "",
+    );
   }
   return out.join("\n");
 };

@@ -176,6 +176,43 @@ else
   pass "no profiles.json yet (nothing to leak)"
 fi
 
+# ── Rule 5, where it actually mattered. The `.mcp.json` files in mgcrea-ai held
+# real credentials in plaintext, which is the problem Bastion was built to end,
+# so "no secret in a file a client reads" is asserted against those files and
+# not only against Bastion's own. Skipped when the tree is absent, which is the
+# normal case in CI — this is a dogfooding check, not a build gate.
+MCP_ROOT="${MCP_ROOT:-$HOME/Projects/mgcrea/mgcrea-ai}"
+if [ -d "$MCP_ROOT" ]; then
+  LEAKED="$(node -e '
+    const fs = require("node:fs");
+    const { join } = require("node:path");
+    const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    const secret = new Set(
+      manifest.servers.flatMap((s) => s.env.filter((e) => e.secret).map((e) => e.name)),
+    );
+    const root = process.argv[2];
+    const found = [];
+    for (const dir of fs.readdirSync(root)) {
+      const file = join(root, dir, ".mcp.json");
+      if (!fs.existsSync(file)) continue;
+      const document = JSON.parse(fs.readFileSync(file, "utf8"));
+      const servers = document.mcpServers ?? document.servers ?? {};
+      for (const [key, entry] of Object.entries(servers)) {
+        for (const name of Object.keys(entry.env ?? {})) {
+          if (secret.has(name)) found.push(`${dir}/.mcp.json ${key}: ${name}`);
+        }
+      }
+    }
+    process.stdout.write(found.join("\n"));
+  ' "$ROOT/servers.json" "$MCP_ROOT")"
+  if [ -n "$LEAKED" ]; then
+    fail "a manifest-secret value is still in plaintext in an .mcp.json:"
+    printf '%s\n' "$LEAKED" | sed 's/^/          /'
+  else
+    pass "no manifest-secret value in any .mcp.json under $MCP_ROOT"
+  fi
+fi
+
 echo ""
 if [ "$FAILURES" -gt 0 ]; then
   echo "$FAILURES check(s) failed."
