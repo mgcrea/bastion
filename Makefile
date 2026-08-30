@@ -29,7 +29,7 @@ help: ## Show this help
 # The `|| true` belongs to grep, not to the pipeline: grep exits 1 on a clean
 # build with nothing to report, and swallowing that must not also swallow
 # xcodebuild's own failure.
-app: ## Build Bastion.app
+app: ## Build Bastion.app and the embedded bastion-bridge
 	@set -o pipefail; xcodebuild -project apps/apple/Bastion.xcodeproj -scheme Bastion \
 		-configuration $(CONFIG) -derivedDataPath apps/apple/.build build \
 		| { grep -E 'error:|warning:|BUILD (SUCCEEDED|FAILED)' || true; }

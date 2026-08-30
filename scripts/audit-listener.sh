@@ -62,6 +62,23 @@ else
   pass "no entitlements file on the app target"
 fi
 
+# ── The bridge holds no credential of its own, and the linker can prove it.
+#
+# It is handed a bearer token by whatever spawned it and forwards frames to
+# loopback; it never opens the Keychain, and a build that started to would show
+# up here as a new link against Security.framework. Cheaper and harder to fool
+# than reading the source, which is the argument for every check in this file.
+BRIDGE="$APP/Contents/Helpers/bastion-bridge"
+if [ -x "$BRIDGE" ]; then
+  if otool -L "$BRIDGE" | tail -n +2 | grep -q "Security.framework"; then
+    fail "bastion-bridge links Security.framework — it should hold no credential"
+  else
+    pass "bastion-bridge does not link Security.framework"
+  fi
+else
+  fail "no bastion-bridge at $BRIDGE"
+fi
+
 echo ""
 echo "Runtime"
 

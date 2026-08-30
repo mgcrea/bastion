@@ -6,11 +6,45 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		0BA571000000000000000009 /* bastion-bridge in Embed Helper */ = {isa = PBXBuildFile; fileRef = 0BA571000000000000000001 /* bastion-bridge */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		0BA57100000000000000000B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 09D8E515304323C100C66A5A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0BA571000000000000000003;
+			remoteInfo = BastionBridge;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		0BA57100000000000000000A /* Embed Helper */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Contents/Helpers;
+			dstSubfolderSpec = 1;
+			files = (
+				0BA571000000000000000009 /* bastion-bridge in Embed Helper */,
+			);
+			name = "Embed Helper";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		0BA571000000000000000001 /* bastion-bridge */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "bastion-bridge"; sourceTree = BUILT_PRODUCTS_DIR; };
 		09D8E51D304323C100C66A5A /* Bastion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Bastion.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		0BA571000000000000000002 /* BastionBridge */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = BastionBridge;
+			sourceTree = "<group>";
+		};
 		09D8E51F304323C100C66A5A /* Bastion */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Bastion;
@@ -19,6 +53,13 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		0BA571000000000000000005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		09D8E51A304323C100C66A5A /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -33,6 +74,7 @@
 			isa = PBXGroup;
 			children = (
 				09D8E51F304323C100C66A5A /* Bastion */,
+				0BA571000000000000000002 /* BastionBridge */,
 				09D8E51E304323C100C66A5A /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +83,7 @@
 			isa = PBXGroup;
 			children = (
 				09D8E51D304323C100C66A5A /* Bastion.app */,
+				0BA571000000000000000001 /* bastion-bridge */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,6 +91,27 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		0BA571000000000000000003 /* BastionBridge */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0BA571000000000000000008 /* Build configuration list for PBXNativeTarget "BastionBridge" */;
+			buildPhases = (
+				0BA571000000000000000004 /* Sources */,
+				0BA571000000000000000005 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				0BA571000000000000000002 /* BastionBridge */,
+			);
+			name = BastionBridge;
+			packageProductDependencies = (
+			);
+			productName = BastionBridge;
+			productReference = 0BA571000000000000000001 /* bastion-bridge */;
+			productType = "com.apple.product-type.tool";
+		};
 		09D8E51C304323C100C66A5A /* Bastion */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 09D8E528304323C200C66A5A /* Build configuration list for PBXNativeTarget "Bastion" */;
@@ -55,10 +119,12 @@
 				09D8E519304323C100C66A5A /* Sources */,
 				09D8E51A304323C100C66A5A /* Frameworks */,
 				09D8E51B304323C100C66A5A /* Resources */,
+				0BA57100000000000000000A /* Embed Helper */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				0BA57100000000000000000C /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				09D8E51F304323C100C66A5A /* Bastion */,
@@ -100,6 +166,7 @@
 			projectRoot = "";
 			targets = (
 				09D8E51C304323C100C66A5A /* Bastion */,
+				0BA571000000000000000003 /* BastionBridge */,
 			);
 		};
 /* End PBXProject section */
@@ -115,6 +182,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		0BA571000000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		09D8E519304323C100C66A5A /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -124,7 +198,45 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		0BA57100000000000000000C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0BA571000000000000000003 /* BastionBridge */;
+			targetProxy = 0BA57100000000000000000B /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		0BA571000000000000000006 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 75QE9PRT3V;
+				ENABLE_HARDENED_RUNTIME = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.mgcrea.bastion.debug.bridge;
+				PRODUCT_NAME = "bastion-bridge";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		0BA571000000000000000007 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 75QE9PRT3V;
+				ENABLE_HARDENED_RUNTIME = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.mgcrea.bastion.bridge;
+				PRODUCT_NAME = "bastion-bridge";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 		09D8E526304323C200C66A5A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -310,6 +422,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		0BA571000000000000000008 /* Build configuration list for PBXNativeTarget "BastionBridge" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0BA571000000000000000006 /* Debug */,
+				0BA571000000000000000007 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		09D8E518304323C100C66A5A /* Build configuration list for PBXProject "Bastion" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

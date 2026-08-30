@@ -121,18 +121,19 @@ audit asserts the setting is absent rather than empty.
 
 Built and verified:
 
-|                     |                                                                                     |
-| ------------------- | ----------------------------------------------------------------------------------- |
-| **Gateway**         | loopback HTTP, `Origin` / `Host` / bearer, hand-written so the checks are auditable |
-| **Supervisor**      | one child per profile, id remapping, backoff, circuit breaker, idle stop            |
-| **Dialect**         | dual-era: modern 2026-07-28 and legacy `initialize`, onto legacy children           |
-| **Manifest**        | ten servers, a generator, and a CI drift check                                      |
-| **Keychain**        | per-profile credentials, per-client tokens                                          |
-| **Activity window** | what is running, who is attached, and every tool call, live                         |
-| **Migration**       | four `.mcp.json` credential sets moved into the Keychain, configs repointed         |
-| **`make smoke`**    | four concurrent clients, colliding ids, exactly one child, `kill -9` recovery       |
-| **`make audit`**    | the five security rules, against the real bundle                                    |
-| **`make dialect`**  | 24 conformance checks across both eras                                              |
+|                      |                                                                                     |
+| -------------------- | ----------------------------------------------------------------------------------- |
+| **Gateway**          | loopback HTTP, `Origin` / `Host` / bearer, hand-written so the checks are auditable |
+| **Supervisor**       | one child per profile, id remapping, backoff, circuit breaker, idle stop            |
+| **Dialect**          | dual-era: modern 2026-07-28 and legacy `initialize`, onto legacy children           |
+| **Manifest**         | ten servers, a generator, and a CI drift check                                      |
+| **Keychain**         | per-profile credentials, per-client tokens                                          |
+| **Activity window**  | what is running, who is attached, and every tool call, live                         |
+| **`bastion-bridge`** | stdio hosts reach the gateway over HTTP; starts Bastion if it is not up             |
+| **Migration**        | four `.mcp.json` credential sets moved into the Keychain, configs repointed         |
+| **`make smoke`**     | four concurrent clients, colliding ids, exactly one child, `kill -9` recovery       |
+| **`make audit`**     | the five security rules, against the real bundle                                    |
+| **`make dialect`**   | 24 conformance checks across both eras                                              |
 
 Bastion is what the 2026-07-28 spec calls a **dual-era server**. A modern client declares its
 protocol version, identity and capabilities in each request's `_meta` and needs no handshake at
@@ -144,11 +145,13 @@ None of the ten servers are modern. Every one runs an SDK whose newest protocol 
 which is what they negotiate. The manifest said `2025-06-18` until a live handshake was actually
 run against one; that was Bastion's own pin masquerading as a fact about the servers.
 
-Not built yet, in build order: client wiring, `bastion-bridge` for stdio-only clients like Claude Desktop, and the signed
-release path.
+Not built yet, in build order: client wiring and the signed release path.
 
-Four limitations worth knowing now:
+Five limitations worth knowing now:
 
+- **Bastion has no login item yet.** A stdio client's bridge starts it on demand, so a Claude
+  Desktop entry works from cold. A client configured with a plain `type: http` URL has no such
+  path and needs Bastion already up — which is the case for the four repos below.
 - **The repointed repos need Bastion running.** `mgcrea-ai/mcp-{shopify,keycloak,tastytrade,appstore-connect}/.mcp.json`
   now call `http://127.0.0.1:8720/...` instead of spawning anything, so with Bastion stopped those
   four servers are simply unreachable. There is no login item yet; that lands with the release path.

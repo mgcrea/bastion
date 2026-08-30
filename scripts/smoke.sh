@@ -15,9 +15,12 @@
 #   recovery       kill -9 the child mid-life; the next request must succeed
 #                  and there must still be exactly one process.
 #
+#   bridge         the same tool set through `bastion-bridge`, which is what a
+#                  stdio-only host like Claude Desktop actually spawns. Two
+#                  transports that disagree about what a server offers is the
+#                  bug this catches, and it is invisible from either side alone.
+#
 # Needs a profile to run against. `make smoke PROFILE=prod SERVER=shopify`.
-# The bridge half of this — asserting an identical tool set through
-# `bastion-bridge` — arrives with the bridge.
 #
 # The Debug build only. This must never be able to disturb an installed copy
 # that somebody is working in.
@@ -152,6 +155,61 @@ else
     pass "the exit was recorded"
   else
     fail "the crash was not recorded in the log"
+  fi
+fi
+
+echo ""
+echo "Through bastion-bridge"
+
+BRIDGE="$ROOT/apps/apple/.build/Build/Products/Debug/Bastion.app/Contents/Helpers/bastion-bridge"
+if [ ! -x "$BRIDGE" ]; then
+  fail "no bridge at $BRIDGE"
+else
+  # Exactly what a stdio host sends: a handshake, then a list. Bastion is
+  # already up, so the bridge's launch path is not exercised here — that is a
+  # different test, and one that must not fight this script for the flock.
+  BRIDGE_TOOLS="$(printf '%s\n' \
+    '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"1.0.0"}}}' \
+    '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+    '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+    | BASTION_TOKEN="$TOKEN" "$BRIDGE" --profile="$PROFILE" --server="$SERVER" 2>/dev/null \
+    | node -e '
+      let d = "";
+      process.stdin.on("data", (c) => (d += c)).on("end", () => {
+        for (const line of d.trim().split("\n")) {
+          if (!line) continue;
+          const j = JSON.parse(line);
+          if (j.result?.tools) {
+            process.stdout.write(j.result.tools.map((t) => t.name).sort().join(","));
+            return;
+          }
+        }
+      });
+    ')"
+
+  HTTP_TOOLS="$(post /tmp/smoke-http.json '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'; node -e '
+    let d = "";
+    process.stdin.on("data", (c) => (d += c)).on("end", () => {
+      const j = JSON.parse(d);
+      process.stdout.write((j.result?.tools ?? []).map((t) => t.name).sort().join(","));
+    });
+  ' < /tmp/smoke-http.json)"
+
+  if [ -z "$BRIDGE_TOOLS" ]; then
+    fail "the bridge returned no tool list"
+  elif [ "$BRIDGE_TOOLS" = "$HTTP_TOOLS" ]; then
+    pass "identical tool sets over HTTP and through the bridge ($(printf '%s' "$BRIDGE_TOOLS" | awk -F, '{print NF}') tools)"
+  else
+    fail "the two transports disagree about the tool set"
+    printf '          http:   %s\n' "$HTTP_TOOLS"
+    printf '          bridge: %s\n' "$BRIDGE_TOOLS"
+  fi
+
+  CHILDREN_AFTER="$(pgrep -P "$APP" 2>/dev/null | wc -l | tr -d ' ')"
+  if [ "$CHILDREN_AFTER" = "1" ]; then
+    pass "the bridge attached to the running child rather than starting another"
+  else
+    fail "expected 1 child process after the bridge ran, found $CHILDREN_AFTER"
   fi
 fi
 
