@@ -140,21 +140,28 @@ final class HostedWindow {
       resizeGuard = OpeningResizeGuard(window: created, intended: created.frame)
     }
 
-    // An accessory app does not come forward on its own, so the window would
-    // otherwise open behind whatever the user was looking at.
-    //
-    // `activate()`, not the deprecated `activate(ignoringOtherApps:)`: the
-    // modern call cooperates with the window server rather than demanding the
-    // foreground, and is the one that still works when the request comes from a
-    // menu bar extra whose own panel is key at that moment.
-    NSApp.activate()
-
     // `makeKeyAndOrderFront` does not restore a miniaturized window — it orders
     // the Dock tile front and leaves the window in the Dock, so the menu item
     // looks like a button that does nothing. The window is reused rather than
     // rebuilt, so this is a state it will genuinely be found in.
     if window?.isMiniaturized == true { window?.deminiaturize(nil) }
     window?.makeKeyAndOrderFront(nil)
+
+    // Then the app itself, every time and not only on the first open. Ordering
+    // a window front is order *within* an app; it says nothing about which app
+    // the user is looking at, so an accessory app that skips this leaves its
+    // window behind whatever was in front.
+    //
+    // `activate(ignoringOtherApps:)`, not the cooperative `activate()`. The
+    // cooperative call asks the frontmost app to yield the foreground and is
+    // refused when nobody yields — which is every time the request arrives from
+    // a menu bar extra, because the user is in some other app and that app was
+    // never asked. It is why "Open Bastion" on a window that was already open
+    // looked like it did nothing: the first open only appeared to work because
+    // `DockPresence.update()` fires the forceful call on the .accessory →
+    // .regular transition, and every open after that early-returns straight
+    // past it with the policy already .regular.
+    NSApp.activate(ignoringOtherApps: true)
 
     // Last, and after the window is actually on screen: `DockPresence` counts
     // visible windows, and a window ordered front after the count is a Dock
