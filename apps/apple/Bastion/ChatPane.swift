@@ -46,6 +46,19 @@ struct ChatPane: View {
     }
     .safeAreaInset(edge: .top) { header }
     .safeAreaInset(edge: .bottom) { composer }
+    #if DEBUG
+      // `--chat-profile=prod/appstore-connect`, alongside `--pane=chat`.
+      // Selecting a profile is the one step that cannot be reached without a
+      // click, and driving a click from a script means synthetic input that
+      // lands in whatever happens to be frontmost. This is the honest way.
+      .onAppear {
+        guard chat.profile == nil,
+          let raw = CommandLine.arguments.first(where: { $0.hasPrefix("--chat-profile=") })
+        else { return }
+        let wanted = String(raw.dropFirst("--chat-profile=".count))
+        if let pick = picks.first(where: { $0.id == wanted }) { load(pick) }
+      }
+    #endif
     .confirmationDialog(
       "Switch to '\(pendingSwitch?.id ?? "")'?",
       isPresented: Binding(get: { pendingSwitch != nil }, set: { if !$0 { pendingSwitch = nil } }),
@@ -90,7 +103,9 @@ struct ChatPane: View {
             // "why didn't it use tool X" question unanswerable at a glance.
             HStack(spacing: 6) {
               Text("\(chat.selected.count) of \(chat.tools.count) tools")
-              Text("\(chat.used)/\(ChatSession.budget)")
+              Text(
+                "\(chat.used.formatted(.number.grouping(.never)))/"
+                  + "\(ChatSession.budget.formatted(.number.grouping(.never)))")
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(chat.isOverBudget ? .orange : .secondary)
             }
@@ -127,11 +142,17 @@ struct ChatPane: View {
   private func writesBanner(_ eligibility: ToolProbe.Eligibility) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: 8) {
       Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+      // No `fixedSize` on this sentence, and that is load-bearing rather than an
+      // oversight. `LogPane.disclaimer` documents what it costs: a wrapping
+      // caption that answers its height only once given a width makes the
+      // `NavigationSplitView` detail column resolve against the *unwrapped*
+      // sentence, and the result is not a wide window but a blank one — sidebar
+      // rows gone, detail pane drawing nothing. Without it the width arrives
+      // first and the text simply wraps into it, which is all this needs.
       Text(
         "This profile has writes enabled. Only tools the server marks read-only are loaded, but "
           + "that mark is the server's own claim about itself and not something Bastion can check.")
         .font(.caption)
-        .fixedSize(horizontal: false, vertical: true)
       Spacer(minLength: 8)
       Button("I understand") { acknowledged = true }
         .controlSize(.small)
@@ -142,9 +163,9 @@ struct ChatPane: View {
   private func banner(_ text: String, tint: Color, symbol: String) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: 8) {
       Image(systemName: symbol).foregroundStyle(tint)
+      // Same reason as `writesBanner` above: no `fixedSize` in this column.
       Text(text)
         .font(.caption).foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
       Spacer(minLength: 0)
     }
     .padding(.horizontal, 12).padding(.vertical, 6)
@@ -262,10 +283,12 @@ struct ChatPane: View {
       Image(systemName: "sparkles.slash").font(.largeTitle).foregroundStyle(.tertiary)
       Text("The on-device model is not available")
         .font(.headline)
+      // And here too — this one replaces the whole detail pane, so getting it
+      // wrong would blank the window on exactly the machines that can least
+      // afford a confusing failure.
       Text(why + ". The rest of Bastion is unaffected — this pane is the only thing that needs it.")
         .font(.caption).foregroundStyle(.secondary)
         .multilineTextAlignment(.center)
-        .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: 360)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
