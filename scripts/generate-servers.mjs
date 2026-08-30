@@ -331,6 +331,42 @@ target("docs/servers.md", (src) =>
   ),
 );
 
+// ─── 3. apps/website/src/data/servers.ts ─────────────────────────────────────
+//
+// The marketing site says "ten servers, the list is closed" and prints every id
+// with its gate. That is a claim about this manifest, so the site reads a
+// generated copy rather than a typed one — a page that counts differently from
+// the app it describes is the drift this generator exists to make impossible,
+// and it is the copy nobody would notice was wrong.
+//
+// Only the fields the page renders are emitted. The env matrix and the auth
+// modes are the app's business and would put every secret's NAME on a public
+// page for no reader's benefit.
+
+const tsString = (v) => JSON.stringify(v);
+const tsOptionalString = (v) => (v === null ? "null" : tsString(v));
+
+const tsServer = (s) =>
+  [
+    "  {",
+    `    id: ${tsString(s.id)},`,
+    `    displayName: ${tsString(s.displayName)},`,
+    `    summary: ${tsString(s.summary)},`,
+    `    writeGate: ${tsOptionalString(s.writeGate)},`,
+    `    dialect: ${tsString(s.dialect)},`,
+    "  },",
+  ].join("\n");
+
+target("apps/website/src/data/servers.ts", (src) =>
+  region(
+    src,
+    `// <generated:servers> ${BANNER}\n`,
+    `// </generated:servers>`,
+    `export const SERVERS: Server[] = [\n${servers.map(tsServer).join("\n")}\n];\n`,
+    "apps/website/src/data/servers.ts",
+  ),
+);
+
 // ─── write or check ──────────────────────────────────────────────────────────
 
 let drifted = 0;

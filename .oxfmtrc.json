@@ -10,6 +10,7 @@
     "**/*.icon",
     "**/*.xcassets",
     "**/worker-configuration.d.ts",
+    "apps/website/src/data/servers.ts",
     "docs/servers.md"
   ],
   "overrides": [
