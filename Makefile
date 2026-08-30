@@ -37,6 +37,8 @@ SPARKLE_SHA256    := 8d5fb41d960b43f4a68aa14126bf62b098544ec8d191cdcc73eb14e63a8
 SPARKLE_VENDOR    := apps/apple/Vendor
 SPARKLE_FRAMEWORK := $(SPARKLE_VENDOR)/Sparkle.framework
 SPARKLE_TOOLS     := apps/apple/.build/sparkle-cache/bin
+# Records which version is staged, so `make app` re-extracts only on a bump.
+SPARKLE_STAMP     := $(SPARKLE_VENDOR)/.sparkle-$(SPARKLE_VERSION)
 # Deferred (`=`, not `:=`): RELEASE_APP is defined further down, and immediate
 # expansion here resolved to a bare "/Contents/..." path, so every guard on
 # this variable quietly did nothing and the framework shipped unsigned.
@@ -111,25 +113,45 @@ clean: ## Remove the app build output
 
 # ─── the release path ────────────────────────────────────────────────────────
 
-sparkle: ## Download and stage the pinned Sparkle.framework
+# Idempotent, and stamped by version.
+#
+# It used to re-extract on every `make app`, in place, into a directory it first
+# tried to `rm -rf`. Two things were wrong with that. `unzip` cannot write the
+# symlinks a framework is made of when real files are already sitting at those
+# paths — it reports "deferred symlink … invalid placeholder file" and leaves
+# zero-length placeholders behind — so one interrupted run poisoned every run
+# after it. And the `rm -rf` that was supposed to prevent that is the step that
+# failed first, which meant the guard and the thing it guarded broke together.
+#
+# So: extract into a fresh temporary directory that is thrown away either way,
+# and stamp the result. Nothing is ever cleaned in place, a failed run leaves no
+# state for the next one to inherit, and `make app` stops paying for an
+# extraction it does not need. Bumping SPARKLE_VERSION invalidates the stamp.
+sparkle: $(SPARKLE_STAMP) ## Download and stage the pinned Sparkle.framework
+
+$(SPARKLE_STAMP):
 	@mkdir -p apps/apple/.build/sparkle-cache $(SPARKLE_VENDOR)
 	@zip="apps/apple/.build/sparkle-cache/Sparkle-$(SPARKLE_VERSION).zip"; \
 	[ -f "$$zip" ] || curl -fsSL -o "$$zip" \
 		"https://github.com/sparkle-project/Sparkle/releases/download/$(SPARKLE_VERSION)/Sparkle-for-Swift-Package-Manager.zip"; \
 	echo "$(SPARKLE_SHA256)  $$zip" | shasum -a 256 -c - >/dev/null \
 		|| { echo "  Sparkle checksum mismatch — refusing to build against it"; rm -f "$$zip"; exit 1; }; \
-	rm -rf apps/apple/.build/sparkle-cache/unpacked; \
-	unzip -qo "$$zip" -d apps/apple/.build/sparkle-cache/unpacked
-	@rm -rf $(SPARKLE_FRAMEWORK)
-	@ditto apps/apple/.build/sparkle-cache/unpacked/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework \
-		$(SPARKLE_FRAMEWORK)
-	@mkdir -p $(SPARKLE_TOOLS)
-	@ditto apps/apple/.build/sparkle-cache/unpacked/bin $(SPARKLE_TOOLS)
+	tmp=$$(mktemp -d "$${TMPDIR:-/tmp}/sparkle.XXXXXX") || exit 1; \
+	trap 'rm -rf "$$tmp"' EXIT INT TERM; \
+	ditto -x -k "$$zip" "$$tmp" || exit 1; \
+	rm -rf $(SPARKLE_FRAMEWORK) $(SPARKLE_TOOLS); \
+	mkdir -p $(SPARKLE_TOOLS); \
+	ditto "$$tmp/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework" $(SPARKLE_FRAMEWORK) || exit 1; \
+	ditto "$$tmp/bin" $(SPARKLE_TOOLS) || exit 1
 	@# Sandbox-only, and this app is not sandboxed. Stripped here rather than at
 	@# bundle time so a Debug build has the same Mach-O inventory as a Release
 	@# one — every extra binary inside the bundle is one more thing signed, one
-	@# more thing notarized, and one more thing to explain.
+	@# more thing notarized, and one more thing to explain. This invalidates the
+	@# vendored signature by design, which is why `sign` re-signs the framework
+	@# and then asserts the team on it.
 	@rm -rf $(SPARKLE_FRAMEWORK)/Versions/B/XPCServices
+	@rm -f $(SPARKLE_VENDOR)/.sparkle-*
+	@touch $(SPARKLE_STAMP)
 	@echo "  Sparkle $(SPARKLE_VERSION) staged: $(SPARKLE_FRAMEWORK)"
 
 node: ## Download and lipo the embedded node runtime
@@ -275,7 +297,18 @@ sign: ## Sign the Release bundle (Developer ID if present, else Apple Developmen
 # brokerage refresh token, with one click and no further question. It belongs in
 # the keychain and in one repository secret, never in an org-wide one and never
 # anywhere a pull_request workflow can read it.
-sparkle-keys: sparkle ## Generate the EdDSA update-signing keypair (once, ever)
+sparkle-keys: sparkle ## Generate or reuse the EdDSA update-signing key
+	@echo "Sparkle stores ONE signing key per user account, not one per app:"
+	@echo "a single item under https://sparkle-project.org in the login keychain."
+	@echo "If cupertino has already made one, this reuses it and Bastion ships the"
+	@echo "same public key — which means one leaked key can push an update to both."
+	@echo "Getting a separate key means exporting, removing the existing item, and"
+	@echo "importing per release. That is a deliberate choice, so it is not made here."
+	@echo ""
+	@security find-generic-password -s "https://sparkle-project.org" >/dev/null 2>&1 \
+		&& echo "  a key already exists — the tool will reuse it" \
+		|| echo "  no key yet — the tool will create one"
+	@echo ""
 	@$(SPARKLE_TOOLS)/generate_keys
 	@echo ""
 	@echo "Put the printed public key in the SUPublicEDKey value of"
