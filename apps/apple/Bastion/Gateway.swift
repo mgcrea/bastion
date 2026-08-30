@@ -261,6 +261,40 @@ nonisolated final class Gateway: @unchecked Sendable {
         ])
 
     case ("POST", let path) where path.count == 3 && path[0] == "s":
+      // The licence gate, and the only one in the app.
+      //
+      // Here rather than deeper in: this is the last point where nothing has
+      // been spawned. Past it the supervisor may start a child, and refusing
+      // after that would leave a process running for a request that was never
+      // served.
+      //
+      // What is gated is the RELAY — the supervised, credential-holding,
+      // audited gateway, which is the thing being sold. Write gates are NOT
+      // gated and must not be: that would make the free tier the safe one and
+      // the paid tier the dangerous one.
+      //
+      // Refusing every request is immediate in a way cupertino's equivalent
+      // could not be. There, an MCP host opened one stdio connection when the
+      // editor started and held it for days, so a gate on new connections was
+      // not a gate at all. Here every request is its own POST.
+      switch Entitlement.current {
+      case .licensed:
+        break
+      case .trial:
+        break
+      case .refused(let reason):
+        hostLog("licence", .error, "refused \(path[1])/\(path[2]): \(reason)")
+        return HTTPResponse(
+          status: 200,
+          json: rpcFrame(
+            id: HTTPRequest.jsonRPCID(of: request.body),
+            error: [
+              "code": -32603,
+              "message":
+                "Bastion is not licensed: \(reason). Open Bastion to enter a key, or to start a "
+                + "\(Int(Trial.duration / 60))-minute trial.",
+            ]))
+      }
       return handleRPC(profile: path[1], server: path[2], request: request, client: client)
 
     // 2026-07-28 removed the GET stream endpoint and protocol-level sessions.

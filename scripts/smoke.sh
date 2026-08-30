@@ -49,7 +49,10 @@ FAILURES=0
 LOG=/tmp/bastion-smoke.log
 pkill -f "$BIN" 2>/dev/null || true
 sleep 1
-"$BIN" >"$LOG" 2>&1 &
+# `--trial` arms the same thirty-minute window the button does. The licence
+# gate refuses every request without one, and faking a key here would test a
+# path no user has.
+"$BIN" --trial >"$LOG" 2>&1 &
 APP=$!
 trap 'kill "$APP" 2>/dev/null || true' EXIT
 

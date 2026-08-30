@@ -39,6 +39,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       if CommandLine.arguments.contains("--clients") {
         ClientsWindowController.show()
       }
+      // Arms a REAL trial — the same thirty-minute in-memory window a person
+      // gets from the button, not a forged licence. `make smoke` and
+      // `make dialect` need to get past the gate, and the honest way to let
+      // them is the mechanism that already exists rather than a second one that
+      // pretends a key was entered.
+      if CommandLine.arguments.contains("--trial") {
+        Trial.start()
+      }
     #endif
   }
 
@@ -120,6 +128,26 @@ private struct GatewayMenu: View {
       .keyboardShortcut("a")
     Button("MCP Clients…") { ClientsWindowController.show() }
       .keyboardShortcut("k")
+    Divider()
+
+    // The licence state, in the one place somebody will look when a client
+    // starts refusing. The gateway returns the same sentence to the client, but
+    // that lands in a log file nobody opens.
+    switch Entitlement.current {
+    case .licensed(let license):
+      Text("Licensed to \(license.email)")
+    case .trial:
+      Text("Trial — \(Trial.remainingText)")
+    case .refused:
+      Text(Trial.hasRun ? "Trial ended — not licensed" : "Not licensed")
+      if !Trial.hasRun {
+        // Reachable only from here. A trial that armed itself when a bridge
+        // launched the app would burn in a window nobody was watching.
+        Button("Start \(Int(Trial.duration / 60))-Minute Trial") { Trial.start() }
+      }
+    }
+    Button("Licence…") { LicenceWindowController.show() }
+
     Divider()
 
     // Two items rather than a settings pane, because there are exactly two

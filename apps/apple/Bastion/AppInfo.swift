@@ -6,6 +6,16 @@ nonisolated enum AppInfo {
     Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
   }
 
+  /// The major version a licence key must cover.
+  ///
+  /// A key is issued against `2.x` and refused by a `3.x` build, which is what
+  /// makes a paid major upgrade expressible without an expiry date on the key
+  /// itself. Derived from the shipped version rather than hardcoded, so it
+  /// cannot disagree with what the About line says.
+  static var major: Int {
+    Int(version.split(separator: ".").first ?? "1") ?? 1
+  }
+
   static var build: String {
     Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
   }
