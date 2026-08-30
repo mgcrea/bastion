@@ -75,6 +75,18 @@ final class HostedWindow {
   }
 }
 
+enum ClientsWindowController {
+  private static let hosted = HostedWindow(
+    title: "MCP Clients",
+    autosaveName: "BastionClients",
+    contentSize: NSSize(width: 640, height: 420)
+  ) {
+    ClientsWindow()
+  }
+
+  static func show() { hosted.show() }
+}
+
 enum ActivityWindowController {
   private static let hosted = HostedWindow(
     title: "Bastion Activity",

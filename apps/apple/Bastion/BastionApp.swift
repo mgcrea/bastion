@@ -31,6 +31,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       if CommandLine.arguments.contains("--activity") {
         ActivityWindowController.show()
       }
+      if CommandLine.arguments.contains("--clients") {
+        ClientsWindowController.show()
+      }
     #endif
   }
 
@@ -110,6 +113,8 @@ private struct GatewayMenu: View {
     Divider()
     Button("Activity…") { ActivityWindowController.show() }
       .keyboardShortcut("a")
+    Button("MCP Clients…") { ClientsWindowController.show() }
+      .keyboardShortcut("k")
     Button("Quit Bastion") { NSApplication.shared.terminate(nil) }
       .keyboardShortcut("q")
   }

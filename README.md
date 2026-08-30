@@ -145,7 +145,9 @@ None of the ten servers are modern. Every one runs an SDK whose newest protocol 
 which is what they negotiate. The manifest said `2025-06-18` until a live handshake was actually
 run against one; that was Bastion's own pin masquerading as a fact about the servers.
 
-Not built yet, in build order: client wiring and the signed release path.
+Not built yet, in build order: the signed release path — Developer ID signing, notarization,
+Sparkle, the appcast and a Homebrew cask. And a login item, which is what would let an
+`type: http` client reach Bastion from cold the way a bridge-spawning one already can.
 
 Five limitations worth knowing now:
 
@@ -180,6 +182,8 @@ make run            # build and launch the menu bar agent
 make stop           # quit it
 make audit          # assert the listener is loopback-only and refuses foreign Origin/Host
 make dialect        # assert both protocol eras against a running build
+make wiring-check   # assert the config merge leaves other people's files alone
+make wiring-check-real  # the same, against your actual client configs (read-only)
 make smoke          # prove one supervised server end to end
 ```
 
