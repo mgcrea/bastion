@@ -384,6 +384,17 @@ dialect: app ## Assert Bastion serves both protocol eras (needs a profile)
 builtin: app ## Assert Bastion's own server: the write gate, and that no tool returns a secret
 	@scripts/builtin-check.sh
 
+# JavaScript mints the keys and Swift accepts them, so the disagreement that
+# would cost money lives between the two — and neither side's own tests can see
+# it. This one compiles the real License.swift and feeds it real keys.
+license-check: ## Prove a minted licence key verifies in the app's own verifier
+	@mkdir -p apps/apple/.build
+	@swiftc -O -o apps/apple/.build/license-check \
+		apps/apple/Bastion/License.swift apps/apple/Bastion/Revocations.swift \
+		scripts/license-check.swift
+	@node --env-file-if-exists=.env scripts/license-check.mjs \
+		| apps/apple/.build/license-check
+
 wiring-check: ## Assert the config merge leaves other people's files alone
 	@mkdir -p apps/apple/.build
 	@swiftc -O -o apps/apple/.build/wiring-check \
@@ -468,5 +479,5 @@ format-check: ## Fail on unformatted files
 .PHONY: help app run stop dev-config clean \
 	sparkle sparkle-keys appcast node bundle sign notarize build-release \
 	install install-release install-from uninstall \
-	smoke dialect wiring-check wiring-check-real audit migrate servers servers-check icon \
+	smoke dialect wiring-check wiring-check-real license-check audit migrate servers servers-check icon \
 	lint format format-check

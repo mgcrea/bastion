@@ -45,11 +45,17 @@ nonisolated enum LicenseKey {
 
   /// The public half of the signing key: raw 32 bytes, base64url.
   ///
-  /// Empty until the keypair is minted, and empty is the SAFE direction: every
-  /// key is refused with "this build has no signing key compiled in", which is
-  /// a sentence, rather than every key being accepted. The same reasoning as
-  /// `SUPublicEDKey` in Bastion-Info.plist, and the same one-time act.
-  static let publicKey = ""
+  /// Minted once, and not to be regenerated: changing it refuses every key ever
+  /// issued, all at once, in whatever build carries the new one. The private
+  /// half signs in `scripts/mint-license.mjs` and lives in `.env`, never here
+  /// and never in git. The same reasoning as `SUPublicEDKey` in
+  /// Bastion-Info.plist, and the same one-time act.
+  ///
+  /// Empty is the SAFE direction, and stays available: every key is then refused
+  /// with "this build has no signing key compiled in", which is a sentence,
+  /// rather than every key being accepted. `scripts/lib/license.mjs` carries the
+  /// same constant and its tests read this line to assert the two agree.
+  static let publicKey = "yhb2TSXJknw4cUa74WJdXiFQyBEJA-iv4qt5icIRN_Q"
 
   static func check(
     _ key: String?,
