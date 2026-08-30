@@ -40,7 +40,7 @@ nonisolated final class Supervisor: @unchecked Sendable {
     var errorDescription: String? {
       switch self {
       case .unknownServer(let id):
-        return "no server '\(id)' — Bastion only runs the servers in its manifest"
+        return "no server '\(id)' — Bastion only runs the servers you have installed"
       case .unknownProfile(let profile, let server):
         return "no profile '\(profile)' for \(server) — create it in Bastion"
       case .notConfigured(let profile, let missing):
@@ -93,7 +93,10 @@ nonisolated final class Supervisor: @unchecked Sendable {
     profile profileName: String, server serverID: String, frame: [String: Any], era: Dialect.Era,
     client: String
   ) throws -> Data? {
-    guard let server = ServerCatalog.byID[serverID] else {
+    // The user's installed list, never the catalog. Resolving through the
+    // catalog here would spawn a server nobody asked for, which is the one
+    // thing the old closed table was actually protecting against.
+    guard let server = ServerStore.lookup(serverID) else {
       throw SupervisorError.unknownServer(serverID)
     }
     guard let profile = ProfileStore.lookup(name: profileName, server: serverID) else {

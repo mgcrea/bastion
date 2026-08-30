@@ -1,18 +1,36 @@
 import Foundation
 
-/// One MCP server Bastion is allowed to supervise.
+/// The definition of one MCP server: what it is, what it reads, and which npm
+/// package it comes out of.
 ///
-/// This is a **closed table fixed at compile time**, and it carries the same
-/// invariant as cupertino's `Surface`: a caller selects a server by *name*,
-/// never by path or command line. A gateway that spawned whatever binary it was
-/// handed would be a way for any local process — or any web page that got past
-/// the Origin check — to run arbitrary code with the user's credentials
-/// attached. v1 ships no catalog and no third-party code execution, and this
-/// table is where that promise is actually kept.
+/// **This is no longer a closed table, and the distinction matters.** v1 fixed
+/// the whole list at compile time and called that a security property. It was
+/// two properties wearing one coat, and only one of them was load-bearing:
 ///
-/// **`ServerCatalog.all` below is generated from `servers.json`** by
-/// `make servers`. Edit the manifest, not the array — CI regenerates and fails
-/// on any drift.
+/// - **Kept.** A caller selects a server by *name*, never by path or command
+///   line. A gateway that spawned whatever binary it was handed would be a way
+///   for any local process — or any web page that got past the Origin check —
+///   to run arbitrary code with the user's credentials attached. That is still
+///   true: `ServerStore` resolves a name to a definition the *user* installed,
+///   and nothing arriving over the wire can name a package, a path or an argv.
+/// - **Dropped.** That the list was fixed at build time. It bought no safety
+///   the rule above does not already buy — the person choosing was always the
+///   user — and it cost Bastion the ability to run anything mgcrea had not
+///   written.
+///
+/// So there are two lists now, and they are not the same thing:
+///
+/// - `ServerCatalog.all` — the catalog, generated from `servers.json` by
+///   `make servers`. A starting point. Nothing here is installed until someone
+///   asks for it.
+/// - `ServerStore.shared.servers` — what this install actually runs. Held in
+///   Application Support, edited by the user, and the only list the gateway,
+///   the supervisor and the profile store ever consult.
+///
+/// A definition reaching the store from the catalog is re-resolved by id on
+/// every load rather than copied, so a catalog fix — a new variable, a dialect
+/// that finally flipped — reaches an install that was set up months ago. A
+/// custom definition has no catalog to re-resolve against and is stored whole.
 nonisolated struct BastionServer: Identifiable, Hashable {
   /// The wire name. It is a URL path segment (`/s/<profile>/<server>`), a
   /// profile directory name and a `bastion-bridge --server=` argument, which is
@@ -21,12 +39,20 @@ nonisolated struct BastionServer: Identifiable, Hashable {
   let displayName: String
   /// One line, shown in the menu and on the server's row in the main window.
   let summary: String
-  /// npm package name. Always `@mgcrea/mcp-<id>`; carried explicitly so the
-  /// file reads without a rule in the reader's head, and validated as derived.
+  /// The npm package to install. Catalog entries are always
+  /// `@mgcrea/mcp-<id>` and the generator enforces that; a custom entry names
+  /// somebody else's package and is held only to npm's own naming rules.
   let npmName: String
-  /// The executable inside the package. Always `<id>-mcp`, same reasoning.
+  /// The `bin` entry to run out of that package. `<id>-mcp` for everything in
+  /// the catalog, and looked up in the installed `package.json` rather than
+  /// assumed — a package is free to put its entry point anywhere.
   let binName: String
-  /// Where the code comes from.
+  /// Whether the package is actually published.
+  ///
+  /// Not decoration now that installs happen on demand: `.local` is the
+  /// difference between an entry a stranger can install and one that resolves
+  /// only against a checkout named by `dev.json`. Four of the nine catalog
+  /// entries are `.local` today.
   let distribution: Distribution
   /// Directory name in the mgcrea-ai checkout, for `.local` and for DEBUG
   /// overrides of `.npm`.
@@ -34,11 +60,16 @@ nonisolated struct BastionServer: Identifiable, Hashable {
   let docsURL: URL?
   /// The dialect the server itself speaks.
   ///
-  /// Every entry is `.v2025_06_18` today, and that is the whole reason
-  /// `Dialect.swift` exists: Bastion fronts them with the 2026-07-28 stateless
-  /// protocol and translates. The field is not decoration — when a server is
-  /// upgraded, flipping it here is what turns the translation off for that one
-  /// server, and the day the last entry flips is the day the layer can go.
+  /// Every entry is legacy today, and that is the whole reason `Dialect.swift`
+  /// exists: Bastion fronts them with the 2026-07-28 stateless protocol and
+  /// translates. The field is not decoration — when a server is upgraded,
+  /// flipping it here is what turns the translation off for that one server,
+  /// and the day the last entry flips is the day the layer can go.
+  ///
+  /// A custom entry defaults to the newest legacy revision, because that is
+  /// what an SDK built this year negotiates and because guessing *modern* for a
+  /// server that turns out to be legacy breaks it outright, while guessing the
+  /// other way costs a translation layer that was already written.
   let dialect: Dialect
   /// The env var that turns destructive tools on, or `nil` when the server has
   /// no write path at all.
@@ -77,6 +108,22 @@ nonisolated struct BastionServer: Identifiable, Hashable {
   /// it speaks stdio to the child.
   let callbackEnv: [String]
   let env: [EnvVar]
+  /// Where this definition came from. Last, and defaulted, so the generated
+  /// catalog below does not have to say `.catalog` nine times.
+  var origin: Origin = .catalog
+
+  /// Which of the two lists a definition was born in.
+  ///
+  /// Only the UI and `ServerStore`'s persistence care. Everything downstream —
+  /// the supervisor, the profile store, the environment builder — treats the
+  /// two identically on purpose: a custom server is not a second-class server,
+  /// it is a server whose definition the user typed.
+  enum Origin: Hashable {
+    /// Generated from `servers.json`. Re-resolved by id on every load.
+    case catalog
+    /// Typed by the user. Stored whole, because nothing else remembers it.
+    case custom
+  }
 
   enum Distribution: Hashable {
     /// Published; installable from the registry.
@@ -102,7 +149,7 @@ nonisolated struct BastionServer: Identifiable, Hashable {
   /// Bastion is what the spec calls a **dual-era server**: it selects its
   /// behaviour from how the client opens, and fronts legacy children either
   /// way.
-  enum Dialect: String, Hashable, Comparable {
+  enum Dialect: String, Hashable, Comparable, CaseIterable {
     case v2024_11_05 = "2024-11-05"
     case v2025_03_26 = "2025-03-26"
     case v2025_06_18 = "2025-06-18"
@@ -134,49 +181,14 @@ nonisolated struct BastionServer: Identifiable, Hashable {
   }
 }
 
+/// The list Bastion ships with, and installs nothing from.
+///
+/// Generated from `servers.json` by `make servers` — edit the manifest, not the
+/// array, and CI fails on any drift. What an install actually runs is
+/// `ServerStore`, which is seeded from here and then belongs to the user.
 nonisolated enum ServerCatalog {
   // <generated:servers> generated from servers.json by `make servers` — do not edit by hand
   static let all: [BastionServer] = [
-    // No write gate because there is no write path: every tool is a read.
-    // That is why the build order takes this one end-to-end first — a bug in
-    // the supervisor or the dialect layer cannot cost anybody data here.
-    BastionServer(
-      id: "shopify",
-      displayName: "Shopify",
-      summary: "Shopify Admin GraphQL API: products, variants, collections, metafields, locations.",
-      npmName: "@mgcrea/mcp-shopify",
-      binName: "shopify-mcp",
-      distribution: .npm,
-      localPath: "mcp-shopify",
-      docsURL: URL(string: "https://github.com/mgcrea/mcp-shopify"),
-      dialect: .v2025_11_25,
-      writeGate: nil,
-      gateBypass: [],
-      authModes: [],
-      stateEnv: [],
-      callbackEnv: [],
-      env: [
-        .init(
-          name: "SHOPIFY_STORE_DOMAIN",
-          isRequired: true,
-          isSecret: false,
-          summary: "Store handle or *.myshopify.com domain. A bare handle is expanded."),
-        .init(
-          name: "SHOPIFY_CLIENT_ID",
-          isRequired: true,
-          isSecret: false,
-          summary: "Custom app client id."),
-        .init(
-          name: "SHOPIFY_CLIENT_SECRET",
-          isRequired: true,
-          isSecret: true,
-          summary: "Custom app client secret. Used as the Admin API access token."),
-        .init(
-          name: "SHOPIFY_API_VERSION",
-          isRequired: false,
-          isSecret: false,
-          summary: "Admin API version, e.g. 2026-04. Defaults to the server's pinned version."),
-      ]),
     // The inline key is why `secret` is a manifest field rather than a UI
     // guess. `.mcp.json` in mcp-appstore-connect currently holds this key in
     // plaintext; migrating it into a Bastion profile is the first dogfood
@@ -241,158 +253,6 @@ nonisolated enum ServerCatalog {
           isRequired: false,
           isSecret: false,
           summary: "Enables the mutating tools: version metadata, screenshots, submissions, pricing."),
-      ]),
-    // The profile split is the whole point here: rgis and ivalis are two
-    // realms on two servers with two admin identities, and a single global
-    // instance could hold only one of them.
-    BastionServer(
-      id: "keycloak",
-      displayName: "Keycloak",
-      summary: "Keycloak Admin REST API: realms, clients, users, roles, sessions.",
-      npmName: "@mgcrea/mcp-keycloak",
-      binName: "keycloak-mcp",
-      distribution: .local,
-      localPath: "mcp-keycloak",
-      docsURL: nil,
-      dialect: .v2025_11_25,
-      writeGate: "KEYCLOAK_ALLOW_WRITES",
-      gateBypass: [],
-      authModes: [
-        .init(
-          id: "client_credentials",
-          displayName: "Client credentials",
-          env: ["KEYCLOAK_CLIENT_SECRET"]),
-        .init(
-          id: "password",
-          displayName: "Username and password",
-          env: ["KEYCLOAK_USERNAME", "KEYCLOAK_PASSWORD"]),
-      ],
-      stateEnv: [],
-      callbackEnv: [],
-      env: [
-        .init(
-          name: "KEYCLOAK_URL",
-          isRequired: true,
-          isSecret: false,
-          summary: "Base URL of the Keycloak server, e.g. https://sso.example.com."),
-        .init(
-          name: "KEYCLOAK_REALM",
-          isRequired: false,
-          isSecret: false,
-          summary: "Realm to administer. Defaults to master."),
-        .init(
-          name: "KEYCLOAK_AUTH_REALM",
-          isRequired: false,
-          isSecret: false,
-          summary: "Realm to authenticate against, when it differs from the one being administered."),
-        .init(
-          name: "KEYCLOAK_CLIENT_ID",
-          isRequired: false,
-          isSecret: false,
-          summary: "Client id. Defaults to admin-cli."),
-        .init(
-          name: "KEYCLOAK_CLIENT_SECRET",
-          isRequired: false,
-          isSecret: true,
-          summary: "Client secret. Selects the client_credentials grant."),
-        .init(
-          name: "KEYCLOAK_USERNAME",
-          isRequired: false,
-          isSecret: false,
-          summary: "Admin username. Selects the password grant."),
-        .init(
-          name: "KEYCLOAK_PASSWORD",
-          isRequired: false,
-          isSecret: true,
-          summary: "Admin password."),
-        .init(
-          name: "KEYCLOAK_ALLOW_WRITES",
-          isRequired: false,
-          isSecret: false,
-          summary: "Enables creating and modifying realms, clients, users and roles."),
-      ]),
-    // Three auth modes, inferred from what is set. The signature triplet is
-    // the only one of the three where every part is a secret, which is
-    // exactly the sort of detail a hand-written profile form gets wrong.
-    BastionServer(
-      id: "ovh-api",
-      displayName: "OVHcloud",
-      summary: "OVHcloud API, focused on Object Storage: containers, objects, policies, regions.",
-      npmName: "@mgcrea/mcp-ovh-api",
-      binName: "ovh-api-mcp",
-      distribution: .npm,
-      localPath: "mcp-ovh-api",
-      docsURL: nil,
-      dialect: .v2025_11_25,
-      writeGate: "OVH_ALLOW_WRITES",
-      gateBypass: [],
-      authModes: [
-        .init(
-          id: "oauth2",
-          displayName: "OAuth2 service account",
-          env: ["OVH_CLIENT_ID", "OVH_CLIENT_SECRET"]),
-        .init(
-          id: "signature",
-          displayName: "Application key triplet",
-          env: ["OVH_APPLICATION_KEY", "OVH_APPLICATION_SECRET", "OVH_CONSUMER_KEY"]),
-        .init(
-          id: "accessToken",
-          displayName: "Access token",
-          env: ["OVH_ACCESS_TOKEN"]),
-      ],
-      stateEnv: [],
-      callbackEnv: [],
-      env: [
-        .init(
-          name: "OVH_ENDPOINT",
-          isRequired: false,
-          isSecret: false,
-          summary: "Region endpoint: ovh-eu, ovh-ca, ovh-us. Defaults to ovh-eu."),
-        .init(
-          name: "OVH_CLIENT_ID",
-          isRequired: false,
-          isSecret: false,
-          summary: "OAuth2 client id."),
-        .init(
-          name: "OVH_CLIENT_SECRET",
-          isRequired: false,
-          isSecret: true,
-          summary: "OAuth2 client secret."),
-        .init(
-          name: "OVH_APPLICATION_KEY",
-          isRequired: false,
-          isSecret: false,
-          summary: "Application key, from https://eu.api.ovh.com/createToken/."),
-        .init(
-          name: "OVH_APPLICATION_SECRET",
-          isRequired: false,
-          isSecret: true,
-          summary: "Application secret."),
-        .init(
-          name: "OVH_CONSUMER_KEY",
-          isRequired: false,
-          isSecret: true,
-          summary: "Consumer key, which carries the granted scopes."),
-        .init(
-          name: "OVH_ACCESS_TOKEN",
-          isRequired: false,
-          isSecret: true,
-          summary: "A pre-minted access token."),
-        .init(
-          name: "OVH_CLOUD_PROJECT",
-          isRequired: false,
-          isSecret: false,
-          summary: "Default public cloud project id, a 32-character hex string."),
-        .init(
-          name: "OVH_REGION",
-          isRequired: false,
-          isSecret: false,
-          summary: "Default storage region, e.g. GRA, SBG, UK."),
-        .init(
-          name: "OVH_ALLOW_WRITES",
-          isRequired: false,
-          isSecret: false,
-          summary: "Enables uploading, deleting and re-policying objects and containers."),
       ]),
     // The clearest case for stateEnv and portEnv. This server logs a user in
     // over a local callback and keeps the refresh token in a file — both of
@@ -527,115 +387,286 @@ nonisolated enum ServerCatalog {
           isSecret: false,
           summary: "Enables campaign mutations. No effect without X_ADS_ENABLED."),
       ]),
-    // The reason write gates are per-profile rather than global. One
-    // tastytrade/cert profile with trading on and one tastytrade/prod
-    // profile with trading off is a sane setup; a single global switch
-    // makes it unexpressible.
+    // Two auth shapes that are not interchangeable, which is why they are auth
+    // modes rather than a pile of optional variables. A console API key is
+    // refused by the private API this server reads history from, so a LAN-only
+    // deployment genuinely needs a username and password; a cloud key reaches
+    // the same API through api.ui.com and needs no local account at all.
+    //
+    // Three state variables, all per-profile. The session file is an identity,
+    // and the snapshot directory is camera footage — sharing either between two
+    // profiles is the leak this app exists to prevent.
     BastionServer(
-      id: "tastytrade",
-      displayName: "TastyTrade",
-      summary: "TastyTrade brokerage API: accounts, positions, balances, quotes, and order entry.",
-      npmName: "@mgcrea/mcp-tastytrade",
-      binName: "tastytrade-mcp",
-      distribution: .local,
-      localPath: "mcp-tastytrade",
-      docsURL: nil,
+      id: "unifi-protect",
+      displayName: "UniFi Protect",
+      summary: "UniFi Protect: cameras, event history, recordings, snapshots and NVR status.",
+      npmName: "@mgcrea/mcp-unifi-protect",
+      binName: "unifi-protect-mcp",
+      distribution: .npm,
+      localPath: "mcp-unifi-protect",
+      docsURL: URL(string: "https://github.com/mgcrea/mcp-unifi-protect"),
       dialect: .v2025_11_25,
-      writeGate: "TASTYTRADE_ALLOW_TRADING",
-      gateBypass: ["TASTYTRADE_DANGEROUSLY_ALLOW_TRADING"],
-      authModes: [],
-      stateEnv: [],
+      writeGate: "UNIFI_PROTECT_ALLOW_WRITES",
+      gateBypass: [],
+      authModes: [
+        .init(
+          id: "cloud",
+          displayName: "Cloud API key",
+          env: ["UNIFI_PROTECT_API_KEY", "UNIFI_PROTECT_CONSOLE_ID"]),
+        .init(
+          id: "local",
+          displayName: "Local account",
+          env: ["UNIFI_PROTECT_HOST", "UNIFI_PROTECT_USERNAME", "UNIFI_PROTECT_PASSWORD"]),
+      ],
+      stateEnv: ["UNIFI_PROTECT_CONFIG", "UNIFI_PROTECT_SESSION_FILE", "UNIFI_PROTECT_SNAPSHOT_DIR"],
       callbackEnv: [],
       env: [
         .init(
-          name: "TASTYTRADE_CLIENT_SECRET",
-          isRequired: true,
+          name: "UNIFI_PROTECT_HOST",
+          isRequired: false,
+          isSecret: false,
+          summary: "Console IP or hostname. https:// is assumed and a :port is preserved."),
+        .init(
+          name: "UNIFI_PROTECT_USERNAME",
+          isRequired: false,
+          isSecret: false,
+          summary: "Console login. Use a Local-Access-Only account with View Only rights."),
+        .init(
+          name: "UNIFI_PROTECT_PASSWORD",
+          isRequired: false,
           isSecret: true,
-          summary: "OAuth client secret."),
+          summary: "That account's password."),
         .init(
-          name: "TASTYTRADE_REFRESH_TOKEN",
-          isRequired: true,
+          name: "UNIFI_PROTECT_API_KEY",
+          isRequired: false,
           isSecret: true,
-          summary: "Long-lived refresh token. This is the credential that can move money."),
+          summary: "unifi.ui.com API key. Selects cloud mode, which needs no local account."),
         .init(
-          name: "TASTYTRADE_ENV",
+          name: "UNIFI_PROTECT_CONSOLE_ID",
           isRequired: false,
           isSecret: false,
-          summary: "prod or cert. cert is the sandbox, and the right default for a first profile."),
+          summary: "Console id from api.ui.com/v1/hosts. Cloud mode only."),
         .init(
-          name: "TASTYTRADE_SCOPE",
+          name: "UNIFI_PROTECT_MODE",
           isRequired: false,
           isSecret: false,
-          summary: "OAuth scope. Defaults to `read trade`; narrow it to `read` for a read-only profile."),
+          summary: "cloud or local. Inferred as cloud when a key and a console id are both set."),
         .init(
-          name: "TASTYTRADE_ALLOW_TRADING",
+          name: "UNIFI_PROTECT_TOTP",
+          isRequired: false,
+          isSecret: true,
+          summary: "2FA code. Expires in ~30s, so prefer the server's own login tool."),
+        .init(
+          name: "UNIFI_PROTECT_VERIFY_TLS",
           isRequired: false,
           isSecret: false,
-          summary: "Enables order entry. The highest-consequence gate in the manifest."),
+          summary: "Verify the console certificate. Needs a hostname, not an IP."),
+        .init(
+          name: "UNIFI_PROTECT_SESSION_FILE",
+          isRequired: false,
+          isSecret: false,
+          summary: "Cached session, mode 600. Per-profile, or two identities share one session."),
+        .init(
+          name: "UNIFI_PROTECT_SNAPSHOT_DIR",
+          isRequired: false,
+          isSecret: false,
+          summary: "Where snapshots and exports are written. Per-profile, or one profile reads another's footage."),
+        .init(
+          name: "UNIFI_PROTECT_CONFIG",
+          isRequired: false,
+          isSecret: false,
+          summary: "Config file path. Bastion points this at the profile's own directory."),
+        .init(
+          name: "UNIFI_PROTECT_MAX_RETRIES",
+          isRequired: false,
+          isSecret: false,
+          summary: "Retries on 401 / 429 / 5xx. Defaults to 3."),
+        .init(
+          name: "UNIFI_PROTECT_MAX_DOWNLOAD_BYTES",
+          isRequired: false,
+          isSecret: false,
+          summary: "Refuse a download larger than this. Defaults to 200000000."),
+        .init(
+          name: "UNIFI_PROTECT_DEVICE_CACHE_TTL",
+          isRequired: false,
+          isSecret: false,
+          summary: "Camera id-to-name cache lifetime in seconds. Defaults to 60."),
+        .init(
+          name: "UNIFI_PROTECT_ALLOW_WRITES",
+          isRequired: false,
+          isSecret: false,
+          summary: "Registers the mutating tools: recording settings, PTZ, device configuration."),
       ]),
-    // Logs in through a real browser session and needs MFA, so a profile of
-    // this server is not merely credentials — it is a live session with a
-    // timeout. The supervisor's idle-stop policy has to account for that.
-    //
-    // The session cache is not a secret in the Keychain sense but it is
-    // bearer-equivalent while it lasts, which is why it is stateEnv.
+    // The write gate here reaches network configuration, so a profile with it
+    // on can take a site off the air. Two profiles - one read-only for asking
+    // questions, one gated for changes - is the shape this is built for.
     BastionServer(
-      id: "boursobank",
-      displayName: "BoursoBank",
-      summary: "BoursoBank customer API: accounts, transactions, statements, market data.",
-      npmName: "@mgcrea/mcp-boursobank",
-      binName: "boursobank-mcp",
+      id: "unifi-network",
+      displayName: "UniFi Network",
+      summary: "UniFi Network API: sites, devices, clients, WLANs, port and firewall configuration.",
+      npmName: "@mgcrea/mcp-unifi-network",
+      binName: "unifi-network-mcp",
+      distribution: .npm,
+      localPath: "mcp-unifi-network",
+      docsURL: URL(string: "https://github.com/mgcrea/mcp-unifi-network"),
+      dialect: .v2025_11_25,
+      writeGate: "UNIFI_ALLOW_WRITES",
+      gateBypass: [],
+      authModes: [
+        .init(
+          id: "console",
+          displayName: "Console API key",
+          env: ["UNIFI_HOST", "UNIFI_API_KEY"]),
+        .init(
+          id: "cloud",
+          displayName: "Cloud API key",
+          env: ["UNIFI_API_KEY", "UNIFI_CONSOLE_ID"]),
+        .init(
+          id: "legacy",
+          displayName: "Local admin account",
+          env: ["UNIFI_HOST", "UNIFI_USERNAME", "UNIFI_PASSWORD"]),
+      ],
+      stateEnv: ["UNIFI_CONFIG"],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "UNIFI_HOST",
+          isRequired: false,
+          isSecret: false,
+          summary: "The console. A pasted browser URL is accepted and split."),
+        .init(
+          name: "UNIFI_API_KEY",
+          isRequired: false,
+          isSecret: true,
+          summary: "Settings, Control Plane, Integrations, Create API Key."),
+        .init(
+          name: "UNIFI_CONSOLE_ID",
+          isRequired: false,
+          isSecret: false,
+          summary: "Console id from unifi.ui.com. Cloud mode only."),
+        .init(
+          name: "UNIFI_MODE",
+          isRequired: false,
+          isSecret: false,
+          summary: "unifios, cloud or classic. Inferred from what is set."),
+        .init(
+          name: "UNIFI_SITE",
+          isRequired: false,
+          isSecret: false,
+          summary: "Default site: UUID, legacy name or display name."),
+        .init(
+          name: "UNIFI_USERNAME",
+          isRequired: false,
+          isSecret: false,
+          summary: "Legacy tier fallback only. A local admin, not an SSO account."),
+        .init(
+          name: "UNIFI_PASSWORD",
+          isRequired: false,
+          isSecret: true,
+          summary: "That admin's password."),
+        .init(
+          name: "UNIFI_INSECURE_TLS",
+          isRequired: false,
+          isSecret: false,
+          summary: "Disable certificate verification, for this server only."),
+        .init(
+          name: "UNIFI_ENABLE_LEGACY",
+          isRequired: false,
+          isSecret: false,
+          summary: "Registers the unifi_legacy_* tools."),
+        .init(
+          name: "UNIFI_APP_VERSION",
+          isRequired: false,
+          isSecret: false,
+          summary: "Pin the controller version instead of probing it at startup."),
+        .init(
+          name: "UNIFI_PAGE_LIMIT",
+          isRequired: false,
+          isSecret: false,
+          summary: "Page size. Defaults to 50."),
+        .init(
+          name: "UNIFI_MAX_PAGES",
+          isRequired: false,
+          isSecret: false,
+          summary: "Pagination ceiling. Defaults to 20."),
+        .init(
+          name: "UNIFI_MAX_RETRIES",
+          isRequired: false,
+          isSecret: false,
+          summary: "Retries on a transient failure. Defaults to 3."),
+        .init(
+          name: "UNIFI_CONFIG",
+          isRequired: false,
+          isSecret: false,
+          summary: "Config file path. Bastion points this at the profile's own directory."),
+        .init(
+          name: "UNIFI_ALLOW_WRITES",
+          isRequired: false,
+          isSecret: false,
+          summary: "Enables the mutating tools: WLANs, port profiles, firewall rules, device adoption."),
+      ]),
+    // PLACEHOLDER. @mgcrea/mcp-stripe is not published and there is no checkout
+    // for it yet, so installing this entry fails with 'not published'. It is in
+    // the catalog because the catalog is a starting point rather than a promise
+    // about what is installed - which is exactly the distinction this file lost
+    // when it was a closed list.
+    //
+    // Money moves through this one, so the gate is not a formality. Prefer a
+    // restricted key scoped to reads and let the profile stay gated off.
+    BastionServer(
+      id: "stripe",
+      displayName: "Stripe",
+      summary: "Stripe API: customers, subscriptions, invoices, charges, payouts and balance.",
+      npmName: "@mgcrea/mcp-stripe",
+      binName: "stripe-mcp",
       distribution: .local,
-      localPath: "mcp-boursobank",
+      localPath: "mcp-stripe",
       docsURL: nil,
       dialect: .v2025_11_25,
-      writeGate: "BOURSOBANK_ALLOW_TRADING",
+      writeGate: "STRIPE_ALLOW_WRITES",
       gateBypass: [],
       authModes: [],
-      stateEnv: ["BOURSOBANK_SESSION_PATH", "BOURSOBANK_DOCUMENTS_DIR"],
+      stateEnv: ["STRIPE_CONFIG"],
       callbackEnv: [],
       env: [
         .init(
-          name: "BOURSOBANK_CLIENT_NUMBER",
+          name: "STRIPE_SECRET_KEY",
           isRequired: true,
-          isSecret: false,
-          summary: "Customer number used to log in."),
-        .init(
-          name: "BOURSOBANK_PASSWORD",
-          isRequired: false,
           isSecret: true,
-          summary: "Login password. Omit to log in interactively instead."),
+          summary: "Restricted or secret API key. A restricted key is the right one here: the write gate cannot take back a permission the key already grants."),
         .init(
-          name: "BOURSOBANK_SESSION_PATH",
+          name: "STRIPE_ACCOUNT_ID",
           isRequired: false,
           isSecret: false,
-          summary: "Where the authenticated session is cached. Per-profile."),
+          summary: "Connected account to act on behalf of, sent as Stripe-Account."),
         .init(
-          name: "BOURSOBANK_DOCUMENTS_DIR",
+          name: "STRIPE_API_VERSION",
           isRequired: false,
           isSecret: false,
-          summary: "Where downloaded statements land. Per-profile."),
+          summary: "Pin the API version instead of using the account default."),
         .init(
-          name: "BOURSOBANK_ALLOW_TRADING",
+          name: "STRIPE_CONFIG",
           isRequired: false,
           isSecret: false,
-          summary: "Enables order entry on the linked brokerage account."),
+          summary: "Config file path. Bastion points this at the profile's own directory."),
+        .init(
+          name: "STRIPE_ALLOW_WRITES",
+          isRequired: false,
+          isSecret: false,
+          summary: "Enables the mutating tools: refunds, subscription changes, invoice actions."),
       ]),
-    // Holds no credential at all — it drives a browser. It is in the
-    // manifest for supervision and audit, not for secret storage, and it is
-    // the one entry that proves those two jobs are separable.
-    //
-    // It also spawns a browser, so its memory cost is unlike every other
-    // entry here. Idle-stop matters more for this one than for any other.
+    // No write gate because there is no write path: every tool is a read.
+    // That is why the build order takes this one end-to-end first — a bug in
+    // the supervisor or the dialect layer cannot cost anybody data here.
     BastionServer(
-      id: "buzzberg",
-      displayName: "Buzzberg",
-      summary: "Buzzberg market intelligence: speaker calls, timelines and crowd sentiment.",
-      npmName: "@mgcrea/mcp-buzzberg",
-      binName: "buzzberg-mcp",
-      distribution: .local,
-      localPath: "mcp-buzzberg",
-      docsURL: nil,
+      id: "shopify",
+      displayName: "Shopify",
+      summary: "Shopify Admin GraphQL API: products, variants, collections, metafields, locations.",
+      npmName: "@mgcrea/mcp-shopify",
+      binName: "shopify-mcp",
+      distribution: .npm,
+      localPath: "mcp-shopify",
+      docsURL: URL(string: "https://github.com/mgcrea/mcp-shopify"),
       dialect: .v2025_11_25,
       writeGate: nil,
       gateBypass: [],
@@ -644,61 +675,187 @@ nonisolated enum ServerCatalog {
       callbackEnv: [],
       env: [
         .init(
-          name: "BUZZBERG_BROWSER_CHANNEL",
-          isRequired: false,
+          name: "SHOPIFY_STORE_DOMAIN",
+          isRequired: true,
           isSecret: false,
-          summary: "Browser channel to drive, e.g. chrome. Defaults to chrome."),
+          summary: "Store handle or *.myshopify.com domain. A bare handle is expanded."),
         .init(
-          name: "BUZZBERG_BROWSER_EXECUTABLE_PATH",
-          isRequired: false,
+          name: "SHOPIFY_CLIENT_ID",
+          isRequired: true,
           isSecret: false,
-          summary: "Explicit browser binary, when the channel cannot be found."),
+          summary: "Custom app client id."),
         .init(
-          name: "BUZZBERG_BROWSER_HEADLESS",
+          name: "SHOPIFY_CLIENT_SECRET",
+          isRequired: true,
+          isSecret: true,
+          summary: "Custom app client secret. Used as the Admin API access token."),
+        .init(
+          name: "SHOPIFY_API_VERSION",
           isRequired: false,
           isSecret: false,
-          summary: "Run the browser headless. On by default."),
+          summary: "Admin API version, e.g. 2026-04. Defaults to the server's pinned version."),
       ]),
-    // Read-only and normally credential-free: the cookie and crumb are a
-    // fallback for when the anonymous path is throttled. Marked secret
-    // anyway, because a session cookie is a session cookie.
+    // Three auth modes, inferred from what is set. The signature triplet is
+    // the only one of the three where every part is a secret, which is
+    // exactly the sort of detail a hand-written profile form gets wrong.
     BastionServer(
-      id: "yahoo-finance",
-      displayName: "Yahoo Finance",
-      summary: "Yahoo Finance market data: quotes, fundamentals, holders, time series.",
-      npmName: "@mgcrea/mcp-yahoo-finance",
-      binName: "yahoo-finance-mcp",
-      distribution: .local,
-      localPath: "mcp-yahoo-finance",
+      id: "ovh-api",
+      displayName: "OVHcloud",
+      summary: "OVHcloud API, focused on Object Storage: containers, objects, policies, regions.",
+      npmName: "@mgcrea/mcp-ovh-api",
+      binName: "ovh-api-mcp",
+      distribution: .npm,
+      localPath: "mcp-ovh-api",
       docsURL: nil,
       dialect: .v2025_11_25,
-      writeGate: nil,
+      writeGate: "OVH_ALLOW_WRITES",
       gateBypass: [],
-      authModes: [],
+      authModes: [
+        .init(
+          id: "oauth2",
+          displayName: "OAuth2 service account",
+          env: ["OVH_CLIENT_ID", "OVH_CLIENT_SECRET"]),
+        .init(
+          id: "signature",
+          displayName: "Application key triplet",
+          env: ["OVH_APPLICATION_KEY", "OVH_APPLICATION_SECRET", "OVH_CONSUMER_KEY"]),
+        .init(
+          id: "accessToken",
+          displayName: "Access token",
+          env: ["OVH_ACCESS_TOKEN"]),
+      ],
       stateEnv: [],
       callbackEnv: [],
       env: [
         .init(
-          name: "YAHOO_FINANCE_COOKIE",
-          isRequired: false,
-          isSecret: true,
-          summary: "Session cookie, when the anonymous crumb flow is being refused."),
-        .init(
-          name: "YAHOO_FINANCE_CRUMB",
-          isRequired: false,
-          isSecret: true,
-          summary: "Matching crumb for the cookie above."),
-        .init(
-          name: "YAHOO_FINANCE_CONCURRENCY",
+          name: "OVH_ENDPOINT",
           isRequired: false,
           isSecret: false,
-          summary: "Parallel requests. Defaults to 4."),
+          summary: "Region endpoint: ovh-eu, ovh-ca, ovh-us. Defaults to ovh-eu."),
+        .init(
+          name: "OVH_CLIENT_ID",
+          isRequired: false,
+          isSecret: false,
+          summary: "OAuth2 client id."),
+        .init(
+          name: "OVH_CLIENT_SECRET",
+          isRequired: false,
+          isSecret: true,
+          summary: "OAuth2 client secret."),
+        .init(
+          name: "OVH_APPLICATION_KEY",
+          isRequired: false,
+          isSecret: false,
+          summary: "Application key, from https://eu.api.ovh.com/createToken/."),
+        .init(
+          name: "OVH_APPLICATION_SECRET",
+          isRequired: false,
+          isSecret: true,
+          summary: "Application secret."),
+        .init(
+          name: "OVH_CONSUMER_KEY",
+          isRequired: false,
+          isSecret: true,
+          summary: "Consumer key, which carries the granted scopes."),
+        .init(
+          name: "OVH_ACCESS_TOKEN",
+          isRequired: false,
+          isSecret: true,
+          summary: "A pre-minted access token."),
+        .init(
+          name: "OVH_CLOUD_PROJECT",
+          isRequired: false,
+          isSecret: false,
+          summary: "Default public cloud project id, a 32-character hex string."),
+        .init(
+          name: "OVH_REGION",
+          isRequired: false,
+          isSecret: false,
+          summary: "Default storage region, e.g. GRA, SBG, UK."),
+        .init(
+          name: "OVH_ALLOW_WRITES",
+          isRequired: false,
+          isSecret: false,
+          summary: "Enables uploading, deleting and re-policying objects and containers."),
+      ]),
+    // The profile split is the whole point here: rgis and ivalis are two
+    // realms on two servers with two admin identities, and a single global
+    // instance could hold only one of them.
+    BastionServer(
+      id: "keycloak",
+      displayName: "Keycloak",
+      summary: "Keycloak Admin REST API: realms, clients, users, roles, sessions.",
+      npmName: "@mgcrea/mcp-keycloak",
+      binName: "keycloak-mcp",
+      distribution: .local,
+      localPath: "mcp-keycloak",
+      docsURL: nil,
+      dialect: .v2025_11_25,
+      writeGate: "KEYCLOAK_ALLOW_WRITES",
+      gateBypass: [],
+      authModes: [
+        .init(
+          id: "client_credentials",
+          displayName: "Client credentials",
+          env: ["KEYCLOAK_CLIENT_SECRET"]),
+        .init(
+          id: "password",
+          displayName: "Username and password",
+          env: ["KEYCLOAK_USERNAME", "KEYCLOAK_PASSWORD"]),
+      ],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "KEYCLOAK_URL",
+          isRequired: true,
+          isSecret: false,
+          summary: "Base URL of the Keycloak server, e.g. https://sso.example.com."),
+        .init(
+          name: "KEYCLOAK_REALM",
+          isRequired: false,
+          isSecret: false,
+          summary: "Realm to administer. Defaults to master."),
+        .init(
+          name: "KEYCLOAK_AUTH_REALM",
+          isRequired: false,
+          isSecret: false,
+          summary: "Realm to authenticate against, when it differs from the one being administered."),
+        .init(
+          name: "KEYCLOAK_CLIENT_ID",
+          isRequired: false,
+          isSecret: false,
+          summary: "Client id. Defaults to admin-cli."),
+        .init(
+          name: "KEYCLOAK_CLIENT_SECRET",
+          isRequired: false,
+          isSecret: true,
+          summary: "Client secret. Selects the client_credentials grant."),
+        .init(
+          name: "KEYCLOAK_USERNAME",
+          isRequired: false,
+          isSecret: false,
+          summary: "Admin username. Selects the password grant."),
+        .init(
+          name: "KEYCLOAK_PASSWORD",
+          isRequired: false,
+          isSecret: true,
+          summary: "Admin password."),
+        .init(
+          name: "KEYCLOAK_ALLOW_WRITES",
+          isRequired: false,
+          isSecret: false,
+          summary: "Enables creating and modifying realms, clients, users and roles."),
       ]),
   ]
   // </generated:servers>
 
-  /// Lookup by wire name. The gateway resolves `/s/<profile>/<server>` through
-  /// this and 404s on a miss — an unknown id must never reach a spawn.
+  /// Lookup by wire name, for re-resolving an installed catalog entry against
+  /// the version of the catalog this build ships.
+  ///
+  /// **Not** the gateway's lookup. That is `ServerStore.lookup(_:)`, and the
+  /// difference is the whole point: resolving a request through *this* table
+  /// would run a server the user never installed.
   static let byID: [String: BastionServer] = Dictionary(
     uniqueKeysWithValues: all.map { ($0.id, $0) })
 }

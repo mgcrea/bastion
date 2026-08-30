@@ -136,8 +136,12 @@ export const REQUIRES = "macOS 26 or later";
  */
 export const SOCIAL_CARD = {
   headline: "One supervised process per profile, not one per editor",
-  subhead: `${COUNTS.serversTitle} servers · credentials in the Keychain · every call recorded`,
-  alt: `The Bastion icon — a curtain wall standing on a dusk ridge — beside the word Bastion, above the line “One supervised process per profile, not one per editor”, and “${COUNTS.serversTitle} servers · credentials in the Keychain · every call recorded”.`,
+  // Not a server count any more. It was `${COUNTS.serversTitle} servers` while
+  // the list was closed and that was the claim; now the number describes a
+  // catalog you install from, and a social card is the last place to explain a
+  // distinction. What the app does is the same either way.
+  subhead: "Bring your own servers · credentials in the Keychain · every call recorded",
+  alt: "The Bastion icon — a curtain wall standing on a dusk ridge — beside the word Bastion, above the line “One supervised process per profile, not one per editor”, and “Bring your own servers · credentials in the Keychain · every call recorded”.",
   /**
    * The card's ground, in appshot's angle convention (degrees CLOCKWISE with y
    * DOWN, so 90 runs top to bottom). NOT the CSS convention `design/colors.json`

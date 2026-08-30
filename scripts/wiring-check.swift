@@ -37,7 +37,7 @@ struct WiringCheck {
   static let servers = [
     (id: "shopify", label: "Shopify"),
     (id: "keycloak", label: "Keycloak"),
-    (id: "tastytrade", label: "TastyTrade"),
+    (id: "stripe", label: "Stripe"),
   ]
 
   static func httpReach(_ id: String, profile: String = "prod", port: Int = port)
@@ -324,13 +324,13 @@ struct WiringCheck {
 
     var partial = entries { httpReach($0) }
     partial.removeValue(forKey: "bastion-keycloak")
-    partial.removeValue(forKey: "bastion-tastytrade")
+    partial.removeValue(forKey: "bastion-stripe")
     let audit = ClientWiringMerge.audit(
       servers: partial as [String: Any], expected: expected { httpReach($0) })
-    check("one of three present is incomplete", audit == .incomplete(["Keycloak", "TastyTrade"]))
+    check("one of three present is incomplete", audit == .incomplete(["Keycloak", "Stripe"]))
     check(
       "and names them in the order given",
-      { if case .incomplete(let names) = audit { return names == ["Keycloak", "TastyTrade"] }
+      { if case .incomplete(let names) = audit { return names == ["Keycloak", "Stripe"] }
         return false }())
   }
 

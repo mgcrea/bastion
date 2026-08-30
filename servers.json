@@ -1,135 +1,73 @@
 {
   "$schema": "./scripts/servers.schema.json",
   "$comment": [
-    "THE SERVER LIST. Every other copy of it is generated from this file by",
+    "THE CATALOG. Bastion ships with this list and installs NOTHING from it",
+    "until someone asks. Every other copy of it is generated from this file by",
     "`make servers` (scripts/generate-servers.mjs), and CI fails if any of them",
-    "has drifted. This is the `surfaces.json` pattern from cupertino, applied to",
-    "the thing Bastion actually supervises.",
+    "has drifted.",
     "",
-    "v1 is a CLOSED LIST. Bastion spawns manifest-listed servers and nothing",
-    "else — no catalog, no arbitrary code. That is a security property, not a",
-    "roadmap gap: the catalog is a solved, free problem (Docker MCP Toolkit,",
-    "MCPB, the official registry) and the defensible part is the runtime.",
+    "This file is a STARTING POINT, not a closed list. It used to be the second",
+    "thing - v1 spawned manifest-listed servers and nothing else, and that was",
+    "called a security property. It was really two properties wearing one coat,",
+    "and only one of them was worth keeping:",
     "",
-    "Adding a server: add an entry here, run `make servers`, review the diff.",
-    "Nothing below is free-form — scripts/servers.schema.json is enforced by the",
-    "generator before it writes anything.",
+    "  KEPT      A caller selects a server by NAME, never by path or command",
+    "            line. The gateway resolves `/s/<profile>/<server>` against the",
+    "            user's own installed list and 404s on a miss. Nothing that",
+    "            reaches the gateway can name a binary, so nothing that reaches",
+    "            the gateway can run one.",
+    "",
+    "  DROPPED   That the list itself was fixed at compile time. This bought no",
+    "            safety the rule above does not already buy - the user was",
+    "            always the one choosing - and it cost the app the ability to",
+    "            run any server that was not written by mgcrea.",
+    "",
+    "So the runtime list lives in Application Support and the user edits it:",
+    "install an entry from this catalog, or add a custom one by npm package.",
+    "A custom entry supplies a package, a binary name and the variables it",
+    "reads - never a command line, because `spawn(whatever_you_typed)` is the",
+    "thing the KEPT rule above exists to prevent.",
+    "",
+    "Adding an entry HERE: add it below, run `make servers`, review the diff.",
+    "Nothing below is free-form - scripts/servers.schema.json is enforced by",
+    "the generator before it writes anything.",
     "",
     "Field notes, for the fields whose reason is not obvious:",
     "",
-    "  distribution  Where the code comes from. Only three of these are on npm",
-    "                today; the rest are private checkouts under the mgcrea-ai",
-    "                directory, and `localPath` names the checkout. Bastion",
-    "                prefers npm when it is there because a published tarball is",
-    "                the thing users can actually get.",
+    "  distribution  Whether the package is on npm. Bastion installs on demand,",
+    "                so this is the difference between an entry a stranger can",
+    "                install and one that only resolves against a local checkout",
+    "                through dev.json. Five of these nine are published today;",
+    "                the rest report 'not published' when installed, which is",
+    "                the honest answer and better than a spawn that fails later.",
     "",
     "  dialect       The NEWEST protocol version the server itself speaks, which",
     "                is not the one Bastion fronts clients with. Measured, not",
-    "                assumed: every one of these runs @modelcontextprotocol/sdk",
-    "                1.29 or 1.30, whose LATEST_PROTOCOL_VERSION is 2025-11-25,",
-    "                and a live `initialize` handshake against mcp-shopify",
-    "                negotiates exactly that. The first version of this file said",
-    "                2025-06-18 for all ten, which was Bastion's own pin",
-    "                masquerading as a fact about the servers, and would have",
-    "                given up a year of protocol for nothing.",
+    "                assumed, for the published ones: they run",
+    "                @modelcontextprotocol/sdk 1.29 or 1.30, whose",
+    "                LATEST_PROTOCOL_VERSION is 2025-11-25, and a live",
+    "                `initialize` handshake against mcp-shopify negotiates",
+    "                exactly that. `make dialect` re-measures.",
     "",
-    "                Every value here is a LEGACY (handshake) version. The",
-    "                2026-07-28 spec calls a server “modern” when it takes",
-    "                version, identity and capabilities as per-request `_meta`,",
-    "                and “legacy” when it wants an `initialize` handshake. None",
-    "                of these are modern: `server/discover` against mcp-shopify",
-    "                returns -32601, which is precisely the fallback signal the",
-    "                spec names.",
+    "  writeGate     The env var that turns destructive tools on. Set per",
+    "                profile, never globally.",
     "",
-    "  writeGate     The env var that turns destructive tools on. Per PROFILE in",
-    "                Bastion, never global — that is the answer to the third",
-    "                reason cupertino's ServerHost.swift gives for one process",
-    "                per connection. A null gate means the server has no write",
-    "                path at all, which is what makes shopify the right first",
-    "                end-to-end target.",
+    "  gateBypass    Env vars that would turn writes on AROUND the gate. Bastion",
+    "                forces these to \"0\" and never lets a profile set them. No",
+    "                entry needs one today - mcp-tastytrade did, and the",
+    "                mechanism outlives it because the next server to OR two",
+    "                variables into one flag will not announce itself.",
     "",
-    "  gateBypass    Env vars that would turn writes on INDEPENDENTLY of the",
-    "                write gate, which Bastion always forces to \"0\" so the",
-    "                profile's toggle is the only switch there is.",
+    "  stateEnv      Env vars naming on-disk state. Redirected into the",
+    "                profile's own directory, because two profiles sharing one",
+    "                token file are two identities sharing one login.",
     "",
-    "                Found while migrating a real config, not designed in the",
-    "                abstract. mcp-tastytrade computes",
-    "                `isTruthy(TASTYTRADE_ALLOW_TRADING) || dangerouslyAllowTrading`,",
-    "                so a profile that could set the second variable as an",
-    "                ordinary value would have live order entry enabled while",
-    "                the Activity window and the profile editor both showed the",
-    "                gate as off. That is the same class of defect the",
-    "                writeGate validation exists to catch, in the opposite",
-    "                direction: not a switch wired to nothing, but a wire with",
-    "                no switch on it.",
-    "",
-    "                These are deliberately NOT in `env`: they are not settable,",
-    "                only neutralised. A server's own users can still pass them",
-    "                directly; through Bastion the gate is the gate.",
-    "",
-    "  authModes     Several of these accept more than one credential shape and",
-    "                infer which one from what is set. A profile must fill",
-    "                exactly one mode; the env entries in a mode are therefore",
-    "                required:false individually and validated as a group.",
-    "",
-    "  stateEnv      Env vars naming ON-DISK STATE. These are the reason a naive",
-    "                singleton is wrong: two profiles of mcp-reddit sharing one",
-    "                token file are two identities sharing one login. Bastion",
-    "                redirects each of these into the profile's own directory.",
-    "",
-    "  portEnv       Env vars naming a LISTENING PORT the server opens for its",
-    "                own OAuth callback. Two profiles of the same server collide",
-    "                on the default; Bastion assigns per-profile ports and",
-    "                rewrites the matching redirect URI."
+    "  callbackEnv   Env vars naming a loopback OAuth callback URL. Two profiles",
+    "                collide on the default port, and the upstream app",
+    "                registration has to match - so these are surfaced to the",
+    "                user rather than rewritten behind their back."
   ],
   "servers": [
-    {
-      "id": "shopify",
-      "displayName": "Shopify",
-      "summary": "Shopify Admin GraphQL API: products, variants, collections, metafields, locations.",
-      "npmName": "@mgcrea/mcp-shopify",
-      "binName": "shopify-mcp",
-      "distribution": "npm",
-      "localPath": "mcp-shopify",
-      "docsUrl": "https://github.com/mgcrea/mcp-shopify",
-      "dialect": "2025-11-25",
-      "writeGate": null,
-      "gateBypass": [],
-      "authModes": [],
-      "stateEnv": [],
-      "callbackEnv": [],
-      "env": [
-        {
-          "name": "SHOPIFY_STORE_DOMAIN",
-          "required": true,
-          "secret": false,
-          "description": "Store handle or *.myshopify.com domain. A bare handle is expanded."
-        },
-        {
-          "name": "SHOPIFY_CLIENT_ID",
-          "required": true,
-          "secret": false,
-          "description": "Custom app client id."
-        },
-        {
-          "name": "SHOPIFY_CLIENT_SECRET",
-          "required": true,
-          "secret": true,
-          "description": "Custom app client secret. Used as the Admin API access token."
-        },
-        {
-          "name": "SHOPIFY_API_VERSION",
-          "required": false,
-          "secret": false,
-          "description": "Admin API version, e.g. 2026-04. Defaults to the server's pinned version."
-        }
-      ],
-      "notes": [
-        "No write gate because there is no write path: every tool is a read.",
-        "That is why the build order takes this one end-to-end first — a bug in",
-        "the supervisor or the dialect layer cannot cost anybody data here."
-      ]
-    },
     {
       "id": "appstore-connect",
       "displayName": "App Store Connect",
@@ -205,187 +143,6 @@
         "guess. `.mcp.json` in mcp-appstore-connect currently holds this key in",
         "plaintext; migrating it into a Bastion profile is the first dogfood",
         "task in the build order."
-      ]
-    },
-    {
-      "id": "keycloak",
-      "displayName": "Keycloak",
-      "summary": "Keycloak Admin REST API: realms, clients, users, roles, sessions.",
-      "npmName": "@mgcrea/mcp-keycloak",
-      "binName": "keycloak-mcp",
-      "distribution": "local",
-      "localPath": "mcp-keycloak",
-      "docsUrl": null,
-      "dialect": "2025-11-25",
-      "writeGate": "KEYCLOAK_ALLOW_WRITES",
-      "gateBypass": [],
-      "authModes": [
-        {
-          "id": "client_credentials",
-          "displayName": "Client credentials",
-          "env": ["KEYCLOAK_CLIENT_SECRET"]
-        },
-        {
-          "id": "password",
-          "displayName": "Username and password",
-          "env": ["KEYCLOAK_USERNAME", "KEYCLOAK_PASSWORD"]
-        }
-      ],
-      "stateEnv": [],
-      "callbackEnv": [],
-      "env": [
-        {
-          "name": "KEYCLOAK_URL",
-          "required": true,
-          "secret": false,
-          "description": "Base URL of the Keycloak server, e.g. https://sso.example.com."
-        },
-        {
-          "name": "KEYCLOAK_REALM",
-          "required": false,
-          "secret": false,
-          "description": "Realm to administer. Defaults to master."
-        },
-        {
-          "name": "KEYCLOAK_AUTH_REALM",
-          "required": false,
-          "secret": false,
-          "description": "Realm to authenticate against, when it differs from the one being administered."
-        },
-        {
-          "name": "KEYCLOAK_CLIENT_ID",
-          "required": false,
-          "secret": false,
-          "description": "Client id. Defaults to admin-cli."
-        },
-        {
-          "name": "KEYCLOAK_CLIENT_SECRET",
-          "required": false,
-          "secret": true,
-          "description": "Client secret. Selects the client_credentials grant."
-        },
-        {
-          "name": "KEYCLOAK_USERNAME",
-          "required": false,
-          "secret": false,
-          "description": "Admin username. Selects the password grant."
-        },
-        {
-          "name": "KEYCLOAK_PASSWORD",
-          "required": false,
-          "secret": true,
-          "description": "Admin password."
-        },
-        {
-          "name": "KEYCLOAK_ALLOW_WRITES",
-          "required": false,
-          "secret": false,
-          "description": "Enables creating and modifying realms, clients, users and roles."
-        }
-      ],
-      "notes": [
-        "The profile split is the whole point here: rgis and ivalis are two",
-        "realms on two servers with two admin identities, and a single global",
-        "instance could hold only one of them."
-      ]
-    },
-    {
-      "id": "ovh-api",
-      "displayName": "OVHcloud",
-      "summary": "OVHcloud API, focused on Object Storage: containers, objects, policies, regions.",
-      "npmName": "@mgcrea/mcp-ovh-api",
-      "binName": "ovh-api-mcp",
-      "distribution": "npm",
-      "localPath": "mcp-ovh-api",
-      "docsUrl": null,
-      "dialect": "2025-11-25",
-      "writeGate": "OVH_ALLOW_WRITES",
-      "gateBypass": [],
-      "authModes": [
-        {
-          "id": "oauth2",
-          "displayName": "OAuth2 service account",
-          "env": ["OVH_CLIENT_ID", "OVH_CLIENT_SECRET"]
-        },
-        {
-          "id": "signature",
-          "displayName": "Application key triplet",
-          "env": ["OVH_APPLICATION_KEY", "OVH_APPLICATION_SECRET", "OVH_CONSUMER_KEY"]
-        },
-        {
-          "id": "accessToken",
-          "displayName": "Access token",
-          "env": ["OVH_ACCESS_TOKEN"]
-        }
-      ],
-      "stateEnv": [],
-      "callbackEnv": [],
-      "env": [
-        {
-          "name": "OVH_ENDPOINT",
-          "required": false,
-          "secret": false,
-          "description": "Region endpoint: ovh-eu, ovh-ca, ovh-us. Defaults to ovh-eu."
-        },
-        {
-          "name": "OVH_CLIENT_ID",
-          "required": false,
-          "secret": false,
-          "description": "OAuth2 client id."
-        },
-        {
-          "name": "OVH_CLIENT_SECRET",
-          "required": false,
-          "secret": true,
-          "description": "OAuth2 client secret."
-        },
-        {
-          "name": "OVH_APPLICATION_KEY",
-          "required": false,
-          "secret": false,
-          "description": "Application key, from https://eu.api.ovh.com/createToken/."
-        },
-        {
-          "name": "OVH_APPLICATION_SECRET",
-          "required": false,
-          "secret": true,
-          "description": "Application secret."
-        },
-        {
-          "name": "OVH_CONSUMER_KEY",
-          "required": false,
-          "secret": true,
-          "description": "Consumer key, which carries the granted scopes."
-        },
-        {
-          "name": "OVH_ACCESS_TOKEN",
-          "required": false,
-          "secret": true,
-          "description": "A pre-minted access token."
-        },
-        {
-          "name": "OVH_CLOUD_PROJECT",
-          "required": false,
-          "secret": false,
-          "description": "Default public cloud project id, a 32-character hex string."
-        },
-        {
-          "name": "OVH_REGION",
-          "required": false,
-          "secret": false,
-          "description": "Default storage region, e.g. GRA, SBG, UK."
-        },
-        {
-          "name": "OVH_ALLOW_WRITES",
-          "required": false,
-          "secret": false,
-          "description": "Enables uploading, deleting and re-policying objects and containers."
-        }
-      ],
-      "notes": [
-        "Three auth modes, inferred from what is set. The signature triplet is",
-        "the only one of the three where every part is a secret, which is",
-        "exactly the sort of detail a hand-written profile form gets wrong."
       ]
     },
     {
@@ -546,124 +303,335 @@
       ]
     },
     {
-      "id": "tastytrade",
-      "displayName": "TastyTrade",
-      "summary": "TastyTrade brokerage API: accounts, positions, balances, quotes, and order entry.",
-      "npmName": "@mgcrea/mcp-tastytrade",
-      "binName": "tastytrade-mcp",
-      "distribution": "local",
-      "localPath": "mcp-tastytrade",
-      "docsUrl": null,
+      "id": "unifi-protect",
+      "displayName": "UniFi Protect",
+      "summary": "UniFi Protect: cameras, event history, recordings, snapshots and NVR status.",
+      "npmName": "@mgcrea/mcp-unifi-protect",
+      "binName": "unifi-protect-mcp",
+      "distribution": "npm",
+      "localPath": "mcp-unifi-protect",
+      "docsUrl": "https://github.com/mgcrea/mcp-unifi-protect",
       "dialect": "2025-11-25",
-      "writeGate": "TASTYTRADE_ALLOW_TRADING",
-      "gateBypass": ["TASTYTRADE_DANGEROUSLY_ALLOW_TRADING"],
-      "authModes": [],
-      "stateEnv": [],
+      "writeGate": "UNIFI_PROTECT_ALLOW_WRITES",
+      "gateBypass": [],
+      "authModes": [
+        {
+          "id": "cloud",
+          "displayName": "Cloud API key",
+          "env": ["UNIFI_PROTECT_API_KEY", "UNIFI_PROTECT_CONSOLE_ID"]
+        },
+        {
+          "id": "local",
+          "displayName": "Local account",
+          "env": ["UNIFI_PROTECT_HOST", "UNIFI_PROTECT_USERNAME", "UNIFI_PROTECT_PASSWORD"]
+        }
+      ],
+      "stateEnv": [
+        "UNIFI_PROTECT_CONFIG",
+        "UNIFI_PROTECT_SESSION_FILE",
+        "UNIFI_PROTECT_SNAPSHOT_DIR"
+      ],
       "callbackEnv": [],
       "env": [
         {
-          "name": "TASTYTRADE_CLIENT_SECRET",
-          "required": true,
+          "name": "UNIFI_PROTECT_HOST",
+          "required": false,
+          "secret": false,
+          "description": "Console IP or hostname. https:// is assumed and a :port is preserved."
+        },
+        {
+          "name": "UNIFI_PROTECT_USERNAME",
+          "required": false,
+          "secret": false,
+          "description": "Console login. Use a Local-Access-Only account with View Only rights."
+        },
+        {
+          "name": "UNIFI_PROTECT_PASSWORD",
+          "required": false,
           "secret": true,
-          "description": "OAuth client secret."
+          "description": "That account's password."
         },
         {
-          "name": "TASTYTRADE_REFRESH_TOKEN",
-          "required": true,
+          "name": "UNIFI_PROTECT_API_KEY",
+          "required": false,
           "secret": true,
-          "description": "Long-lived refresh token. This is the credential that can move money."
+          "description": "unifi.ui.com API key. Selects cloud mode, which needs no local account."
         },
         {
-          "name": "TASTYTRADE_ENV",
+          "name": "UNIFI_PROTECT_CONSOLE_ID",
           "required": false,
           "secret": false,
-          "description": "prod or cert. cert is the sandbox, and the right default for a first profile."
+          "description": "Console id from api.ui.com/v1/hosts. Cloud mode only."
         },
         {
-          "name": "TASTYTRADE_SCOPE",
+          "name": "UNIFI_PROTECT_MODE",
           "required": false,
           "secret": false,
-          "description": "OAuth scope. Defaults to `read trade`; narrow it to `read` for a read-only profile."
+          "description": "cloud or local. Inferred as cloud when a key and a console id are both set."
         },
         {
-          "name": "TASTYTRADE_ALLOW_TRADING",
+          "name": "UNIFI_PROTECT_TOTP",
+          "required": false,
+          "secret": true,
+          "description": "2FA code. Expires in ~30s, so prefer the server's own login tool."
+        },
+        {
+          "name": "UNIFI_PROTECT_VERIFY_TLS",
           "required": false,
           "secret": false,
-          "description": "Enables order entry. The highest-consequence gate in the manifest."
+          "description": "Verify the console certificate. Needs a hostname, not an IP."
+        },
+        {
+          "name": "UNIFI_PROTECT_SESSION_FILE",
+          "required": false,
+          "secret": false,
+          "description": "Cached session, mode 600. Per-profile, or two identities share one session."
+        },
+        {
+          "name": "UNIFI_PROTECT_SNAPSHOT_DIR",
+          "required": false,
+          "secret": false,
+          "description": "Where snapshots and exports are written. Per-profile, or one profile reads another's footage."
+        },
+        {
+          "name": "UNIFI_PROTECT_CONFIG",
+          "required": false,
+          "secret": false,
+          "description": "Config file path. Bastion points this at the profile's own directory."
+        },
+        {
+          "name": "UNIFI_PROTECT_MAX_RETRIES",
+          "required": false,
+          "secret": false,
+          "description": "Retries on 401 / 429 / 5xx. Defaults to 3."
+        },
+        {
+          "name": "UNIFI_PROTECT_MAX_DOWNLOAD_BYTES",
+          "required": false,
+          "secret": false,
+          "description": "Refuse a download larger than this. Defaults to 200000000."
+        },
+        {
+          "name": "UNIFI_PROTECT_DEVICE_CACHE_TTL",
+          "required": false,
+          "secret": false,
+          "description": "Camera id-to-name cache lifetime in seconds. Defaults to 60."
+        },
+        {
+          "name": "UNIFI_PROTECT_ALLOW_WRITES",
+          "required": false,
+          "secret": false,
+          "description": "Registers the mutating tools: recording settings, PTZ, device configuration."
         }
       ],
       "notes": [
-        "The reason write gates are per-profile rather than global. One",
-        "tastytrade/cert profile with trading on and one tastytrade/prod",
-        "profile with trading off is a sane setup; a single global switch",
-        "makes it unexpressible."
+        "Two auth shapes that are not interchangeable, which is why they are auth",
+        "modes rather than a pile of optional variables. A console API key is",
+        "refused by the private API this server reads history from, so a LAN-only",
+        "deployment genuinely needs a username and password; a cloud key reaches",
+        "the same API through api.ui.com and needs no local account at all.",
+        "",
+        "Three state variables, all per-profile. The session file is an identity,",
+        "and the snapshot directory is camera footage — sharing either between two",
+        "profiles is the leak this app exists to prevent."
       ]
     },
     {
-      "id": "boursobank",
-      "displayName": "BoursoBank",
-      "summary": "BoursoBank customer API: accounts, transactions, statements, market data.",
-      "npmName": "@mgcrea/mcp-boursobank",
-      "binName": "boursobank-mcp",
+      "id": "unifi-network",
+      "displayName": "UniFi Network",
+      "summary": "UniFi Network API: sites, devices, clients, WLANs, port and firewall configuration.",
+      "npmName": "@mgcrea/mcp-unifi-network",
+      "binName": "unifi-network-mcp",
+      "distribution": "npm",
+      "localPath": "mcp-unifi-network",
+      "docsUrl": "https://github.com/mgcrea/mcp-unifi-network",
+      "dialect": "2025-11-25",
+      "writeGate": "UNIFI_ALLOW_WRITES",
+      "gateBypass": [],
+      "authModes": [
+        {
+          "id": "console",
+          "displayName": "Console API key",
+          "env": ["UNIFI_HOST", "UNIFI_API_KEY"]
+        },
+        {
+          "id": "cloud",
+          "displayName": "Cloud API key",
+          "env": ["UNIFI_API_KEY", "UNIFI_CONSOLE_ID"]
+        },
+        {
+          "id": "legacy",
+          "displayName": "Local admin account",
+          "env": ["UNIFI_HOST", "UNIFI_USERNAME", "UNIFI_PASSWORD"]
+        }
+      ],
+      "stateEnv": ["UNIFI_CONFIG"],
+      "callbackEnv": [],
+      "env": [
+        {
+          "name": "UNIFI_HOST",
+          "required": false,
+          "secret": false,
+          "description": "The console. A pasted browser URL is accepted and split."
+        },
+        {
+          "name": "UNIFI_API_KEY",
+          "required": false,
+          "secret": true,
+          "description": "Settings, Control Plane, Integrations, Create API Key."
+        },
+        {
+          "name": "UNIFI_CONSOLE_ID",
+          "required": false,
+          "secret": false,
+          "description": "Console id from unifi.ui.com. Cloud mode only."
+        },
+        {
+          "name": "UNIFI_MODE",
+          "required": false,
+          "secret": false,
+          "description": "unifios, cloud or classic. Inferred from what is set."
+        },
+        {
+          "name": "UNIFI_SITE",
+          "required": false,
+          "secret": false,
+          "description": "Default site: UUID, legacy name or display name."
+        },
+        {
+          "name": "UNIFI_USERNAME",
+          "required": false,
+          "secret": false,
+          "description": "Legacy tier fallback only. A local admin, not an SSO account."
+        },
+        {
+          "name": "UNIFI_PASSWORD",
+          "required": false,
+          "secret": true,
+          "description": "That admin's password."
+        },
+        {
+          "name": "UNIFI_INSECURE_TLS",
+          "required": false,
+          "secret": false,
+          "description": "Disable certificate verification, for this server only."
+        },
+        {
+          "name": "UNIFI_ENABLE_LEGACY",
+          "required": false,
+          "secret": false,
+          "description": "Registers the unifi_legacy_* tools."
+        },
+        {
+          "name": "UNIFI_APP_VERSION",
+          "required": false,
+          "secret": false,
+          "description": "Pin the controller version instead of probing it at startup."
+        },
+        {
+          "name": "UNIFI_PAGE_LIMIT",
+          "required": false,
+          "secret": false,
+          "description": "Page size. Defaults to 50."
+        },
+        {
+          "name": "UNIFI_MAX_PAGES",
+          "required": false,
+          "secret": false,
+          "description": "Pagination ceiling. Defaults to 20."
+        },
+        {
+          "name": "UNIFI_MAX_RETRIES",
+          "required": false,
+          "secret": false,
+          "description": "Retries on a transient failure. Defaults to 3."
+        },
+        {
+          "name": "UNIFI_CONFIG",
+          "required": false,
+          "secret": false,
+          "description": "Config file path. Bastion points this at the profile's own directory."
+        },
+        {
+          "name": "UNIFI_ALLOW_WRITES",
+          "required": false,
+          "secret": false,
+          "description": "Enables the mutating tools: WLANs, port profiles, firewall rules, device adoption."
+        }
+      ],
+      "notes": [
+        "The write gate here reaches network configuration, so a profile with it",
+        "on can take a site off the air. Two profiles - one read-only for asking",
+        "questions, one gated for changes - is the shape this is built for."
+      ]
+    },
+    {
+      "id": "stripe",
+      "displayName": "Stripe",
+      "summary": "Stripe API: customers, subscriptions, invoices, charges, payouts and balance.",
+      "npmName": "@mgcrea/mcp-stripe",
+      "binName": "stripe-mcp",
       "distribution": "local",
-      "localPath": "mcp-boursobank",
+      "localPath": "mcp-stripe",
       "docsUrl": null,
       "dialect": "2025-11-25",
-      "writeGate": "BOURSOBANK_ALLOW_TRADING",
+      "writeGate": "STRIPE_ALLOW_WRITES",
       "gateBypass": [],
       "authModes": [],
-      "stateEnv": ["BOURSOBANK_SESSION_PATH", "BOURSOBANK_DOCUMENTS_DIR"],
+      "stateEnv": ["STRIPE_CONFIG"],
       "callbackEnv": [],
       "env": [
         {
-          "name": "BOURSOBANK_CLIENT_NUMBER",
+          "name": "STRIPE_SECRET_KEY",
           "required": true,
-          "secret": false,
-          "description": "Customer number used to log in."
-        },
-        {
-          "name": "BOURSOBANK_PASSWORD",
-          "required": false,
           "secret": true,
-          "description": "Login password. Omit to log in interactively instead."
+          "description": "Restricted or secret API key. A restricted key is the right one here: the write gate cannot take back a permission the key already grants."
         },
         {
-          "name": "BOURSOBANK_SESSION_PATH",
+          "name": "STRIPE_ACCOUNT_ID",
           "required": false,
           "secret": false,
-          "description": "Where the authenticated session is cached. Per-profile."
+          "description": "Connected account to act on behalf of, sent as Stripe-Account."
         },
         {
-          "name": "BOURSOBANK_DOCUMENTS_DIR",
+          "name": "STRIPE_API_VERSION",
           "required": false,
           "secret": false,
-          "description": "Where downloaded statements land. Per-profile."
+          "description": "Pin the API version instead of using the account default."
         },
         {
-          "name": "BOURSOBANK_ALLOW_TRADING",
+          "name": "STRIPE_CONFIG",
           "required": false,
           "secret": false,
-          "description": "Enables order entry on the linked brokerage account."
+          "description": "Config file path. Bastion points this at the profile's own directory."
+        },
+        {
+          "name": "STRIPE_ALLOW_WRITES",
+          "required": false,
+          "secret": false,
+          "description": "Enables the mutating tools: refunds, subscription changes, invoice actions."
         }
       ],
       "notes": [
-        "Logs in through a real browser session and needs MFA, so a profile of",
-        "this server is not merely credentials — it is a live session with a",
-        "timeout. The supervisor's idle-stop policy has to account for that.",
+        "PLACEHOLDER. @mgcrea/mcp-stripe is not published and there is no checkout",
+        "for it yet, so installing this entry fails with 'not published'. It is in",
+        "the catalog because the catalog is a starting point rather than a promise",
+        "about what is installed - which is exactly the distinction this file lost",
+        "when it was a closed list.",
         "",
-        "The session cache is not a secret in the Keychain sense but it is",
-        "bearer-equivalent while it lasts, which is why it is stateEnv."
+        "Money moves through this one, so the gate is not a formality. Prefer a",
+        "restricted key scoped to reads and let the profile stay gated off."
       ]
     },
     {
-      "id": "buzzberg",
-      "displayName": "Buzzberg",
-      "summary": "Buzzberg market intelligence: speaker calls, timelines and crowd sentiment.",
-      "npmName": "@mgcrea/mcp-buzzberg",
-      "binName": "buzzberg-mcp",
-      "distribution": "local",
-      "localPath": "mcp-buzzberg",
-      "docsUrl": null,
+      "id": "shopify",
+      "displayName": "Shopify",
+      "summary": "Shopify Admin GraphQL API: products, variants, collections, metafields, locations.",
+      "npmName": "@mgcrea/mcp-shopify",
+      "binName": "shopify-mcp",
+      "distribution": "npm",
+      "localPath": "mcp-shopify",
+      "docsUrl": "https://github.com/mgcrea/mcp-shopify",
       "dialect": "2025-11-25",
       "writeGate": null,
       "gateBypass": [],
@@ -672,72 +640,215 @@
       "callbackEnv": [],
       "env": [
         {
-          "name": "BUZZBERG_BROWSER_CHANNEL",
-          "required": false,
+          "name": "SHOPIFY_STORE_DOMAIN",
+          "required": true,
           "secret": false,
-          "description": "Browser channel to drive, e.g. chrome. Defaults to chrome."
+          "description": "Store handle or *.myshopify.com domain. A bare handle is expanded."
         },
         {
-          "name": "BUZZBERG_BROWSER_EXECUTABLE_PATH",
-          "required": false,
+          "name": "SHOPIFY_CLIENT_ID",
+          "required": true,
           "secret": false,
-          "description": "Explicit browser binary, when the channel cannot be found."
+          "description": "Custom app client id."
         },
         {
-          "name": "BUZZBERG_BROWSER_HEADLESS",
+          "name": "SHOPIFY_CLIENT_SECRET",
+          "required": true,
+          "secret": true,
+          "description": "Custom app client secret. Used as the Admin API access token."
+        },
+        {
+          "name": "SHOPIFY_API_VERSION",
           "required": false,
           "secret": false,
-          "description": "Run the browser headless. On by default."
+          "description": "Admin API version, e.g. 2026-04. Defaults to the server's pinned version."
         }
       ],
       "notes": [
-        "Holds no credential at all — it drives a browser. It is in the",
-        "manifest for supervision and audit, not for secret storage, and it is",
-        "the one entry that proves those two jobs are separable.",
-        "",
-        "It also spawns a browser, so its memory cost is unlike every other",
-        "entry here. Idle-stop matters more for this one than for any other."
+        "No write gate because there is no write path: every tool is a read.",
+        "That is why the build order takes this one end-to-end first — a bug in",
+        "the supervisor or the dialect layer cannot cost anybody data here."
       ]
     },
     {
-      "id": "yahoo-finance",
-      "displayName": "Yahoo Finance",
-      "summary": "Yahoo Finance market data: quotes, fundamentals, holders, time series.",
-      "npmName": "@mgcrea/mcp-yahoo-finance",
-      "binName": "yahoo-finance-mcp",
-      "distribution": "local",
-      "localPath": "mcp-yahoo-finance",
+      "id": "ovh-api",
+      "displayName": "OVHcloud",
+      "summary": "OVHcloud API, focused on Object Storage: containers, objects, policies, regions.",
+      "npmName": "@mgcrea/mcp-ovh-api",
+      "binName": "ovh-api-mcp",
+      "distribution": "npm",
+      "localPath": "mcp-ovh-api",
       "docsUrl": null,
       "dialect": "2025-11-25",
-      "writeGate": null,
+      "writeGate": "OVH_ALLOW_WRITES",
       "gateBypass": [],
-      "authModes": [],
+      "authModes": [
+        {
+          "id": "oauth2",
+          "displayName": "OAuth2 service account",
+          "env": ["OVH_CLIENT_ID", "OVH_CLIENT_SECRET"]
+        },
+        {
+          "id": "signature",
+          "displayName": "Application key triplet",
+          "env": ["OVH_APPLICATION_KEY", "OVH_APPLICATION_SECRET", "OVH_CONSUMER_KEY"]
+        },
+        {
+          "id": "accessToken",
+          "displayName": "Access token",
+          "env": ["OVH_ACCESS_TOKEN"]
+        }
+      ],
       "stateEnv": [],
       "callbackEnv": [],
       "env": [
         {
-          "name": "YAHOO_FINANCE_COOKIE",
-          "required": false,
-          "secret": true,
-          "description": "Session cookie, when the anonymous crumb flow is being refused."
-        },
-        {
-          "name": "YAHOO_FINANCE_CRUMB",
-          "required": false,
-          "secret": true,
-          "description": "Matching crumb for the cookie above."
-        },
-        {
-          "name": "YAHOO_FINANCE_CONCURRENCY",
+          "name": "OVH_ENDPOINT",
           "required": false,
           "secret": false,
-          "description": "Parallel requests. Defaults to 4."
+          "description": "Region endpoint: ovh-eu, ovh-ca, ovh-us. Defaults to ovh-eu."
+        },
+        {
+          "name": "OVH_CLIENT_ID",
+          "required": false,
+          "secret": false,
+          "description": "OAuth2 client id."
+        },
+        {
+          "name": "OVH_CLIENT_SECRET",
+          "required": false,
+          "secret": true,
+          "description": "OAuth2 client secret."
+        },
+        {
+          "name": "OVH_APPLICATION_KEY",
+          "required": false,
+          "secret": false,
+          "description": "Application key, from https://eu.api.ovh.com/createToken/."
+        },
+        {
+          "name": "OVH_APPLICATION_SECRET",
+          "required": false,
+          "secret": true,
+          "description": "Application secret."
+        },
+        {
+          "name": "OVH_CONSUMER_KEY",
+          "required": false,
+          "secret": true,
+          "description": "Consumer key, which carries the granted scopes."
+        },
+        {
+          "name": "OVH_ACCESS_TOKEN",
+          "required": false,
+          "secret": true,
+          "description": "A pre-minted access token."
+        },
+        {
+          "name": "OVH_CLOUD_PROJECT",
+          "required": false,
+          "secret": false,
+          "description": "Default public cloud project id, a 32-character hex string."
+        },
+        {
+          "name": "OVH_REGION",
+          "required": false,
+          "secret": false,
+          "description": "Default storage region, e.g. GRA, SBG, UK."
+        },
+        {
+          "name": "OVH_ALLOW_WRITES",
+          "required": false,
+          "secret": false,
+          "description": "Enables uploading, deleting and re-policying objects and containers."
         }
       ],
       "notes": [
-        "Read-only and normally credential-free: the cookie and crumb are a",
-        "fallback for when the anonymous path is throttled. Marked secret",
-        "anyway, because a session cookie is a session cookie."
+        "Three auth modes, inferred from what is set. The signature triplet is",
+        "the only one of the three where every part is a secret, which is",
+        "exactly the sort of detail a hand-written profile form gets wrong."
+      ]
+    },
+    {
+      "id": "keycloak",
+      "displayName": "Keycloak",
+      "summary": "Keycloak Admin REST API: realms, clients, users, roles, sessions.",
+      "npmName": "@mgcrea/mcp-keycloak",
+      "binName": "keycloak-mcp",
+      "distribution": "local",
+      "localPath": "mcp-keycloak",
+      "docsUrl": null,
+      "dialect": "2025-11-25",
+      "writeGate": "KEYCLOAK_ALLOW_WRITES",
+      "gateBypass": [],
+      "authModes": [
+        {
+          "id": "client_credentials",
+          "displayName": "Client credentials",
+          "env": ["KEYCLOAK_CLIENT_SECRET"]
+        },
+        {
+          "id": "password",
+          "displayName": "Username and password",
+          "env": ["KEYCLOAK_USERNAME", "KEYCLOAK_PASSWORD"]
+        }
+      ],
+      "stateEnv": [],
+      "callbackEnv": [],
+      "env": [
+        {
+          "name": "KEYCLOAK_URL",
+          "required": true,
+          "secret": false,
+          "description": "Base URL of the Keycloak server, e.g. https://sso.example.com."
+        },
+        {
+          "name": "KEYCLOAK_REALM",
+          "required": false,
+          "secret": false,
+          "description": "Realm to administer. Defaults to master."
+        },
+        {
+          "name": "KEYCLOAK_AUTH_REALM",
+          "required": false,
+          "secret": false,
+          "description": "Realm to authenticate against, when it differs from the one being administered."
+        },
+        {
+          "name": "KEYCLOAK_CLIENT_ID",
+          "required": false,
+          "secret": false,
+          "description": "Client id. Defaults to admin-cli."
+        },
+        {
+          "name": "KEYCLOAK_CLIENT_SECRET",
+          "required": false,
+          "secret": true,
+          "description": "Client secret. Selects the client_credentials grant."
+        },
+        {
+          "name": "KEYCLOAK_USERNAME",
+          "required": false,
+          "secret": false,
+          "description": "Admin username. Selects the password grant."
+        },
+        {
+          "name": "KEYCLOAK_PASSWORD",
+          "required": false,
+          "secret": true,
+          "description": "Admin password."
+        },
+        {
+          "name": "KEYCLOAK_ALLOW_WRITES",
+          "required": false,
+          "secret": false,
+          "description": "Enables creating and modifying realms, clients, users and roles."
+        }
+      ],
+      "notes": [
+        "The profile split is the whole point here: rgis and ivalis are two",
+        "realms on two servers with two admin identities, and a single global",
+        "instance could hold only one of them."
       ]
     }
   ]

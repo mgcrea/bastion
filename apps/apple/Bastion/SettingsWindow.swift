@@ -1,0 +1,201 @@
+import AppKit
+import SwiftUI
+
+/// Which Settings pane is showing.
+///
+/// A source list rather than a toolbar of tabs. Tabs price every pane at one
+/// icon and one word across the top, which is survivable at two and is the
+/// reason nothing can ever be added to them; a sidebar costs a column once and
+/// then stays free.
+enum SettingsPane: String, CaseIterable, Identifiable {
+  case general
+  case about
+
+  var id: String { rawValue }
+  static let defaultsKey = "settingsPane"
+
+  var title: String {
+    switch self {
+    case .general: "General"
+    case .about: "About"
+    }
+  }
+
+  var symbol: String {
+    switch self {
+    case .general: "gearshape"
+    case .about: "info.circle"
+    }
+  }
+}
+
+/// Settings.
+///
+/// Not a SwiftUI `Settings` scene, which does not work here at all: it opens
+/// via `showSettingsWindow:`, routed through an app menu that an `LSUIElement`
+/// app does not have. The ⌘, that reaches this is declared as a `CommandGroup`
+/// in `BastionApp` instead — see the comment there for why inserting the item
+/// into `NSApp.mainMenu` by hand does not survive.
+@MainActor
+enum SettingsWindowController {
+  private static let hosted = HostedWindow(
+    title: "Bastion Settings",
+    autosaveName: "settings-panes",
+    // Named explicitly, unlike the main window. SwiftUI's fitting size for a
+    // grouped `Form` is the width the longest footer sentence would like to
+    // avoid wrapping, which is a settings window half again as wide as it has
+    // any reason to be.
+    contentSize: NSSize(width: 660, height: 420)
+  ) {
+    SettingsView()
+  }
+
+  static func show() { hosted.show() }
+
+  /// Open onto a particular pane, including on a window that is already up —
+  /// the selection lives in `@AppStorage`, which observes this write.
+  static func show(_ pane: SettingsPane) {
+    UserDefaults.standard.set(pane.rawValue, forKey: SettingsPane.defaultsKey)
+    hosted.show()
+  }
+}
+
+struct SettingsView: View {
+  @AppStorage(SettingsPane.defaultsKey) private var selection = SettingsPane.general.rawValue
+
+  private var pane: Binding<SettingsPane?> {
+    Binding(
+      get: { SettingsPane(rawValue: selection) ?? .general },
+      set: { selection = ($0 ?? .general).rawValue })
+  }
+
+  private var current: SettingsPane { SettingsPane(rawValue: selection) ?? .general }
+
+  var body: some View {
+    NavigationSplitView {
+      List(selection: pane) {
+        ForEach(SettingsPane.allCases) { pane in
+          Label(pane.title, systemImage: pane.symbol).tag(pane)
+        }
+      }
+      .navigationSplitViewColumnWidth(min: 160, ideal: 176, max: 220)
+    } detail: {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 0) {
+          // The pane title in content rather than in the title bar, which keeps
+          // the window called "Bastion Settings" in ⌘-Tab and in the Window
+          // menu while the heading still says which page this is.
+          Text(current.title)
+            .font(.title2).bold()
+            .padding(.horizontal, 20).padding(.top, 20)
+
+          switch current {
+          case .general: GeneralPane()
+          case .about: AboutPane()
+          }
+        }
+      }
+    }
+    .frame(minWidth: 620, minHeight: 400)
+  }
+}
+
+// MARK: - General
+
+private struct GeneralPane: View {
+  @AppStorage("gatewayPort") private var port = Int(Gateway.defaultPort)
+  @State private var automatic = UpdateController.shared.automatic
+
+  var body: some View {
+    Form {
+      Section {
+        // `Gateway` reads this once, in `start()`, and is not `@Observable` —
+        // so saying "takes effect on restart" is not politeness, it is the
+        // actual behaviour. Claiming otherwise would put a number on screen
+        // that no listener is bound to.
+        TextField("Port", value: $port, format: .number.grouping(.never))
+          .frame(maxWidth: 140)
+        Text(
+          "Bastion listens on 127.0.0.1 only, and that is not configurable. Changing the port "
+            + "takes effect when Bastion next starts, and every client config already written "
+            + "names the old one.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+        if port != Int(Gateway.shared.port) {
+          Label(
+            "Currently serving on \(String(Gateway.shared.port)). Quit and reopen Bastion to move it.",
+            systemImage: "exclamationmark.triangle.fill")
+            .font(.caption).foregroundStyle(.orange)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      } header: {
+        Text("Gateway")
+      }
+
+      Section {
+        // Only the standing question lives here. "Check for Updates…" stays in
+        // the menu bar, where somebody who wants one now would reach for it.
+        Toggle(
+          "Check for updates automatically",
+          isOn: Binding(
+            get: { automatic },
+            set: {
+              UpdateController.shared.setAutomatic($0)
+              automatic = $0
+            }))
+        Text("Off until you say otherwise. Bastion sends no identifier with the check.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      } header: {
+        Text("Updates")
+      }
+    }
+    .formStyle(.grouped)
+  }
+}
+
+// MARK: - About
+
+private struct AboutPane: View {
+  var body: some View {
+    Form {
+      Section {
+        LabeledContent("Version", value: AppInfo.version)
+        LabeledContent("Build", value: AppInfo.build)
+        LabeledContent("Identifier", value: AppSupport.identifier)
+        if AppInfo.isDebugBuild {
+          // Two menu bar icons that look identical and hold different
+          // credentials is otherwise a confusing afternoon.
+          Text(
+            "A debug build. It has its own bundle identifier, and therefore its own Keychain "
+              + "items, its own profiles and its own port.")
+            .font(.caption).foregroundStyle(.orange)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      } header: {
+        Text("This build")
+      }
+
+      Section {
+        Text(
+          "Bastion binds 127.0.0.1 and nothing else, validates Origin and Host on every request, "
+            + "and requires a per-client bearer token. It ships with no entitlements file at all: "
+            + "spawning children and binding loopback need none.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+        Text(
+          "The audit log records which profile, which method and which tool — never arguments and "
+            + "never results. It does not see what a server then does over the network or on disk.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      } header: {
+        Text("What it does")
+      }
+
+      Section {
+        Button("Licence…") { LicenceWindowController.show() }
+      }
+    }
+    .formStyle(.grouped)
+  }
+}

@@ -1,6 +1,6 @@
 # Servers
 
-The closed list of MCP servers Bastion supervises in v1.
+The catalog Bastion ships with, which is **not** the list of servers it runs.
 
 Everything below the marker is generated from [`servers.json`](../servers.json) by
 `make servers`, and CI fails if it has drifted. Edit the manifest, not this file.
@@ -10,16 +10,44 @@ table cells to a common width and the generator does not, so with both running
 `make servers` and `make format` would each undo the other and no state would
 satisfy CI. A generated file's layout belongs to its generator.
 
-## Why the list is closed
+## The catalog, the list, and what is actually closed
 
-Bastion spawns manifest-listed servers and nothing else. That is a security
-property rather than a missing feature: the process it starts inherits the
-user's credentials and runs unsandboxed, so "run whatever the config names" is
-the same shape of hole as CVE-2025-49596. The catalog problem is solved and free
-elsewhere — Docker MCP Toolkit ships hundreds of curated servers, Anthropic
-ships MCPB double-click install and an official registry. The part worth
-building is the runtime underneath: supervision, identity, and a record of what
-was called.
+Three things that used to be one:
+
+- **The catalog** is the table below. It ships with the app and nothing in it is
+  installed until somebody asks. It is a starting point.
+- **The list** is what one install runs. It lives in
+  `~/Library/Application Support/io.mgcrea.bastion/servers.json`, the user edits
+  it, and it is the only list the gateway, the supervisor and the profile store
+  ever consult. It starts empty.
+- **The code** arrives on demand. Nothing is bundled but the Node runtime and
+  the npm that came with it; `ServerInstaller` fetches a server into Application
+  Support when it is added, and `Remove` deletes it again.
+
+v1 fixed all three at build time and called it a security property. It was two
+properties wearing one coat, and only one of them was load-bearing:
+
+**Kept.** A caller selects a server by *name*, never by a path or a command
+line. The process Bastion starts inherits the user's credentials and runs
+unsandboxed, so "run whatever the request names" is the same shape of hole as
+CVE-2025-49596 — and it is still closed. A request names a profile and a server
+id; the id resolves against the list the *user* installed or it 404s. Nothing
+arriving over the wire can name a package, a path or an argv.
+
+**Dropped.** That the list itself was fixed at compile time. It bought no safety
+the rule above does not already buy — the person choosing was always the user —
+and it cost Bastion the ability to run any server mgcrea had not written.
+
+A custom server is added by **npm package**, not by command line. It supplies a
+package, a bin name and the variables it reads; Bastion installs it with the
+embedded runtime and spawns it with an environment Bastion built. There is no
+field for a path and no field for an argv, which is what keeps "add a server"
+from becoming "run this command".
+
+What Bastion does not do is curate. That problem is solved and free elsewhere —
+Docker MCP Toolkit ships hundreds of curated servers, Anthropic ships MCPB
+double-click install and an official registry. The part worth building is the
+runtime underneath: supervision, identity, and a record of what was called.
 
 ## What the audit log can and cannot see
 
@@ -37,7 +65,7 @@ declares its protocol version, identity and capabilities in each request's
 shared server instance correct rather than a hack, and it is why Bastion fronts
 clients with it.
 
-None of the servers below are modern. Every one runs an SDK whose newest
+None of the catalog entries below are modern. Every one runs an SDK whose newest
 protocol is `2025-11-25`, and `server/discover` against one returns `-32601` —
 the exact signal the spec names for recognising a legacy server. Bastion is
 therefore what the spec calls a **dual-era server**: it answers modern requests
@@ -55,38 +83,25 @@ asserts both eras against a running build.
   mutating tool at all.
 - **Secrets** — how many of the server's variables are credentials. Those live
   in the Keychain and are never written into a client config file.
-- **Source** — `npm` is published and installable; `local` is a private checkout
-  under the mgcrea-ai directory.
+- **Source** — `npm` is published, so Bastion can install it on demand; `local`
+  is not published yet and resolves only against a checkout named by `dev.json`
+  in a Debug build. Adding a `local` entry works; installing it reports "not
+  published", which is the honest answer and better than a spawn that fails
+  later.
 
 <!-- <generated:servers> generated from servers.json by `make servers` — do not edit by hand -->
 
 | Server | Id | Binary | Source | Write gate | Secrets |
 | --- | --- | --- | --- | --- | --- |
-| [Shopify](https://github.com/mgcrea/mcp-shopify) | `shopify` | `shopify-mcp` | `@mgcrea/mcp-shopify` (npm) | read-only | 1 |
 | [App Store Connect](https://github.com/mgcrea/mcp-appstore-connect) | `appstore-connect` | `appstore-connect-mcp` | `@mgcrea/mcp-appstore-connect` (npm) | `APP_STORE_CONNECT_ALLOW_WRITES` | 1 |
-| Keycloak | `keycloak` | `keycloak-mcp` | `mcp-keycloak` (local) | `KEYCLOAK_ALLOW_WRITES` | 2 |
-| OVHcloud | `ovh-api` | `ovh-api-mcp` | `@mgcrea/mcp-ovh-api` (npm) | `OVH_ALLOW_WRITES` | 4 |
 | [Reddit](https://github.com/mgcrea/mcp-reddit) | `reddit` | `reddit-mcp` | `mcp-reddit` (local) | `REDDIT_ALLOW_WRITES` | 1 |
 | [X](https://github.com/mgcrea/mcp-x-api) | `x-api` | `x-api-mcp` | `mcp-x-api` (local) | `X_API_ALLOW_WRITES` | 2 |
-| TastyTrade | `tastytrade` | `tastytrade-mcp` | `mcp-tastytrade` (local) | `TASTYTRADE_ALLOW_TRADING` | 2 |
-| BoursoBank | `boursobank` | `boursobank-mcp` | `mcp-boursobank` (local) | `BOURSOBANK_ALLOW_TRADING` | 1 |
-| Buzzberg | `buzzberg` | `buzzberg-mcp` | `mcp-buzzberg` (local) | read-only | — |
-| Yahoo Finance | `yahoo-finance` | `yahoo-finance-mcp` | `mcp-yahoo-finance` (local) | read-only | 2 |
-
-### Shopify
-
-Shopify Admin GraphQL API: products, variants, collections, metafields, locations.
-
-No write gate because there is no write path: every tool is a read.
-That is why the build order takes this one end-to-end first — a bug in
-the supervisor or the dialect layer cannot cost anybody data here.
-
-| Variable | Required | Secret | Meaning |
-| --- | --- | --- | --- |
-| `SHOPIFY_STORE_DOMAIN` | yes | — | Store handle or *.myshopify.com domain. A bare handle is expanded. |
-| `SHOPIFY_CLIENT_ID` | yes | — | Custom app client id. |
-| `SHOPIFY_CLIENT_SECRET` | yes | yes | Custom app client secret. Used as the Admin API access token. |
-| `SHOPIFY_API_VERSION` | — | — | Admin API version, e.g. 2026-04. Defaults to the server's pinned version. |
+| [UniFi Protect](https://github.com/mgcrea/mcp-unifi-protect) | `unifi-protect` | `unifi-protect-mcp` | `@mgcrea/mcp-unifi-protect` (npm) | `UNIFI_PROTECT_ALLOW_WRITES` | 3 |
+| [UniFi Network](https://github.com/mgcrea/mcp-unifi-network) | `unifi-network` | `unifi-network-mcp` | `@mgcrea/mcp-unifi-network` (npm) | `UNIFI_ALLOW_WRITES` | 2 |
+| Stripe | `stripe` | `stripe-mcp` | `mcp-stripe` (local) | `STRIPE_ALLOW_WRITES` | 1 |
+| [Shopify](https://github.com/mgcrea/mcp-shopify) | `shopify` | `shopify-mcp` | `@mgcrea/mcp-shopify` (npm) | read-only | 1 |
+| OVHcloud | `ovh-api` | `ovh-api-mcp` | `@mgcrea/mcp-ovh-api` (npm) | `OVH_ALLOW_WRITES` | 4 |
+| Keycloak | `keycloak` | `keycloak-mcp` | `mcp-keycloak` (local) | `KEYCLOAK_ALLOW_WRITES` | 2 |
 
 ### App Store Connect
 
@@ -110,50 +125,6 @@ task in the build order.
 Fill exactly one of: **Inline private key** (`APP_STORE_CONNECT_P8`), **Private key file** (`APP_STORE_CONNECT_P8_PATH`)
 
 Per-profile state: `APP_STORE_CONNECT_CONFIG`
-
-### Keycloak
-
-Keycloak Admin REST API: realms, clients, users, roles, sessions.
-
-The profile split is the whole point here: rgis and ivalis are two
-realms on two servers with two admin identities, and a single global
-instance could hold only one of them.
-
-| Variable | Required | Secret | Meaning |
-| --- | --- | --- | --- |
-| `KEYCLOAK_URL` | yes | — | Base URL of the Keycloak server, e.g. https://sso.example.com. |
-| `KEYCLOAK_REALM` | — | — | Realm to administer. Defaults to master. |
-| `KEYCLOAK_AUTH_REALM` | — | — | Realm to authenticate against, when it differs from the one being administered. |
-| `KEYCLOAK_CLIENT_ID` | — | — | Client id. Defaults to admin-cli. |
-| `KEYCLOAK_CLIENT_SECRET` | — | yes | Client secret. Selects the client_credentials grant. |
-| `KEYCLOAK_USERNAME` | — | — | Admin username. Selects the password grant. |
-| `KEYCLOAK_PASSWORD` | — | yes | Admin password. |
-| `KEYCLOAK_ALLOW_WRITES` | — | — | Enables creating and modifying realms, clients, users and roles. |
-
-Fill exactly one of: **Client credentials** (`KEYCLOAK_CLIENT_SECRET`), **Username and password** (`KEYCLOAK_USERNAME` + `KEYCLOAK_PASSWORD`)
-
-### OVHcloud
-
-OVHcloud API, focused on Object Storage: containers, objects, policies, regions.
-
-Three auth modes, inferred from what is set. The signature triplet is
-the only one of the three where every part is a secret, which is
-exactly the sort of detail a hand-written profile form gets wrong.
-
-| Variable | Required | Secret | Meaning |
-| --- | --- | --- | --- |
-| `OVH_ENDPOINT` | — | — | Region endpoint: ovh-eu, ovh-ca, ovh-us. Defaults to ovh-eu. |
-| `OVH_CLIENT_ID` | — | — | OAuth2 client id. |
-| `OVH_CLIENT_SECRET` | — | yes | OAuth2 client secret. |
-| `OVH_APPLICATION_KEY` | — | — | Application key, from https://eu.api.ovh.com/createToken/. |
-| `OVH_APPLICATION_SECRET` | — | yes | Application secret. |
-| `OVH_CONSUMER_KEY` | — | yes | Consumer key, which carries the granted scopes. |
-| `OVH_ACCESS_TOKEN` | — | yes | A pre-minted access token. |
-| `OVH_CLOUD_PROJECT` | — | — | Default public cloud project id, a 32-character hex string. |
-| `OVH_REGION` | — | — | Default storage region, e.g. GRA, SBG, UK. |
-| `OVH_ALLOW_WRITES` | — | — | Enables uploading, deleting and re-policying objects and containers. |
-
-Fill exactly one of: **OAuth2 service account** (`OVH_CLIENT_ID` + `OVH_CLIENT_SECRET`), **Application key triplet** (`OVH_APPLICATION_KEY` + `OVH_APPLICATION_SECRET` + `OVH_CONSUMER_KEY`), **Access token** (`OVH_ACCESS_TOKEN`)
 
 ### Reddit
 
@@ -207,74 +178,151 @@ Per-profile state: `X_API_CONFIG`, `X_API_TOKEN_FILE`
 
 Per-profile OAuth callback: `X_API_REDIRECT_URI`
 
-### TastyTrade
+### UniFi Protect
 
-TastyTrade brokerage API: accounts, positions, balances, quotes, and order entry.
+UniFi Protect: cameras, event history, recordings, snapshots and NVR status.
 
-The reason write gates are per-profile rather than global. One
-tastytrade/cert profile with trading on and one tastytrade/prod
-profile with trading off is a sane setup; a single global switch
-makes it unexpressible.
+Two auth shapes that are not interchangeable, which is why they are auth
+modes rather than a pile of optional variables. A console API key is
+refused by the private API this server reads history from, so a LAN-only
+deployment genuinely needs a username and password; a cloud key reaches
+the same API through api.ui.com and needs no local account at all.
 
-| Variable | Required | Secret | Meaning |
-| --- | --- | --- | --- |
-| `TASTYTRADE_CLIENT_SECRET` | yes | yes | OAuth client secret. |
-| `TASTYTRADE_REFRESH_TOKEN` | yes | yes | Long-lived refresh token. This is the credential that can move money. |
-| `TASTYTRADE_ENV` | — | — | prod or cert. cert is the sandbox, and the right default for a first profile. |
-| `TASTYTRADE_SCOPE` | — | — | OAuth scope. Defaults to `read trade`; narrow it to `read` for a read-only profile. |
-| `TASTYTRADE_ALLOW_TRADING` | — | — | Enables order entry. The highest-consequence gate in the manifest. |
-
-Forced off by Bastion so the write gate is the only switch: `TASTYTRADE_DANGEROUSLY_ALLOW_TRADING`
-
-### BoursoBank
-
-BoursoBank customer API: accounts, transactions, statements, market data.
-
-Logs in through a real browser session and needs MFA, so a profile of
-this server is not merely credentials — it is a live session with a
-timeout. The supervisor's idle-stop policy has to account for that.
-
-The session cache is not a secret in the Keychain sense but it is
-bearer-equivalent while it lasts, which is why it is stateEnv.
+Three state variables, all per-profile. The session file is an identity,
+and the snapshot directory is camera footage — sharing either between two
+profiles is the leak this app exists to prevent.
 
 | Variable | Required | Secret | Meaning |
 | --- | --- | --- | --- |
-| `BOURSOBANK_CLIENT_NUMBER` | yes | — | Customer number used to log in. |
-| `BOURSOBANK_PASSWORD` | — | yes | Login password. Omit to log in interactively instead. |
-| `BOURSOBANK_SESSION_PATH` | — | — | Where the authenticated session is cached. Per-profile. |
-| `BOURSOBANK_DOCUMENTS_DIR` | — | — | Where downloaded statements land. Per-profile. |
-| `BOURSOBANK_ALLOW_TRADING` | — | — | Enables order entry on the linked brokerage account. |
+| `UNIFI_PROTECT_HOST` | — | — | Console IP or hostname. https:// is assumed and a :port is preserved. |
+| `UNIFI_PROTECT_USERNAME` | — | — | Console login. Use a Local-Access-Only account with View Only rights. |
+| `UNIFI_PROTECT_PASSWORD` | — | yes | That account's password. |
+| `UNIFI_PROTECT_API_KEY` | — | yes | unifi.ui.com API key. Selects cloud mode, which needs no local account. |
+| `UNIFI_PROTECT_CONSOLE_ID` | — | — | Console id from api.ui.com/v1/hosts. Cloud mode only. |
+| `UNIFI_PROTECT_MODE` | — | — | cloud or local. Inferred as cloud when a key and a console id are both set. |
+| `UNIFI_PROTECT_TOTP` | — | yes | 2FA code. Expires in ~30s, so prefer the server's own login tool. |
+| `UNIFI_PROTECT_VERIFY_TLS` | — | — | Verify the console certificate. Needs a hostname, not an IP. |
+| `UNIFI_PROTECT_SESSION_FILE` | — | — | Cached session, mode 600. Per-profile, or two identities share one session. |
+| `UNIFI_PROTECT_SNAPSHOT_DIR` | — | — | Where snapshots and exports are written. Per-profile, or one profile reads another's footage. |
+| `UNIFI_PROTECT_CONFIG` | — | — | Config file path. Bastion points this at the profile's own directory. |
+| `UNIFI_PROTECT_MAX_RETRIES` | — | — | Retries on 401 / 429 / 5xx. Defaults to 3. |
+| `UNIFI_PROTECT_MAX_DOWNLOAD_BYTES` | — | — | Refuse a download larger than this. Defaults to 200000000. |
+| `UNIFI_PROTECT_DEVICE_CACHE_TTL` | — | — | Camera id-to-name cache lifetime in seconds. Defaults to 60. |
+| `UNIFI_PROTECT_ALLOW_WRITES` | — | — | Registers the mutating tools: recording settings, PTZ, device configuration. |
 
-Per-profile state: `BOURSOBANK_SESSION_PATH`, `BOURSOBANK_DOCUMENTS_DIR`
+Fill exactly one of: **Cloud API key** (`UNIFI_PROTECT_API_KEY` + `UNIFI_PROTECT_CONSOLE_ID`), **Local account** (`UNIFI_PROTECT_HOST` + `UNIFI_PROTECT_USERNAME` + `UNIFI_PROTECT_PASSWORD`)
 
-### Buzzberg
+Per-profile state: `UNIFI_PROTECT_CONFIG`, `UNIFI_PROTECT_SESSION_FILE`, `UNIFI_PROTECT_SNAPSHOT_DIR`
 
-Buzzberg market intelligence: speaker calls, timelines and crowd sentiment.
+### UniFi Network
 
-Holds no credential at all — it drives a browser. It is in the
-manifest for supervision and audit, not for secret storage, and it is
-the one entry that proves those two jobs are separable.
+UniFi Network API: sites, devices, clients, WLANs, port and firewall configuration.
 
-It also spawns a browser, so its memory cost is unlike every other
-entry here. Idle-stop matters more for this one than for any other.
-
-| Variable | Required | Secret | Meaning |
-| --- | --- | --- | --- |
-| `BUZZBERG_BROWSER_CHANNEL` | — | — | Browser channel to drive, e.g. chrome. Defaults to chrome. |
-| `BUZZBERG_BROWSER_EXECUTABLE_PATH` | — | — | Explicit browser binary, when the channel cannot be found. |
-| `BUZZBERG_BROWSER_HEADLESS` | — | — | Run the browser headless. On by default. |
-
-### Yahoo Finance
-
-Yahoo Finance market data: quotes, fundamentals, holders, time series.
-
-Read-only and normally credential-free: the cookie and crumb are a
-fallback for when the anonymous path is throttled. Marked secret
-anyway, because a session cookie is a session cookie.
+The write gate here reaches network configuration, so a profile with it
+on can take a site off the air. Two profiles - one read-only for asking
+questions, one gated for changes - is the shape this is built for.
 
 | Variable | Required | Secret | Meaning |
 | --- | --- | --- | --- |
-| `YAHOO_FINANCE_COOKIE` | — | yes | Session cookie, when the anonymous crumb flow is being refused. |
-| `YAHOO_FINANCE_CRUMB` | — | yes | Matching crumb for the cookie above. |
-| `YAHOO_FINANCE_CONCURRENCY` | — | — | Parallel requests. Defaults to 4. |
+| `UNIFI_HOST` | — | — | The console. A pasted browser URL is accepted and split. |
+| `UNIFI_API_KEY` | — | yes | Settings, Control Plane, Integrations, Create API Key. |
+| `UNIFI_CONSOLE_ID` | — | — | Console id from unifi.ui.com. Cloud mode only. |
+| `UNIFI_MODE` | — | — | unifios, cloud or classic. Inferred from what is set. |
+| `UNIFI_SITE` | — | — | Default site: UUID, legacy name or display name. |
+| `UNIFI_USERNAME` | — | — | Legacy tier fallback only. A local admin, not an SSO account. |
+| `UNIFI_PASSWORD` | — | yes | That admin's password. |
+| `UNIFI_INSECURE_TLS` | — | — | Disable certificate verification, for this server only. |
+| `UNIFI_ENABLE_LEGACY` | — | — | Registers the unifi_legacy_* tools. |
+| `UNIFI_APP_VERSION` | — | — | Pin the controller version instead of probing it at startup. |
+| `UNIFI_PAGE_LIMIT` | — | — | Page size. Defaults to 50. |
+| `UNIFI_MAX_PAGES` | — | — | Pagination ceiling. Defaults to 20. |
+| `UNIFI_MAX_RETRIES` | — | — | Retries on a transient failure. Defaults to 3. |
+| `UNIFI_CONFIG` | — | — | Config file path. Bastion points this at the profile's own directory. |
+| `UNIFI_ALLOW_WRITES` | — | — | Enables the mutating tools: WLANs, port profiles, firewall rules, device adoption. |
+
+Fill exactly one of: **Console API key** (`UNIFI_HOST` + `UNIFI_API_KEY`), **Cloud API key** (`UNIFI_API_KEY` + `UNIFI_CONSOLE_ID`), **Local admin account** (`UNIFI_HOST` + `UNIFI_USERNAME` + `UNIFI_PASSWORD`)
+
+Per-profile state: `UNIFI_CONFIG`
+
+### Stripe
+
+Stripe API: customers, subscriptions, invoices, charges, payouts and balance.
+
+PLACEHOLDER. @mgcrea/mcp-stripe is not published and there is no checkout
+for it yet, so installing this entry fails with 'not published'. It is in
+the catalog because the catalog is a starting point rather than a promise
+about what is installed - which is exactly the distinction this file lost
+when it was a closed list.
+
+Money moves through this one, so the gate is not a formality. Prefer a
+restricted key scoped to reads and let the profile stay gated off.
+
+| Variable | Required | Secret | Meaning |
+| --- | --- | --- | --- |
+| `STRIPE_SECRET_KEY` | yes | yes | Restricted or secret API key. A restricted key is the right one here: the write gate cannot take back a permission the key already grants. |
+| `STRIPE_ACCOUNT_ID` | — | — | Connected account to act on behalf of, sent as Stripe-Account. |
+| `STRIPE_API_VERSION` | — | — | Pin the API version instead of using the account default. |
+| `STRIPE_CONFIG` | — | — | Config file path. Bastion points this at the profile's own directory. |
+| `STRIPE_ALLOW_WRITES` | — | — | Enables the mutating tools: refunds, subscription changes, invoice actions. |
+
+Per-profile state: `STRIPE_CONFIG`
+
+### Shopify
+
+Shopify Admin GraphQL API: products, variants, collections, metafields, locations.
+
+No write gate because there is no write path: every tool is a read.
+That is why the build order takes this one end-to-end first — a bug in
+the supervisor or the dialect layer cannot cost anybody data here.
+
+| Variable | Required | Secret | Meaning |
+| --- | --- | --- | --- |
+| `SHOPIFY_STORE_DOMAIN` | yes | — | Store handle or *.myshopify.com domain. A bare handle is expanded. |
+| `SHOPIFY_CLIENT_ID` | yes | — | Custom app client id. |
+| `SHOPIFY_CLIENT_SECRET` | yes | yes | Custom app client secret. Used as the Admin API access token. |
+| `SHOPIFY_API_VERSION` | — | — | Admin API version, e.g. 2026-04. Defaults to the server's pinned version. |
+
+### OVHcloud
+
+OVHcloud API, focused on Object Storage: containers, objects, policies, regions.
+
+Three auth modes, inferred from what is set. The signature triplet is
+the only one of the three where every part is a secret, which is
+exactly the sort of detail a hand-written profile form gets wrong.
+
+| Variable | Required | Secret | Meaning |
+| --- | --- | --- | --- |
+| `OVH_ENDPOINT` | — | — | Region endpoint: ovh-eu, ovh-ca, ovh-us. Defaults to ovh-eu. |
+| `OVH_CLIENT_ID` | — | — | OAuth2 client id. |
+| `OVH_CLIENT_SECRET` | — | yes | OAuth2 client secret. |
+| `OVH_APPLICATION_KEY` | — | — | Application key, from https://eu.api.ovh.com/createToken/. |
+| `OVH_APPLICATION_SECRET` | — | yes | Application secret. |
+| `OVH_CONSUMER_KEY` | — | yes | Consumer key, which carries the granted scopes. |
+| `OVH_ACCESS_TOKEN` | — | yes | A pre-minted access token. |
+| `OVH_CLOUD_PROJECT` | — | — | Default public cloud project id, a 32-character hex string. |
+| `OVH_REGION` | — | — | Default storage region, e.g. GRA, SBG, UK. |
+| `OVH_ALLOW_WRITES` | — | — | Enables uploading, deleting and re-policying objects and containers. |
+
+Fill exactly one of: **OAuth2 service account** (`OVH_CLIENT_ID` + `OVH_CLIENT_SECRET`), **Application key triplet** (`OVH_APPLICATION_KEY` + `OVH_APPLICATION_SECRET` + `OVH_CONSUMER_KEY`), **Access token** (`OVH_ACCESS_TOKEN`)
+
+### Keycloak
+
+Keycloak Admin REST API: realms, clients, users, roles, sessions.
+
+The profile split is the whole point here: rgis and ivalis are two
+realms on two servers with two admin identities, and a single global
+instance could hold only one of them.
+
+| Variable | Required | Secret | Meaning |
+| --- | --- | --- | --- |
+| `KEYCLOAK_URL` | yes | — | Base URL of the Keycloak server, e.g. https://sso.example.com. |
+| `KEYCLOAK_REALM` | — | — | Realm to administer. Defaults to master. |
+| `KEYCLOAK_AUTH_REALM` | — | — | Realm to authenticate against, when it differs from the one being administered. |
+| `KEYCLOAK_CLIENT_ID` | — | — | Client id. Defaults to admin-cli. |
+| `KEYCLOAK_CLIENT_SECRET` | — | yes | Client secret. Selects the client_credentials grant. |
+| `KEYCLOAK_USERNAME` | — | — | Admin username. Selects the password grant. |
+| `KEYCLOAK_PASSWORD` | — | yes | Admin password. |
+| `KEYCLOAK_ALLOW_WRITES` | — | — | Enables creating and modifying realms, clients, users and roles. |
+
+Fill exactly one of: **Client credentials** (`KEYCLOAK_CLIENT_SECRET`), **Username and password** (`KEYCLOAK_USERNAME` + `KEYCLOAK_PASSWORD`)
 <!-- </generated:servers> -->

@@ -3,9 +3,9 @@
  * The profile names, scrolling. Two identical runs translated by exactly -50%,
  * so the seam lands on a whole copy and the loop is invisible.
  *
- * Every name is `<profile>/<server>` against a real manifest id — the point of
- * the strip is that a profile is the unit, so `cert/tastytrade` beside
- * `prod/tastytrade` is doing the arguing. The list is written here rather than
+ * Every name is `<profile>/<server>` against a real catalog id — the point of
+ * the strip is that a profile is the unit, so `lab/unifi-network` beside
+ * `home/unifi-network` is doing the arguing. The list is written here rather than
  * generated from `data/servers.ts` because the PROFILE halves are illustrative
  * and nothing in the repo is their authority; the server halves are checked
  * against the manifest below so a renamed server cannot survive here.
@@ -16,13 +16,13 @@ const PROFILES = [
   "prod/shopify",
   "staging/shopify",
   "acme/keycloak",
-  "cert/tastytrade",
-  "prod/tastytrade",
+  "lab/unifi-network",
+  "home/unifi-network",
   "mgcrea/appstore-connect",
   "oss/reddit",
   "mgcrea/x-api",
   "ops/ovh-api",
-  "eu/boursobank",
+  "eu/stripe",
 ] as const;
 
 const ids = new Set(SERVERS.map((s) => s.id));

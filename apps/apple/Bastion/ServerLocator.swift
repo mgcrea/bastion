@@ -4,18 +4,21 @@ import Foundation
 nonisolated struct ServerBinaries {
   let node: URL
   let script: URL
-  /// True when these came from the dev override rather than the bundle.
+  /// True when these came from the dev override rather than from an install.
   let isDevelopment: Bool
 }
 
 enum LocateError: LocalizedError {
-  case notBundled(server: String, expected: String)
+  case notInstalled(server: String)
+  case noRuntime
   case devConfigInvalid(String)
 
   var errorDescription: String? {
     switch self {
-    case .notBundled(let server, let expected):
-      return "the \(server) server is not in this build (expected \(expected))"
+    case .notInstalled(let server):
+      return "the \(server) server is not installed — install it in Bastion"
+    case .noRuntime:
+      return "this build has no embedded node runtime"
     case .devConfigInvalid(let detail):
       return "dev.json is unusable: \(detail)"
     }
@@ -23,16 +26,10 @@ enum LocateError: LocalizedError {
 }
 
 nonisolated enum ServerLocator {
-  /// Production layout:
+  /// The embedded runtime.
   ///
   ///     Bastion.app/Contents/Resources/node
-  ///     Bastion.app/Contents/Resources/servers/<id>/package.json
-  ///     Bastion.app/Contents/Resources/servers/<id>/dist/cli.js
-  ///
-  /// The `package.json` + `dist/` shape is not decoration: these servers read
-  /// their own version from `new URL("../package.json", import.meta.url)`, so a
-  /// flat `servers/<id>/cli.js` would resolve to one shared file and report the
-  /// wrong version in every diagnostic.
+  ///     Bastion.app/Contents/Resources/npm/bin/npm-cli.js
   ///
   /// Node is embedded rather than borrowed from the system. The official
   /// nodejs.org darwin builds are a single self-contained binary, which removes
@@ -41,66 +38,106 @@ nonisolated enum ServerLocator {
   /// server resolved through the developer's `PATH` would work in a terminal
   /// and fail under LaunchServices.
   ///
-  /// The argument is `server`, never a path. Same closed-table invariant as
-  /// `ServerCatalog`: a component that ran whatever path it was handed would be
-  /// a way for anything that reached the gateway to execute arbitrary code with
-  /// the user's credentials already in the environment.
-  static func locate(_ server: BastionServer) throws -> ServerBinaries {
-    guard let resources = Bundle.main.resourceURL else {
-      throw LocateError.notBundled(server: server.id, expected: "Contents/Resources")
+  /// npm rides along because installs happen on demand now. It is the same
+  /// npm that runtime shipped with, which is the version its own `engines`
+  /// ranges were written against.
+  static func nodeExecutable() -> URL? {
+    if let resources = Bundle.main.resourceURL {
+      let bundled = resources.appendingPathComponent("node")
+      if FileManager.default.fileExists(atPath: bundled.path) { return bundled }
     }
-    let node = resources.appendingPathComponent("node")
-    let script =
-      resources
-      .appendingPathComponent("servers")
-      .appendingPathComponent(server.id)
-      .appendingPathComponent("dist/cli.js")
+    #if DEBUG
+      if let dev = try? developmentConfig() { return URL(fileURLWithPath: dev.node) }
+    #endif
+    return nil
+  }
 
-    let exists = FileManager.default.fileExists(atPath:)
-    if exists(node.path), exists(script.path) {
-      return ServerBinaries(node: node, script: script, isDevelopment: false)
+  static func npmCLI() -> URL? {
+    if let resources = Bundle.main.resourceURL {
+      let bundled = resources.appendingPathComponent("npm/bin/npm-cli.js")
+      if FileManager.default.fileExists(atPath: bundled.path) { return bundled }
     }
+    #if DEBUG
+      // Beside the developer's own node, in the layout every distribution of it
+      // uses: <prefix>/bin/node and <prefix>/lib/node_modules/npm. Debug only —
+      // a release build that reached outside its bundle for a package manager
+      // would be running code nobody signed.
+      if let dev = try? developmentConfig() {
+        let prefix = URL(fileURLWithPath: dev.node).deletingLastPathComponent()
+          .deletingLastPathComponent()
+        let cli = prefix.appendingPathComponent("lib/node_modules/npm/bin/npm-cli.js")
+        if FileManager.default.fileExists(atPath: cli.path) { return cli }
+      }
+    #endif
+    return nil
+  }
+
+  /// Resolve one server to a runtime and a script.
+  ///
+  /// The argument is a `BastionServer` the user installed, never a path. Same
+  /// invariant the closed table used to carry and the only half of it that was
+  /// ever load-bearing: a component that ran whatever path it was handed would
+  /// be a way for anything reaching the gateway to execute arbitrary code with
+  /// the user's credentials already in the environment. What changed is who
+  /// writes the list, not how a request selects from it.
+  static func locate(_ server: BastionServer) throws -> ServerBinaries {
+    guard let node = nodeExecutable() else { throw LocateError.noRuntime }
 
     #if DEBUG
-      // Before the release staging exists, run the servers straight out of the
-      // checkout. Read from a file rather than the environment because
-      // LaunchServices does not hand an app the developer's shell environment.
-      if let dev = try developmentBinaries(server) { return dev }
+      // The checkout wins in Debug, which is what `make dev-config` is for:
+      // dogfooding against an edit you just made beats whatever npm last
+      // resolved. Four of the nine catalog entries are unpublished, so for most
+      // of v1 this is not a fallback — it is the only path that resolves.
+      if let dev = try developmentBinaries(server, node: node) { return dev }
     #endif
 
-    throw LocateError.notBundled(server: server.id, expected: script.path)
+    guard let script = ServerInstaller.entryScript(of: server) else {
+      throw LocateError.notInstalled(server: server.id)
+    }
+    return ServerBinaries(node: node, script: script, isDevelopment: false)
   }
 
   #if DEBUG
+    private struct DevConfig {
+      let node: String
+      let repo: String
+    }
+
     /// `~/Library/Application Support/io.mgcrea.bastion.debug/dev.json`:
     ///
     ///     { "node": "/opt/homebrew/opt/node@24/bin/node",
     ///       "repo": "/Users/you/Projects/mgcrea/mgcrea-ai" }
     ///
     /// `repo` is the directory holding the server checkouts, and the manifest's
-    /// `localPath` names the one to use. Seven of the ten servers are not
-    /// published at all, so for most of v1's dogfooding this is not a fallback
-    /// — it is the only path that resolves.
-    private static func developmentBinaries(_ server: BastionServer) throws -> ServerBinaries? {
+    /// `localPath` names the one to use.
+    private static func developmentConfig() throws -> DevConfig? {
       let url = AppSupport.directory.appendingPathComponent("dev.json")
       guard let data = try? Data(contentsOf: url) else { return nil }
-
       guard
         let json = try? JSONSerialization.jsonObject(with: data) as? [String: String],
         let node = json["node"], let repo = json["repo"]
       else { throw LocateError.devConfigInvalid("expected {\"node\": …, \"repo\": …}") }
+      guard FileManager.default.fileExists(atPath: node) else {
+        throw LocateError.devConfigInvalid("no node at \(node)")
+      }
+      return DevConfig(node: node, repo: repo)
+    }
 
-      let script = URL(fileURLWithPath: repo)
+    private static func developmentBinaries(_ server: BastionServer, node: URL) throws
+      -> ServerBinaries?
+    {
+      guard let dev = try developmentConfig() else { return nil }
+
+      let script = URL(fileURLWithPath: dev.repo)
         .appendingPathComponent(server.localPath)
         .appendingPathComponent("dist/cli.js")
 
-      let exists = FileManager.default.fileExists(atPath:)
-      guard exists(node) else { throw LocateError.devConfigInvalid("no node at \(node)") }
-      guard exists(script.path) else {
-        throw LocateError.devConfigInvalid("no build at \(script.path) — run `pnpm build` there")
-      }
-      return ServerBinaries(
-        node: URL(fileURLWithPath: node), script: script, isDevelopment: true)
+      // Absent, not fatal. A custom server the developer added by package name
+      // has no checkout under `repo` and must fall through to its install — so
+      // "no build here" is a miss, and only a `dev.json` that cannot be read at
+      // all is an error.
+      guard FileManager.default.fileExists(atPath: script.path) else { return nil }
+      return ServerBinaries(node: node, script: script, isDevelopment: true)
     }
   #endif
 }

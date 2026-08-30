@@ -22,9 +22,10 @@ nonisolated struct Profile: Identifiable, Hashable {
   ///
   /// Per profile, never global. This is Bastion's answer to the third reason
   /// `ServerHost.swift` gives for one process per connection: write permissions
-  /// do not have to be shared just because a process is. One `tastytrade/cert`
-  /// profile with trading on and one `tastytrade/prod` profile with trading off
-  /// is a sane setup, and a single global switch makes it unexpressible.
+  /// do not have to be shared just because a process is. One `lab/unifi-network`
+  /// profile that may reconfigure a switch and one `home/unifi-network` profile
+  /// that may only look is a sane setup, and a single global switch makes it
+  /// unexpressible.
   var allowWrites: Bool
 
   var id: String { "\(name)/\(serverID)" }
@@ -71,6 +72,22 @@ final class ProfileStore {
 
   private var fileURL: URL { AppSupport.directory.appendingPathComponent("profiles.json") }
 
+  /// Rows whose server is not installed, kept out of `profiles` and kept in the
+  /// file.
+  ///
+  /// This exists because the server list became editable. Dropping an
+  /// unresolvable row used to be free: the table was fixed at compile time, so
+  /// a row naming a server that was not in it could only be a hand-edit or a
+  /// downgrade. Now the ordinary case is a server the user removed — or has not
+  /// re-installed yet — and dropping the row from memory means the next `save()`
+  /// drops it from disk, silently taking a profile's configuration with it.
+  ///
+  /// Deliberate removal is a different path and still deletes: `ServerStore`
+  /// removes a server's profiles itself, with the Keychain sweep, before the
+  /// server leaves the list. So what survives here is exactly what nobody asked
+  /// to destroy.
+  private var orphaned: [Stored] = []
+
   init() { load() }
 
   func profile(named name: String, server: String) -> Profile? {
@@ -91,20 +108,27 @@ final class ProfileStore {
       let rows = try? JSONDecoder().decode([Stored].self, from: data)
     else {
       profiles = []
+      orphaned = []
       refreshSnapshot()
       return
     }
+    orphaned = rows.filter { Profile.isValidName($0.name) && ServerStore.lookup($0.server) == nil }
     profiles = rows.compactMap { row in
-      // Drop rather than repair. A row naming a server that is not in the
-      // closed table, or a name that is not a legal path segment, is either a
-      // hand-edit or a downgrade — and both are cases where guessing at what
-      // was meant is worse than ignoring it. Logged so it is not silent.
+      // Drop rather than repair. A row naming a server that is not installed,
+      // or a name that is not a legal path segment, is either a hand-edit or a
+      // downgrade — and both are cases where guessing at what was meant is
+      // worse than ignoring it. Logged so it is not silent.
+      //
+      // `ServerStore.remove` deletes a server's profiles itself, with the
+      // Keychain sweep, precisely so this path is never how they go.
       guard Profile.isValidName(row.name) else {
         hostLog("profiles", .error, "ignoring profile with unusable name '\(row.name)'")
         return nil
       }
-      guard ServerCatalog.byID[row.server] != nil else {
-        hostLog("profiles", .error, "ignoring profile '\(row.name)' for unknown server '\(row.server)'")
+      guard ServerStore.lookup(row.server) != nil else {
+        hostLog(
+          "profiles", .info,
+          "'\(row.name)/\(row.server)' is set aside — \(row.server) is not installed")
         return nil
       }
       return Profile(
@@ -116,9 +140,10 @@ final class ProfileStore {
   func save() throws {
     refreshSnapshot()
     AppSupport.ensureDirectory()
-    let rows = profiles.map {
-      Stored(name: $0.name, server: $0.serverID, values: $0.values, allowWrites: $0.allowWrites)
-    }
+    let rows =
+      profiles.map {
+        Stored(name: $0.name, server: $0.serverID, values: $0.values, allowWrites: $0.allowWrites)
+      } + orphaned
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     try encoder.encode(rows).write(to: fileURL, options: .atomic)
@@ -143,6 +168,9 @@ final class ProfileStore {
   /// credential in the Keychain belonging to a profile that no longer exists.
   func remove(_ profile: Profile) throws {
     profiles.removeAll { $0.id == profile.id }
+    // The set-aside copy too, or a removal would leave the row in the file to
+    // be resurrected by the next load with its credentials already swept.
+    orphaned.removeAll { $0.name == profile.name && $0.server == profile.serverID }
     let prefix = "\(profile.name)/\(profile.serverID)/"
     for account in CredentialStore.accounts(.profile) where account.hasPrefix(prefix) {
       try? CredentialStore.delete(.profile, account: account)
@@ -195,6 +223,14 @@ nonisolated enum ProfileEnvironment {
       // whose shape has not been checked is how a token file becomes a
       // directory and a server fails at startup with an EISDIR nobody expects.
       "XDG_CONFIG_HOME": state.path,
+      // The same move for caches, and stated less confidently on purpose. It is
+      // pointed at the profile directory because the cost of being wrong is a
+      // variable nothing reads, and the cost of leaving it is two profiles
+      // writing into one `~/.cache/<server>` — which for mcp-unifi-protect is
+      // two identities sharing a directory of camera footage. The variables
+      // whose shape HAS been checked are in `stateEnv` and surfaced in the
+      // profile editor; this is the floor under them, not a substitute.
+      "XDG_CACHE_HOME": state.appendingPathComponent("cache", isDirectory: true).path,
     ]
 
     let known = Set(server.env.map(\.name))

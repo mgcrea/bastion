@@ -14,6 +14,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // shopify" while `profiles.json` sits on disk with the profile in it.
     // Nothing else on this path touches the store, so nothing else would
     // construct it.
+    //
+    // Servers first, then profiles: `ProfileStore.load` drops a profile naming
+    // a server that is not installed, so a profile store built against an empty
+    // server snapshot would drop every profile there is — and then save the
+    // result over `profiles.json` at the first edit.
+    _ = ServerStore.shared
     _ = ProfileStore.shared
     #if DEBUG
       DevSeed.runIfPresent()
@@ -29,15 +35,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // constructor call guarded by a later check.
     UpdateController.shared.startIfConsented()
 
+    // One observer for every window the app will ever own. Bastion is
+    // `LSUIElement`, which is right for the 99% of its life when it is a
+    // gateway nobody is looking at and wrong the moment a titled window is on
+    // screen — see `DockPresence`.
+    DockPresence.observe()
+
     #if DEBUG
-      // For looking at the window without hunting for the menu bar icon, and
-      // for capturing it. A menu bar agent has no other way to be told "open
-      // your window" from a script.
-      if CommandLine.arguments.contains("--activity") {
-        ActivityWindowController.show()
-      }
-      if CommandLine.arguments.contains("--clients") {
-        ClientsWindowController.show()
+      // For looking at a window without hunting for the menu bar icon, and for
+      // capturing one. A menu bar agent has no other way to be told "open your
+      // window" from a script.
+      if let raw = CommandLine.arguments.first(where: { $0.hasPrefix("--pane=") }),
+        let pane = MainPane(rawValue: String(raw.dropFirst("--pane=".count)))
+      {
+        MainWindowController.show(pane)
+      } else if CommandLine.arguments.contains("--window") {
+        MainWindowController.show()
       }
       // Arms a REAL trial — the same thirty-minute in-memory window a person
       // gets from the button, not a forged licence. `make smoke` and
@@ -50,12 +63,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     #endif
   }
 
+  /// A click on the Dock icon, or opening the app while it is already running —
+  /// which, since Bastion is started by a client's bridge and will be started by
+  /// a login item, is what a Finder double-click almost always becomes.
+  ///
+  /// This is the only path that opens the main window automatically. Doing it
+  /// from `applicationDidFinishLaunching` instead would need the app to work out
+  /// whether a person or a tool call had started it, and it cannot: an
+  /// `.accessory` app never becomes active, so `NSApp.isActive` is false either
+  /// way. A cold double-click with the app not running therefore shows only the
+  /// menu bar icon; opening it once more gets the window, and that case is rare
+  /// precisely because the app is nearly always already up.
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+    guard !hasVisibleWindows else { return true }
+    MainWindowController.show()
+    return true
+  }
+
   /// Stop the children before the app goes.
   ///
   /// Not merely tidiness. A child that outlives Bastion is a process holding
-  /// the user's credentials with nothing supervising it, no Activity window
-  /// recording what it does, and no parent to notice it is there — which is
-  /// precisely the state the whole project exists to end.
+  /// the user's credentials with nothing supervising it, nothing recording what
+  /// it does, and no parent to notice it is there — which is precisely the
+  /// state the whole project exists to end.
   func applicationWillTerminate(_ notification: Notification) {
     Supervisor.shared.stopAll()
     Gateway.shared.stop()
@@ -67,10 +97,35 @@ struct BastionApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
   var body: some Scene {
+    // The menu bar is the only surface Bastion shows uninvited. It owns two
+    // windows all the same, opened only when asked: the main window and
+    // Settings. `DockPresence` gives the app a Dock icon for exactly as long as
+    // one of them is open, because a titled window with no Dock icon and no app
+    // menu is one you cannot get back to.
     MenuBarExtra {
       GatewayMenu()
     } label: {
       MenuBarLabel()
+    }
+    // Settings and its ⌘, declared to SwiftUI rather than inserted into
+    // `NSApp.mainMenu` by hand.
+    //
+    // Cupertino did the latter and the item did not survive: SwiftUI installs
+    // its own main menu after the delegate returns and builds another whenever
+    // the activation policy flips, each one discarding whatever was in the menu
+    // it replaced. Re-asserting on `didBecomeActive` and after every policy
+    // change did not fix it either — SwiftUI's rebuild lands after those hooks.
+    // `DockPresence` flips that policy on every window open and close, so this
+    // is not optional here.
+    //
+    // `.appSettings`, not `after: .appInfo`. Both put an item in the app menu,
+    // but only this one is the slot AppKit reserves for Settings, so the
+    // separators around it are Apple's rather than ours to guess at.
+    .commands {
+      CommandGroup(replacing: .appSettings) {
+        Button("Settings…") { SettingsWindowController.show() }
+          .keyboardShortcut(",", modifiers: .command)
+      }
     }
   }
 }
@@ -83,7 +138,7 @@ struct BastionApp: App {
 ///
 /// It does not change with gateway state. There is one drawn glyph and inventing
 /// a second in code would be a mark nothing in `design/` accounts for; a gateway
-/// that failed to start says so in the menu and in the Activity window, which is
+/// that failed to start says so in the menu and in the main window, which is
 /// where somebody who noticed the icon would look next.
 private struct MenuBarLabel: View {
   var body: some View {
@@ -124,9 +179,19 @@ private struct GatewayMenu: View {
     }
 
     Divider()
-    Button("Activity…") { ActivityWindowController.show() }
-      .keyboardShortcut("a")
-    Button("MCP Clients…") { ClientsWindowController.show() }
+    Button("Open Bastion") { MainWindowController.show() }
+      .keyboardShortcut("o")
+    // Its own item for the same reason "MCP Clients…" is one, and more so on a
+    // fresh install: with nothing installed, adding a server is the only useful
+    // thing in the app, and the menu bar is where Bastion is when nobody has
+    // opened a window yet.
+    Button("Add Server…") { ServerEditorHost.present() }
+      .keyboardShortcut("n")
+    // Still its own item, and still ⌘K. Wiring a client is the one task
+    // somebody arrives at the menu bar already intending to do, and making them
+    // open a window and then find a sidebar row would be a step backwards from
+    // the window this replaced.
+    Button("MCP Clients…") { MainWindowController.show(.client(ClientWiring.all[0].id)) }
       .keyboardShortcut("k")
     Divider()
 
@@ -150,19 +215,16 @@ private struct GatewayMenu: View {
 
     Divider()
 
-    // Two items rather than a settings pane, because there are exactly two
-    // questions: check now, and may we check on our own. The default is no,
-    // set explicitly in Bastion-Info.plist so Sparkle never asks in its own
-    // words on second launch.
+    // Check now stays; "may we check on our own" moved to Settings ▸ General.
+    // The two are not the same kind of question — one is an action somebody
+    // wants this second, the other is a standing preference — and the standing
+    // one was the only thing keeping a toggle in a menu.
     Button(UpdateController.shared.isChecking ? "Checking…" : "Check for Updates…") {
       UpdateController.shared.checkNow()
     }
     .disabled(UpdateController.shared.isChecking)
-    Toggle(
-      "Check Automatically",
-      isOn: Binding(
-        get: { UpdateController.shared.automatic },
-        set: { UpdateController.shared.setAutomatic($0) }))
+    Button("Settings…") { SettingsWindowController.show() }
+      .keyboardShortcut(",")
 
     Divider()
     Button("Quit Bastion") { NSApplication.shared.terminate(nil) }

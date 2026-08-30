@@ -5,10 +5,13 @@
  * servers-check` fails in CI if it has drifted. Do not edit the region below;
  * edit the manifest and rerun.
  *
- * The site makes a claim about this list — "the list is closed", "seven behind a
- * write gate, three read-only" — and a hand-kept copy is exactly how a page ends
- * up counting differently from the app it describes. The counts below are
- * derived here rather than typed, for the same reason.
+ * The site makes a claim about this list — how many entries, how many behind a
+ * write gate — and a hand-kept copy is exactly how a page ends up counting
+ * differently from the app it describes. The counts are derived from this file
+ * rather than typed, for the same reason.
+ *
+ * It is the CATALOG, not what any install runs. That list is the user's, lives
+ * in Application Support, and starts empty; nothing here can know it.
  *
  * The whole file is in `.oxfmtrc.json`'s `ignorePatterns`, beside `docs/servers.md`
  * and for the same reason: the formatter wraps a long `summary` that the
@@ -31,31 +34,10 @@ export interface Server {
 // <generated:servers> generated from servers.json by `make servers` — do not edit by hand
 export const SERVERS: Server[] = [
   {
-    id: "shopify",
-    displayName: "Shopify",
-    summary: "Shopify Admin GraphQL API: products, variants, collections, metafields, locations.",
-    writeGate: null,
-    dialect: "2025-11-25",
-  },
-  {
     id: "appstore-connect",
     displayName: "App Store Connect",
     summary: "App Store Connect API: apps, versions, builds, TestFlight, listings, analytics, sales.",
     writeGate: "APP_STORE_CONNECT_ALLOW_WRITES",
-    dialect: "2025-11-25",
-  },
-  {
-    id: "keycloak",
-    displayName: "Keycloak",
-    summary: "Keycloak Admin REST API: realms, clients, users, roles, sessions.",
-    writeGate: "KEYCLOAK_ALLOW_WRITES",
-    dialect: "2025-11-25",
-  },
-  {
-    id: "ovh-api",
-    displayName: "OVHcloud",
-    summary: "OVHcloud API, focused on Object Storage: containers, objects, policies, regions.",
-    writeGate: "OVH_ALLOW_WRITES",
     dialect: "2025-11-25",
   },
   {
@@ -73,31 +55,45 @@ export const SERVERS: Server[] = [
     dialect: "2025-11-25",
   },
   {
-    id: "tastytrade",
-    displayName: "TastyTrade",
-    summary: "TastyTrade brokerage API: accounts, positions, balances, quotes, and order entry.",
-    writeGate: "TASTYTRADE_ALLOW_TRADING",
+    id: "unifi-protect",
+    displayName: "UniFi Protect",
+    summary: "UniFi Protect: cameras, event history, recordings, snapshots and NVR status.",
+    writeGate: "UNIFI_PROTECT_ALLOW_WRITES",
     dialect: "2025-11-25",
   },
   {
-    id: "boursobank",
-    displayName: "BoursoBank",
-    summary: "BoursoBank customer API: accounts, transactions, statements, market data.",
-    writeGate: "BOURSOBANK_ALLOW_TRADING",
+    id: "unifi-network",
+    displayName: "UniFi Network",
+    summary: "UniFi Network API: sites, devices, clients, WLANs, port and firewall configuration.",
+    writeGate: "UNIFI_ALLOW_WRITES",
     dialect: "2025-11-25",
   },
   {
-    id: "buzzberg",
-    displayName: "Buzzberg",
-    summary: "Buzzberg market intelligence: speaker calls, timelines and crowd sentiment.",
+    id: "stripe",
+    displayName: "Stripe",
+    summary: "Stripe API: customers, subscriptions, invoices, charges, payouts and balance.",
+    writeGate: "STRIPE_ALLOW_WRITES",
+    dialect: "2025-11-25",
+  },
+  {
+    id: "shopify",
+    displayName: "Shopify",
+    summary: "Shopify Admin GraphQL API: products, variants, collections, metafields, locations.",
     writeGate: null,
     dialect: "2025-11-25",
   },
   {
-    id: "yahoo-finance",
-    displayName: "Yahoo Finance",
-    summary: "Yahoo Finance market data: quotes, fundamentals, holders, time series.",
-    writeGate: null,
+    id: "ovh-api",
+    displayName: "OVHcloud",
+    summary: "OVHcloud API, focused on Object Storage: containers, objects, policies, regions.",
+    writeGate: "OVH_ALLOW_WRITES",
+    dialect: "2025-11-25",
+  },
+  {
+    id: "keycloak",
+    displayName: "Keycloak",
+    summary: "Keycloak Admin REST API: realms, clients, users, roles, sessions.",
+    writeGate: "KEYCLOAK_ALLOW_WRITES",
     dialect: "2025-11-25",
   },
 ];

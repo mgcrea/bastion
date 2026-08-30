@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://bastion.mgcrea.io/servers.schema.json",
-  "title": "Bastion server manifest",
-  "description": "The closed list of MCP servers Bastion is allowed to supervise. Enforced by scripts/generate-servers.mjs before it writes anything.",
+  "title": "Bastion server catalog",
+  "description": "The catalog Bastion ships as a starting point. It is not the list of servers a given install runs \u2014 that list lives in Application Support and the user edits it. Enforced by scripts/generate-servers.mjs before it writes anything.",
   "type": "object",
   "required": ["servers"],
   "additionalProperties": false,
@@ -49,7 +49,7 @@
         "binName": { "type": "string", "pattern": "^[a-z0-9-]+$" },
         "distribution": {
           "enum": ["npm", "local"],
-          "description": "npm means published and installable; local means a private checkout under the mgcrea-ai directory."
+          "description": "npm means published, so Bastion can install it on demand; local means it resolves only against a checkout named by dev.json."
         },
         "localPath": { "type": "string", "minLength": 1 },
         "docsUrl": { "type": ["string", "null"], "pattern": "^https://" },

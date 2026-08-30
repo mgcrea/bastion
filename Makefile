@@ -18,16 +18,19 @@ NODE_VERSION ?= 24.18.0
 NODE_ARCHS   ?= arm64 x64
 STAGED       := apps/apple/.build/staged
 
-# Where the servers come from, which is the one place Bastion differs from
-# cupertino's release path in kind rather than in name.
+# NO SERVERS ARE BUNDLED. That is the one place Bastion differs from cupertino's
+# release path in kind rather than in name.
 #
-# Cupertino bundles its own `packages/*`. Bastion's servers live in a SIBLING
-# REPO and only three of the ten are published to npm, so there is no single
-# answer. `make stage-servers` takes the published ones from the registry, which
-# is the only source a stranger could reproduce. `LOCAL_SERVERS=1` takes all ten
-# from the checkout instead, which is right for a dogfood build and wrong for
-# anything anyone else installs — a bundle built that way carries unpublished
-# code from a path on this machine.
+# Cupertino bundles its own `packages/*`. Bastion used to bundle the published
+# ones and stage the rest from a sibling checkout, and that is exactly what made
+# the server list feel fixed: a server you could add was a server that had to
+# already be in `Contents/Resources`, and every id outside the bundle answered
+# "not in this build".
+#
+# So the bundle carries the RUNTIME and nothing else — node, and the npm that
+# shipped with it — and `ServerInstaller` fetches a server into Application
+# Support when somebody asks for it. `MCP_ROOT` survives for `dev-config`,
+# which points a Debug build at the checkout instead.
 # The updater. Pinned exactly and checksum-verified: this framework is loaded
 # into a process holding every credential the user owns, and `sign` asserts the
 # team that signed it, so a version that drifted under that allowance would be
@@ -45,7 +48,6 @@ SPARKLE_STAMP     := $(SPARKLE_VENDOR)/.sparkle-$(SPARKLE_VERSION)
 RELEASE_SPARKLE    = $(RELEASE_APP)/Contents/Frameworks/Sparkle.framework
 
 MCP_ROOT     ?= $(HOME)/Projects/mgcrea/mgcrea-ai
-NPM_SERVERS  := shopify appstore-connect ovh-api
 
 # What a local build calls itself, from the two facts CI derives it from: the
 # nearest `app-v*` tag and the commit count. Without this a `make install` app
@@ -154,7 +156,19 @@ $(SPARKLE_STAMP):
 	@touch $(SPARKLE_STAMP)
 	@echo "  Sparkle $(SPARKLE_VERSION) staged: $(SPARKLE_FRAMEWORK)"
 
-node: ## Download and lipo the embedded node runtime
+# node, and the npm that came with it.
+#
+# npm is not a convenience here — it is how a server gets installed at all, and
+# it has to be the one this exact runtime shipped with: npm's own `engines`
+# range is written against its node, and pairing an arbitrary npm with a pinned
+# node is the mismatch nobody would think to look for when an install fails on
+# one machine and not another.
+#
+# Pure JavaScript, ~17MB, no Mach-O anywhere in it — checked, because a binary
+# in here would be one more thing to sign, notarize and explain. It is taken
+# from the arm64 tarball because npm is architecture-independent; the `lipo`
+# above is for the runtime, which is not.
+node: ## Download and stage the embedded node runtime and npm
 	@mkdir -p $(STAGED) apps/apple/.build/node-cache
 	@for arch in $(NODE_ARCHS); do \
 		tar="apps/apple/.build/node-cache/node-v$(NODE_VERSION)-darwin-$$arch.tar.gz"; \
@@ -167,67 +181,23 @@ node: ## Download and lipo the embedded node runtime
 		slices="$$slices apps/apple/.build/node-cache/node-v$(NODE_VERSION)-darwin-$$arch/bin/node"; done; \
 		lipo -create $$slices -output $(STAGED)/node
 	@lipo -info $(STAGED)/node | sed 's/^/  /'
+	@arch=$$(echo $(NODE_ARCHS) | tr ' ' '\n' | grep -m1 arm64 || echo $(NODE_ARCHS) | cut -d' ' -f1); \
+		src="apps/apple/.build/node-cache/node-v$(NODE_VERSION)-darwin-$$arch"; \
+		tar -xzf "apps/apple/.build/node-cache/node-v$(NODE_VERSION)-darwin-$$arch.tar.gz" \
+			-C apps/apple/.build/node-cache "node-v$(NODE_VERSION)-darwin-$$arch/lib/node_modules/npm"; \
+		rm -rf "$(STAGED)/npm"; \
+		ditto "$$src/lib/node_modules/npm" "$(STAGED)/npm"
+	@echo "  npm $$($(STAGED)/node $(STAGED)/npm/bin/npm-cli.js --version) staged"
 
-# Two steps, because the published tarball is not runnable on its own.
-#
-# `npm pack` fetches exactly what the registry serves and nothing else, which is
-# the right source — but these packages do NOT bundle their dependencies, so a
-# staged `dist/cli.js` dies at startup with ERR_MODULE_NOT_FOUND on
-# `@modelcontextprotocol/sdk`. Measured, by `scripts/verify-servers.sh` refusing
-# to sign a bundle in which all three staged servers failed to answer
-# `initialize` — which is the entire reason that check runs before the signature
-# rather than after it.
-#
-# So each staged server then gets its own production `node_modules`. Per server
-# rather than hoisted: they are independent packages that happen to share a
-# parent directory, and a shared tree would make one server's resolution depend
-# on another's dependency ranges.
-stage-servers: ## Stage the MCP servers into the release bundle layout
-	@rm -rf "$(STAGED)/servers" && mkdir -p "$(STAGED)/servers"
-ifdef LOCAL_SERVERS
-	@echo "  LOCAL_SERVERS=1 — staging all ten from $(MCP_ROOT)."
-	@echo "  !! This bundle will carry unpublished code from this machine."
-	@for id in $$(node -e 'console.log(require("./servers.json").servers.map(s=>s.id).join(" "))'); do \
-		src="$(MCP_ROOT)/mcp-$$id"; \
-		if [ ! -f "$$src/dist/cli.js" ]; then echo "  $$id: no dist/cli.js — run its build"; exit 1; fi; \
-		mkdir -p "$(STAGED)/servers/$$id"; \
-		ditto "$$src/dist" "$(STAGED)/servers/$$id/dist"; \
-		install -m 644 "$$src/package.json" "$(STAGED)/servers/$$id/package.json"; \
-		echo "  $$id: from the checkout"; \
-	done
-else
-	@cd "$(STAGED)/servers" && for id in $(NPM_SERVERS); do \
-		tarball=$$(npm pack "@mgcrea/mcp-$$id" --silent 2>/dev/null) || \
-			{ echo "  $$id: not on npm — skipped"; continue; }; \
-		mkdir -p "$$id" && tar -xzf "$$tarball" -C "$$id" --strip-components=1 && rm -f "$$tarball"; \
-		echo "  $$id: $$(node -p "require('./$$id/package.json').version") from npm"; \
-	done
-	@echo "  the other servers are not published; a bundle without them reports"
-	@echo "  'not in this build' when one is asked for, which is the honest answer."
-endif
-	@# `--omit=dev` and no lockfile: what ships is the runtime closure and
-	@# nothing else. `--ignore-scripts` because a postinstall from a transitive
-	@# dependency has no business running inside a bundle about to be signed.
-	@for dir in "$(STAGED)/servers"/*/; do \
-		[ -d "$$dir" ] || continue; \
-		(cd "$$dir" && npm install --omit=dev --no-package-lock --ignore-scripts --silent) \
-			|| { echo "  $$(basename $$dir): could not install dependencies"; exit 1; }; \
-		echo "  $$(basename $$dir): $$(du -sh "$$dir" | cut -f1)"; \
-	done
-
-# The package.json + dist/ shape is not decoration. These servers read their own
-# version from `new URL("../package.json", import.meta.url)`, so a flat
-# `servers/<id>/cli.js` resolves to one shared file and reports the wrong
-# version in every diagnostic.
-bundle: stage-servers node sparkle ## Build, stage, verify and sign a Release Bastion.app
+bundle: node sparkle ## Build, stage, verify and sign a Release Bastion.app
 	@$(MAKE) --no-print-directory app CONFIG=Release \
 		XCARGS="$(XCARGS) CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO"
-	@rm -rf "$(RELEASE_APP)/Contents/Resources/servers" "$(RELEASE_APP)/Contents/Resources/node"
-	@ditto "$(STAGED)/servers" "$(RELEASE_APP)/Contents/Resources/servers"
+	@rm -rf "$(RELEASE_APP)/Contents/Resources/node" "$(RELEASE_APP)/Contents/Resources/npm"
 	@ditto "$(STAGED)/node" "$(RELEASE_APP)/Contents/Resources/node"
-	@# Before signing, not after. A signature over a bundle whose servers cannot
-	@# start is worth nothing, and this is the first point at which the servers
-	@# and the runtime they will be spawned under sit side by side.
+	@ditto "$(STAGED)/npm" "$(RELEASE_APP)/Contents/Resources/npm"
+	@# Before signing, not after. A signature over a bundle that cannot install
+	@# or start a server is worth nothing, and this is the first point at which
+	@# the runtime and the package manager it installs with sit side by side.
 	@scripts/verify-servers.sh "$(RELEASE_APP)"
 	@$(MAKE) --no-print-directory sign
 
@@ -493,7 +463,7 @@ format-check: ## Fail on unformatted files
 	@pnpm format:check
 
 .PHONY: help app run stop dev-config clean \
-	sparkle sparkle-keys appcast node stage-servers bundle sign notarize build-release \
+	sparkle sparkle-keys appcast node bundle sign notarize build-release \
 	install install-release install-from uninstall \
 	smoke dialect wiring-check wiring-check-real audit migrate servers servers-check icon \
 	lint format format-check

@@ -65,7 +65,14 @@
 
       var stripped = document
       for (index, row) in document.profiles.enumerated() {
-        guard let server = ServerCatalog.byID[row.server] else {
+        // Install it if the import names a catalog entry that is not in the
+        // list yet. A seed file exists to get a working setup in one step, and
+        // "add the server, then re-run the import" is a step that only exists
+        // because the list became editable.
+        if ServerStore.lookup(row.server) == nil, ServerCatalog.byID[row.server] != nil {
+          try? ServerStore.shared.install(catalogEntry: row.server)
+        }
+        guard let server = ServerStore.lookup(row.server) else {
           hostLog("import", .error, "unknown server '\(row.server)'")
           continue
         }

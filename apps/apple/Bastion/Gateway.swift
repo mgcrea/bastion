@@ -257,7 +257,7 @@ nonisolated final class Gateway: @unchecked Sendable {
         json: [
           "ok": true, "version": AppInfo.version,
           "protocolVersions": Dialect.supportedVersions.map(\.rawValue),
-          "servers": ServerCatalog.all.map(\.id),
+          "servers": ServerStore.installedIDs(),
         ])
 
     case ("POST", let path) where path.count == 3 && path[0] == "s":

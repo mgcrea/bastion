@@ -9,7 +9,7 @@
 //
 // Not whole files. Each target carries a MARKED REGION and only the region is
 // replaced, because the prose around the list is worth more than the list is:
-// ServerCatalog.swift opens with the closed-table invariant, and generating
+// ServerCatalog.swift opens with what the catalog is and is not, and generating
 // that away to save a few lines of repetition would be a bad trade.
 //
 // ## --check
@@ -90,6 +90,11 @@ const validate = (servers) => {
     // out in the manifest anyway so a reader never has to reconstruct them, and
     // checked here so the two can never disagree — which is the failure that
     // makes a "helpfully" redundant field worse than no field.
+    //
+    // Catalog entries only. A CUSTOM server added in the app is not held to
+    // this: it names somebody else's package, and `@acme/mcp-foo` shipping a
+    // `foo` binary is nobody's mistake. `ServerStore` validates those instead,
+    // which is why that check lives in Swift and this one does not move.
     if (s.npmName !== `@mgcrea/mcp-${s.id}`) p(`npmName must be @mgcrea/mcp-${s.id}`);
     if (s.binName !== `${s.id}-mcp`) p(`binName must be ${s.id}-mcp`);
     if (s.localPath !== `mcp-${s.id}`) p(`localPath must be mcp-${s.id}`);
@@ -333,11 +338,11 @@ target("docs/servers.md", (src) =>
 
 // ─── 3. apps/website/src/data/servers.ts ─────────────────────────────────────
 //
-// The marketing site says "ten servers, the list is closed" and prints every id
-// with its gate. That is a claim about this manifest, so the site reads a
-// generated copy rather than a typed one — a page that counts differently from
-// the app it describes is the drift this generator exists to make impossible,
-// and it is the copy nobody would notice was wrong.
+// The marketing site names the catalog and prints every id with its gate. That
+// is a claim about this manifest, so the site reads a generated copy rather
+// than a typed one — a page that counts differently from the app it describes
+// is the drift this generator exists to make impossible, and it is the copy
+// nobody would notice was wrong.
 //
 // Only the fields the page renders are emitted. The env matrix and the auth
 // modes are the app's business and would put every secret's NAME on a public
