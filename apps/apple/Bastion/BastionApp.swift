@@ -218,7 +218,7 @@ private struct GatewayMenu: View {
         Button("Start \(Int(Trial.duration / 60))-Minute Trial") { Trial.start() }
       }
     }
-    Button("Licence…") { LicenceWindowController.show() }
+    Button("Licence…") { SettingsWindowController.show(.licence) }
 
     Divider()
 

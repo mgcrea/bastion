@@ -10,14 +10,25 @@ import SwiftUI
 enum SettingsPane: String, CaseIterable, Identifiable {
   case general
   case about
+  case licence
 
   var id: String { rawValue }
   static let defaultsKey = "settingsPane"
+
+  /// What the app is and how it behaves…
+  static let application: [SettingsPane] = [.general, .about]
+
+  /// …and what was bought, which is a different question and the only reason the
+  /// sidebar is in two groups rather than one list of three. Somebody opens
+  /// Licence because of a refusal or a receipt, never because they are tuning
+  /// something — the same split cupertino makes, for the same reason.
+  static let entitlement: [SettingsPane] = [.licence]
 
   var title: String {
     switch self {
     case .general: "General"
     case .about: "About"
+    case .licence: "Licence"
     }
   }
 
@@ -25,6 +36,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     switch self {
     case .general: "gearshape"
     case .about: "info.circle"
+    case .licence: "key"
     }
   }
 }
@@ -71,11 +83,18 @@ struct SettingsView: View {
 
   private var current: SettingsPane { SettingsPane(rawValue: selection) ?? .general }
 
+  private func row(_ pane: SettingsPane) -> some View {
+    Label(pane.title, systemImage: pane.symbol).tag(pane)
+  }
+
   var body: some View {
     NavigationSplitView {
       List(selection: pane) {
-        ForEach(SettingsPane.allCases) { pane in
-          Label(pane.title, systemImage: pane.symbol).tag(pane)
+        Section {
+          ForEach(SettingsPane.application) { row($0) }
+        }
+        Section {
+          ForEach(SettingsPane.entitlement) { row($0) }
         }
       }
       .navigationSplitViewColumnWidth(min: 160, ideal: 176, max: 220)
@@ -92,6 +111,7 @@ struct SettingsView: View {
           switch current {
           case .general: GeneralPane()
           case .about: AboutPane()
+          case .licence: LicencePane()
           }
         }
       }
@@ -225,10 +245,6 @@ private struct AboutPane: View {
           .fixedSize(horizontal: false, vertical: true)
       } header: {
         Text("What it does")
-      }
-
-      Section {
-        Button("Licence…") { LicenceWindowController.show() }
       }
     }
     .formStyle(.grouped)

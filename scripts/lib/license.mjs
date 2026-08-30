@@ -10,7 +10,7 @@
 // Ed25519 rather than RSA or an HMAC. An HMAC would put the minting key inside
 // the app, where anyone could read it and issue their own. RSA is four times the
 // bytes for no gain. What is left is a 64-byte signature, which is still long
-// enough that a key is pasted or dropped and never typed — LicenceWindow is
+// enough that a key is pasted or dropped and never typed — LicencePane is
 // designed for that rather than surprised by it.
 //
 // None of this is a tamper defence and none of it should become one. The gate it
