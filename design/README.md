@@ -123,36 +123,52 @@ design/bastion-mark.svg --make icon--> design/bastion-icon.svg --pnpm icons--> a
 
 ## The menu bar glyph
 
-`bastion-menubar.svg` is the mark reduced to two shapes: the stroked curtain wall, open at the base,
-and the solid spur. No hills — the icon is a scene, this is a glyph, and a ridge at 18pt is one more
-thing to merge into.
+`bastion-menubar.svg` is direction **4a's own menu bar glyph**, transcribed from the 15px chip in
+`.idea/design/Bastion Logo v2.dc.html`: the curtain wall closed at the base, with the solid spur
+inside it. Same subject as the app icon, so the menu bar and the Dock read as one app.
+
+It is **authored, not composed** — `make icon` copies it, and never derives it from the mark. Two
+details are easy to get wrong by taking the geometry from `bastion-mark.svg` or the site mock
+instead of from 4a itself, and both matter at 18pt:
+
+- **The wall is closed.** The icon leaves it open at the base so the outline runs into the hills.
+  There are no hills at 18pt, and an open wall leaves the silhouette with no floor — the two legs
+  and the spur merge into one mass at 1x. The closed base gives it a bottom edge to read against.
+- **The stroke is 6**, the canvas's own weight in its 64-unit box, which lands at 3.17 here
+  (1.58pt). Not the 5 the lockup beside it uses; the canvas thickens it for the small size.
+
+The weight was checked rather than assumed. Rendered at 18pt against 2.8 and 2.5, the counter
+between the wall and the spur survives at all three, so the canvas weight costs nothing and there is
+nothing to tune. Re-render at **1x** after any change — that is where this fails first, and it is
+invisible at the 2x you will be looking at.
 
 It is a **template image**: pure black plus alpha, no colour, so AppKit tints it for light menu
 bars, dark menu bars and the highlighted state instead of us shipping three renderings. `Image(_:)`
 resolves by name **without** consulting `template-rendering-intent`, so `MenuBarLabel` in
 `BastionApp.swift` also says `.renderingMode(.template)`; without it the glyph ships black-on-black
-in a dark menu bar.
+in a dark menu bar. The website hits the same wall from the other side — an `<img>` cannot recolour
+the file either, so `Hero.astro` filters it to white where its mock draws a dark bar.
 
 Coordinates are cupertino's own 36-unit grid drawn at 18pt — 2 units = 1pt — so the two menu bar
-glyphs in this family are comparable without conversion. The geometry is the design canvas's
-64-unit lockup glyph, **fitted** rather than scaled: ink height is matched to cupertino's
-constraining dimension (32.2 units = 16.1pt), which lands the width at 31.14 and leaves a 2.44-unit
-gutter each side.
+glyphs in this family are comparable without conversion. The 64-unit source is scaled so the ink
+spans 32.2 units vertically, cupertino's constraining dimension.
 
 |                   | ink              | canvas     | strokes |
 | ----------------- | ---------------- | ---------- | ------- |
 | cupertino's glyph | 16.10 × 14.15 pt | 18 × 18 pt | 1.10 pt |
-| this glyph        | 15.57 × 16.10 pt | 18 × 18 pt | 1.34 pt |
+| this glyph        | 15.57 × 16.10 pt | 18 × 18 pt | 1.58 pt |
 
 The two shapes carry two weights on purpose — one light (the stroked wall), one solid (the spur) —
 for the reason cupertino's three do: matched weights read as tramlines rather than as one form
 inside another.
 
-The stroke is 1.34pt, picked by rendering 1.34, 1.58 and 1.82pt at 18pt and looking at the counter
-between the wall and the spur. It closes at 1.82 and survives at 1.34. It still narrows at 1x and
-opens at 2x, which is the same baseline cupertino's ridges measure — re-render at **both** after any
-change rather than judging it at 2x, because at 1x the failure mode is the spur touching the wall
-and it is invisible at the size you will be looking at it.
+There is a second, unused glyph in the design assets worth knowing about. The **v1** logo canvas
+draws a flat plan mark — a bastion from above — marks it "unchanged in all three" directions, and
+argues for it on the grounds that "the plan mark is symmetric, so it holds at menu-bar size where a
+single-spur silhouette would close up". That concern is real but it applies to the wall left _open_;
+closed, 4a holds its counter at 1x, which is why 4a's own glyph is the one that ships. (The v1 path
+is also not symmetric as drawn: `L40 16`, `L48 24` and `L40 48` want 44, 20 and 44. Fix those three
+first if it is ever revived.)
 
 `actool` reads the SVG directly and preserves the vector representation, so there are no PNG slots
 to keep in step. `make icon` copies the file into `MenuBarIcon.imageset`, which is why that copy is

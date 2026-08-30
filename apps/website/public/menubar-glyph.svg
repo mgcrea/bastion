@@ -1,8 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="18" height="18">
   <title>Bastion — menu bar template</title>
-  <!-- The mark reduced to its two shapes: the stroked curtain wall, open at the
-       base, and the solid spur inside it. No hills — the icon is a scene, this
-       is a glyph, and a ridge at 18pt is one more thing to merge into.
+  <!-- Direction 4a's own menu bar glyph, transcribed from the 15px chip in
+       `.idea/design/Bastion Logo v2.dc.html`: the curtain wall closed at the
+       base, with the solid spur inside it. Same subject as the app icon, so the
+       menu bar and the Dock read as one app.
+
+       Two details are easy to get wrong by taking the geometry from the icon
+       mark or the site mock instead of from 4a itself, and both matter here:
+
+       The wall is CLOSED. The icon leaves it open at the base so the outline
+       runs into the hills; there are no hills at 18pt, and an open wall leaves
+       the silhouette with no floor — the two legs and the spur merge into one
+       mass at 1x. The closed base is what gives it a bottom edge to read
+       against.
+
+       The stroke is the canvas's own 6 units in its 64-unit box, which lands at
+       3.17 here (1.58pt) — NOT the 5 the lockup beside it uses. It was checked
+       rather than assumed: rendered at 18pt against 2.8 and 2.5, the counter
+       between the wall and the spur survives at all three, so the canvas weight
+       carries no cost and there is nothing to tune. Re-render at 1x after any
+       change; that is where this fails first, and it is invisible at 2x.
 
        Pure black plus alpha: AppKit tints a template image itself, for light
        menu bars, dark ones and the highlighted state, so there is one file
@@ -10,22 +27,15 @@
 
        Coordinates are cupertino's 36-unit grid at 18pt, so 2 units = 1pt — the
        same grid, so the two menu bar glyphs in this family are comparable
-       without conversion. The geometry is the design canvas's own 64-unit
-       lockup glyph, fitted rather than merely scaled: ink height is matched to
-       cupertino's constraining dimension (32.2 units = 16.1pt), which lands the
-       width at 31.14 and leaves a 2.44-unit gutter on each side.
+       without conversion. The 64-unit source is scaled so the ink spans 32.2
+       units vertically, cupertino's constraining dimension.
 
        The two shapes carry two weights on purpose — one light (the stroked
-       wall), one solid (the spur) — for the reason cupertino's three do: matched
-       weights read as tramlines rather than as one form inside another.
-
-       The stroke is 2.68 units (1.34pt), picked by rendering 2.68, 3.17 and 3.64
-       at 18pt and looking at the counter between the wall and the spur. It
-       closes at 3.64 and survives at 2.68. It still narrows at 1x and opens at
-       2x, which is the same baseline cupertino's ridges measure; re-render at
-       both after any change rather than judging it at 2x. -->
-  <g fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M7 32.76 L3.78 15.58 L18 3.24 L32.22 15.58 L29 32.76" stroke-width="2.68"/>
-    <path d="M18 12.1 L24.98 18.54 L26.59 26.59 L9.41 26.59 L11.02 18.54 Z" fill="#000" stroke="none"/>
+       wall), one solid (the spur) — for the reason cupertino's three do:
+       matched weights read as tramlines rather than as one form inside
+       another. -->
+  <g fill="none" stroke="#000" stroke-linejoin="round">
+    <path d="M18 3.48 L31.99 15.62 L28.82 32.52 L7.18 32.52 L4.01 15.62 Z" stroke-width="3.17" />
+    <path d="M18 12.19 L24.86 18.53 L26.45 26.45 L9.55 26.45 L11.14 18.53 Z" fill="#000" stroke="none" />
   </g>
 </svg>

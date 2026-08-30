@@ -59,10 +59,11 @@ struct BastionApp: App {
   }
 }
 
-/// The mark, not an SF Symbol. `MenuBarIcon` is `design/bastion-menubar.svg`: the
-/// curtain wall and the spur, pure black plus alpha, so AppKit tints it for
-/// light menu bars, dark ones and the highlighted state rather than us shipping
-/// three renderings.
+/// The mark, not an SF Symbol. `MenuBarIcon` is `design/bastion-menubar.svg`:
+/// direction 4a's own menu bar glyph — the curtain wall closed at the base, with
+/// the spur inside it — pure black plus alpha, so AppKit tints it for light menu
+/// bars, dark ones and the highlighted state rather than us shipping three
+/// renderings.
 ///
 /// It does not change with gateway state. There is one drawn glyph and inventing
 /// a second in code would be a mark nothing in `design/` accounts for; a gateway
