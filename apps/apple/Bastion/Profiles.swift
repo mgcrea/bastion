@@ -152,9 +152,31 @@ final class ProfileStore {
     try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
   }
 
+  /// Save a profile, and stop any child still holding the old environment.
+  ///
+  /// The stop is the whole reason this is not a two-line setter. A child is
+  /// handed its environment once, at spawn, by `ProfileEnvironment.build` — so
+  /// editing a value here changes what the NEXT process will get and nothing
+  /// about the one that is running. Without this, turning off a TLS check or
+  /// correcting a hostname appears to do nothing, the tool fails exactly as it
+  /// did before, and the profile on disk says the change was made. There is no
+  /// symptom pointing at the cause; the setting simply looks broken.
+  ///
+  /// Here rather than in the profile editor, because the editor is no longer
+  /// the only caller: `upsert_profile` on Bastion's own server reaches the same
+  /// state, and a rule kept in one of two callers is a rule that holds half the
+  /// time.
+  ///
+  /// Only when something the environment is actually built from changed. Every
+  /// save would otherwise kill a warm child for opening the editor and pressing
+  /// Save, and a restart costs the next caller the whole spawn and handshake.
   func upsert(_ profile: Profile) throws {
     if let index = profiles.firstIndex(where: { $0.id == profile.id }) {
+      let previous = profiles[index]
       profiles[index] = profile
+      if previous.values != profile.values || previous.allowWrites != profile.allowWrites {
+        Supervisor.shared.stop(profile: profile.name, server: profile.serverID)
+      }
     } else {
       profiles.append(profile)
     }
