@@ -182,6 +182,10 @@ make run            # build and launch the menu bar agent
 make stop           # quit it
 make audit          # assert the listener is loopback-only and refuses foreign Origin/Host
 make dialect        # assert both protocol eras against a running build
+make install        # install the Debug build to /Applications
+
+make bundle         # build, stage servers + node, verify, and sign a Release
+make build-release  # bundle, then notarize and staple (needs AC_* credentials)
 make wiring-check   # assert the config merge leaves other people's files alone
 make wiring-check-real  # the same, against your actual client configs (read-only)
 make smoke          # prove one supervised server end to end

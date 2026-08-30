@@ -177,6 +177,18 @@ bundle: stage-servers node ## Build, stage, verify and sign a Release Bastion.ap
 # Inside out: node, then the bridge, then the app. A signature over a bundle is
 # a signature over its contents, so anything signed after the wrapper
 # invalidates it.
+#
+# No `--entitlements` on the app, and that is the claim rather than an omission.
+# Spawning children and binding loopback need none, and with the sandbox off
+# `com.apple.security.network.server` is unnecessary. An empty permission set
+# that is true by construction is checkable; one arrived at by deletion is not.
+# `make audit` asserts there is no entitlements file to begin with, and the
+# verification below asserts none ended up on the signed bundle anyway.
+#
+# The whole identity block is ONE shell invocation because `$$id` has to survive
+# across the codesign calls. Comments inside it must be shell comments on their
+# own logical line, never `@#` — `@` applies to the first line of a recipe, so a
+# continued `@#` is handed to sh, which has no such command.
 sign: ## Sign the Release bundle (Developer ID if present, else Apple Development)
 	@id=$$(security find-identity -v -p codesigning | awk '/Developer ID Application/ {print $$2; exit}'); \
 	if [ -z "$$id" ]; then \
@@ -192,11 +204,6 @@ sign: ## Sign the Release bundle (Developer ID if present, else Apple Developmen
 	fi; \
 	codesign --force --options runtime --timestamp --sign "$$id" \
 		"$(RELEASE_APP)/Contents/Helpers/bastion-bridge"; \
-	@# No --entitlements on the app, and that is the claim, not an omission.
-	@# Spawning children and binding loopback need none, and with the sandbox off
-	@# com.apple.security.network.server is unnecessary. An empty permission set
-	@# that is true by construction is checkable; one arrived at by deletion is
-	@# not. `make audit` asserts there is no entitlements file to begin with.
 	codesign --force --options runtime --timestamp --sign "$$id" "$(RELEASE_APP)"
 	@codesign --verify --deep --strict --verbose=1 "$(RELEASE_APP)" 2>&1 | sed 's/^/  /'
 	@codesign -d --entitlements - --xml "$(RELEASE_APP)" 2>/dev/null | grep -q '<key>' \
