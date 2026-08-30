@@ -65,6 +65,47 @@ servers: ## Regenerate every copy of the server list from servers.json
 servers-check: ## Fail if any generated copy has drifted from servers.json
 	@node scripts/generate-servers.mjs --check
 
+# ─── the icon ────────────────────────────────────────────────────────────────
+
+# The icon is generated, never hand-drawn: one mark, three renderings. The plate
+# lives in the flags rather than the artwork so the .icon layers stay separable.
+ICON_MARK    := design/bastion-mark.svg
+# '#' opens a comment in a Makefile, so the hexes are spelled through a variable.
+HASH         := \#
+ICON_PLATE    = $(HASH)FFD08A,$(HASH)F2895C
+ICON_RADIUS  := 230
+ICON_MENUBAR := design/bastion-menubar.svg
+
+icon: ## Regenerate Bastion.icon and the web SVG from design/bastion-mark.svg
+	@appshot icon build --from $(ICON_MARK) \
+		--plate-gradient '$(ICON_PLATE)' --plate-angle 90 --mark-fraction 1.0 \
+		--out apps/apple/Bastion/Bastion.icon
+	@appshot icon build --from $(ICON_MARK) \
+		--plate-gradient '$(ICON_PLATE)' --plate-angle 90 --mark-fraction 1.0 \
+		--corner-radius $(ICON_RADIUS) --label 'Bastion' \
+		--out design/bastion-icon.svg
+	@# The hills bleed past the plate's corner radius by design, and nothing masks
+	@# an SVG on a web page — so the vector needs the clip the OS applies for free.
+	@# perl, not `sed -i`: the flag's in-place syntax differs between BSD and GNU sed
+	@# and Homebrew's gnu-sed shadows the system one on some of these machines.
+	@perl -pi \
+		-e 's|</defs>|<clipPath id="c"><rect width="1024" height="1024" rx="$(ICON_RADIUS)"/></clipPath></defs>|;' \
+		-e 's|<g transform=|<g clip-path="url($(HASH)c)" transform=|;' \
+		design/bastion-icon.svg
+	@# The README banner is composed from the icon above, never drawn beside it.
+	@# Cupertino's lockup was hand-drawn alongside the mark and its hills stopped
+	@# matching two revisions before anyone noticed.
+	@node scripts/generate-lockup.mjs
+	@appshot icon check --out apps/apple/Bastion/Bastion.icon
+	@# The menu bar glyph is authored, not composed — but the imageset needs the
+	@# file *inside* it, so design/ stays the one copy anyone edits.
+	@cp $(ICON_MENUBAR) apps/apple/Bastion/Assets.xcassets/MenuBarIcon.imageset/
+	@echo "  copied $(notdir $(ICON_MENUBAR)) into MenuBarIcon.imageset"
+	@# The website renders its favicon, touch icon and OG card from the same two
+	@# files. It reads design/ directly, so nothing is copied — but the PNGs it
+	@# derives are committed, and only this command's output makes them stale.
+	@echo "  next: pnpm --filter @mgcrea/bastion-website icons"
+
 # ─── the workspace ───────────────────────────────────────────────────────────
 
 lint: ## oxlint the JavaScript half
@@ -76,4 +117,4 @@ format: ## oxfmt the repo
 format-check: ## Fail on unformatted files
 	@pnpm format:check
 
-.PHONY: help app run stop clean smoke dialect audit migrate servers servers-check lint format format-check
+.PHONY: help app run stop clean smoke dialect audit migrate servers servers-check icon lint format format-check

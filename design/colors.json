@@ -1,0 +1,36 @@
+{
+  "name": "Bastion",
+  "colors": {
+    "plateTop": "#FFD08A",
+    "plateBottom": "#F2895C",
+    "wall": "#FDEFDC",
+    "hillMid": "#B0532F",
+    "hillFore": "#7A2F1C",
+    "ink": "#151617",
+    "ground": "#0B0C0F",
+    "paper": "#F4F2EF",
+    "accent": "#F2A07C",
+    "ok": "#3E9E63",
+    "okText": "#8FD9A9",
+    "warn": "#E0A63F",
+    "danger": "#B3341F"
+  },
+  "gradients": {
+    "plate": {
+      "type": "linear",
+      "angle": 180,
+      "stops": [
+        { "offset": 0, "color": "#FFD08A" },
+        { "offset": 1, "color": "#F2895C" }
+      ]
+    },
+    "wash": {
+      "type": "linear",
+      "angle": 180,
+      "stops": [
+        { "offset": 0, "color": "#FFF6E9" },
+        { "offset": 1, "color": "#FBE7D6" }
+      ]
+    }
+  }
+}
