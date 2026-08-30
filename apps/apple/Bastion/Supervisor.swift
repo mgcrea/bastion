@@ -126,6 +126,18 @@ nonisolated final class Supervisor: @unchecked Sendable {
     instances.withLock { $0.values.map { ($0.key, $0.pid, $0.clientCount) } }
   }
 
+  /// Requests handed to a child and not yet answered.
+  ///
+  /// The one number that says whether it is safe to replace this process. A
+  /// running instance is not a reason to wait — Bastion keeps children alive
+  /// for half an hour after the last call — but a request in flight is: the
+  /// client is blocked on a response that a relaunch would turn into a dropped
+  /// connection, which reads as Bastion breaking rather than as Bastion
+  /// updating.
+  var inFlightCount: Int {
+    instances.withLock { $0.values.reduce(0) { $0 + $1.pendingCount } }
+  }
+
   private func instanceFor(profile: Profile, server: BastionServer) throws -> Instance {
     let key = profile.id
     if let existing = instances.withLock({ $0[key] }), existing.isAlive { return existing }
@@ -209,6 +221,7 @@ nonisolated extension Supervisor {
 
     private var reaper: DispatchSourceTimer?
 
+    var pendingCount: Int { state.withLock { $0.pending.count } }
     var pid: Int32 { state.withLock { $0.process?.processIdentifier ?? -1 } }
     var clientCount: Int { state.withLock { $0.clients.count } }
     var isAlive: Bool { state.withLock { $0.process?.isRunning ?? false } }

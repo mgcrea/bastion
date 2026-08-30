@@ -12,6 +12,16 @@ xcuserdata/
 *.dSYM
 *.dSYM.zip
 
+# Sparkle, fetched and checksum-verified by `make sparkle` rather than committed.
+# Pinned by SPARKLE_VERSION + SPARKLE_SHA256 in the Makefile, so a checkout
+# reproduces the same framework without carrying 2.6 MB of binary in git.
+apps/apple/Vendor/
+
+# The Sparkle update-signing private key, if it is ever exported from the
+# keychain. It belongs in the login keychain and one repository secret, never
+# on disk beside the code it signs.
+sparkle_key.pem
+
 # SwiftPM
 .build/
 .swiftpm/

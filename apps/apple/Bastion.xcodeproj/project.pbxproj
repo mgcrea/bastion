@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0BA571000000000000000021 /* Sparkle.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0BA571000000000000000020 /* Sparkle.framework */; };
+		0BA571000000000000000022 /* Sparkle.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 0BA571000000000000000020 /* Sparkle.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		0BA571000000000000000009 /* bastion-bridge in Embed Helper */ = {isa = PBXBuildFile; fileRef = 0BA571000000000000000001 /* bastion-bridge */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -21,6 +23,17 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		0BA571000000000000000023 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				0BA571000000000000000022 /* Sparkle.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		0BA57100000000000000000A /* Embed Helper */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -35,6 +48,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0BA571000000000000000020 /* Sparkle.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Sparkle.framework; path = Vendor/Sparkle.framework; sourceTree = SOURCE_ROOT; };
 		0BA571000000000000000001 /* bastion-bridge */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "bastion-bridge"; sourceTree = BUILT_PRODUCTS_DIR; };
 		09D8E51D304323C100C66A5A /* Bastion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Bastion.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -64,16 +78,26 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0BA571000000000000000021 /* Sparkle.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		0BA571000000000000000024 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				0BA571000000000000000020 /* Sparkle.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		09D8E514304323C100C66A5A = {
 			isa = PBXGroup;
 			children = (
 				09D8E51F304323C100C66A5A /* Bastion */,
+				0BA571000000000000000024 /* Frameworks */,
 				0BA571000000000000000002 /* BastionBridge */,
 				09D8E51E304323C100C66A5A /* Products */,
 			);
@@ -119,6 +143,7 @@
 				09D8E519304323C100C66A5A /* Sources */,
 				09D8E51A304323C100C66A5A /* Frameworks */,
 				09D8E51B304323C100C66A5A /* Resources */,
+				0BA571000000000000000023 /* Embed Frameworks */,
 				0BA57100000000000000000A /* Embed Helper */,
 			);
 			buildRules = (
@@ -369,7 +394,12 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Vendor",
+				);
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Bastion-Info.plist";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -400,7 +430,12 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Vendor",
+				);
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Bastion-Info.plist";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (

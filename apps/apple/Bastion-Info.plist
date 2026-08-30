@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The only keys here are Sparkle's. Everything else about this app's
+	     Info.plist is still INFOPLIST_KEY_* build settings, merged into this file
+	     at build time — GENERATE_INFOPLIST_FILE stays YES. This file exists solely
+	     because SUPublicEDKey is not a key Xcode knows about, and there is no
+	     INFOPLIST_KEY_ spelling for it. -->
+
+	<!-- The commit this bundle was built from, substituted from the
+	     BASTION_GIT_COMMIT build setting. CFBundleVersion is already the commit
+	     COUNT, which orders builds but does not identify one: two branches at the
+	     same depth share it. This is what turns a bug report into a diff.
+
+	     Empty in an Xcode-only build, because Xcode has no git; `make app` and CI
+	     both pass it. -->
+	<key>BastionGitCommit</key>
+	<string>$(BASTION_GIT_COMMIT)</string>
+
+	<key>SUFeedURL</key>
+	<string>https://bastion.mgcrea.io/appcast.xml</string>
+	<!-- Filled in by `make sparkle-keys`, which is run once, ever. An empty value
+	     is not a placeholder to ship: Sparkle refuses an appcast it cannot verify,
+	     so a build with no key here cannot be updated at all — which is the safe
+	     direction to fail, and the reason this is committed rather than injected. -->
+	<key>SUPublicEDKey</key>
+	<string></string>
+
+	<!-- Present and false, never absent. An ABSENT SUEnableAutomaticChecks is what
+	     makes Sparkle show its own "check automatically?" prompt on second launch;
+	     set explicitly, that prompt never appears and Bastion asks in its own
+	     words instead. -->
+	<key>SUEnableAutomaticChecks</key>
+	<false/>
+	<!-- Never install without being asked. This process holds every credential the
+	     user owns in its Keychain and supervises children that can spend money; a
+	     silent replacement of it is not something to enable by default. -->
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUSendProfileInfo</key>
+	<false/>
+	<!-- Non-sandboxed, so the XPC services are stripped by `make sparkle`. Saying
+	     so here too means a framework that regrows them still goes unused. -->
+	<key>SUEnableInstallerLauncherService</key>
+	<false/>
+	<key>SUEnableDownloaderService</key>
+	<false/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
+</dict>
+</plist>

@@ -28,6 +28,20 @@ STAGED       := apps/apple/.build/staged
 # from the checkout instead, which is right for a dogfood build and wrong for
 # anything anyone else installs — a bundle built that way carries unpublished
 # code from a path on this machine.
+# The updater. Pinned exactly and checksum-verified: this framework is loaded
+# into a process holding every credential the user owns, and `sign` asserts the
+# team that signed it, so a version that drifted under that allowance would be
+# trusted for something nobody measured.
+SPARKLE_VERSION   ?= 2.9.6
+SPARKLE_SHA256    := 8d5fb41d960b43f4a68aa14126bf62b098544ec8d191cdcc73eb14e63a8e7606
+SPARKLE_VENDOR    := apps/apple/Vendor
+SPARKLE_FRAMEWORK := $(SPARKLE_VENDOR)/Sparkle.framework
+SPARKLE_TOOLS     := apps/apple/.build/sparkle-cache/bin
+# Deferred (`=`, not `:=`): RELEASE_APP is defined further down, and immediate
+# expansion here resolved to a bare "/Contents/..." path, so every guard on
+# this variable quietly did nothing and the framework shipped unsigned.
+RELEASE_SPARKLE    = $(RELEASE_APP)/Contents/Frameworks/Sparkle.framework
+
 MCP_ROOT     ?= $(HOME)/Projects/mgcrea/mgcrea-ai
 NPM_SERVERS  := shopify appstore-connect ovh-api
 
@@ -71,7 +85,7 @@ help: ## Show this help
 # The `|| true` belongs to grep, not to the pipeline: grep exits 1 on a clean
 # build with nothing to report, and swallowing that must not also swallow
 # xcodebuild's own failure.
-app: ## Build Bastion.app and the embedded bastion-bridge
+app: sparkle ## Build Bastion.app and the embedded bastion-bridge
 	@set -o pipefail; xcodebuild -project apps/apple/Bastion.xcodeproj -scheme Bastion \
 		-configuration $(CONFIG) -derivedDataPath apps/apple/.build \
 		$(VERSION_ARGS) $(XCARGS) build \
@@ -96,6 +110,27 @@ clean: ## Remove the app build output
 	@rm -rf apps/apple/.build
 
 # ─── the release path ────────────────────────────────────────────────────────
+
+sparkle: ## Download and stage the pinned Sparkle.framework
+	@mkdir -p apps/apple/.build/sparkle-cache $(SPARKLE_VENDOR)
+	@zip="apps/apple/.build/sparkle-cache/Sparkle-$(SPARKLE_VERSION).zip"; \
+	[ -f "$$zip" ] || curl -fsSL -o "$$zip" \
+		"https://github.com/sparkle-project/Sparkle/releases/download/$(SPARKLE_VERSION)/Sparkle-for-Swift-Package-Manager.zip"; \
+	echo "$(SPARKLE_SHA256)  $$zip" | shasum -a 256 -c - >/dev/null \
+		|| { echo "  Sparkle checksum mismatch — refusing to build against it"; rm -f "$$zip"; exit 1; }; \
+	rm -rf apps/apple/.build/sparkle-cache/unpacked; \
+	unzip -qo "$$zip" -d apps/apple/.build/sparkle-cache/unpacked
+	@rm -rf $(SPARKLE_FRAMEWORK)
+	@ditto apps/apple/.build/sparkle-cache/unpacked/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework \
+		$(SPARKLE_FRAMEWORK)
+	@mkdir -p $(SPARKLE_TOOLS)
+	@ditto apps/apple/.build/sparkle-cache/unpacked/bin $(SPARKLE_TOOLS)
+	@# Sandbox-only, and this app is not sandboxed. Stripped here rather than at
+	@# bundle time so a Debug build has the same Mach-O inventory as a Release
+	@# one — every extra binary inside the bundle is one more thing signed, one
+	@# more thing notarized, and one more thing to explain.
+	@rm -rf $(SPARKLE_FRAMEWORK)/Versions/B/XPCServices
+	@echo "  Sparkle $(SPARKLE_VERSION) staged: $(SPARKLE_FRAMEWORK)"
 
 node: ## Download and lipo the embedded node runtime
 	@mkdir -p $(STAGED) apps/apple/.build/node-cache
@@ -162,7 +197,7 @@ endif
 # version from `new URL("../package.json", import.meta.url)`, so a flat
 # `servers/<id>/cli.js` resolves to one shared file and reports the wrong
 # version in every diagnostic.
-bundle: stage-servers node ## Build, stage, verify and sign a Release Bastion.app
+bundle: stage-servers node sparkle ## Build, stage, verify and sign a Release Bastion.app
 	@$(MAKE) --no-print-directory app CONFIG=Release \
 		XCARGS="$(XCARGS) CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO"
 	@rm -rf "$(RELEASE_APP)/Contents/Resources/servers" "$(RELEASE_APP)/Contents/Resources/node"
@@ -197,6 +232,14 @@ sign: ## Sign the Release bundle (Developer ID if present, else Apple Developmen
 		echo "     This build will NOT notarize and will not run on another Mac."; \
 	fi; \
 	test -n "$$id" || { echo "  no codesigning identity at all"; exit 1; }; \
+	if [ -d "$(RELEASE_SPARKLE)" ]; then \
+		codesign --force --options runtime --timestamp --sign "$$id" \
+			"$(RELEASE_SPARKLE)/Versions/B/Updater.app"; \
+		codesign --force --options runtime --timestamp --sign "$$id" \
+			"$(RELEASE_SPARKLE)/Versions/B/Autoupdate"; \
+		codesign --force --options runtime --timestamp --sign "$$id" \
+			"$(RELEASE_SPARKLE)"; \
+	fi; \
 	if [ -x "$(RELEASE_APP)/Contents/Resources/node" ]; then \
 		codesign --force --options runtime --timestamp --sign "$$id" \
 			--entitlements apps/apple/node.entitlements \
@@ -209,7 +252,67 @@ sign: ## Sign the Release bundle (Developer ID if present, else Apple Developmen
 	@codesign -d --entitlements - --xml "$(RELEASE_APP)" 2>/dev/null | grep -q '<key>' \
 		&& { echo "  the app carries entitlements — it should carry none"; exit 1; } \
 		|| echo "  no entitlements on the app"
+	@# The hardened runtime is on and nothing disables library validation, so a
+	@# Sparkle signed by another team fails at dlopen — at launch, on a user's
+	@# Mac, long after this. Assert the team here, where the message is readable.
+	@test -d "$(RELEASE_SPARKLE)" && { codesign -dv --verbose=2 "$(RELEASE_SPARKLE)" 2>&1 \
+		| grep -q 'TeamIdentifier=$(TEAM_ID)' \
+		|| { echo "  Sparkle is not signed by $(TEAM_ID) — library validation will reject it"; exit 1; }; \
+		echo "  Sparkle signed by $(TEAM_ID)"; } || true
+	@# A build whose public key is empty cannot verify an appcast, so Sparkle
+	@# refuses every update it is offered. Safe, but silently un-updatable, and
+	@# the only moment anyone would notice is the release that needed to ship.
+	@/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$(RELEASE_APP)/Contents/Info.plist" 2>/dev/null \
+		| grep -q . || echo "  !! SUPublicEDKey is empty — this build can never be updated. Run 'make sparkle-keys'."
 	@echo "  size: $$(du -sh "$(RELEASE_APP)" | cut -f1)"
+
+# Run once, ever. The private key goes into the login keychain and the public key
+# into apps/apple/Bastion-Info.plist, where it is committed.
+#
+# That private key is the most dangerous secret this project has: together with
+# the Developer ID certificate it is enough to hand every user a new version of
+# an app that holds their Shopify secret, their Keycloak password and a
+# brokerage refresh token, with one click and no further question. It belongs in
+# the keychain and in one repository secret, never in an org-wide one and never
+# anywhere a pull_request workflow can read it.
+sparkle-keys: sparkle ## Generate the EdDSA update-signing keypair (once, ever)
+	@$(SPARKLE_TOOLS)/generate_keys
+	@echo ""
+	@echo "Put the printed public key in the SUPublicEDKey value of"
+	@echo "apps/apple/Bastion-Info.plist, and commit it. The private half stays"
+	@echo "in the login keychain — it is never written to this repository."
+
+# The appcast is one item, not a history. Sparkle only needs the newest, and a
+# feed that accumulates every release is a feed that has to stay consistent with
+# every zip still on the CDN.
+appcast: ## Sign the release zip and write a one-item appcast
+	@test -f apps/apple/.build/Bastion.zip || { echo "run 'make build-release' first"; exit 1; }
+	@version=$$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
+		"$(RELEASE_APP)/Contents/Info.plist"); \
+	build=$$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' \
+		"$(RELEASE_APP)/Contents/Info.plist"); \
+	length=$$(stat -f%z apps/apple/.build/Bastion.zip); \
+	signature=$$($(SPARKLE_TOOLS)/sign_update apps/apple/.build/Bastion.zip | sed 's/.*sparkle:edSignature="\([^"]*\)".*/\1/'); \
+	notes=$$(awk '/^## /{ if (n++) exit } n' CHANGELOG.md 2>/dev/null | tail -n +2); \
+	printf '%s\n' \
+		'<?xml version="1.0" encoding="utf-8"?>' \
+		'<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">' \
+		'  <channel>' \
+		'    <title>Bastion</title>' \
+		"    <item>" \
+		"      <title>$$version</title>" \
+		"      <sparkle:version>$$build</sparkle:version>" \
+		"      <sparkle:shortVersionString>$$version</sparkle:shortVersionString>" \
+		"      <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>" \
+		"      <description><![CDATA[$$notes]]></description>" \
+		"      <enclosure url=\"https://bastion.mgcrea.io/releases/Bastion-$$version.zip\"" \
+		"                 length=\"$$length\"" \
+		"                 type=\"application/octet-stream\"" \
+		"                 sparkle:edSignature=\"$$signature\" />" \
+		"    </item>" \
+		'  </channel>' \
+		'</rss>' > apps/website/public/appcast.xml
+	@echo "  wrote apps/website/public/appcast.xml"
 
 notarize: ## Submit the signed bundle to Apple and staple the ticket
 	@test -n "$$AC_KEY_ID" || { echo "set AC_KEY_ID, AC_ISSUER_ID and AC_KEY_PATH first" >&2; exit 1; }
@@ -357,7 +460,7 @@ format-check: ## Fail on unformatted files
 	@pnpm format:check
 
 .PHONY: help app run stop dev-config clean \
-	node stage-servers bundle sign notarize build-release \
+	sparkle sparkle-keys appcast node stage-servers bundle sign notarize build-release \
 	install install-release install-from uninstall \
 	smoke dialect wiring-check wiring-check-real audit migrate servers servers-check icon \
 	lint format format-check

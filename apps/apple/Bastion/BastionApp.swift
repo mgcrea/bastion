@@ -24,6 +24,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       hostLog("gateway", .error, error.localizedDescription)
     }
 
+    // Builds nothing unless the user has already opted in. Sparkle starts a
+    // scheduler the moment it is constructed, so this must not be a
+    // constructor call guarded by a later check.
+    UpdateController.shared.startIfConsented()
+
     #if DEBUG
       // For looking at the window without hunting for the menu bar icon, and
       // for capturing it. A menu bar agent has no other way to be told "open
@@ -115,6 +120,23 @@ private struct GatewayMenu: View {
       .keyboardShortcut("a")
     Button("MCP Clients…") { ClientsWindowController.show() }
       .keyboardShortcut("k")
+    Divider()
+
+    // Two items rather than a settings pane, because there are exactly two
+    // questions: check now, and may we check on our own. The default is no,
+    // set explicitly in Bastion-Info.plist so Sparkle never asks in its own
+    // words on second launch.
+    Button(UpdateController.shared.isChecking ? "Checking…" : "Check for Updates…") {
+      UpdateController.shared.checkNow()
+    }
+    .disabled(UpdateController.shared.isChecking)
+    Toggle(
+      "Check Automatically",
+      isOn: Binding(
+        get: { UpdateController.shared.automatic },
+        set: { UpdateController.shared.setAutomatic($0) }))
+
+    Divider()
     Button("Quit Bastion") { NSApplication.shared.terminate(nil) }
       .keyboardShortcut("q")
   }
