@@ -51,9 +51,31 @@ struct BastionApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
   var body: some Scene {
-    MenuBarExtra("Bastion", systemImage: "shield.lefthalf.filled") {
+    MenuBarExtra {
       GatewayMenu()
+    } label: {
+      MenuBarLabel()
     }
+  }
+}
+
+/// The mark, not an SF Symbol. `MenuBarIcon` is `design/bastion-menubar.svg`: the
+/// curtain wall and the spur, pure black plus alpha, so AppKit tints it for
+/// light menu bars, dark ones and the highlighted state rather than us shipping
+/// three renderings.
+///
+/// It does not change with gateway state. There is one drawn glyph and inventing
+/// a second in code would be a mark nothing in `design/` accounts for; a gateway
+/// that failed to start says so in the menu and in the Activity window, which is
+/// where somebody who noticed the icon would look next.
+private struct MenuBarLabel: View {
+  var body: some View {
+    Image("MenuBarIcon")
+      // The asset carries template-rendering-intent, but SwiftUI resolves an
+      // Image by name without consulting it, so a plain Image ships black-on-
+      // black in a dark menu bar. AppKit does the tinting; this only says it may.
+      .renderingMode(.template)
+      .accessibilityLabel("Bastion")
   }
 }
 

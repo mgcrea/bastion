@@ -29,9 +29,16 @@ private struct GatewayHeader: View {
   var body: some View {
     let activity = Activity.shared
     HStack(spacing: 12) {
-      Image(systemName: Gateway.shared.startupError == nil ? "shield.lefthalf.filled" : "shield.slash")
-        .font(.title2)
-        .foregroundStyle(Gateway.shared.startupError == nil ? Color.accentColor : .red)
+      // The mark when the gateway is serving; an SF Symbol when it is not.
+      // There is one drawn glyph in design/, and a failure state is exactly the
+      // case where a symbol nobody has to recognise beats a brand one.
+      Group {
+        if Gateway.shared.startupError == nil {
+          Image("MenuBarIcon").renderingMode(.template).foregroundStyle(Color.accentColor)
+        } else {
+          Image(systemName: "shield.slash").font(.title2).foregroundStyle(.red)
+        }
+      }
 
       VStack(alignment: .leading, spacing: 2) {
         if let error = Gateway.shared.startupError {
