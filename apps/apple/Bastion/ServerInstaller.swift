@@ -193,7 +193,9 @@ final class ServerInstaller {
   }
 
   /// Install or re-install one server. Safe to call on something already there:
-  /// npm resolves `latest` again, which is what "Update" means.
+  /// npm resolves `latest` again, which is what "Update" means — and on success
+  /// any running child of this server is stopped, because the code it was
+  /// running is no longer the code on disk.
   func install(_ server: BastionServer) async {
     // Nothing to fetch — it ships inside the app. Silently rather than as an
     // error: this is reachable from a bulk update, and a failure there would be
@@ -219,6 +221,21 @@ final class ServerInstaller {
     switch result {
     case .success(let version):
       hostLog("install", .info, "\(server.id): installed \(server.npmName)@\(version)")
+      // The code under any running child has just been replaced, so the child
+      // goes. Same rule as `ProfileStore.upsert` and `ServerStore.setEnabled`,
+      // and for the same reason: a process still answering out of the tree that
+      // was there a moment ago, while the detail pane reads the new version
+      // straight off disk, is a disagreement with nothing pointing at the cause.
+      //
+      // Unconditional rather than only when the version moved. `--no-package-lock`
+      // means a re-resolve can change the dependency closure under an unchanged
+      // top-level version, and npm swaps `node_modules` in place either way —
+      // enough on its own to leave a live child lazily requiring out of a tree
+      // that no longer matches the one it started from. It costs the next caller
+      // one spawn and handshake, and a stop with nothing running is a no-op.
+      for profile in ProfileStore.shared.profiles where profile.serverID == server.id {
+        Supervisor.shared.stop(profile: profile.name, server: server.id)
+      }
     case .failure(let error):
       failures[server.id] = error.localizedDescription
       hostLog("install", .error, "\(server.id): \(error.localizedDescription)")
