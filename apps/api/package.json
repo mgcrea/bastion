@@ -1,0 +1,36 @@
+{
+  "name": "@mgcrea/bastion-api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Turns a Stripe payment into a Bastion licence key",
+  "license": "MIT",
+  "author": "Olivier Louvignes <olivier@mgcrea.io>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mgcrea/bastion.git",
+    "directory": "apps/api"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "secrets:prod": "node ../../scripts/push-worker-secrets.mjs .prod.vars",
+    "migrate": "wrangler d1 migrations apply bastion-licenses --remote",
+    "migrate:local": "wrangler d1 migrations apply bastion-licenses --local",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "types": "wrangler types",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.84.1"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

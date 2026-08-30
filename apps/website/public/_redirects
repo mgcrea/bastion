@@ -1,0 +1,33 @@
+# The stable vanity URLs. Cloudflare's static-assets runtime reads this file from
+# the build output; Astro copies public/ into dist/ verbatim.
+#
+# 302 throughout, not 301: every destination here is one that is expected to
+# move — a different host, a mirror, a new payment link — and a cached permanent
+# redirect would outlive the decision. These URLs are the stable half; what they
+# point at is not.
+
+# The update feed. This one is not a convenience: SUFeedURL in Bastion-Info.plist
+# is baked into every binary ever shipped, so it must be a URL that can be
+# repointed without asking anyone to update first. `latest/download` also means
+# publishing a release never needs a site deploy.
+/appcast.xml  https://github.com/mgcrea/bastion/releases/latest/download/appcast.xml  302
+
+# The one stable download URL, on the same reasoning. It points at
+# `latest/download` rather than a versioned asset, which only works because the
+# release asset is named Bastion.zip with no version in it.
+/download     https://github.com/mgcrea/bastion/releases/latest/download/Bastion.zip  302
+/checksum     https://github.com/mgcrea/bastion/releases/latest/download/Bastion.zip.sha256  302
+/releases     https://github.com/mgcrea/bastion/releases  302
+
+# The buy link. A vanity path for the same reason as the rest: the Stripe
+# checkout URL is exactly the kind of destination that moves, and the app links
+# to /buy from the Licence pane — a URL compiled into shipped binaries, which
+# must never be a Stripe URL directly.
+#
+# Not wired up yet. There is no payment link to point at until one is created in
+# Stripe, and pointing this at a placeholder would be worse than a 404: a 302 to
+# the wrong page reads as a broken checkout rather than as one that does not
+# exist. Uncomment the line, paste the live payment link, and deploy — that is
+# the whole of switching purchases on, and swapping in the test-mode twin is how
+# fulfilment gets rehearsed end to end.
+# /buy        https://buy.stripe.com/REPLACE_WITH_LIVE_PAYMENT_LINK  302

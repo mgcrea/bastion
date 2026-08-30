@@ -384,6 +384,12 @@ dialect: app ## Assert Bastion serves both protocol eras (needs a profile)
 builtin: app ## Assert Bastion's own server: the write gate, and that no tool returns a secret
 	@scripts/builtin-check.sh
 
+# The other half of the money loop. A refund or a chargeback marks the row in D1;
+# nothing reaches the app until this bakes the list into the next build, because
+# the app is not allowed to ask anyone anything at runtime.
+revocations: ## Rewrite the baked-in revocation list from D1
+	@node scripts/generate-revocations.mjs
+
 # JavaScript mints the keys and Swift accepts them, so the disagreement that
 # would cost money lives between the two — and neither side's own tests can see
 # it. This one compiles the real License.swift and feeds it real keys.
@@ -479,5 +485,5 @@ format-check: ## Fail on unformatted files
 .PHONY: help app run stop dev-config clean \
 	sparkle sparkle-keys appcast node bundle sign notarize build-release \
 	install install-release install-from uninstall \
-	smoke dialect wiring-check wiring-check-real license-check audit migrate servers servers-check icon \
+	smoke dialect wiring-check wiring-check-real license-check revocations audit migrate servers servers-check icon \
 	lint format format-check

@@ -1,0 +1,15 @@
+# Local secrets for `wrangler dev`. Copy to `.dev.vars`, which is gitignored.
+# In production these are set with `pnpm secrets:prod`, never committed.
+
+# The licence signing key, same value as the repo-root .env. Using the real one
+# locally means keys minted here verify against the public key already compiled
+# into the app, which is what makes an end-to-end test meaningful.
+LICENSE_SIGNING_KEY=
+
+# From the Stripe dashboard, or printed by `stripe listen` when testing locally.
+# Used verbatim, `whsec_` prefix and all, as the HMAC key.
+STRIPE_WEBHOOK_SECRET=
+
+# Only used to read line items back, for the price paid. Fulfilment does not
+# depend on it: a failure there costs a reporting field, never a licence.
+STRIPE_SECRET_KEY=
