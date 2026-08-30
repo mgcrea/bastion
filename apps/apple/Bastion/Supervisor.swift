@@ -85,8 +85,13 @@ nonisolated final class Supervisor: @unchecked Sendable {
   /// blocking still happened, it just happened on Swift's cooperative pool,
   /// where a handful of slow server startups can starve everything else in the
   /// process.
+  /// `client` is the name the bearer token was issued to — authenticated, and
+  /// the only identity here worth attributing anything to. The name a client
+  /// reports in `clientInfo` is self-reported and, per the spec, explicitly not
+  /// to be relied on; it is recorded beside this one, never instead of it.
   func call(
-    profile profileName: String, server serverID: String, frame: [String: Any], era: Dialect.Era
+    profile profileName: String, server serverID: String, frame: [String: Any], era: Dialect.Era,
+    client: String
   ) throws -> Data? {
     guard let server = ServerCatalog.byID[serverID] else {
       throw SupervisorError.unknownServer(serverID)
@@ -96,7 +101,7 @@ nonisolated final class Supervisor: @unchecked Sendable {
     }
 
     let instance = try instanceFor(profile: profile, server: server)
-    return try instance.handle(frame, era: era)
+    return try instance.handle(frame, era: era, client: client)
   }
 
   /// Stop everything. Called when the app quits.
@@ -113,6 +118,7 @@ nonisolated final class Supervisor: @unchecked Sendable {
     let key = "\(profile)/\(server)"
     let instance = instances.withLock { $0.removeValue(forKey: key) }
     instance?.stop(reason: "stopped by request")
+    Task(priority: Activity.priority) { @MainActor in Activity.shared.stopped(id: key) }
   }
 
   /// What is running right now, for the Activity window.
@@ -275,6 +281,16 @@ nonisolated extension Supervisor {
         "started (pid \(process.processIdentifier))"
           + (binaries.isDevelopment ? " — development build" : ""))
 
+      let id = key
+      let pid = process.processIdentifier
+      let profileName = profile.name
+      let serverID = server.id
+      let writes = profile.allowWrites
+      Task(priority: Activity.priority) { @MainActor in
+        Activity.shared.started(
+          id: id, profile: profileName, server: serverID, pid: pid, allowWrites: writes)
+      }
+
       readLoop(fromChild.fileHandleForReading.fileDescriptor)
       drainStderr(childErr.fileHandleForReading)
       watchExit(process)
@@ -354,6 +370,13 @@ nonisolated extension Supervisor {
         "server exited (\(detail))"
           + (waiters.isEmpty ? "" : " — \(waiters.count) request(s) in flight were dropped"))
       if status != 0 { noteFailure() }
+      let id = key
+      let dropped = waiters.count
+      Task(priority: Activity.priority) { @MainActor in
+        Activity.shared.exited(
+          id: id,
+          detail: detail + (dropped == 0 ? "" : " — \(dropped) request(s) dropped"))
+      }
       for waiter in waiters { waiter.resume(.failure(SupervisorError.childDied(detail))) }
     }
 
@@ -432,16 +455,26 @@ nonisolated extension Supervisor {
     /// `era` decides what the client is owed. The child below is legacy either
     /// way — every server in the manifest is — so this is where the two eras
     /// stop being different.
-    func handle(_ incoming: [String: Any], era: Dialect.Era) throws -> Data? {
+    func handle(_ incoming: [String: Any], era: Dialect.Era, client: String) throws -> Data? {
       var frame = incoming
       guard let method = frame["method"] as? String else {
         throw SupervisorError.malformedRequest("no method")
       }
       let clientID = frame["id"]
+      let reported = Dialect.clientName(of: frame)
 
-      if let name = Dialect.clientName(of: frame) {
-        let announced = state.withLock { $0.clients.insert(name).inserted }
-        if announced { hostLog(key, .info, "client attached: \(name)") }
+      if let reported {
+        let announced = state.withLock { $0.clients.insert(reported).inserted }
+        if announced { hostLog(key, .info, "client attached: \(client) (\(reported))") }
+      }
+
+      // Attribution happens for every frame, but only a request counts. A
+      // notification is traffic, not a call, and counting it would inflate the
+      // one number on the window somebody might quote.
+      let id = key
+      let counts = clientID != nil
+      Task(priority: Activity.priority) { @MainActor in
+        Activity.shared.called(id: id, client: client, reported: reported, counts: counts)
       }
 
       if case .modern = era {
@@ -654,6 +687,10 @@ nonisolated extension Supervisor {
         key, negotiated == asked ? .info : .error,
         "handshake complete (protocol \(negotiated)"
           + (negotiated == asked ? "" : ", but the manifest says \(asked)") + ")")
+      let instanceKey = key
+      Task(priority: Activity.priority) { @MainActor in
+        Activity.shared.negotiated(id: instanceKey, dialect: negotiated)
+      }
     }
 
     // MARK: Wire

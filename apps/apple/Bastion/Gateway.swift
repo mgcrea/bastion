@@ -380,7 +380,7 @@ nonisolated final class Gateway: @unchecked Sendable {
     do {
       guard
         let data = try Supervisor.shared.call(
-          profile: profile, server: server, frame: frame, era: era)
+          profile: profile, server: server, frame: frame, era: era, client: client)
       else {
         // A notification. The spec is exact here: "the server MUST return HTTP
         // status code 202 Accepted with no body." An empty body, not a JSON

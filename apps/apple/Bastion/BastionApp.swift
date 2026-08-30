@@ -23,6 +23,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     } catch {
       hostLog("gateway", .error, error.localizedDescription)
     }
+
+    #if DEBUG
+      // For looking at the window without hunting for the menu bar icon, and
+      // for capturing it. A menu bar agent has no other way to be told "open
+      // your window" from a script.
+      if CommandLine.arguments.contains("--activity") {
+        ActivityWindowController.show()
+      }
+    #endif
   }
 
   /// Stop the children before the app goes.
@@ -60,16 +69,24 @@ private struct GatewayMenu: View {
     }
     Divider()
 
-    let running = Supervisor.shared.running
-    if running.isEmpty {
+    // Read from `Activity`, not from `Supervisor.running`. The supervisor's
+    // view is a lock-protected snapshot taken on whatever thread asks, which is
+    // fine for a script and wrong for a menu: SwiftUI has nothing to observe,
+    // so the rows would be whatever they were when the menu was last built.
+    let instances = Activity.shared.instances
+    if instances.isEmpty {
       Text("No servers running")
     } else {
-      ForEach(running, id: \.id) { instance in
-        Text("\(instance.id) — pid \(String(instance.pid))")
+      ForEach(instances) { instance in
+        Text(
+          "\(instance.displayName) — \(instance.calls) call\(instance.calls == 1 ? "" : "s")"
+            + (instance.allowWrites ? " · writes on" : ""))
       }
     }
 
     Divider()
+    Button("Activity…") { ActivityWindowController.show() }
+      .keyboardShortcut("a")
     Button("Quit Bastion") { NSApplication.shared.terminate(nil) }
       .keyboardShortcut("q")
   }

@@ -121,17 +121,18 @@ audit asserts the setting is absent rather than empty.
 
 Built and verified:
 
-|                    |                                                                                     |
-| ------------------ | ----------------------------------------------------------------------------------- |
-| **Gateway**        | loopback HTTP, `Origin` / `Host` / bearer, hand-written so the checks are auditable |
-| **Supervisor**     | one child per profile, id remapping, backoff, circuit breaker, idle stop            |
-| **Dialect**        | dual-era: modern 2026-07-28 and legacy `initialize`, onto legacy children           |
-| **Manifest**       | ten servers, a generator, and a CI drift check                                      |
-| **Keychain**       | per-profile credentials, per-client tokens                                          |
-| **Migration**      | four `.mcp.json` credential sets moved into the Keychain, configs repointed         |
-| **`make smoke`**   | four concurrent clients, colliding ids, exactly one child, `kill -9` recovery       |
-| **`make audit`**   | the five security rules, against the real bundle                                    |
-| **`make dialect`** | 24 conformance checks across both eras                                              |
+|                     |                                                                                     |
+| ------------------- | ----------------------------------------------------------------------------------- |
+| **Gateway**         | loopback HTTP, `Origin` / `Host` / bearer, hand-written so the checks are auditable |
+| **Supervisor**      | one child per profile, id remapping, backoff, circuit breaker, idle stop            |
+| **Dialect**         | dual-era: modern 2026-07-28 and legacy `initialize`, onto legacy children           |
+| **Manifest**        | ten servers, a generator, and a CI drift check                                      |
+| **Keychain**        | per-profile credentials, per-client tokens                                          |
+| **Activity window** | what is running, who is attached, and every tool call, live                         |
+| **Migration**       | four `.mcp.json` credential sets moved into the Keychain, configs repointed         |
+| **`make smoke`**    | four concurrent clients, colliding ids, exactly one child, `kill -9` recovery       |
+| **`make audit`**    | the five security rules, against the real bundle                                    |
+| **`make dialect`**  | 24 conformance checks across both eras                                              |
 
 Bastion is what the 2026-07-28 spec calls a **dual-era server**. A modern client declares its
 protocol version, identity and capabilities in each request's `_meta` and needs no handshake at
@@ -143,7 +144,7 @@ None of the ten servers are modern. Every one runs an SDK whose newest protocol 
 which is what they negotiate. The manifest said `2025-06-18` until a live handshake was actually
 run against one; that was Bastion's own pin masquerading as a fact about the servers.
 
-Not built yet, in build order: the Activity window, client wiring, `bastion-bridge` for stdio-only clients like Claude Desktop, and the signed
+Not built yet, in build order: client wiring, `bastion-bridge` for stdio-only clients like Claude Desktop, and the signed
 release path.
 
 Four limitations worth knowing now:
