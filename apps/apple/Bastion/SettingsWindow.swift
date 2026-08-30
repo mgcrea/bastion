@@ -104,6 +104,9 @@ struct SettingsView: View {
 
 private struct GeneralPane: View {
   @AppStorage("gatewayPort") private var port = Int(Gateway.defaultPort)
+  /// -1 is "leave npm alone", which is not the same as 0. See
+  /// `ServerInstaller.releaseAgeOverride`.
+  @AppStorage(ServerInstaller.releaseAgeKey) private var releaseAge = -1
   @State private var automatic = UpdateController.shared.automatic
 
   var body: some View {
@@ -130,6 +133,38 @@ private struct GeneralPane: View {
         }
       } header: {
         Text("Gateway")
+      }
+
+      Section {
+        Picker("Minimum package age", selection: $releaseAge) {
+          Text("Whatever npm is configured to do").tag(-1)
+          Text("No minimum").tag(0)
+          Text("1 day").tag(1)
+          Text("3 days").tag(3)
+          Text("7 days").tag(7)
+        }
+        .pickerStyle(.menu)
+        .frame(maxWidth: 380)
+        Text(
+          "npm can be told to refuse versions published too recently, which is a real defence: it "
+            + "is the window in which a compromised release tends to get caught and unpulled. "
+            + "Bastion reads that setting from your ~/.npmrc and leaves it alone by default.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+        if releaseAge >= 0 {
+          Label(
+            releaseAge == 0
+              ? "Bastion will install a version published seconds ago. Your ~/.npmrc still applies "
+                + "to everything else."
+              : "Bastion will only install versions at least \(releaseAge) day\(releaseAge == 1 ? "" : "s") "
+                + "old, whatever ~/.npmrc says.",
+            systemImage: releaseAge == 0 ? "exclamationmark.triangle.fill" : "info.circle")
+            .font(.caption)
+            .foregroundStyle(releaseAge == 0 ? .orange : .secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      } header: {
+        Text("Installing servers")
       }
 
       Section {
