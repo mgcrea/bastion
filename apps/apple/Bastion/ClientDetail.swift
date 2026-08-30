@@ -12,6 +12,8 @@ struct ClientDetail: View {
   let client: ClientWiring.Client
 
   @State private var result: String?
+  /// The keys a refused Configure named. Non-empty is the alert being up.
+  @State private var collision: [String] = []
 
   private var profiles: [Profile] { ProfileStore.shared.profiles }
 
@@ -33,6 +35,25 @@ struct ClientDetail: View {
     return servers.values.contains { ClientWiringMerge.isOurs($0) }
   }
 
+  /// Of the keys Bastion would write, the ones already taken by an entry it did
+  /// not write, mapped to what is there now.
+  ///
+  /// Shown before Configure is pressed rather than only in its refusal: the
+  /// pane's job is to say what would happen to this file, and "your own shopify
+  /// server is in the way" is the most important thing it can say.
+  private var foreign: [String: String] {
+    guard client.isInstalled,
+      let root = try? ClientWiringMerge.readJSON(client.configURL),
+      let servers = root[client.rootKey] as? [String: Any]
+    else { return [:] }
+    var out: [String: String] = [:]
+    for key in ClientWiring.keys(for: profiles).values {
+      guard let entry = servers[key], !ClientWiringMerge.isOurs(entry) else { continue }
+      out[key] = ClientWiringMerge.identity(of: entry) ?? "an entry Bastion did not write"
+    }
+    return out
+  }
+
   var body: some View {
     let status = status
 
@@ -50,6 +71,36 @@ struct ClientDetail: View {
       }
       .padding(16)
     }
+    .alert(
+      collisionTitle,
+      isPresented: Binding(get: { !collision.isEmpty }, set: { if !$0 { collision = [] } })
+    ) {
+      Button("Cancel", role: .cancel) {}
+      Button("Change the prefix…") { SettingsWindowController.show(.general) }
+      Button("Overwrite anyway", role: .destructive) { wire(force: true) }
+    } message: {
+      Text(collisionMessage)
+    }
+  }
+
+  // MARK: - The refusal
+
+  private var collisionTitle: String {
+    let what: String = collision.count == 1 ? "an entry" : "\(collision.count) entries"
+    return "Overwrite \(what) in \(client.configURL.lastPathComponent)?"
+  }
+
+  /// Written out rather than inlined into the alert: it names what is about to
+  /// be destroyed, which is the one sentence in this pane worth being sure of.
+  private var collisionMessage: String {
+    let one: Bool = collision.count == 1
+    let names: String = collision.joined(separator: ", ")
+    let verb: String = one ? "was" : "were"
+    let those: String = one ? "that server" : "those servers"
+    let backup: String = "\(client.configURL.lastPathComponent).bastion-backup"
+    return
+      "\(names) \(verb) not written by Bastion. Overwriting replaces \(those) with Bastion's own. "
+      + "The previous file is kept as \(backup)."
   }
 
   // MARK: - Header
@@ -120,7 +171,11 @@ struct ClientDetail: View {
 
   private var entriesCard: some View {
     let keys = ClientWiring.keys(for: profiles)
-    let ordered = profiles.sorted { (keys[$0] ?? "") < (keys[$1] ?? "") }
+    let ordered =
+      profiles
+      .compactMap { profile in keys[profile].map { (profile: profile, key: $0) } }
+      .sorted { $0.key < $1.key }
+    let taken = foreign
 
     return Card(title: "Entries") {
       VStack(alignment: .leading, spacing: 10) {
@@ -128,18 +183,24 @@ struct ClientDetail: View {
           Text("Nothing to write.")
             .font(.callout).foregroundStyle(.secondary)
         } else {
-          ForEach(ordered) { profile in
+          ForEach(ordered, id: \.profile) { item in
             VStack(alignment: .leading, spacing: 2) {
-              Text(keys[profile] ?? "bastion-\(profile.serverID)")
+              Text(item.key)
                 .font(.system(.caption, design: .monospaced)).bold()
+                .foregroundStyle(taken[item.key] == nil ? Color.primary : Color.red)
                 .textSelection(.enabled)
-              Text(reachLine(for: profile))
+              Text(reachLine(for: item.profile))
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
+              if let existing = taken[item.key] {
+                Text("Already taken by \(existing). Configure will refuse rather than replace it.")
+                  .font(.caption2).foregroundStyle(.red)
+                  .fixedSize(horizontal: false, vertical: true)
+              }
             }
-            if profile.id != ordered.last?.id { Divider() }
+            if item.profile != ordered.last?.profile { Divider() }
           }
 
           Divider()
@@ -165,13 +226,19 @@ struct ClientDetail: View {
 
   // MARK: - Actions
 
-  private func wire() {
+  private func wire(force: Bool = false) {
     do {
-      let backup = try ClientWiring.wire(client, profiles: profiles)
+      let backup = try ClientWiring.wire(client, profiles: profiles, force: force)
+      collision = []
       result =
         "Wrote \(profiles.count) entr\(profiles.count == 1 ? "y" : "ies") to \(client.configURL.path)."
         + (backup.map { " Previous version saved as \($0.lastPathComponent)." } ?? "")
         + " Restart \(client.displayName) to pick them up."
+    } catch ClientWiring.WireError.collision(let name, let keys) {
+      // The refusal is the feature. It also lands in `result`, so the reason
+      // survives after the alert is dismissed.
+      result = ClientWiring.WireError.collision(client: name, keys: keys).localizedDescription
+      collision = keys
     } catch {
       result = "Could not write \(client.configURL.path): \(error.localizedDescription)"
     }
@@ -199,7 +266,7 @@ extension ClientWiring {
     case .audited(.configured): .green
     case .audited(.notConfigured), .notInstalled: .secondary
     case .audited(.incomplete): .orange
-    case .audited(.stale), .unreadable: .red
+    case .audited(.stale), .audited(.collides), .unreadable: .red
     }
   }
 }

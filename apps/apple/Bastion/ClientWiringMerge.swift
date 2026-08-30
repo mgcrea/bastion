@@ -68,6 +68,52 @@ enum ClientWiringMerge {
     return nil
   }
 
+  /// What an entry reaches, as distinct from `identity(of:)`, which says where
+  /// it points.
+  ///
+  /// This pair is what survives a rename. The key an entry is filed under is the
+  /// user's to choose — the prefix is a setting — while the profile and server
+  /// it serves are not. That makes "this entry is the old name of that one" a
+  /// fact about the endpoint rather than a guess about naming conventions,
+  /// which is the whole reason `merged` can clean up after a prefix change.
+  ///
+  /// `nil` for anything this app did not write, so it can never claim somebody
+  /// else's entry is a stale copy of one of ours.
+  static func target(of entry: Any?) -> (profile: String, server: String)? {
+    guard let entry = entry as? [String: Any] else { return nil }
+
+    if let command = entry["command"] as? String, command.hasSuffix(bridgeSuffix) {
+      let args = entry["args"] as? [String] ?? []
+      func value(_ flag: String) -> String? {
+        guard let match = args.first(where: { $0.hasPrefix(flag) }) else { return nil }
+        let value = String(match.dropFirst(flag.count))
+        return value.isEmpty ? nil : value
+      }
+      guard let profile = value("--profile="), let server = value("--server=") else { return nil }
+      return (profile, server)
+    }
+
+    // `isOurs` has already established the grammar for the HTTP shape — loopback
+    // host, exactly `/s/<profile>/<server>` — so this only has to read it.
+    guard isOurs(entry), let url = entry["url"] as? String,
+      let path = URLComponents(string: url)?.path
+    else { return nil }
+    let segments = path.split(separator: "/", omittingEmptySubsequences: true)
+    guard segments.count == 3, segments[0] == "s" else { return nil }
+    return (String(segments[1]), String(segments[2]))
+  }
+
+  /// Of the keys we are about to write, the ones already taken by an entry this
+  /// app did not write.
+  ///
+  /// The whole collision feature rests on this. Bastion used to prefix every key
+  /// with `bastion-` and call the problem solved, which made the defence a
+  /// naming convention rather than a check — and left it with nothing to say the
+  /// day somebody turned the prefix off.
+  static func collisions(servers: [String: Any], keys: [String]) -> [String] {
+    keys.filter { servers[$0] != nil && !isOurs(servers[$0]) }.sorted()
+  }
+
   /// Whether an entry is one this app wrote, wherever the bundle was at the
   /// time.
   ///
@@ -94,28 +140,45 @@ enum ClientWiringMerge {
 
   /// Merge our servers in, leaving everything else untouched.
   ///
-  /// `entries` maps server key to the entry to write. `legacy` maps a current
-  /// key to one it replaces, removed only when `isOurs` says we wrote it — a
-  /// third-party server that happens to be called `shopify` is someone else's
-  /// entry, and this has no business removing it. That case is not theoretical
-  /// here: the migration in step 5 deliberately kept the user's own key names,
-  /// so `shopify` in a config may be Bastion's or may predate it.
+  /// `entries` maps the key to write to the entry to write there. A key the
+  /// config already holds is removed when all three are true: we wrote it, it
+  /// reaches one of the profile/server pairs being written now, and it is not
+  /// itself one of the new keys. That is the same entry under its old name, and
+  /// removing it is what leaves a rename with one entry rather than two pointing
+  /// at the same endpoint.
+  ///
+  /// Deciding that from `target(of:)` rather than from a passed-in list of
+  /// previous names is what makes the key prefix safe to change at all — a list
+  /// can only hold the renames somebody thought of. It still covers the one it
+  /// replaces: the step-5 migration deliberately kept the user's own key names,
+  /// so a bare `shopify` in a config may be Bastion's. A third-party `shopify`
+  /// is left alone, because `isOurs` never claims it.
   static func merged(
     into root: [String: Any],
     rootKey: String,
-    entries: [String: [String: Any]],
-    legacy: [String: String]
+    entries: [String: [String: Any]]
   ) -> [String: Any] {
     var root = root
     var servers = root[rootKey] as? [String: Any] ?? [:]
-    for (key, entry) in entries {
-      servers[key] = entry
-      if let previous = legacy[key], previous != key, isOurs(servers[previous]) {
-        servers.removeValue(forKey: previous)
-      }
+
+    let written = Set(entries.values.compactMap { endpoint(of: $0) })
+    for (key, entry) in servers where entries[key] == nil {
+      guard let endpoint = endpoint(of: entry), written.contains(endpoint) else { continue }
+      servers.removeValue(forKey: key)
     }
+
+    for (key, entry) in entries { servers[key] = entry }
     root[rootKey] = servers
     return root
+  }
+
+  /// `target(of:)` flattened to something hashable, for comparing entries.
+  ///
+  /// Safe as a string join because both halves are validated names: a profile
+  /// name is `^[a-z0-9][a-z0-9-]*$` and a server id is a path segment, so
+  /// neither can contain the separator.
+  private static func endpoint(of entry: Any?) -> String? {
+    target(of: entry).map { "\($0.profile)/\($0.server)" }
   }
 
   /// Remove every entry this app wrote, and nothing else.
@@ -148,6 +211,10 @@ enum ClientWiringMerge {
     /// Wired for some servers and not others — what an existing config looks
     /// like the day a new profile is added.
     case incomplete([String])
+    /// The keys Bastion would write are taken by entries somebody else wrote.
+    /// Not a state to fix by writing: it is the one case where writing is the
+    /// damage.
+    case collides([String])
   }
 
   /// `expected` is the server key paired with where it should point and the
@@ -157,15 +224,28 @@ enum ClientWiringMerge {
     expected: [(key: String, reach: Reach, label: String)]
   ) -> Audit {
     var missing: [String] = []
+    var collisions: [String] = []
+    var stale: String?
     for item in expected {
       guard let entry = servers[item.key] as? [String: Any] else {
         missing.append(item.label)
         continue
       }
-      if identity(of: entry) != item.reach.identity {
-        return .stale(identity(of: entry) ?? "unknown")
+      // Present, but not ours. Calling that `.stale` would describe somebody
+      // else's server as a drifted copy of one of ours, and the remedy for
+      // stale — write over it — is exactly the wrong move here.
+      guard isOurs(entry) else {
+        collisions.append(item.key)
+        continue
+      }
+      if stale == nil, identity(of: entry) != item.reach.identity {
+        stale = identity(of: entry) ?? "unknown"
       }
     }
+    // Outranks everything below: a config that would clobber an entry is worth
+    // saying before a config that is merely out of date or half-written.
+    if !collisions.isEmpty { return .collides(collisions.sorted()) }
+    if let stale { return .stale(stale) }
     // A partially wired config must not report `.configured`. Treating any one
     // matching entry as enough is what made a newly added server invisible to
     // everyone who had already configured the client — a green check beside a
@@ -241,13 +321,12 @@ enum ClientWiringMerge {
   static func mergedIntoProject(
     _ root: [String: Any],
     folder: String,
-    entries: [String: [String: Any]],
-    legacy: [String: String]
+    entries: [String: [String: Any]]
   ) -> [String: Any] {
     var root = root
     var projects = root["projects"] as? [String: Any] ?? [:]
     var project = projects[folder] as? [String: Any] ?? [:]
-    project = merged(into: project, rootKey: "mcpServers", entries: entries, legacy: legacy)
+    project = merged(into: project, rootKey: "mcpServers", entries: entries)
     projects[folder] = project
     root["projects"] = projects
     return root

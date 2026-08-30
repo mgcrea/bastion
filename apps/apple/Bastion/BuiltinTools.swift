@@ -30,6 +30,7 @@ enum BuiltinTools {
     case noSuchProfile(profile: String, server: String)
     case noSuchClient(id: String, known: [String])
     case unknownVariable(variable: String, server: String)
+    case wireRefused(String)
 
     var errorDescription: String? {
       switch self {
@@ -57,6 +58,11 @@ enum BuiltinTools {
         return
           "'\(id)' is not a client Bastion knows how to configure — try "
           + known.joined(separator: ", ")
+      case .wireRefused(let why):
+        // `ClientWiring.WireError` already says what happened and what a person
+        // would change. This adds the half only a caller of this tool can act
+        // on, rather than making the pane's alert talk about arguments.
+        return "\(why) To replace them anyway, call wire_client again with force: true."
       case .unknownVariable(let variable, let server):
         return
           "'\(server)' does not read a variable called '\(variable)'. Bastion passes only the "
@@ -291,6 +297,11 @@ enum BuiltinTools {
             "Optional '<profile>/<server>' ids to wire. Defaults to every profile whose server is "
             + "enabled.",
         ],
+        "force": schema(
+          "boolean",
+          "Overwrite entries the config already has under those names that Bastion did not "
+            + "write. Off by default, and wiring is refused rather than silently replacing a "
+            + "server the user configured themselves."),
       ],
       required: ["client"], mutates: true),
 
@@ -751,7 +762,18 @@ enum BuiltinTools {
       }
     }
 
-    let backup = try ClientWiring.wire(client, profiles: profiles)
+    let backup: URL?
+    do {
+      backup = try ClientWiring.wire(
+        client, profiles: profiles, force: arguments["force"] as? Bool ?? false)
+    } catch let error as ClientWiring.WireError {
+      // Only a collision has an override. `ambiguousKeys` is a prefix the user
+      // has to change, and telling an agent to force it would be advice that
+      // cannot work.
+      guard case .collision = error else { throw error }
+      throw ToolError.wireRefused(error.errorDescription ?? "\(error)")
+    }
+
     var out: [String: Any] = [
       "client": id, "wired": profiles.map(\.id),
       "config_path": client.configURL.path,

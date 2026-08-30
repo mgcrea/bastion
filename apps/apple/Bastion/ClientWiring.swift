@@ -96,33 +96,92 @@ enum ClientWiring {
     Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/bastion-bridge").path
   }
 
+  /// What every entry key starts with, and the reason it is a setting rather
+  /// than the constant it used to be.
+  ///
+  /// It was `bastion-`, always. That is Bastion's opinion imposed on a file
+  /// somebody else owns, and it is not free: the key becomes part of every tool
+  /// name the model reads, so a `shopify` entry is `mcp__bastion_shopify__…` for
+  /// as long as the config lives. Empty by default — the prefix is opt-in now,
+  /// and the collision it was there to prevent is checked in `wire` rather than
+  /// assumed away by a naming convention.
+  nonisolated static let prefixKey = "clientKeyPrefix"
+
+  nonisolated static var prefix: String {
+    let stored = UserDefaults.standard.string(forKey: prefixKey) ?? ""
+    return isValidPrefix(stored) ? stored : ""
+  }
+
+  /// Empty, or something that reads as the front of a key.
+  ///
+  /// A trailing dash is the ordinary case here rather than an edge one —
+  /// `bastion-` is the whole point — so this is `Profile.isValidName` loosened
+  /// by exactly that much, plus the empty string.
+  nonisolated static func isValidPrefix(_ candidate: String) -> Bool {
+    if candidate.isEmpty { return true }
+    return candidate.count <= 32
+      && candidate.range(of: "^[a-z0-9][a-z0-9-]*$", options: .regularExpression) != nil
+  }
+
   /// The key a profile gets in a client config.
   ///
-  /// `bastion-<server>` while a server has one profile, which is the ordinary
+  /// `<prefix><server>` while a server has one profile, which is the ordinary
   /// case and reads well in a client's server list. A second profile of the
   /// same server would collide, so both then carry the profile name. Decided
   /// across the whole set rather than per entry, so the key for `shopify` does
   /// not change shape depending on which profiles happen to be selected.
   static func keys(for profiles: [Profile]) -> [Profile: String] {
+    let prefix = prefix
+    // `bastion-` in front of Bastion's own server would be `bastion-bastion`,
+    // which a client turns into tool names like
+    // `mcp__bastion_bastion__list_servers`. The stutter is not cosmetic at that
+    // point — it is in every tool name the model reads. Written as a rule about
+    // the prefix rather than a check for the built-in id, so a `mcp-` prefix
+    // still gives `mcp-bastion`.
+    var stem = prefix
+    while stem.hasSuffix("-") { stem.removeLast() }
+
     var counts: [String: Int] = [:]
     for profile in profiles { counts[profile.serverID, default: 0] += 1 }
     var out: [Profile: String] = [:]
     for profile in profiles {
-      let single = counts[profile.serverID] == 1
-      // Bastion's own server would otherwise be `bastion-bastion`, which a
-      // client turns into tool names like `mcp__bastion_bastion__list_servers`.
-      // The stutter is not cosmetic at that point — it is in every tool name
-      // the model reads.
-      if profile.serverID == BuiltinServer.id {
-        out[profile] = single ? "bastion" : "bastion-\(profile.name)"
-        continue
-      }
-      out[profile] =
-        single
-        ? "bastion-\(profile.serverID)"
-        : "bastion-\(profile.name)-\(profile.serverID)"
+      let body =
+        counts[profile.serverID] == 1
+        ? profile.serverID
+        : "\(profile.name)-\(profile.serverID)"
+      out[profile] = profile.serverID == stem ? body : prefix + body
     }
     return out
+  }
+
+  /// The two reasons Bastion declines to write a config.
+  ///
+  /// Both are about a file it does not own. Neither is recoverable by trying
+  /// again, so both name what to change.
+  enum WireError: LocalizedError {
+    /// Keys the config already holds under entries Bastion did not write.
+    case collision(client: String, keys: [String])
+    /// Two profiles that reduce to one key, which would write one entry and
+    /// silently drop the other.
+    case ambiguousKeys([String])
+
+    var errorDescription: String? {
+      switch self {
+      case .collision(let client, let keys):
+        let names = keys.map { "'\($0)'" }.joined(separator: ", ")
+        let one = keys.count == 1
+        return
+          "\(client)'s config already has \(one ? "an entry" : "entries") named \(names) that "
+          + "Bastion did not write. Overwriting would replace \(one ? "a server" : "servers") "
+          + "you configured yourself. Change the entry name prefix in Settings, or remove "
+          + "\(one ? "it" : "them") from the config first."
+      case .ambiguousKeys(let keys):
+        return
+          "Two profiles would be written under the same name: "
+          + keys.map { "'\($0)'" }.joined(separator: ", ")
+          + ". Rename a profile, or change the entry name prefix in Settings."
+      }
+    }
   }
 
   static func reach(for profile: Profile, transport: Transport) -> ClientWiringMerge.Reach {
@@ -180,6 +239,8 @@ enum ClientWiring {
       case .audited(.stale(let where_)): return "points elsewhere — \(where_)"
       case .audited(.incomplete(let missing)):
         return "missing \(missing.joined(separator: ", "))"
+      case .audited(.collides(let keys)):
+        return "\(keys.joined(separator: ", ")) already taken by another server"
       }
     }
   }
@@ -197,39 +258,51 @@ enum ClientWiring {
     }
     let servers = root[client.rootKey] as? [String: Any] ?? [:]
     let keys = keys(for: profiles)
-    let expected = profiles.map {
-      (
-        key: keys[$0] ?? "bastion-\($0.serverID)",
-        reach: reach(for: $0, transport: client.transport),
-        label: $0.serverID
-      )
+    let expected = profiles.compactMap {
+      profile -> (key: String, reach: ClientWiringMerge.Reach, label: String)? in
+      guard let key = keys[profile] else { return nil }
+      return (key, reach(for: profile, transport: client.transport), profile.serverID)
     }
     return .audited(ClientWiringMerge.audit(servers: servers, expected: expected))
   }
 
   // MARK: - Writing
 
+  /// `force` overwrites entries Bastion did not write. Off by default, and the
+  /// caller has to say so twice — once in the UI, once here — because the thing
+  /// being overwritten is a server somebody configured by hand.
   @discardableResult
-  static func wire(_ client: Client, profiles: [Profile]) throws -> URL? {
-    let token = try token(for: client)
+  static func wire(_ client: Client, profiles: [Profile], force: Bool = false) throws -> URL? {
     let keys = keys(for: profiles)
-    var entries: [String: [String: Any]] = [:]
-    // What the step-5 migration wrote: the user's own key names, kept so their
-    // tools kept working. Named as legacy so those entries are migrated rather
-    // than left beside the new ones — but only when `isOurs` agrees we wrote
-    // them.
-    var legacy: [String: String] = [:]
-    for profile in profiles {
-      guard let key = keys[profile] else { continue }
-      entries[key] = entry(for: profile, transport: client.transport, token: token)
-      legacy[key] = profile.serverID
-    }
+    // Unreachable while the prefix was a constant; reachable the moment it is
+    // typed by hand. Refusing beats writing one of the two entries and leaving
+    // the other profile silently unwired.
+    let duplicates = Dictionary(grouping: keys.values, by: { $0 }).filter { $0.value.count > 1 }
+    guard duplicates.isEmpty else { throw WireError.ambiguousKeys(duplicates.keys.sorted()) }
 
     let root: [String: Any] =
       FileManager.default.fileExists(atPath: client.configURL.path)
       ? try ClientWiringMerge.readJSON(client.configURL) : [:]
+
+    // Before the token, so a refusal does not leave a Keychain item behind for a
+    // client that was never configured.
+    if !force {
+      let existing = root[client.rootKey] as? [String: Any] ?? [:]
+      let taken = ClientWiringMerge.collisions(servers: existing, keys: Array(keys.values))
+      guard taken.isEmpty else {
+        throw WireError.collision(client: client.displayName, keys: taken)
+      }
+    }
+
+    let token = try token(for: client)
+    var entries: [String: [String: Any]] = [:]
+    for profile in profiles {
+      guard let key = keys[profile] else { continue }
+      entries[key] = entry(for: profile, transport: client.transport, token: token)
+    }
+
     let merged = ClientWiringMerge.merged(
-      into: root, rootKey: client.rootKey, entries: entries, legacy: legacy)
+      into: root, rootKey: client.rootKey, entries: entries)
     let backup = try ClientWiringMerge.write(
       merged, to: client.configURL, backupSuffix: "bastion-backup")
     hostLog(

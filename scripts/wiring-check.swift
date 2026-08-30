@@ -67,14 +67,19 @@ struct WiringCheck {
     }
   }
 
-  static func entries(_ reach: (String) -> ClientWiringMerge.Reach) -> [String: [String: Any]] {
-    Dictionary(uniqueKeysWithValues: servers.map { ("bastion-\($0.id)", entry(reach($0.id))) })
+  /// The prefix defaults to what Bastion used to hard-code, so the checks
+  /// written against it still say what they said. It is a parameter because it
+  /// is a setting now, and the unprefixed case is the new default.
+  static func entries(prefix: String = "bastion-", _ reach: (String) -> ClientWiringMerge.Reach)
+    -> [String: [String: Any]]
+  {
+    Dictionary(uniqueKeysWithValues: servers.map { ("\(prefix)\($0.id)", entry(reach($0.id))) })
   }
 
-  static func expected(_ reach: (String) -> ClientWiringMerge.Reach)
+  static func expected(prefix: String = "bastion-", _ reach: (String) -> ClientWiringMerge.Reach)
     -> [(key: String, reach: ClientWiringMerge.Reach, label: String)]
   {
-    servers.map { (key: "bastion-\($0.id)", reach: reach($0.id), label: $0.label) }
+    servers.map { (key: "\(prefix)\($0.id)", reach: reach($0.id), label: $0.label) }
   }
 
   static func main() {
@@ -93,7 +98,10 @@ struct WiringCheck {
     unrelatedKeysSurvive()
     bothTransportsRoundTrip()
     isOursIsNarrow()
-    legacyMigratesOnlyWhenOurs()
+    targetReadsBothShapes()
+    renamedKeysMigrateOnlyWhenOurs()
+    prefixChangeLeavesOneEntry()
+    collisionsAreNamedNotOverwritten()
     staleIsDecidedByWhereItPoints()
     incompleteVersusNotConfigured()
     unwiringRemovesOnlyOurs()
@@ -133,7 +141,7 @@ struct WiringCheck {
     let ours = Set(originalServers.filter { ClientWiringMerge.isOurs($0.value) }.keys)
 
     let after = ClientWiringMerge.merged(
-      into: before, rootKey: rootKey, entries: entries { httpReach($0) }, legacy: [:])
+      into: before, rootKey: rootKey, entries: entries { httpReach($0) })
 
     // Every top-level key except the servers object comes back identical.
     var topLevelIntact = true
@@ -158,7 +166,7 @@ struct WiringCheck {
     // The nested case, where value semantics bite.
     if let projects = before["projects"] as? [String: Any], let folder = projects.keys.sorted().first {
       let nested = ClientWiringMerge.mergedIntoProject(
-        before, folder: folder, entries: entries { httpReach($0) }, legacy: [:])
+        before, folder: folder, entries: entries { httpReach($0) })
       let afterProjects = nested["projects"] as? [String: Any] ?? [:]
       check("all \(projects.count) project blocks survive a nested write", afterProjects.count == projects.count)
       var othersIntact = true
@@ -192,7 +200,7 @@ struct WiringCheck {
     ]
     let out = ClientWiringMerge.merged(
       into: before, rootKey: "mcpServers",
-      entries: entries { httpReach($0) }, legacy: [:])
+      entries: entries { httpReach($0) })
     let servers = out["mcpServers"] as? [String: Any] ?? [:]
 
     check("top-level `coworkUserFilesPath` kept", out["coworkUserFilesPath"] as? String != nil)
@@ -218,7 +226,7 @@ struct WiringCheck {
       ("bridge", { (id: String) in bridgeReach(id) }),
     ] {
       let out = ClientWiringMerge.merged(
-        into: [:], rootKey: "mcpServers", entries: entries(reach), legacy: [:])
+        into: [:], rootKey: "mcpServers", entries: entries(reach))
       let servers = out["mcpServers"] as? [String: Any] ?? [:]
       check("\(name): audits as configured", ClientWiringMerge.audit(servers: servers, expected: expected(reach)) == .configured)
       check("\(name): every entry is recognised as ours", servers.values.allSatisfy { ClientWiringMerge.isOurs($0) })
@@ -227,7 +235,7 @@ struct WiringCheck {
     // against the other is stale, not configured. That is what a config written
     // before the bridge existed actually looks like.
     let httpOut = ClientWiringMerge.merged(
-      into: [:], rootKey: "mcpServers", entries: entries { httpReach($0) }, legacy: [:])
+      into: [:], rootKey: "mcpServers", entries: entries { httpReach($0) })
     let servers = httpOut["mcpServers"] as? [String: Any] ?? [:]
     if case .stale = ClientWiringMerge.audit(servers: servers, expected: expected { bridgeReach($0) }) {
       check("http config audited as a bridge config is stale", true)
@@ -264,9 +272,9 @@ struct WiringCheck {
     check("nil is not ours", !ClientWiringMerge.isOurs(nil))
   }
 
-  /// A legacy key is migrated only when we were the ones who wrote it.
-  static func legacyMigratesOnlyWhenOurs() {
-    print("\nLegacy keys")
+  /// A key is migrated only when we were the ones who wrote it.
+  static func renamedKeysMigrateOnlyWhenOurs() {
+    print("\nRenamed keys")
     // `shopify` here is the key the step-5 migration wrote — ours. `keycloak`
     // is somebody else's stdio server that happens to share the name.
     let before: [String: Any] = [
@@ -275,9 +283,8 @@ struct WiringCheck {
         "keycloak": ["command": "npx", "args": ["-y", "someone-elses-keycloak"]],
       ]
     ]
-    let legacy = Dictionary(uniqueKeysWithValues: servers.map { ("bastion-\($0.id)", $0.id) })
     let out = ClientWiringMerge.merged(
-      into: before, rootKey: "mcpServers", entries: entries { httpReach($0) }, legacy: legacy)
+      into: before, rootKey: "mcpServers", entries: entries { httpReach($0) })
     let after = out["mcpServers"] as? [String: Any] ?? [:]
 
     check("our own old key is removed", after["shopify"] == nil)
@@ -286,6 +293,104 @@ struct WiringCheck {
     check(
       "and is untouched",
       (after["keycloak"] as? [String: Any])?["command"] as? String == "npx")
+  }
+
+  /// What an entry reaches, which is what makes a rename recognisable.
+  static func targetReadsBothShapes() {
+    print("\nEndpoints")
+    func endpoint(_ entry: Any?) -> String? {
+      ClientWiringMerge.target(of: entry).map { "\($0.profile)/\($0.server)" }
+    }
+    check("http", endpoint(entry(httpReach("shopify"))) == "prod/shopify")
+    check("http on another port", endpoint(entry(httpReach("shopify", port: 9999))) == "prod/shopify")
+    check(
+      "bridge", endpoint(entry(bridgeReach("keycloak", profile: "staging"))) == "staging/keycloak")
+    check(
+      "bridge from another bundle",
+      endpoint(entry(bridgeReach("stripe", command: "/Users/x/B.app" + ClientWiringMerge.bridgeSuffix)))
+        == "prod/stripe")
+    check("a foreign stdio entry reaches nothing", endpoint(["command": "npx", "args": ["-y", "x"]]) == nil)
+    check("a foreign loopback URL reaches nothing", endpoint(["url": "http://127.0.0.1:9000/mcp"]) == nil)
+    check("a bridge with no args reaches nothing", endpoint(["command": bridge]) == nil)
+    check("a bridge with an empty flag reaches nothing", endpoint(["command": bridge, "args": ["--profile=", "--server=x"]]) == nil)
+    check("nil reaches nothing", endpoint(nil) == nil)
+  }
+
+  /// Changing the prefix renames our entries rather than duplicating them.
+  ///
+  /// The bug this exists to prevent is two MCP servers in a client's list
+  /// pointing at one endpoint, which is what the old fixed `legacy` list would
+  /// have produced the first time somebody turned the prefix off.
+  static func prefixChangeLeavesOneEntry() {
+    print("\nChanging the prefix")
+    let wired = ClientWiringMerge.merged(
+      into: [:], rootKey: "mcpServers", entries: entries { httpReach($0) })
+    let renamed = ClientWiringMerge.merged(
+      into: wired, rootKey: "mcpServers", entries: entries(prefix: "") { httpReach($0) })
+    let after = renamed["mcpServers"] as? [String: Any] ?? [:]
+    check("the new key is there", after["shopify"] != nil)
+    check("the old key is gone", after["bastion-shopify"] == nil)
+    check("one entry per server, not two", after.count == servers.count)
+
+    let again = ClientWiringMerge.merged(
+      into: renamed, rootKey: "mcpServers", entries: entries(prefix: "mcp-") { httpReach($0) })
+    let afterAgain = again["mcpServers"] as? [String: Any] ?? [:]
+    check("renaming a second time still leaves one each", afterAgain.count == servers.count)
+    check("under the newest name", afterAgain["mcp-shopify"] != nil)
+
+    // A rename is decided by the endpoint, so an entry of ours for a profile
+    // this write does not mention is left exactly where it is. That is what
+    // stops wiring a subset from deleting the rest.
+    let others: [String: Any] = [
+      "mcpServers": ["staging-shopify": entry(httpReach("shopify", profile: "staging"))]
+    ]
+    let kept = ClientWiringMerge.merged(
+      into: others, rootKey: "mcpServers", entries: entries(prefix: "") { httpReach($0) })
+    check(
+      "another profile's entry is not swept up",
+      (kept["mcpServers"] as? [String: Any])?["staging-shopify"] != nil)
+
+    // The transport can change under a rename too — Claude Desktop's bridge
+    // entry and an HTTP entry for the same profile are the same entry.
+    let crossed: [String: Any] = ["mcpServers": ["bastion-shopify": entry(bridgeReach("shopify"))]]
+    let swapped = ClientWiringMerge.merged(
+      into: crossed, rootKey: "mcpServers", entries: entries(prefix: "") { httpReach($0) })
+    let swappedServers = swapped["mcpServers"] as? [String: Any] ?? [:]
+    check("a rename across transports leaves one entry", swappedServers["bastion-shopify"] == nil)
+    check("and it is the new shape", swappedServers.count == servers.count)
+  }
+
+  /// A key taken by somebody else's server is named, never quietly replaced.
+  static func collisionsAreNamedNotOverwritten() {
+    print("\nCollisions")
+    let existing: [String: Any] = [
+      "shopify": ["command": "npx", "args": ["-y", "@shopify/mcp"]],
+      "keycloak": entry(httpReach("keycloak")),
+    ]
+    let taken = ClientWiringMerge.collisions(
+      servers: existing, keys: ["shopify", "keycloak", "stripe"])
+    check("names the key somebody else holds", taken == ["shopify"])
+    check(
+      "one of ours is not a collision, whatever port it names",
+      ClientWiringMerge.collisions(
+        servers: ["shopify": entry(httpReach("shopify", port: 9999))], keys: ["shopify"]).isEmpty)
+    check(
+      "one of ours from a bundle that has moved is not a collision",
+      ClientWiringMerge.collisions(
+        servers: [
+          "shopify": entry(bridgeReach("shopify", command: "/Users/x/B.app" + ClientWiringMerge.bridgeSuffix))
+        ], keys: ["shopify"]).isEmpty)
+    check("an empty config collides with nothing", ClientWiringMerge.collisions(servers: [:], keys: ["shopify"]).isEmpty)
+
+    // And the audit says collision rather than stale. Stale invites the one
+    // action that would destroy the entry: write over it.
+    let audit = ClientWiringMerge.audit(
+      servers: ["bastion-shopify": ["command": "npx", "args": ["-y", "@shopify/mcp"]]],
+      expected: expected { httpReach($0) })
+    check("a foreign entry under our key audits as a collision", audit == .collides(["bastion-shopify"]))
+    check(
+      "and outranks the servers that are merely missing",
+      { if case .collides = audit { return true } else { return false } }())
   }
 
   static func staleIsDecidedByWhereItPoints() {
@@ -388,7 +493,7 @@ struct WiringCheck {
       return check("fixture reads back", false)
     }
     let merged = ClientWiringMerge.merged(
-      into: root, rootKey: "mcpServers", entries: entries { httpReach($0) }, legacy: [:])
+      into: root, rootKey: "mcpServers", entries: entries { httpReach($0) })
     let backup = try? ClientWiringMerge.write(merged, to: config, backupSuffix: "bastion-backup")
 
     check("a backup was made", backup != nil)
@@ -440,7 +545,7 @@ struct WiringCheck {
       ClientWiringMerge.projectScopeServers(in: root, folder: "/Users/x/zzz") == nil)
 
     let out = ClientWiringMerge.mergedIntoProject(
-      root, folder: "/Users/x/a", entries: entries { httpReach($0) }, legacy: [:])
+      root, folder: "/Users/x/a", entries: entries { httpReach($0) })
     let projects = out["projects"] as? [String: Any] ?? [:]
     let a = projects["/Users/x/a"] as? [String: Any] ?? [:]
     let aServers = a["mcpServers"] as? [String: Any] ?? [:]
@@ -459,7 +564,7 @@ struct WiringCheck {
       "writing to a folder that did not exist creates only that folder",
       {
         let fresh = ClientWiringMerge.mergedIntoProject(
-          root, folder: "/Users/x/new", entries: entries { httpReach($0) }, legacy: [:])
+          root, folder: "/Users/x/new", entries: entries { httpReach($0) })
         let all = fresh["projects"] as? [String: Any] ?? [:]
         return all.count == 4 && (all["/Users/x/new"] as? [String: Any]) != nil
       }())

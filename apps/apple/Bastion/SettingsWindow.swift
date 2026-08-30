@@ -127,7 +127,19 @@ private struct GeneralPane: View {
   /// -1 is "leave npm alone", which is not the same as 0. See
   /// `ServerInstaller.releaseAgeOverride`.
   @AppStorage(ServerInstaller.releaseAgeKey) private var releaseAge = -1
+  /// Empty by default: the prefix is opt-in. See `ClientWiring.prefix`.
+  @AppStorage(ClientWiring.prefixKey) private var keyPrefix = ""
   @State private var automatic = UpdateController.shared.automatic
+
+  /// What the current prefix does to the keys that would actually be written,
+  /// rather than to an invented example — the profiles are right there.
+  private var sampleKeys: String {
+    let profiles = ProfileStore.shared.profiles
+    guard !profiles.isEmpty else { return keyPrefix + "shopify" }
+    let all = ClientWiring.keys(for: profiles).values.sorted()
+    let shown = all.prefix(3).joined(separator: ", ")
+    return all.count > 3 ? "\(shown), …" : shown
+  }
 
   var body: some View {
     Form {
@@ -153,6 +165,43 @@ private struct GeneralPane: View {
         }
       } header: {
         Text("Gateway")
+      }
+
+      Section {
+        TextField("Entry name prefix", text: $keyPrefix)
+          .frame(maxWidth: 200)
+        Text(
+          "A client config gets one entry per profile, named <prefix><server>. Empty writes the "
+            + "server name alone, which is the default.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+        if ClientWiring.isValidPrefix(keyPrefix) {
+          Text("Entries would be named \(sampleKeys).")
+            .font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        } else {
+          // Not merely cosmetic: the key goes into somebody else's JSON and then
+          // into a tool name, and a client is entitled to reject either.
+          Label(
+            "Lowercase letters, digits and dashes, starting with a letter or digit. Ignored "
+              + "until it is.",
+            systemImage: "exclamationmark.triangle.fill")
+            .font(.caption).foregroundStyle(.orange)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        // The cost worth naming before someone changes it: a client's saved
+        // permission rules are keyed on the tool name, and the tool name carries
+        // this prefix.
+        Text(
+          "Changing this renames Bastion's entries in each client the next time you configure "
+            + "it, and renames the tools the model sees with them — 'mcp__bastion_shopify__…' "
+            + "becomes 'mcp__shopify__…'. Any permission rule saved against the old name stops "
+            + "matching. Entries Bastion did not write are never touched, and a name already "
+            + "taken by one of them is refused rather than overwritten.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      } header: {
+        Text("MCP clients")
       }
 
       Section {
