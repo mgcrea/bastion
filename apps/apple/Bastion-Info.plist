@@ -20,12 +20,22 @@
 
 	<key>SUFeedURL</key>
 	<string>https://bastion.mgcrea.io/appcast.xml</string>
-	<!-- Filled in by `make sparkle-keys`, which is run once, ever. An empty value
-	     is not a placeholder to ship: Sparkle refuses an appcast it cannot verify,
-	     so a build with no key here cannot be updated at all — which is the safe
-	     direction to fail, and the reason this is committed rather than injected. -->
+	<!-- The public half of the update-signing key. Committed on purpose: it is
+	     public, and a build without it can verify no appcast at all, so an empty
+	     value ships an app that silently refuses every update it is offered.
+
+	     SHARED WITH CUPERTINO, deliberately. Sparkle keeps one signing key per
+	     user account rather than one per app — a single `ed25519` item under
+	     https://sparkle-project.org in the login keychain — and `generate_keys`
+	     reuses an existing one rather than minting a second. The cost is a wider
+	     blast radius: one leaked private key can push an update to both apps.
+	     Accepted because separating them means removing that keychain item and
+	     doing an export/import dance for every release of whichever app loses.
+
+	     Read out of the keychain with `generate_keys -p`, not copied from
+	     cupertino's plist — the two agreeing is the check, not the source. -->
 	<key>SUPublicEDKey</key>
-	<string></string>
+	<string>hEZtsdbIsEdeSrWseZL5HriTCgDioKsEXqLIEsEFEd0=</string>
 
 	<!-- Present and false, never absent. An ABSENT SUEnableAutomaticChecks is what
 	     makes Sparkle show its own "check automatically?" prompt on second launch;
