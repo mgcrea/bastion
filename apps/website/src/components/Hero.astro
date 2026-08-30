@@ -174,9 +174,21 @@ const CALLS = [
       </div>
       <div class="flex items-center gap-3.5">
         <span class="flex rounded-[5px] bg-accent/18 px-[7px] py-0.5">
-          {/* The menu bar glyph, template-tinted the way AppKit tints it. Served
-              from public/, written by `pnpm icons` out of design/. */}
-          <img src="/menubar-glyph.svg" alt="" width="15" height="15" class="opacity-95" />
+          {/* The menu bar glyph, served from public/ and written by `pnpm icons`
+              out of design/ — an <img> rather than an inline <svg> so the site
+              never holds a second copy of the geometry.
+              The file is a template image: pure black plus alpha, because AppKit
+              paints its own colour through it. Nothing paints it here, and this
+              mock's menu bar is dark, so it would render black-on-black. The
+              filter is that tint — `brightness(0) invert(1)` forces the ink to
+              white whatever colour the source carries. */}
+          <img
+            src="/menubar-glyph.svg"
+            alt=""
+            width="15"
+            height="15"
+            class="opacity-95 [filter:brightness(0)_invert(1)]"
+          />
         </span>
         <span class="text-[11.5px] text-fg/65">Thu 09:41</span>
       </div>
