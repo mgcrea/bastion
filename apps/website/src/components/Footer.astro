@@ -1,0 +1,61 @@
+---
+import { REPO_URL, REQUIRES } from "../config";
+import Logo from "./Logo.astro";
+
+const COLUMNS = [
+  {
+    heading: "Read",
+    items: [
+      { label: "How it works", href: "#how" },
+      { label: "Security", href: "#rules" },
+      { label: "Servers", href: "#servers" },
+      { label: "Status", href: "#status" },
+    ],
+  },
+  {
+    heading: "Build",
+    items: [
+      { label: "make app", href: null },
+      { label: "make audit", href: null },
+      { label: "make smoke", href: null },
+      { label: "make dialect", href: null },
+    ],
+  },
+] as const;
+---
+
+<footer
+  class="border-t border-rule bg-bg-deep py-8.5"
+>
+  <div class="wrap flex flex-wrap items-start justify-between gap-8">
+    <div class="flex flex-col gap-2.5">
+      <a href={REPO_URL} rel="noopener" class="flex items-center gap-2.5">
+        <Logo size={20} />
+        <span class="text-[12.5px] font-semibold text-fg">Bastion</span>
+      </a>
+      <span class="text-[11.5px] leading-[1.7] text-fg/38">
+        Requires {REQUIRES} and Xcode 26. Code-signed for development only.<br />
+        Licence not settled · source-available intent
+      </span>
+    </div>
+
+    <div class="flex gap-13 text-[12.5px] leading-[1.95] text-fg/50">
+      {
+        COLUMNS.map((col) => (
+          <div class="flex flex-col">
+            <span class="font-medium text-fg">{col.heading}</span>
+            {col.items.map((item) =>
+              item.href ? (
+                <a href={item.href} class="text-fg/50 transition-colors hover:text-accent-hi">
+                  {item.label}
+                </a>
+              ) : (
+                <span class="font-mono text-[11.5px]">{item.label}</span>
+              ),
+            )}
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</footer>

@@ -1,0 +1,58 @@
+---
+import { REPO_URL, SHIPPED } from "../config";
+import Logo from "./Logo.astro";
+---
+
+<section
+  id="cta"
+  class="relative flex flex-col items-center gap-5 overflow-hidden border-t border-rule px-0 pt-26 pb-23 text-center"
+>
+  <div
+    class="glow pointer-events-none absolute inset-x-0 -bottom-[260px] h-[540px]"
+    style="background:radial-gradient(42% 58% at 50% 100%,rgb(242 137 92 / 26%),transparent 70%)"
+    aria-hidden="true"
+  >
+  </div>
+
+  <Logo size={76} class="float relative shadow-[0_22px_44px_-18px_rgb(242_137_92/60%)]" />
+
+  <h2
+    class="relative m-0 max-w-[19ch] font-display text-[clamp(32px,5.4vw,50px)] leading-[1.06] font-semibold tracking-[-0.04em] text-balance"
+  >
+    One process. One grant of trust. Read the source.
+  </h2>
+
+  <p class="relative m-0 max-w-[52ch] px-5 text-[16.5px] leading-[1.6] text-fg/56 text-pretty">
+    A program that holds every credential you own should be readable and compilable by the people
+    trusting it. The licence is not settled yet, and that is a gap rather than a position.
+  </p>
+
+  {/*
+    There is no download button, and the flag is why. `SHIPPED` gates the one
+    element that would name something you can get; everything else on this page
+    is true whether or not there is a release, which is the rule config.ts
+    states — a string outside a SHIPPED branch has to stand on its own.
+  */}
+  <div class="relative flex flex-wrap items-center justify-center gap-3 px-5 pt-1.5">
+    <a
+      href={REPO_URL}
+      rel="noopener"
+      class="plate rounded-md px-6 py-3.5 text-[15px] font-semibold text-accent-ink shadow-[0_14px_34px_-14px_rgb(242_137_92/75%)]"
+    >
+      Read the source ↗
+    </a>
+    <code
+      class="rounded-md border border-white/10 bg-white/5 px-4.5 py-3.5 font-mono text-[13px] text-fg/72"
+    >
+      make app && make audit
+    </code>
+  </div>
+
+  {
+    !SHIPPED && (
+      <p class="relative m-0 text-[12.5px] text-fg/38">
+        No release yet — the app is code-signed for development only.
+      </p>
+    )
+  }
+</section>

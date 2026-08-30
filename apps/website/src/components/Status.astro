@@ -1,0 +1,124 @@
+---
+import SectionHeader from "./SectionHeader.astro";
+import { DIALECT } from "../config";
+
+/**
+ * The build order, as it actually stands. The root README's Status table is the
+ * authority; if the two disagree the README is right and this is stale.
+ *
+ * `tag` is deliberately narrow — built / green / next / not started — because a
+ * status page whose vocabulary grows is one that has started describing feelings
+ * rather than state.
+ */
+const STATUS = [
+  {
+    k: "Gateway",
+    v: "Loopback HTTP with Origin, Host and bearer checks, hand-written so they stay auditable.",
+    tag: "built",
+    tone: "text-ok-ink",
+  },
+  {
+    k: "Supervisor",
+    v: "One child per profile, id remapping, backoff, circuit breaker, idle stop.",
+    tag: "built",
+    tone: "text-ok-ink",
+  },
+  {
+    k: "Dialect",
+    v: `Dual-era: modern ${DIALECT.modern} and legacy initialize, onto legacy children. ${DIALECT.conformanceChecks} conformance checks.`,
+    tag: "built",
+    tone: "text-ok-ink",
+  },
+  {
+    k: "Keychain",
+    v: "Per-profile credentials, per-client tokens. profiles.json holds no secret value.",
+    tag: "built",
+    tone: "text-ok-ink",
+  },
+  {
+    k: "Activity window",
+    v: "What is running, who is attached, and every tool call, live.",
+    tag: "built",
+    tone: "text-ok-ink",
+  },
+  {
+    k: "Migration",
+    v: "Four .mcp.json credential sets moved into the Keychain, and their configs repointed here.",
+    tag: "built",
+    tone: "text-ok-ink",
+  },
+  {
+    k: "make smoke",
+    v: "Four concurrent clients, colliding ids, exactly one child, kill -9 recovery.",
+    tag: "green",
+    tone: "text-ok-ink",
+  },
+  {
+    k: "Client wiring",
+    v: "Minting a token per client and writing it into their configs, instead of doing it by hand.",
+    tag: "next",
+    tone: "text-warn",
+  },
+  {
+    k: "Release",
+    v: "bastion-bridge for stdio-only clients like Claude Desktop, then the signed and notarized path. Nothing licensed yet.",
+    tag: "not started",
+    tone: "text-fg/35",
+  },
+] as const;
+
+/**
+ * The gaps, said out loud. The first is the one that bites today — it is a
+ * consequence of the migration having already happened, not a future risk.
+ */
+const LIMITS = [
+  "The repointed repos need Bastion running: four .mcp.json files now call the gateway instead of spawning anything, and there is no login item yet.",
+  "Sampling, elicitation and roots are refused with an explanatory error, not routed — a shared instance has no single client to ask.",
+  "Responses are a single JSON object, never an SSE stream: no notifications/progress on a long call.",
+  "Mcp-Param-* headers are forwarded but not validated; no server in the manifest annotates a parameter yet.",
+] as const;
+---
+
+<section id="status" class="border-t border-rule py-20">
+  <div class="wrap flex flex-wrap items-start gap-16">
+    <SectionHeader heading="Status">
+      <p class="m-0 text-[15px] leading-[1.6] text-fg/55 text-pretty">
+        The gateway serves real servers end to end and the credentials that used to sit in plaintext
+        are in the Keychain. There is no client wiring, no bridge, and no notarized build.
+      </p>
+      <div class="flex flex-col gap-2.5 pt-1.5">
+        <h3 class="eyebrow m-0 text-fg/40">Known gaps</h3>
+        <ul class="m-0 flex list-none flex-col gap-2.5 p-0">
+          {
+            LIMITS.map((l) => (
+              <li class="text-[13px] leading-[1.55] text-fg/50 text-pretty">{l}</li>
+            ))
+          }
+        </ul>
+      </div>
+    </SectionHeader>
+
+    <dl class="m-0 flex min-w-[min(380px,100%)] flex-1 basis-[480px] flex-col">
+      {
+        STATUS.map((s) => (
+          <div class="flex flex-wrap items-baseline gap-x-6.5 gap-y-1 border-b border-rule py-4">
+            <dt class="basis-[170px] shrink-0 font-mono text-[14px] leading-[1.5] font-medium">
+              {s.k}
+            </dt>
+            <dd class="m-0 flex-1 basis-[240px] text-[14px] leading-[1.55] text-fg/58 text-pretty">
+              {s.v}
+            </dd>
+            <span
+              class:list={[
+                "shrink-0 font-mono text-[10.5px] leading-[1.9] tracking-[0.05em] uppercase",
+                s.tone,
+              ]}
+            >
+              {s.tag}
+            </span>
+          </div>
+        ))
+      }
+    </dl>
+  </div>
+</section>

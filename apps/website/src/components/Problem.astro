@@ -1,0 +1,131 @@
+---
+import SectionHeader from "./SectionHeader.astro";
+import Logo from "./Logo.astro";
+
+/**
+ * The clients, and the fan-in. Four is not a round number chosen for the
+ * picture: it is the four hosts that actually open the same repo on this
+ * machine, and it is the same four `make smoke` runs concurrently.
+ */
+const CLIENTS = [
+  { name: "Claude Code", delay: "0s" },
+  { name: "Cursor", delay: ".15s" },
+  { name: "VS Code", delay: ".3s" },
+  { name: "Terminal", delay: ".45s" },
+] as const;
+---
+
+<section class="relative overflow-hidden py-24" style="background:linear-gradient(180deg,#101215 0%,#0B0C0F 100%)">
+  <div
+    class="pointer-events-none absolute inset-x-0 -bottom-[260px] h-[540px]"
+    style="background:radial-gradient(46% 58% at 50% 100%,rgb(242 137 92 / 16%),transparent 70%)"
+    aria-hidden="true"
+  >
+  </div>
+
+  <div class="wrap relative flex flex-wrap items-start gap-16">
+    <SectionHeader eyebrow="The credentials" heading="A brokerage refresh token, sitting in a file beside the code.">
+      <p class="m-0 text-[16px] leading-[1.6] text-fg/58 text-pretty">
+        Every MCP client spawns its own copy of every stdio server, each with its own environment.
+        Four servers kept a <code class="font-mono text-[14.5px]">.mcp.json</code> holding real
+        secrets in plaintext — readable by anything running as you.
+      </p>
+      <p class="m-0 text-[14px] leading-[1.6] text-fg/45 text-pretty">
+        One careless <code class="font-mono text-[13px]">git add</code> from being published. Nothing
+        was auditable, and nothing was shared. Those four sets are in the Keychain now and their
+        configs point here instead; the shape of the problem is why.
+      </p>
+    </SectionHeader>
+
+    <div class="flex min-w-[min(420px,100%)] flex-1 basis-[520px] flex-col gap-5">
+      <div class="flex flex-col gap-5.5 rounded-lg border border-white/9 bg-white/3 p-8">
+        <div class="flex items-center gap-2.5">
+          <span class="text-[14.5px] font-semibold">Every client spawns its own</span>
+          <span class="rounded-md bg-accent/13 px-2.5 py-1 font-mono text-[11px] text-accent-hi">
+            {CLIENTS.length} processes
+          </span>
+        </div>
+        <div class="flex flex-col gap-3">
+          {
+            CLIENTS.map((c) => (
+              <div class="flex items-center gap-3">
+                <span class="basis-[118px] shrink-0 rounded-[9px] border border-white/8 bg-white/6 py-2.5 text-center text-[12.5px] font-medium">
+                  {c.name}
+                </span>
+                <svg viewBox="0 0 80 12" class="h-3 w-20 shrink-0" aria-hidden="true">
+                  <path
+                    d="M2 6 H64"
+                    stroke="var(--color-accent)"
+                    stroke-width="2"
+                    class="lane"
+                    style={`animation-delay:${c.delay}`}
+                  />
+                  <path d="M62 2 L72 6 L62 10 Z" fill="var(--color-accent)" />
+                </svg>
+                <span class="flex-1 rounded-[9px] border border-accent/20 bg-accent/9 px-3.5 py-2.5 font-mono text-[12.5px] font-semibold text-accent-hi">
+                  own process · own secret
+                </span>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+
+      <div
+        class="flex flex-col gap-5.5 rounded-lg border border-ok/24 p-8"
+        style="background:linear-gradient(180deg,rgb(62 158 99/8%),rgb(255 255 255/3%))"
+      >
+        <div class="flex items-center gap-2.5">
+          <span class="text-[14.5px] font-semibold">One supervisor holds them</span>
+          <span class="rounded-md bg-ok/16 px-2.5 py-1 font-mono text-[11px] text-ok-ink">
+            1 process
+          </span>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="flex shrink-0 flex-col gap-2">
+            {
+              CLIENTS.map((c) => (
+                <span class="w-[132px] rounded-sm border border-white/8 bg-white/6 py-2 text-center text-[12px] font-medium">
+                  {c.name}
+                </span>
+              ))
+            }
+          </div>
+          <svg
+            viewBox="0 0 60 148"
+            class="h-[148px] w-[54px] shrink-0"
+            fill="none"
+            stroke="rgb(244 242 239 / 30%)"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <path d="M0 16 C36 16 24 74 52 74" class="lane" />
+            <path d="M0 54 C36 54 30 74 52 74" class="lane" style="animation-delay:.12s" />
+            <path d="M0 94 C36 94 30 74 52 74" class="lane" style="animation-delay:.24s" />
+            <path d="M0 132 C36 132 24 74 52 74" class="lane" style="animation-delay:.36s" />
+          </svg>
+          <div
+            class="flex shrink-0 flex-col items-center gap-2 rounded-2xl border border-accent/28 px-4.5 py-4 shadow-[0_16px_36px_-18px_rgb(242_137_92/50%)]"
+            style="background:linear-gradient(180deg,rgb(255 208 138/14%),rgb(242 137 92/8%))"
+          >
+            <Logo size={38} class="float" />
+            <span class="text-[11.5px] font-semibold text-accent-hi">Bastion.app</span>
+          </div>
+          <svg viewBox="0 0 48 12" class="h-3 w-11 shrink-0" aria-hidden="true">
+            <path d="M0 6 H36" stroke="var(--color-ok)" stroke-width="2.5"></path>
+            <path d="M34 1.5 L44 6 L34 10.5 Z" fill="var(--color-ok)"></path>
+          </svg>
+          <span
+            class="flex-1 rounded-[9px] border border-ok/24 bg-ok/11 px-3.5 py-3 text-[12px] leading-[1.4] font-semibold text-ok-ink"
+          >
+            one child<br />Keychain-held
+          </span>
+        </div>
+        <p class="m-0 text-[13px] leading-[1.6] text-fg/50 text-pretty">
+          What leaks if a <code class="font-mono text-[12px] text-fg/72">.mcp.json</code> leaks is a
+          revocable loopback token, not a Shopify secret.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>

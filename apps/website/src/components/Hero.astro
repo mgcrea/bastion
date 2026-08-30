@@ -1,0 +1,268 @@
+---
+import { COUNTS, GATEWAY, REQUIRES } from "../config";
+import Logo from "./Logo.astro";
+
+/**
+ * The before/after that the whole page argues for: four editors each holding
+ * their own copy of one server, against one supervised child.
+ *
+ * The "before" rows are deliberately identical — same binary, same memory, four
+ * times — because that repetition IS the problem. Varying them would make the
+ * picture prettier and the argument weaker.
+ */
+const BEFORE = [
+  { proc: "mcp-shopify", mem: "58 MB" },
+  { proc: "mcp-shopify", mem: "61 MB" },
+  { proc: "mcp-shopify", mem: "57 MB" },
+  { proc: "mcp-shopify", mem: "60 MB" },
+] as const;
+
+/**
+ * The menu, as the app draws it. Five profiles across four states — running,
+ * idle-stopped, writes off, writes on — because the states are the feature: a
+ * profile is the unit that carries a credential set AND a write permission, and
+ * a menu showing five green rows would say neither.
+ */
+interface MenuRow {
+  name: string;
+  state: string;
+  /** The state text's colour — the row's whole signal, so it is per-row data. */
+  tone: string;
+  /** The row the pointer is over, drawn as the app draws a hover. */
+  active: boolean;
+  /** A stopped profile: the NAME dims too, not just its state. */
+  dim?: boolean;
+}
+
+const MENU: MenuRow[] = [
+  { name: "prod/shopify", state: "running", tone: "text-ok-ink", active: true },
+  { name: "acme/keycloak", state: "running", tone: "text-ok-ink", active: false },
+  { name: "staging/shopify", state: "idle · stopped", tone: "text-fg/35", active: false, dim: true },
+  { name: "prod/tastytrade", state: "writes off", tone: "text-fg/50", active: false },
+  { name: "cert/tastytrade", state: "writes on", tone: "text-warn", active: false },
+];
+
+/** The two calls the Activity window has recorded. Method and tool name only — never arguments. */
+const CALLS = [
+  { call: "tools/call · shopify_get_order", meta: "read · 84 ms", lit: true },
+  { call: "tools/call · shopify_list_products", meta: "read · 39 ms", lit: false },
+] as const;
+---
+
+<section id="top" class="relative overflow-hidden px-0 pt-[88px]">
+  <div
+    class="glow pointer-events-none absolute inset-x-0 -top-[200px] h-[680px]"
+    style="background:radial-gradient(58% 68% at 50% 0%,rgb(242 137 92 / 28%) 0%,rgb(242 137 92 / 5%) 46%,transparent 72%)"
+    aria-hidden="true"
+  >
+  </div>
+
+  <div class="wrap relative flex flex-wrap items-center gap-16">
+    <div class="flex min-w-[min(400px,100%)] flex-1 basis-[568px] flex-col gap-6">
+      <div
+        class="flex items-center gap-2 self-start rounded-full border border-white/9 bg-white/5 px-3.5 py-1.5 text-[11.5px] font-medium text-fg/72"
+      >
+        <span class="pulse size-1.5 rounded-full bg-warn" aria-hidden="true"></span>
+        Early · the gateway serves a real server end to end
+      </div>
+
+      <h1
+        class="headline-ramp m-0 font-display text-[clamp(40px,7vw,76px)] leading-[0.98] font-semibold tracking-[-0.045em] text-balance"
+      >
+        One MCP server, running once, for every client.
+      </h1>
+
+      <p class="m-0 max-w-[50ch] text-[19px] leading-[1.55] text-fg/62 text-pretty">
+        Bastion is a menu-bar app that supervises your MCP servers instead of letting each editor
+        spawn its own. One process per profile, credentials in the Keychain, and every tool call
+        recorded.
+      </p>
+
+      <div class="flex flex-wrap items-center gap-3.5 pt-1">
+        <a
+          href="#how"
+          class="plate rounded-md px-6 py-3.5 text-[15px] font-semibold text-accent-ink shadow-[0_14px_34px_-14px_rgb(242_137_92/75%)]"
+        >
+          How it works →
+        </a>
+        <a
+          href="#rules"
+          class="rounded-md border border-white/10 bg-white/6 px-5.5 py-3.5 text-[15px] font-medium text-fg transition-colors hover:bg-white/10"
+        >
+          The five rules
+        </a>
+      </div>
+
+      <span class="text-[12.5px] text-fg/38">
+        {REQUIRES} · loopback only · not shipped yet
+      </span>
+    </div>
+
+    <div class="reveal flex min-w-[min(420px,100%)] flex-1 basis-[480px] flex-col gap-3">
+      <div class="flex items-start gap-3.5">
+        <div class="flex flex-1 flex-col gap-2.5">
+          <div
+            class="overflow-hidden rounded-[11px] border border-white/11 bg-bg-3 shadow-[0_18px_40px_-22px_rgb(0_0_0/90%)]"
+          >
+            <div class="border-b border-white/8 bg-white/5 px-3.5 py-2.5 text-[11.5px] font-semibold">
+              Activity Monitor
+            </div>
+            {
+              BEFORE.map((row) => (
+                <div class="flex items-center gap-2.5 border-b border-white/6 px-3.5 py-2.5">
+                  <span class="size-[18px] shrink-0 rounded bg-[#43454A]" aria-hidden="true" />
+                  <span class="flex-1 font-mono text-[11.5px]">{row.proc}</span>
+                  <span class="shrink-0 font-mono text-[10.5px] text-danger-ink">{row.mem}</span>
+                </div>
+              ))
+            }
+          </div>
+          <span class="font-mono text-[11px] text-fg/42">
+            {BEFORE.length} processes · {BEFORE.length} plaintext secrets · 0 logs
+          </span>
+        </div>
+
+        <span class="shrink-0 pt-14 text-[15px] text-fg/30" aria-hidden="true">→</span>
+
+        <div class="flex flex-1 flex-col gap-2.5">
+          <div
+            class="overflow-hidden rounded-[11px] border border-accent/28 bg-bg-3 shadow-[0_18px_44px_-20px_rgb(242_137_92/32%)]"
+          >
+            <div class="border-b border-white/8 bg-white/5 px-3.5 py-2.5 text-[11.5px] font-semibold">
+              Activity Monitor
+            </div>
+            <div class="flex items-center gap-2.5 px-3.5 py-2.5">
+              <Logo size={18} />
+              <span class="flex-1 font-mono text-[11.5px]">mcp-shopify</span>
+              <span class="shrink-0 font-mono text-[10.5px] text-ok-ink">61 MB</span>
+            </div>
+            {/* The empty space is the point, so it is drawn rather than left out. */}
+            <div
+              class="h-[114px] border-t border-white/6"
+              style="background:repeating-linear-gradient(135deg,rgb(255 255 255/2.8%) 0 6px,transparent 6px 12px)"
+              aria-hidden="true"
+            >
+            </div>
+          </div>
+          <span class="font-mono text-[11px] text-fg/42">
+            1 process · Keychain · every call recorded
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {/* ── The menu bar mock ──────────────────────────────────────────────────────
+      A slab of macOS with the popover open, bleeding off the bottom of the hero
+      into the marquee. It is a drawing, not a screenshot: there is no signed
+      build to screenshot yet, and a mock that admits to being one is better than
+      a screenshot of a Debug build with somebody's real store domain in it. */}
+  <div
+    class="relative mx-auto -mb-px mt-[72px] w-full max-w-[1180px] overflow-hidden rounded-t-2xl border border-b-0 border-white/10 shadow-[0_-22px_80px_-34px_rgb(242_137_92/40%)]"
+    style="background:linear-gradient(180deg,#1B1D21 0%,#101114 100%)"
+  >
+    <div
+      class="flex h-[27px] items-center justify-between border-b border-white/7 bg-white/8 px-3.5"
+    >
+      <div class="flex items-center gap-4 text-[11.5px] text-fg/75">
+        <span class="font-semibold">Claude</span>
+        <span class="hidden sm:inline">File</span>
+        <span class="hidden sm:inline">Edit</span>
+        <span class="hidden sm:inline">View</span>
+        <span class="hidden sm:inline">Window</span>
+        <span class="hidden sm:inline">Help</span>
+      </div>
+      <div class="flex items-center gap-3.5">
+        <span class="flex rounded-[5px] bg-accent/18 px-[7px] py-0.5">
+          {/* The menu bar glyph, template-tinted the way AppKit tints it. Served
+              from public/, written by `pnpm icons` out of design/. */}
+          <img src="/menubar-glyph.svg" alt="" width="15" height="15" class="opacity-95" />
+        </span>
+        <span class="text-[11.5px] text-fg/65">Thu 09:41</span>
+      </div>
+    </div>
+
+    {/* Two arrangements, not one that shrinks. The popover is a fixed 286pt
+        panel in the real app, so on a phone the code panel cannot share a row
+        with it — `calc(100% - 340px)` left it 46px wide and unreadable. Below
+        `lg` they stack; from `lg` the code panel goes back to overlapping the
+        desktop it is sitting on. */}
+    <div
+      class="relative flex flex-col items-end gap-5 px-3.5 pt-2.5 lg:min-h-[412px] lg:flex-row lg:justify-end lg:gap-0"
+    >
+      <div
+        class="w-full max-w-[286px] overflow-hidden rounded-[11px] border border-white/12 bg-chrome/97 shadow-[0_26px_60px_-20px_rgb(0_0_0/85%)] lg:self-start"
+      >
+        <div class="flex items-center gap-2.5 border-b border-white/8 px-4 py-3.5">
+          <Logo size={23} />
+          <div class="flex flex-col gap-[3px]">
+            <span class="text-[12.5px] font-semibold">Bastion</span>
+            <span class="text-[10.5px] text-fg/50">2 profiles running</span>
+          </div>
+        </div>
+        <div class="flex flex-col gap-px px-1.5 pb-2.5 pt-1.5">
+          {
+            MENU.map((m) => (
+              <div
+                class:list={[
+                  "flex items-center justify-between rounded-[7px] px-2.5 py-2",
+                  m.active && "bg-white/6",
+                ]}
+              >
+                <span class:list={["font-mono text-[12px]", m.dim ? "text-fg/50" : "text-fg"]}>
+                  {m.name}
+                </span>
+                <span class:list={["font-mono text-[10.5px]", m.tone]}>{m.state}</span>
+              </div>
+            ))
+          }
+          <div class="mx-2.5 my-1.5 h-px bg-white/9"></div>
+          <div class="flex items-center justify-between px-2.5 py-2">
+            <span class="text-[12px]">Gateway</span>
+            <span class="font-mono text-[10.5px] text-ok-ink">{GATEWAY.host}:{GATEWAY.port}</span>
+          </div>
+          <div class="flex items-center justify-between px-2.5 py-2">
+            <span class="text-[12px]">Writes</span>
+            <span class="font-mono text-[10.5px] text-fg/50">per profile</span>
+          </div>
+          <div class="mx-2.5 my-1.5 h-px bg-white/9"></div>
+          <div class="px-2.5 py-2 text-[12px] text-fg/72">Copy .mcp.json snippet</div>
+          <div class="px-2.5 py-2 text-[12px] text-fg/72">Open Activity…</div>
+          <div class="px-2.5 py-2 text-[12px] text-fg/72">Quit Bastion</div>
+        </div>
+      </div>
+
+      <div
+        class="box-border flex w-full flex-col gap-3.5 rounded-t-xl border border-b-0 border-white/9 bg-[rgb(19_20_23/94%)] px-5.5 py-5 lg:absolute lg:bottom-0 lg:left-6 lg:w-[560px] lg:max-w-[calc(100%-340px)]"
+      >
+        <span class="font-mono text-[11px] text-fg/40">.mcp.json</span>
+        <span class="font-mono text-[15px] leading-[1.5] break-all text-fg/90">
+          "url": "{GATEWAY.origin}<span class="text-fg/45">/s/</span>prod<span class="text-fg/45"
+            >/</span
+          >shopify"
+        </span>
+        <div class="flex flex-col gap-[7px]">
+          {
+            CALLS.map((c) => (
+              <div
+                class:list={[
+                  "flex items-center gap-2.5 rounded-[9px] border px-2.5 py-2.5",
+                  c.lit ? "border-accent/20 bg-accent/9" : "border-white/8 bg-white/4",
+                ]}
+              >
+                <code class:list={["font-mono text-[11.5px]", c.lit ? "text-accent-hi" : "text-fg/70"]}>
+                  {c.call}
+                </code>
+                <span class="ml-auto font-mono text-[10.5px] text-fg/42">{c.meta}</span>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+  <span class="sr-only">
+    A drawing of the menu bar popover listing {COUNTS.servers} servers' worth of profiles, and the
+    one line a client's config carries.
+  </span>
+</section>

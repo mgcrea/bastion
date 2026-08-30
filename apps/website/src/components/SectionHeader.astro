@@ -1,0 +1,51 @@
+---
+/**
+ * The left column every section opens with: an eyebrow, the heading, and
+ * whatever prose follows in the slot.
+ *
+ * It exists because the heading's type ramp was the same string in five files
+ * — `font-display text-[clamp(...)] tracking-[-0.038em]` — and a clamp copied
+ * five times is a clamp that gets tuned in four of them. The column's own
+ * `basis-[456px]` is part of the pattern too: the canvas sets every section on
+ * the same two-column rhythm, and a section that picks its own basis breaks the
+ * alignment down the page rather than just looking different.
+ *
+ * `tone` is not decoration. The five-rules section is the page's one light
+ * plate, so its eyebrow is danger-red against ink where every other one is
+ * accent against paper.
+ */
+export interface Props {
+  eyebrow?: string;
+  /** The heading text. Passed rather than slotted so the slot is free for prose. */
+  heading: string;
+  tone?: "ground" | "paper";
+  /** `h2` everywhere except the hero-adjacent case; `h1` lives in Hero.astro. */
+  as?: "h2" | "h3";
+  id?: string;
+  class?: string;
+}
+
+const { eyebrow, heading, tone = "ground", as: Tag = "h2", id, class: className } = Astro.props;
+---
+
+<div
+  class:list={[
+    "flex min-w-[min(340px,100%)] flex-1 basis-[456px] flex-col gap-4",
+    className,
+  ]}
+>
+  {
+    eyebrow && (
+      <span class:list={["eyebrow", tone === "paper" ? "text-danger" : "text-accent-hi"]}>
+        {eyebrow}
+      </span>
+    )
+  }
+  <Tag
+    id={id}
+    class="m-0 font-display text-[clamp(30px,4.6vw,46px)] leading-[1.05] font-semibold tracking-[-0.038em] text-balance"
+  >
+    {heading}
+  </Tag>
+  <slot />
+</div>

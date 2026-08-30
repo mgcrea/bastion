@@ -1,0 +1,266 @@
+@import "tailwindcss";
+
+/* ── Tokens ──────────────────────────────────────────────────────────────────
+   Dark is the base, not an override. The design canvas
+   (`.idea/design/Bastion Site v2.dc.html`) is drawn dark-first, with exactly one
+   light section — the five rules — which is a section on a light plate rather
+   than a light theme. There is no light artboard, so none is invented here.
+
+   The warm ramp is the icon's own plate gradient, from `design/colors.json`:
+   #FFD08A at the top, #F2895C at the bottom. Nothing else on the page is warm —
+   the accent is load-bearing precisely because it is rationed. */
+:root {
+  --color-bg: #0b0c0f;
+  --color-bg-2: #101215;
+  --color-bg-3: #191a1d;
+  --color-bg-deep: #080909;
+  --color-fg: #f4f2ef;
+  --color-fg-dim: #9b9a96;
+  --color-fg-muted: #6e7076;
+  --color-rule: rgb(255 255 255 / 7%);
+  --color-rule-2: rgb(255 255 255 / 11%);
+
+  /* Plate bottom. */
+  --color-accent: #f2895c;
+  /* Hover/link lift, one step up the same ramp. Type-safe on the ground. */
+  --color-accent-hi: #f2a07c;
+  /* Sits on top of an accent fill. The canvas's own value, not the page bg. */
+  --color-accent-ink: #38150b;
+  /* Plate top. Used only where the gradient itself is being quoted. */
+  --color-plate-top: #ffd08a;
+
+  /* Status. #3E9E63 is the fill, #8FD9A9 the same hue lifted for ink. */
+  --color-ok: #3e9e63;
+  --color-ok-ink: #8fd9a9;
+  --color-warn: #e0a63f;
+  --color-danger: #b3341f;
+  --color-danger-ink: #e4805c;
+
+  /* The one light section, and the macOS chrome the mock is drawn on. */
+  --color-paper: #f8f7f3;
+  --color-paper-2: #faf9f6;
+  --color-ink: #151617;
+  --color-chrome: #1c1e22;
+  --color-chrome-2: #24262c;
+}
+
+@theme inline {
+  --color-bg: var(--color-bg);
+  --color-bg-2: var(--color-bg-2);
+  --color-bg-3: var(--color-bg-3);
+  --color-bg-deep: var(--color-bg-deep);
+  --color-fg: var(--color-fg);
+  --color-fg-dim: var(--color-fg-dim);
+  --color-fg-muted: var(--color-fg-muted);
+  --color-rule: var(--color-rule);
+  --color-rule-2: var(--color-rule-2);
+  --color-accent: var(--color-accent);
+  --color-accent-hi: var(--color-accent-hi);
+  --color-accent-ink: var(--color-accent-ink);
+  --color-plate-top: var(--color-plate-top);
+  --color-ok: var(--color-ok);
+  --color-ok-ink: var(--color-ok-ink);
+  --color-warn: var(--color-warn);
+  --color-danger: var(--color-danger);
+  --color-danger-ink: var(--color-danger-ink);
+  --color-paper: var(--color-paper);
+  --color-paper-2: var(--color-paper-2);
+  --color-ink: var(--color-ink);
+  --color-chrome: var(--color-chrome);
+  --color-chrome-2: var(--color-chrome-2);
+}
+
+@theme {
+  /* The system stack, deliberately. The design is drawn in SF Pro, which cannot
+     be self-hosted — and on the Macs this app is for, the system stack *is* SF
+     Pro. It also keeps `font-src 'self'` honest by downloading nothing. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --font-display:
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --radius-xs: 5px;
+  --radius-sm: 9px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --container-wide: 1336px;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 70px;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+@utility wrap {
+  max-width: var(--container-wide);
+  margin-inline: auto;
+  padding-inline: clamp(20px, 4vw, 52px);
+}
+
+/* The eyebrow over every section heading. Uppercase mono, accent on the ground
+   and danger on the one light section — which is why the colour is not baked
+   in here. */
+@utility eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+/* The icon's plate, quoted directly. Only the app mark and the CTA button use
+   it; the rule from design/README.md applies — vertical, two stops, never
+   rotated. */
+@utility plate {
+  background: linear-gradient(180deg, var(--color-plate-top) 0%, var(--color-accent) 100%);
+}
+
+/* The hero headline's own ramp, white into warm grey. `text-wrap: balance` is
+   part of the design rather than a nicety: the line breaks are what make a
+   76px headline read as three even lines instead of a widow. */
+@utility headline-ramp {
+  background: linear-gradient(178deg, #ffffff 20%, #bdb6ae 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ── Scroll reveal ───────────────────────────────────────────────────────────
+   `.in` is added by the observer in Layout.astro. With JS off nothing adds it,
+   so the reduced-motion block at the bottom doubles as the no-JS fallback by
+   making the resting state visible. */
+.reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  transition:
+    opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.reveal.in {
+  opacity: 1;
+  transform: none;
+}
+
+/* ── The fan-in diagram ──────────────────────────────────────────────────────
+   Four clients each spawning their own process, collapsing to one supervised
+   child. The dashed connectors animate along their own path; the per-lane
+   delay is a style attribute, which is why the CSP carries style-src-attr. */
+@keyframes dash {
+  to {
+    stroke-dashoffset: -44;
+  }
+}
+
+.lane {
+  stroke-dasharray: 6 5;
+  animation: dash 1.7s linear infinite;
+}
+
+/* ── The profile marquee ─────────────────────────────────────────────────────
+   Two identical runs translated by exactly -50%, so the seam lands on a whole
+   copy and the loop is invisible. */
+@keyframes marquee {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.marquee {
+  animation: marquee 44s linear infinite;
+}
+
+/* ── Ambient ─────────────────────────────────────────────────────────────────
+   The hero and CTA glows breathe; the app mark floats. Both are decoration and
+   both stop under prefers-reduced-motion. */
+@keyframes glow {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.glow {
+  animation: glow 10s ease-in-out infinite;
+}
+
+.float {
+  animation: float 7s ease-in-out infinite;
+}
+
+.pulse {
+  animation: pulse 2.4s ease-in-out infinite;
+}
+
+/* ── The refusal-order demo ──────────────────────────────────────────────────
+   The section's whole claim: with a foreign Origin the request is refused at
+   rule 2 and rules 3 and 4 are never reached. Flipping the switch is what makes
+   "the order is load-bearing" a thing you can watch rather than read.
+
+   Keyed off a data attribute on the container so one class swap moves every
+   row, the verdict and the switch together — a per-element toggle would let
+   them disagree mid-transition. */
+.rules[data-origin="foreign"] [data-when="allowed"],
+.rules[data-origin="allowed"] [data-when="foreign"] {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,218 @@
+---
+import SectionHeader from "./SectionHeader.astro";
+import { DOCS, GATEWAY } from "../config";
+
+/**
+ * The five rules, and the one thing about them worth a demo: the ORDER.
+ *
+ * Both states are rendered into the DOM and CSS shows one — see `.rules` in
+ * global.css. That is not a size optimisation, it is what makes the section work
+ * with JavaScript off: the resting state is the refusal, which is the state that
+ * carries the argument. A JS-built demo would leave a no-JS reader with an inert
+ * switch and no claim at all.
+ *
+ * `badge` carries a value per state because that is exactly what the demo shows:
+ * with a foreign Origin, rules 3 and 4 are NOT REACHED. A rebinding attempt has
+ * to be refused whether or not it also guessed a token, or the 401 tells an
+ * attacker their Host was accepted.
+ */
+const RULES = [
+  {
+    n: "1",
+    title: `Bind ${GATEWAY.host} explicitly`,
+    note: "Never 0.0.0.0, and not configurable.",
+    foreign: { badge: "always", tone: "text-ink/40" },
+    allowed: { badge: "always", tone: "text-ink/40" },
+  },
+  {
+    n: "2",
+    title: "Validate Origin",
+    note: "The page-you-visited rule.",
+    foreign: { badge: "refuse", tone: "text-danger" },
+    allowed: { badge: "pass", tone: "text-[#2F8F52]" },
+  },
+  {
+    n: "3",
+    title: "Validate Host",
+    note: "The anti-rebinding rule.",
+    foreign: { badge: "not reached", tone: "text-ink/30" },
+    allowed: { badge: "pass", tone: "text-[#2F8F52]" },
+  },
+  {
+    n: "4",
+    title: "Per-client bearer token",
+    note: "Minted at wiring time, kept in the Keychain.",
+    foreign: { badge: "not reached", tone: "text-ink/30" },
+    allowed: { badge: "checked", tone: "text-[#2F8F52]" },
+  },
+  {
+    n: "5",
+    title: "Secrets never in a config file",
+    note: "The token goes in the client config; the credential stays in the Keychain.",
+    foreign: { badge: "always", tone: "text-ink/40" },
+    allowed: { badge: "always", tone: "text-ink/40" },
+  },
+] as const;
+
+/** What `make audit` asserts, in the order the script asserts it. */
+const AUDIT_LINES = [
+  "loopback-only via lsof",
+  "foreign Origin refused · rebound Host refused",
+  "refusal order · wrong token refused",
+  "profiles.json holds no secret value",
+] as const;
+---
+
+<section id="rules" class="bg-paper py-22 text-ink">
+  <div class="wrap flex flex-col gap-9">
+    <div class="flex flex-wrap items-end gap-16">
+      <SectionHeader
+        eyebrow="The five rules"
+        heading="A loopback daemon holding every credential you own is a known shape of hole."
+        tone="paper"
+      />
+      <p
+        class="m-0 min-w-[min(320px,100%)] flex-1 basis-[380px] text-[16px] leading-[1.6] text-ink/60 text-pretty"
+      >
+        CVE-2025-49596 was a listener plus no CSRF protection: a page you visited could reach it and
+        execute code. The rust-sdk and FastMCP rebinding advisories had the same root cause — no
+        protection by default, because it is only localhost. All five rules landed in the first
+        commit that opened a socket, not a hardening pass afterwards.
+      </p>
+    </div>
+
+    <div
+      class="rules overflow-hidden rounded-lg border border-black/8 bg-white shadow-[0_24px_60px_-44px_rgb(0_0_0/40%)]"
+      data-origin="foreign"
+    >
+      <div
+        class="flex flex-wrap items-center justify-between gap-4 border-b border-black/7 bg-paper-2 px-6.5 py-5"
+      >
+        <code class="font-mono text-[13px] text-ink/70">
+          GET /s/prod/shopify · Origin: <span data-when="foreign">https://evil.example</span><span
+            data-when="allowed">null (loopback client)</span
+          >
+        </code>
+        <button
+          type="button"
+          class="origin-toggle flex cursor-pointer items-center gap-2.5 border-0 bg-transparent p-0 select-none"
+          aria-pressed="false"
+        >
+          <span class="eyebrow tracking-[0.06em] text-danger" data-when="foreign">foreign origin</span>
+          <span class="eyebrow tracking-[0.06em] text-[#2F8F52]" data-when="allowed">
+            allowed origin
+          </span>
+          <span
+            class="flex h-[27px] w-[46px] rounded-full p-[2.5px] transition-colors"
+            data-when="foreign"
+            style="background:rgb(21 22 23 / 18%)"
+            aria-hidden="true"
+          >
+            <span class="size-[22px] rounded-full bg-white shadow-[0_1px_3px_rgb(0_0_0/35%)]"></span>
+          </span>
+          <span
+            class="flex h-[27px] w-[46px] justify-end rounded-full bg-[#2F8F52] p-[2.5px] transition-colors"
+            data-when="allowed"
+            aria-hidden="true"
+          >
+            <span class="size-[22px] rounded-full bg-white shadow-[0_1px_3px_rgb(0_0_0/35%)]"></span>
+          </span>
+          <span class="sr-only">Toggle the request's Origin header</span>
+        </button>
+      </div>
+
+      <div class="flex flex-wrap">
+        <ol
+          class="m-0 flex min-w-[min(330px,100%)] flex-1 basis-[380px] list-none flex-col gap-1 border-black/7 p-0 px-7.5 py-7 lg:border-r"
+        >
+          <li class="eyebrow pb-3.5 tracking-[0.07em] text-ink/42">refusal order · load-bearing</li>
+          {
+            RULES.map((r) => (
+              <li class="flex gap-3.5 border-b border-black/5 py-2.5">
+                <span class="w-5 shrink-0 text-[13px] leading-[1.5] font-semibold text-ink/40">
+                  {r.n}
+                </span>
+                <span class="flex flex-1 flex-col gap-[3px]">
+                  <span class="text-[13.5px] leading-[1.45] font-medium">{r.title}</span>
+                  <span class="text-[12.5px] leading-[1.5] text-ink/52">{r.note}</span>
+                </span>
+                <span
+                  class:list={["shrink-0 font-mono text-[10.5px] leading-[1.6]", r.foreign.tone]}
+                  data-when="foreign"
+                >
+                  {r.foreign.badge}
+                </span>
+                <span
+                  class:list={["shrink-0 font-mono text-[10.5px] leading-[1.6]", r.allowed.tone]}
+                  data-when="allowed"
+                >
+                  {r.allowed.badge}
+                </span>
+              </li>
+            ))
+          }
+        </ol>
+
+        <div
+          class="flex min-w-[min(300px,100%)] flex-1 basis-[330px] flex-col gap-4 bg-ink/[1.5%] px-7.5 py-7"
+        >
+          <span class="eyebrow tracking-[0.07em] text-ink/42" data-when="foreign">
+            response · refused at rule 2
+          </span>
+          <span class="eyebrow tracking-[0.07em] text-ink/42" data-when="allowed">
+            response · rule 4 still applies
+          </span>
+
+          <div
+            class="flex flex-col gap-2.5 rounded-xl border border-danger/22 bg-danger/6 px-5.5 py-5"
+            data-when="foreign"
+          >
+            <span class="font-display text-[34px] leading-none font-semibold tracking-[-0.03em] text-danger">
+              403 Forbidden
+            </span>
+            <span class="text-[13.5px] leading-[1.55] text-ink/62 text-pretty">
+              Refused before the token is even read. This is the ordering that CVE-2025-49596
+              lacked: a page you visited could reach the listener, and there was nothing in front of
+              the handler to stop it.
+            </span>
+          </div>
+          <div
+            class="flex flex-col gap-2.5 rounded-xl border border-[#2F8F52]/28 bg-[#2F8F52]/7 px-5.5 py-5"
+            data-when="allowed"
+          >
+            <span
+              class="font-display text-[34px] leading-none font-semibold tracking-[-0.03em] text-[#2F8F52]"
+            >
+              200 OK
+            </span>
+            <span class="text-[13.5px] leading-[1.55] text-ink/62 text-pretty">
+              Origin and Host pass, so the request reaches the bearer-token check. A valid
+              per-client token minted at wiring time is still required — the order matters because a
+              rebinding attempt must be refused whether or not it also guessed a token.
+            </span>
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <span class="font-mono text-[11.5px] text-ink/45">$ make audit</span>
+            {
+              AUDIT_LINES.map((a) => (
+                <span class="font-mono text-[12px] leading-[1.5] text-ink/60">
+                  <span class="text-[#2F8F52]">ok</span> {a}
+                </span>
+              ))
+            }
+          </div>
+
+          <p class="mt-auto mb-0 text-[13px] leading-[1.6] text-ink/50 text-pretty">
+            The app ships with no entitlements file at all — <a
+              href={DOCS.audit}
+              rel="noopener"
+              class="text-danger underline decoration-danger/30 underline-offset-2">the audit</a
+            > asserts the setting is <em>absent</em>, because an empty permission set that is true by
+            construction is checkable and one arrived at by deletion is not.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

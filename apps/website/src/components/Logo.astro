@@ -1,0 +1,29 @@
+---
+/**
+ * The plated squircle mark, served from `public/app-icon.svg` — which
+ * `pnpm icons` writes from the repo-root `design/`. There is one rendering and
+ * no hand-drawn small variant: the mark has exactly three generated outputs, and
+ * a fourth transcribed into a component is how a site's artwork drifts from the
+ * app's without anybody noticing.
+ *
+ * `radius` is the only thing a caller may vary, because the plate's own corner
+ * radius is a fraction (230/1024) and an `<img>` scaled to 23px needs the CSS
+ * rounding to match at that size. It defaults to the fraction, in pixels.
+ */
+export interface Props {
+  size?: number;
+  radius?: number;
+  class?: string;
+}
+
+const { size = 23, radius = Math.round((size * 230) / 1024), class: className } = Astro.props;
+---
+
+<img
+  src="/app-icon.svg"
+  alt=""
+  width={size}
+  height={size}
+  class:list={className}
+  style={`width:${size}px;height:${size}px;border-radius:${radius}px;display:block`}
+/>

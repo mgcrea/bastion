@@ -1,0 +1,57 @@
+---
+import Audit from "../components/Audit.astro";
+import Cta from "../components/Cta.astro";
+import Footer from "../components/Footer.astro";
+import Hero from "../components/Hero.astro";
+import HowItWorks from "../components/HowItWorks.astro";
+import Marquee from "../components/Marquee.astro";
+import Nav from "../components/Nav.astro";
+import Problem from "../components/Problem.astro";
+import Rules from "../components/Rules.astro";
+import Servers from "../components/Servers.astro";
+import Status from "../components/Status.astro";
+import { APP_NAME, COUNTS, REPO_URL, REQUIRES, SHIPPED, SITE_URL } from "../config";
+import Layout from "../layouts/Layout.astro";
+
+/**
+ * SoftwareApplication rather than Product: nothing is for sale, nothing is even
+ * downloadable, and a price or an offer here would be a structured-data lie.
+ *
+ * `downloadUrl` appears only once there is something to download. Announcing one
+ * before the first release would put a 404 into search results, which is worse
+ * than being absent from them.
+ *
+ * There is no `license`. The app's licence is genuinely unsettled — the page
+ * says so in those words — and naming one here to fill the field would be the
+ * same class of lie as the offer above.
+ */
+const schema = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: APP_NAME,
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "macOS 26",
+  softwareRequirements: REQUIRES,
+  url: SITE_URL,
+  codeRepository: REPO_URL,
+  description: `A macOS menu-bar app that supervises ${COUNTS.serversWord} MCP servers — one process per profile, credentials in the Keychain, and every tool call recorded — instead of letting every editor spawn its own copy.`,
+  author: { "@type": "Person", name: "Olivier Louvignes" },
+  ...(SHIPPED ? {} : { releaseNotes: `${REPO_URL}#status` }),
+};
+---
+
+<Layout schema={schema}>
+  <Nav />
+  <main>
+    <Hero />
+    <Marquee />
+    <Problem />
+    <HowItWorks />
+    <Audit />
+    <Rules />
+    <Servers />
+    <Status />
+    <Cta />
+  </main>
+  <Footer />
+</Layout>

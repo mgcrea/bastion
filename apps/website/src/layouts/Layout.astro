@@ -1,0 +1,132 @@
+---
+import { APP_NAME, SOCIAL_CARD, X_HANDLE } from "../config";
+import "../styles/global.css";
+
+type SchemaObject = Record<string, unknown>;
+
+export interface Props {
+  title?: string;
+  description?: string;
+  ogImage?: string;
+  /** Describes the picture, not the product. Pass one with any custom `ogImage`. */
+  ogImageAlt?: string;
+  schema?: SchemaObject | SchemaObject[];
+}
+
+/**
+ * The title tracks the H1, so the tab, the search result and the page all make
+ * the same promise. It is 62 characters, which is about where Google truncates
+ * — do not lengthen it to squeeze "MCP gateway" in as well. That phrase is what
+ * a searcher types, and it is carried by the description below, by the JSON-LD
+ * in `pages/index.astro` and by the repo listing, which are what will actually
+ * rank for it.
+ *
+ * Neither string names a client. Bastion serves whatever speaks MCP over
+ * loopback HTTP, and a title that says "for Claude Code" argues against the one
+ * property — several clients sharing one instance — that makes it worth running.
+ */
+const {
+  title = "Bastion — one MCP server, running once, for every client",
+  description =
+    "A macOS menu-bar app that supervises your MCP servers instead of letting each editor spawn its own. One process per profile, credentials in the Keychain, and every tool call recorded.",
+  ogImage = "/og-image.png",
+  ogImageAlt = SOCIAL_CARD.alt,
+  schema,
+} = Astro.props;
+
+const canonicalHref = new URL(Astro.url.pathname, Astro.site).href;
+const ogImageHref = ogImage.startsWith("http") ? ogImage : new URL(ogImage, Astro.site).href;
+
+const schemaEntries = Array.isArray(schema) ? schema : schema ? [schema] : [];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <!-- One value: the page is dark in both system themes, by design. -->
+    <meta name="theme-color" content="#0b0c0f" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonicalHref} />
+
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonicalHref} />
+    <meta property="og:site_name" content={APP_NAME} />
+    {/*
+      Dimensions are declared so a scraper can lay the card out before the image
+      arrives — without them the first share of a cold URL can render blank while
+      the crawler is still fetching, and that first share is usually the one that
+      matters. They describe the default card; a page passing its own `ogImage`
+      is responsible for matching the shape.
+    */}
+    <meta property="og:image" content={ogImageHref} />
+    <meta property="og:image:width" content={String(SOCIAL_CARD.width)} />
+    <meta property="og:image:height" content={String(SOCIAL_CARD.height)} />
+    <meta property="og:image:alt" content={ogImageAlt} />
+
+    {/*
+      X renders `summary_large_image` at 2:1 and og:image is 1.91:1, so it trims
+      a sliver off the top and bottom — `composeCard` in scripts/lib/lockup.mjs
+      keeps the artwork clear of that band and asserts it.
+    */}
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content={X_HANDLE} />
+    <meta name="twitter:creator" content={X_HANDLE} />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImageHref} />
+    <meta name="twitter:image:alt" content={ogImageAlt} />
+
+    {
+      schemaEntries.map((entry) => (
+        <script is:inline type="application/ld+json" set:html={JSON.stringify(entry)} />
+      ))
+    }
+  </head>
+  <body>
+    <slot />
+
+    <script>
+      // Scroll-reveal. Everything else on this page is static by construction —
+      // there is no theme toggle, because there is one theme.
+      const reveals = document.querySelectorAll(".reveal");
+      if ("IntersectionObserver" in window && reveals.length) {
+        const io = new IntersectionObserver(
+          (entries) => {
+            entries.forEach((e) => {
+              if (e.isIntersecting) {
+                e.target.classList.add("in");
+                io.unobserve(e.target);
+              }
+            });
+          },
+          { rootMargin: "0px 0px -80px 0px" },
+        );
+        reveals.forEach((el) => io.observe(el));
+      } else {
+        reveals.forEach((el) => el.classList.add("in"));
+      }
+
+      // The refusal order. Flipping the Origin switch moves the whole section at
+      // once — the rows, the verdict and the switch itself all key off one data
+      // attribute on the container, because a per-element toggle is how they end
+      // up disagreeing about which rule refused.
+      const rules = document.querySelector<HTMLElement>(".rules");
+      const toggle = rules?.querySelector<HTMLButtonElement>(".origin-toggle");
+      toggle?.addEventListener("click", () => {
+        const foreign = rules!.dataset.origin === "foreign";
+        rules!.dataset.origin = foreign ? "allowed" : "foreign";
+        toggle.setAttribute("aria-pressed", String(foreign));
+      });
+    </script>
+  </body>
+</html>

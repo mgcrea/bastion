@@ -1,0 +1,108 @@
+---
+import { DIALECT, GATEWAY } from "../config";
+import SectionHeader from "./SectionHeader.astro";
+
+/** What the runtime actually is, in three parts. */
+const PILLARS = [
+  {
+    title: "Profiles",
+    body:
+      "A named credential and configuration set — prod/shopify, staging/shopify, acme/keycloak. One global instance would be one identity, and one identity is unusable: every repo here already carries different credentials for the same server.",
+  },
+  {
+    title: "One handshake",
+    body: `The MCP handshake happens once, at spawn. Every client's initialize is answered from that one result, which the ${DIALECT.modern} stateless-first revision makes correct rather than a hack.`,
+  },
+  {
+    title: "Id remapping",
+    body:
+      "Each client's request ids are rewritten into the supervisor's own numbering and back again — two clients using id 1 at the same time cannot receive each other's answers.",
+  },
+] as const;
+
+/**
+ * The three objections to a shared instance, and the answer to each. They are
+ * cupertino's own reasons for the opposite design, which is why they are
+ * answered rather than waved at: the two apps are by one author and disagree on
+ * purpose, and a page that did not say so would be picking the easy fight.
+ */
+const TRADEOFFS = [
+  {
+    k: "state",
+    v: "The handshake happens once, at spawn, and is replayed to every client.",
+  },
+  {
+    k: "crashes",
+    v: "Backoff, a circuit breaker, and the blast radius said out loud: when a child dies every client waiting on it is told, with a count.",
+  },
+  {
+    k: "write permissions",
+    v: "Per profile, not per process — which a process boundary could never express.",
+  },
+] as const;
+---
+
+<section id="how" class="border-t border-rule py-22">
+  <div class="wrap flex flex-col gap-9">
+    <div class="flex flex-wrap items-end gap-16">
+      <SectionHeader eyebrow="The runtime" heading="HTTP to the clients. stdio to the child." />
+      <p
+        class="m-0 min-w-[min(320px,100%)] flex-1 basis-[380px] text-[16px] leading-[1.6] text-fg/58 text-pretty"
+      >
+        Each client points at a URL instead of a command. Bastion answers it, and keeps exactly one
+        child per profile alive behind it.
+      </p>
+    </div>
+
+    <p
+      class="m-0 w-fit max-w-full overflow-x-auto rounded-md border border-white/9 bg-white/3 px-4.5 py-3.5 font-mono text-[clamp(12px,2.6vw,15px)] whitespace-nowrap text-fg/85"
+    >
+      {GATEWAY.origin}<span class="text-fg/45">{GATEWAY.path}</span>
+    </p>
+
+    <div class="flex flex-wrap gap-4">
+      {
+        PILLARS.map((p) => (
+          <div class="reveal flex min-w-[min(250px,100%)] flex-1 basis-[250px] flex-col gap-3.5 rounded-lg border border-white/9 bg-white/[3.5%] p-8">
+            <h3 class="m-0 font-display text-[25px] leading-none font-semibold tracking-[-0.028em]">
+              {p.title}
+            </h3>
+            <p class="m-0 text-[14.5px] leading-[1.6] text-fg/60 text-pretty">{p.body}</p>
+          </div>
+        ))
+      }
+    </div>
+
+    <div class="flex flex-wrap items-start gap-16 pt-6">
+      <div class="flex min-w-[min(340px,100%)] flex-1 basis-[456px] flex-col gap-3.5">
+        <h3 class="m-0 font-display text-[25px] leading-[1.15] font-semibold tracking-[-0.028em]">
+          One process, N clients
+        </h3>
+        <p class="m-0 text-[15px] leading-[1.6] text-fg/55 text-pretty">
+          This inverts the one-connection-one-process design on purpose. Three reasons are given for
+          that choice, and each has to be answered rather than waved at.
+        </p>
+        <p
+          class="m-0 border-l-2 border-accent pl-4 text-[14.5px] leading-[1.6] text-fg/70 text-pretty"
+        >
+          What is genuinely given up is isolation between two clients of the <em>same</em> profile —
+          the same identity with the same permissions, which is exactly the case where a second
+          process bought nothing but memory.
+        </p>
+      </div>
+
+      <dl class="m-0 flex min-w-[min(380px,100%)] flex-1 basis-[480px] flex-col">
+        {
+          TRADEOFFS.map((t) => (
+            <div class="flex flex-wrap gap-x-6.5 gap-y-1 border-b border-rule py-4.5">
+              <dt class="basis-[150px] shrink-0 font-mono text-[13.5px] leading-[1.5] font-medium text-accent-hi">
+                {t.k}
+              </dt>
+              <dd class="m-0 flex-1 text-[14.5px] leading-[1.6] text-fg/60 text-pretty">{t.v}</dd>
+            </div>
+          ))
+        }
+      </dl>
+    </div>
+  </div>
+</section>

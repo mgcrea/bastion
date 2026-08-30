@@ -1,0 +1,56 @@
+---
+/**
+ * The profile names, scrolling. Two identical runs translated by exactly -50%,
+ * so the seam lands on a whole copy and the loop is invisible.
+ *
+ * Every name is `<profile>/<server>` against a real manifest id — the point of
+ * the strip is that a profile is the unit, so `cert/tastytrade` beside
+ * `prod/tastytrade` is doing the arguing. The list is written here rather than
+ * generated from `data/servers.ts` because the PROFILE halves are illustrative
+ * and nothing in the repo is their authority; the server halves are checked
+ * against the manifest below so a renamed server cannot survive here.
+ */
+import { SERVERS } from "../data/servers";
+
+const PROFILES = [
+  "prod/shopify",
+  "staging/shopify",
+  "acme/keycloak",
+  "cert/tastytrade",
+  "prod/tastytrade",
+  "mgcrea/appstore-connect",
+  "oss/reddit",
+  "mgcrea/x-api",
+  "ops/ovh-api",
+  "eu/boursobank",
+] as const;
+
+const ids = new Set(SERVERS.map((s) => s.id));
+const unknown = PROFILES.map((p) => p.split("/")[1]).filter((id) => id && !ids.has(id));
+if (unknown.length) {
+  throw new Error(
+    `Marquee names servers that are not in servers.json: ${unknown.join(", ")}. ` +
+      "Fix the name or the manifest — a marketing strip inventing a server is the drift " +
+      "`make servers-check` exists to prevent, and this is the one copy it cannot reach.",
+  );
+}
+---
+
+<div
+  class="overflow-hidden border-y border-rule bg-bg-deep py-[30px]"
+  aria-hidden="true"
+>
+  <div class="marquee flex w-[200%]">
+    {
+      [0, 1].map(() => (
+        <div class="flex flex-1 gap-2.5 pr-2.5">
+          {PROFILES.map((p) => (
+            <span class="shrink-0 rounded-sm bg-white/[4.5%] px-3 py-[7px] font-mono text-[12.5px] text-fg/58">
+              {p}
+            </span>
+          ))}
+        </div>
+      ))
+    }
+  </div>
+</div>
