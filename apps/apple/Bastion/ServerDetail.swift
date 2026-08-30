@@ -190,12 +190,17 @@ struct ServerDetail: View {
             Text("\(server.npmName) \(version)")
               .font(.system(.callout, design: .monospaced))
               .textSelection(.enabled)
+            if case .newer(let latest) = installer.availability[server.id] {
+              Badge("\(latest) available", tint: .orange)
+            }
           } else {
             Circle().fill(Color.secondary).frame(width: 7, height: 7)
             Text("Not installed").font(.callout).foregroundStyle(.secondary)
           }
           Spacer()
         }
+
+        checkStatus
 
         if let failure = installer.failures[server.id] {
           Text(failure)
@@ -209,6 +214,17 @@ struct ServerDetail: View {
             Task { await installer.install(server) }
           }
           .disabled(installer.isRunning(server.id))
+
+          // Only with something installed to compare against, and only for a
+          // package that resolves: on a `.local` entry the answer is already on
+          // screen as "not published", and asking npm would produce a second,
+          // worse way of saying it.
+          if version != nil, server.distribution == .npm {
+            Button("Check for updates") {
+              Task { await installer.checkForUpdate(server) }
+            }
+            .disabled(installer.isRunning(server.id) || installer.isChecking(server.id))
+          }
 
           if server.origin == .custom {
             Button("Edit…") { edit() }
@@ -252,6 +268,48 @@ struct ServerDetail: View {
       try ServerStore.shared.remove(server)
     } catch {
       lastError = "Could not remove '\(server.id)': \(error.localizedDescription)"
+    }
+  }
+
+  /// What the last check said, or that one is running.
+  ///
+  /// Absent until somebody presses the button, rather than an "unknown" row.
+  /// The version above is read off disk and is always true; a permanent line
+  /// saying Bastion does not know whether it is current would be adding doubt
+  /// to the one fact on this card that never needs any.
+  @ViewBuilder private var checkStatus: some View {
+    let installer = ServerInstaller.shared
+    if installer.isChecking(server.id) {
+      HStack(spacing: 6) {
+        ProgressView().controlSize(.small)
+        Text("Asking npm what it would install…").font(.caption).foregroundStyle(.secondary)
+      }
+    } else {
+      switch installer.availability[server.id] {
+      case .upToDate:
+        Label("Up to date. npm would install what you already have.", systemImage: "checkmark.circle")
+          .font(.caption).foregroundStyle(.secondary)
+      case .newer(let latest):
+        Label("\(latest) is available. Update installs it and restarts anything running.", systemImage: "arrow.down.circle.fill")
+          .font(.caption).foregroundStyle(.orange)
+      case .pinnedOlder(let resolved):
+        // Not a failure, and not an update either. The minimum package age is
+        // doing exactly what it was set to do, and the honest thing is to name
+        // the direction: pressing Update here goes backwards.
+        Label(
+          "Your minimum package age holds this at \(resolved), which is older than what is "
+            + "installed. Update would install that, not something newer.",
+          systemImage: "clock.badge.exclamationmark")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      case .failed(let reason):
+        Label(reason, systemImage: "exclamationmark.triangle.fill")
+          .font(.caption).foregroundStyle(.red)
+          .textSelection(.enabled)
+          .fixedSize(horizontal: false, vertical: true)
+      case .none:
+        EmptyView()
+      }
     }
   }
 
