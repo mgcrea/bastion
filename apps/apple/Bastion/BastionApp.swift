@@ -62,6 +62,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       }
       // Runs one profile's check and exits with its verdict. See
       // `ServerCheck.runHeadless`.
+      if let raw = CommandLine.arguments.first(where: { $0.hasPrefix("--chat=") }) {
+        let ask = CommandLine.arguments.first { $0.hasPrefix("--ask=") }
+        ChatSession.runHeadless(
+          String(raw.dropFirst("--chat=".count)),
+          asking: ask.map { String($0.dropFirst("--ask=".count)) })
+      }
       if let raw = CommandLine.arguments.first(where: { $0.hasPrefix("--check=") }) {
         ServerCheck.runHeadless(
           String(raw.dropFirst("--check=".count)),
@@ -200,6 +206,11 @@ private struct GatewayMenu: View {
     // the window this replaced.
     Button("MCP Clients…") { MainWindowController.show(.client(ClientWiring.all[0].id)) }
       .keyboardShortcut("k")
+    // Reachable without a window for the same reason as the two above: trying a
+    // server's tools by hand is a thing you decide to do, not a thing you
+    // discover in a sidebar.
+    Button("Chat…") { MainWindowController.show(.chat) }
+      .keyboardShortcut("j")
     Divider()
 
     // The licence state, in the one place somebody will look when a client

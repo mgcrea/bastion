@@ -13,6 +13,7 @@ enum MainPane: Hashable {
   case client(String)
   case running
   case log
+  case chat
 }
 
 /// `RawRepresentable` so the selection can live in `@AppStorage`. See
@@ -24,6 +25,7 @@ extension MainPane: RawRepresentable {
     switch rawValue {
     case "running": self = .running
     case "log": self = .log
+    case "chat": self = .chat
     default:
       guard let separator = rawValue.firstIndex(of: ":") else { return nil }
       let id = String(rawValue[rawValue.index(after: separator)...])
@@ -42,6 +44,7 @@ extension MainPane: RawRepresentable {
     case .client(let id): "client:\(id)"
     case .running: "running"
     case .log: "log"
+    case .chat: "chat"
     }
   }
 }
@@ -188,6 +191,7 @@ struct MainView: View {
       Section("Activity") {
         Label("Running", systemImage: "play.circle").tag(MainPane.running)
         Label("Log", systemImage: "list.bullet.rectangle").tag(MainPane.log)
+        Label("Chat", systemImage: "bubble.left.and.text.bubble.right").tag(MainPane.chat)
       }
     }
     .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
@@ -312,6 +316,8 @@ struct MainView: View {
       RunningPane()
     case .log:
       LogPane()
+    case .chat:
+      ChatPane()
     }
   }
 }

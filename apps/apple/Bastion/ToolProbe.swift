@@ -199,13 +199,10 @@ enum ToolProbe {
     }
     for tool in candidates.prefix(capacity) {
       do {
-        let parameters = try schema(for: tool)
         offered.append(
-          ProbeTool(
-            name: sanitised(tool.name), description: summary(of: tool), parameters: parameters,
-            perform: { json in
-              recorder.invoke(tool: tool, arguments: json, profile: profile, server: server)
-            }))
+          try bridgeTool(for: tool) { json in
+            recorder.invoke(tool: tool, arguments: json, profile: profile, server: server)
+          })
       } catch {
         skipped.append("\(tool.name) — \(error.localizedDescription)")
       }
@@ -269,29 +266,44 @@ enum ToolProbe {
         current.nextID += 1
         return current.nextID
       }
-      let parsed =
-        (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [String: Any] ?? [:]
-      let began = Date()
-      let outcome: (text: String, failed: Bool)
-      do {
-        let result = try ServerCheck.call(
-          profile: profile, server: server, era: .legacy, method: "tools/call",
-          params: ["name": tool.name, "arguments": parsed], id: id)
-        // `isError` is how MCP reports a tool that ran and failed, as opposed to
-        // a call that never happened. Both are worth telling apart in the report.
-        outcome = (render(result), result["isError"] as? Bool ?? false)
-      } catch {
-        outcome = (error.localizedDescription, true)
-      }
-      let record = Call(
-        tool: tool.name, arguments: json, output: outcome.text, failed: outcome.failed,
-        seconds: Date().timeIntervalSince(began))
+      let record = ToolProbe.invoke(
+        tool: tool, argumentsJSON: json, profile: profile, server: server, id: id)
       state.withLock { $0.calls.append(record) }
-      return outcome.text
+      return record.output
     }
   }
 
-  nonisolated private struct ProbeTool: FoundationModels.Tool {
+  /// One `tools/call` against the live supervised child, as a `Call`.
+  ///
+  /// Shared by the one-shot probe and the chat pane. Both need the identical
+  /// thing — send the arguments the model invented, render what came back,
+  /// time it, and say whether it failed — and the interesting part is that
+  /// there are two distinct kinds of failure worth telling apart, which is
+  /// exactly the sort of detail a second copy would get wrong.
+  nonisolated static func invoke(
+    tool: MCPTool, argumentsJSON json: String, profile: Profile, server: BastionServer, id: Int
+  ) -> Call {
+    let parsed =
+      (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [String: Any] ?? [:]
+    let began = Date()
+    let outcome: (text: String, failed: Bool)
+    do {
+      let result = try ServerCheck.call(
+        profile: profile, server: server, era: .legacy, method: "tools/call",
+        params: ["name": tool.name, "arguments": parsed], id: id)
+      // `isError` is how MCP reports a tool that ran and failed, as opposed to
+      // a call that never happened. Both are worth telling apart in the report.
+      outcome = (render(result), result["isError"] as? Bool ?? false)
+    } catch {
+      outcome = (error.localizedDescription, true)
+    }
+    return Call(
+      tool: tool.name, arguments: json, output: outcome.text, failed: outcome.failed,
+      seconds: Date().timeIntervalSince(began))
+  }
+
+  /// A model-facing tool backed by one MCP tool on one supervised child.
+  nonisolated struct MCPBridgeTool: FoundationModels.Tool {
     typealias Arguments = GeneratedContent
     typealias Output = String
 
@@ -306,7 +318,7 @@ enum ToolProbe {
       // Hopping to a dedicated thread is the same bargain the gateway makes for
       // every connection it serves.
       return await withCheckedContinuation { continuation in
-        onDedicatedThread("bastion.probe") {
+        onDedicatedThread("bastion.tool") {
           continuation.resume(returning: perform(json))
         }
       }
@@ -331,16 +343,26 @@ enum ToolProbe {
     return String(text.prefix(limit)) + "\n… (truncated)"
   }
 
-  nonisolated private static func summary(of tool: MCPTool) -> String {
+  nonisolated static func summary(of tool: MCPTool) -> String {
     let text = tool.summary.isEmpty ? tool.name : tool.summary
     return text.count > 300 ? String(text.prefix(300)) : text
   }
 
   /// Type names in a `GenerationSchema` are identifiers, and MCP tool names are
   /// not required to be.
-  nonisolated private static func sanitised(_ name: String) -> String {
+  nonisolated static func sanitised(_ name: String) -> String {
     let cleaned = name.map { $0.isLetter || $0.isNumber || $0 == "_" ? $0 : "_" }
     return String(cleaned)
+  }
+
+  /// Build the model-facing tool for one MCP tool, or throw if its schema is
+  /// not one `node` can express.
+  nonisolated static func bridgeTool(
+    for tool: MCPTool, perform: @escaping @Sendable (String) -> String
+  ) throws -> MCPBridgeTool {
+    MCPBridgeTool(
+      name: sanitised(tool.name), description: summary(of: tool),
+      parameters: try schema(for: tool), perform: perform)
   }
 
   // MARK: - JSON Schema to GenerationSchema
