@@ -111,18 +111,36 @@ nonisolated struct BastionServer: Identifiable, Hashable {
   /// Where this definition came from. Last, and defaulted, so the generated
   /// catalog below does not have to say `.catalog` nine times.
   var origin: Origin = .catalog
+  /// Whether this server answers at all.
+  ///
+  /// A property of the *install*, not of the definition — which is why it lives
+  /// here as a defaulted `var` alongside `origin` rather than in the catalog
+  /// table: `ServerStore` sets it from the row on disk, and it has to travel
+  /// with the definition because the gateway and the supervisor read servers off
+  /// a snapshot rather than off the store.
+  ///
+  /// Disabling is the middle setting the app was missing. Removing a server
+  /// takes its profiles, their Keychain entries and its downloaded code with it,
+  /// which is far too much to mean "not right now".
+  var isEnabled: Bool = true
 
-  /// Which of the two lists a definition was born in.
+  /// Which list a definition was born in.
   ///
   /// Only the UI and `ServerStore`'s persistence care. Everything downstream —
-  /// the supervisor, the profile store, the environment builder — treats the
-  /// two identically on purpose: a custom server is not a second-class server,
-  /// it is a server whose definition the user typed.
+  /// the supervisor, the profile store, the environment builder — treats
+  /// catalog and custom identically on purpose: a custom server is not a
+  /// second-class server, it is a server whose definition the user typed.
+  ///
+  /// `.builtin` is the one that does change behaviour downstream, because there
+  /// is no package to install and no child to spawn.
   enum Origin: Hashable {
     /// Generated from `servers.json`. Re-resolved by id on every load.
     case catalog
     /// Typed by the user. Stored whole, because nothing else remembers it.
     case custom
+    /// Bastion itself. Runs in-process, installs nothing, and cannot be
+    /// removed — only switched off.
+    case builtin
   }
 
   enum Distribution: Hashable {

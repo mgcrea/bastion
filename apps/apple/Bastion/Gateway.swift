@@ -282,6 +282,19 @@ nonisolated final class Gateway: @unchecked Sendable {
         break
       case .trial:
         break
+      // Bastion's own server is exempt, and this is the gate's own rule rather
+      // than a hole in it: what is sold is the RELAY — the supervised,
+      // credential-holding, audited path to somebody else's server. The
+      // built-in server relays nothing, spawns nothing and holds no credential;
+      // it is the app's own configuration, and charging for read access to your
+      // own setup would be charging for the window.
+      //
+      // It also buys the best possible trial: an unlicensed user can have their
+      // agent install servers, set credentials and wire clients, and the first
+      // thing they hit afterwards is the sentence explaining what a licence is
+      // for — at the point they have something to lose by not having one.
+      case .refused where path[2] == BuiltinServer.id:
+        break
       case .refused(let reason):
         hostLog("licence", .error, "refused \(path[1])/\(path[2]): \(reason)")
         return HTTPResponse(

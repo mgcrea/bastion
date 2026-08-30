@@ -381,6 +381,9 @@ smoke: app ## Prove one supervised server end to end (PROFILE=prod SERVER=shopif
 dialect: app ## Assert Bastion serves both protocol eras (needs a profile)
 	@scripts/dialect-check.sh
 
+builtin: app ## Assert Bastion's own server: the write gate, and that no tool returns a secret
+	@scripts/builtin-check.sh
+
 wiring-check: ## Assert the config merge leaves other people's files alone
 	@mkdir -p apps/apple/.build
 	@swiftc -O -o apps/apple/.build/wiring-check \

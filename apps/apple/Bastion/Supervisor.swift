@@ -29,6 +29,7 @@ nonisolated final class Supervisor: @unchecked Sendable {
 
   enum SupervisorError: LocalizedError {
     case unknownServer(String)
+    case serverDisabled(String)
     case unknownProfile(profile: String, server: String)
     case notConfigured(profile: String, missing: [String])
     case startFailed(String)
@@ -41,6 +42,10 @@ nonisolated final class Supervisor: @unchecked Sendable {
       switch self {
       case .unknownServer(let id):
         return "no server '\(id)' — Bastion only runs the servers you have installed"
+      case .serverDisabled(let id):
+        return
+          "'\(id)' is switched off in Bastion. Its profiles and credentials are untouched — turn "
+          + "it back on in the Bastion window"
       case .unknownProfile(let profile, let server):
         return "no profile '\(profile)' for \(server) — create it in Bastion"
       case .notConfigured(let profile, let missing):
@@ -99,8 +104,25 @@ nonisolated final class Supervisor: @unchecked Sendable {
     guard let server = ServerStore.lookup(serverID) else {
       throw SupervisorError.unknownServer(serverID)
     }
+    // Before the profile guard on purpose: a disabled server with no profile
+    // should report the fact somebody can act on, not the incidental one.
+    //
+    // Note this is not a 404. It reaches the client as HTTP 200 carrying a
+    // JSON-RPC error, the same way `unknownServer` already does, because a 500
+    // or a 404 arrives in a client as "connection failed" — the least
+    // informative possible rendering of a sentence that says exactly what to do.
+    guard server.isEnabled else {
+      throw SupervisorError.serverDisabled(serverID)
+    }
     guard let profile = ProfileStore.lookup(name: profileName, server: serverID) else {
       throw SupervisorError.unknownProfile(profile: profileName, server: serverID)
+    }
+
+    // Bastion itself. Answered in-process: there is no package to install, no
+    // child to spawn, and none of the machinery below it — no id remapping, no
+    // waiter, no restart — has anything to be out of step with.
+    if server.origin == .builtin {
+      return try BuiltinServer.handle(frame, era: era, profile: profile, client: client)
     }
 
     let instance = try instanceFor(profile: profile, server: server)

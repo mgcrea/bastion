@@ -108,8 +108,17 @@ enum ClientWiring {
     for profile in profiles { counts[profile.serverID, default: 0] += 1 }
     var out: [Profile: String] = [:]
     for profile in profiles {
+      let single = counts[profile.serverID] == 1
+      // Bastion's own server would otherwise be `bastion-bastion`, which a
+      // client turns into tool names like `mcp__bastion_bastion__list_servers`.
+      // The stutter is not cosmetic at that point — it is in every tool name
+      // the model reads.
+      if profile.serverID == BuiltinServer.id {
+        out[profile] = single ? "bastion" : "bastion-\(profile.name)"
+        continue
+      }
       out[profile] =
-        counts[profile.serverID] == 1
+        single
         ? "bastion-\(profile.serverID)"
         : "bastion-\(profile.name)-\(profile.serverID)"
     }

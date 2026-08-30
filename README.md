@@ -81,6 +81,45 @@ part worth building is the runtime underneath.
 Adding an entry to the _catalog_ is a manifest edit and `make servers`; every generated copy is
 checked in CI.
 
+## Bastion, as one of its own servers
+
+Every other entry in the list is an npm package Bastion downloads and relays to. One is the app.
+`bastion` answers MCP in-process — no package, no child, no credentials of its own — and its tools
+are the window: list and describe servers, install one from the catalog or add any npm package,
+create profiles, put credentials in the Keychain, wire clients, and read what is running.
+
+It is the one server that cannot be removed. Removing a server takes its profiles, their Keychain
+entries and its downloaded code with it, which was far too much to mean "not right now" — so every
+server now has a **switch** instead. A disabled server stops its children and refuses requests with
+its own sentence; its profiles, credentials and installed code are untouched, and client configs
+are not rewritten behind your back.
+
+Three rules hold whatever the profile's write gate says, and they are the reason this is safe to
+ship:
+
+1. **No tool returns a secret.** `set_credential` has no counterpart, and `list_profiles` says
+   _which_ variables are set, never what to.
+2. **It cannot switch itself off**, which would leave no way to switch it back on from there.
+3. **It cannot delete itself.**
+
+Everything that changes anything sits behind the same per-profile write gate as every other server:
+with _Allow writes_ off, the mutating tools are absent from `tools/list` entirely rather than
+offered and refused, so a model never plans around a tool it cannot use. And every call it serves
+goes through the same audit line as a relayed one — the server that can change everything is not
+the server that leaves no trace.
+
+It ships **disabled**. It is a control plane for a daemon holding every credential you own, so it
+takes three deliberate acts to reach: switch it on, give it a profile, wire a client.
+
+The licence gate does not apply to it, and that is the gate's own rule rather than a hole in it:
+what is sold is the _relay_. This server relays nothing, spawns nothing and holds no credential. It
+also means an unlicensed user can have their agent set Bastion up, and meets the licence sentence
+at the point they have something to lose by not having one.
+
+```bash
+make builtin        # the write gate, the two self-refusals, and the secrets wall
+```
+
 ## What the audit log sees, and what it does not
 
 Bastion sees the JSON-RPC frames crossing the gateway: which profile, which method, which tool, how
@@ -137,7 +176,8 @@ Built and verified:
 | **Supervisor**       | one child per profile, id remapping, backoff, circuit breaker, idle stop            |
 | **Dialect**          | dual-era: modern 2026-07-28 and legacy `initialize`, onto legacy children           |
 | **Catalog**          | nine seeded servers, a generator, and a CI drift check                              |
-| **Server store**     | the user's own list, on-demand npm install, add and remove                          |
+| **Server store**     | the user's own list, on-demand npm install, add, remove, and a per-server switch    |
+| **Bastion's server** | Bastion as one of its own servers, so an agent can manage it — off by default       |
 | **Keychain**         | per-profile credentials, per-client tokens                                          |
 | **Activity window**  | what is running, who is attached, and every tool call, live                         |
 | **`bastion-bridge`** | stdio hosts reach the gateway over HTTP; starts Bastion if it is not up             |
@@ -145,6 +185,7 @@ Built and verified:
 | **`make smoke`**     | four concurrent clients, colliding ids, exactly one child, `kill -9` recovery       |
 | **`make audit`**     | the five security rules, against the real bundle                                    |
 | **`make dialect`**   | 24 conformance checks across both eras                                              |
+| **`make builtin`**   | the write gate hides the write tools, and no tool returns a secret                  |
 
 Bastion is what the 2026-07-28 spec calls a **dual-era server**. A modern client declares its
 protocol version, identity and capabilities in each request's `_meta` and needs no handshake at
@@ -195,6 +236,7 @@ make run            # build and launch the menu bar agent
 make stop           # quit it
 make audit          # assert the listener is loopback-only and refuses foreign Origin/Host
 make dialect        # assert both protocol eras against a running build
+make builtin        # assert Bastion's own server: the write gate, and the secrets wall
 make install        # install the Debug build to /Applications
 
 make bundle         # build, stage node + npm, verify the install path, and sign a Release

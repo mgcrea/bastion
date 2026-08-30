@@ -57,9 +57,13 @@ final class ServerStore {
     snapshot.withLock { $0[id] }
   }
 
-  /// Every installed id, for `/health`.
+  /// Every id that will actually answer, for `/health`.
+  ///
+  /// Enabled only. `/health` is what a client or a script asks to find out what
+  /// is reachable, and listing a server that is switched off would make it the
+  /// one endpoint the answer is wrong about.
   nonisolated static func installedIDs() -> [String] {
-    snapshot.withLock { $0.keys.sorted() }
+    snapshot.withLock { table in table.values.filter(\.isEnabled).map(\.id).sorted() }
   }
 
   private func refreshSnapshot() {
@@ -84,9 +88,15 @@ final class ServerStore {
   // MARK: - Persistence
 
   /// One row. `definition` present means custom; absent means "look it up".
+  ///
+  /// `enabled` is optional so that a `servers.json` written before the switch
+  /// existed decodes unchanged, with `nil` meaning on. A server nobody ever
+  /// switched off is on, which is the only reading that cannot surprise
+  /// somebody on upgrade.
   private struct Stored: Codable {
     var id: String
     var definition: Definition?
+    var enabled: Bool?
   }
 
   /// A custom server, as typed. Deliberately not `Codable` on `BastionServer`
@@ -128,7 +138,7 @@ final class ServerStore {
       // installing that server hands the profile straight back. The setup is
       // waiting rather than adopted, which is a state the sidebar can show
       // honestly and an empty list cannot lie about.
-      servers = []
+      servers = [BuiltinServer.definition]
       refreshSnapshot()
       return
     }
@@ -143,6 +153,14 @@ final class ServerStore {
       seen.insert(row.id)
       return resolved
     }
+    // Always present, however the file was written or hand-edited. It is the
+    // one row that is part of the app rather than part of the user's list, so
+    // its absence is never a choice somebody made — it is a file from before
+    // the feature, or one somebody deleted a line out of.
+    if !seen.contains(BuiltinServer.id) {
+      servers.insert(BuiltinServer.definition, at: 0)
+    }
+    sort()
     refreshSnapshot()
   }
 
@@ -151,6 +169,14 @@ final class ServerStore {
       hostLog("servers", .error, "ignoring server with unusable id '\(row.id)'")
       return nil
     }
+    // Before the catalog, and ignoring any `definition` the row carries: the
+    // built-in server is defined by this build, and a file claiming otherwise
+    // is a hand-edit that must not be able to redefine the control plane.
+    if row.id == BuiltinServer.id {
+      var builtin = BuiltinServer.definition
+      builtin.isEnabled = row.enabled ?? false
+      return builtin
+    }
     guard let definition = row.definition else {
       guard let entry = ServerCatalog.byID[row.id] else {
         hostLog(
@@ -158,9 +184,13 @@ final class ServerStore {
           "ignoring '\(row.id)' — it is no longer in the catalog this build ships")
         return nil
       }
-      return entry
+      var resolved = entry
+      resolved.isEnabled = row.enabled ?? true
+      return resolved
     }
-    return make(id: row.id, from: definition)
+    var resolved = make(id: row.id, from: definition)
+    resolved.isEnabled = row.enabled ?? true
+    return resolved
   }
 
   /// A stored custom definition becomes a runtime one.
@@ -210,8 +240,12 @@ final class ServerStore {
     AppSupport.ensureDirectory()
     let rows = servers.map { server -> Stored in
       switch server.origin {
-      case .catalog: Stored(id: server.id, definition: nil)
-      case .custom: Stored(id: server.id, definition: Self.definition(of: server))
+      // A built-in row carries nothing but its id and its switch. Writing a
+      // definition would freeze this build's idea of it into the file.
+      case .catalog, .builtin:
+        Stored(id: server.id, definition: nil, enabled: server.isEnabled)
+      case .custom:
+        Stored(id: server.id, definition: Self.definition(of: server), enabled: server.isEnabled)
       }
     }
     let encoder = JSONEncoder()
@@ -248,6 +282,9 @@ final class ServerStore {
     case unusableVariable(String)
     case noVariables
     case renameWouldStrand(from: String, to: String, profiles: Int)
+    case cannotRemoveBuiltin
+    case reservedID(String)
+    case notInList(String)
 
     var errorDescription: String? {
       switch self {
@@ -263,6 +300,14 @@ final class ServerStore {
         return "'\(name)' is not a usable environment variable name"
       case .noVariables:
         return "a server needs at least one environment variable"
+      case .cannotRemoveBuiltin:
+        return
+          "Bastion's own server is part of the app and cannot be removed. Switch it off instead — "
+          + "that stops it answering and keeps everything it owns."
+      case .reservedID(let id):
+        return "'\(id)' is reserved for Bastion's own server. Pick another name."
+      case .notInList(let id):
+        return "'\(id)' is not in your server list"
       case .renameWouldStrand(let from, let to, let profiles):
         return
           "'\(from)' has \(profiles) profile\(profiles == 1 ? "" : "s"). Renaming it to '\(to)' would "
@@ -312,6 +357,10 @@ final class ServerStore {
     throws
   {
     guard Self.isValidID(id) else { throw StoreError.unusableID(id) }
+    // Reserved, or a custom row would shadow the control plane on the next
+    // load — `resolve` returns the built-in definition for this id whatever the
+    // row says, so the entry the user typed would silently stop existing.
+    guard id != BuiltinServer.id else { throw StoreError.reservedID(id) }
     guard Self.isValidPackage(definition.npmName) else {
       throw StoreError.unusablePackage(definition.npmName)
     }
@@ -335,8 +384,13 @@ final class ServerStore {
       }
     }
 
-    let made = Self.make(id: id, from: definition)
+    var made = Self.make(id: id, from: definition)
     if let original, let index = servers.firstIndex(where: { $0.id == original }) {
+      // Carried across the edit. `make` builds a fresh definition from the
+      // stored fields, and the switch is not one of them — so without this,
+      // opening the editor on a disabled server and pressing Save would quietly
+      // turn it back on.
+      made.isEnabled = servers[index].isEnabled
       servers[index] = made
       // The old id's install is now unreachable — nothing resolves through it —
       // so it goes with the name rather than sitting in Application Support as
@@ -361,6 +415,7 @@ final class ServerStore {
   /// is the worst version of this, so it happens here, at once, behind a
   /// confirmation that says so.
   func remove(_ server: BastionServer) throws {
+    guard server.origin != .builtin else { throw StoreError.cannotRemoveBuiltin }
     for profile in ProfileStore.shared.profiles where profile.serverID == server.id {
       Supervisor.shared.stop(profile: profile.name, server: server.id)
       try? ProfileStore.shared.remove(profile)
@@ -369,6 +424,37 @@ final class ServerStore {
     servers.removeAll { $0.id == server.id }
     try save()
     hostLog("servers", .info, "removed '\(server.id)' and everything it owned")
+  }
+
+  /// Stop a server answering without destroying anything it owns.
+  ///
+  /// The middle setting the app was missing. Removing a server takes its
+  /// profiles, their Keychain entries and its downloaded code with it, which is
+  /// far too much to mean "not right now" — so that was the only way to say it,
+  /// and nobody says it that way twice.
+  ///
+  /// The running children go, because a server that reports itself off while a
+  /// process of it is still serving requests is a state nobody could reason
+  /// about. Everything on disk stays: this is reversible by design, and
+  /// `remove` is still how to mean "never again".
+  ///
+  /// Client configs are deliberately left alone. Rewriting somebody's
+  /// `.claude.json` on a toggle is a much larger action than the toggle looks,
+  /// and a disabled server's entry failing with Bastion's own sentence is a
+  /// better outcome than an entry that silently vanished.
+  func setEnabled(_ enabled: Bool, for id: String) throws {
+    guard let index = servers.firstIndex(where: { $0.id == id }) else {
+      throw StoreError.notInList(id)
+    }
+    guard servers[index].isEnabled != enabled else { return }
+    servers[index].isEnabled = enabled
+    if !enabled {
+      for profile in ProfileStore.shared.profiles where profile.serverID == id {
+        Supervisor.shared.stop(profile: profile.name, server: id)
+      }
+    }
+    try save()
+    hostLog("servers", .info, "\(enabled ? "enabled" : "disabled") '\(id)'")
   }
 
   /// Re-read `profiles.json` so profiles waiting on a server just added come
@@ -397,11 +483,15 @@ final class ServerStore {
     let rank = Dictionary(
       uniqueKeysWithValues: ServerCatalog.all.enumerated().map { ($0.element.id, $0.offset) })
     servers.sort { a, b in
+      // Bastion itself first, always. It is the app rather than a choice, and a
+      // control plane that moves around the list as servers are added and
+      // removed is one nobody can find twice.
+      if (a.origin == .builtin) != (b.origin == .builtin) { return a.origin == .builtin }
       switch (rank[a.id], rank[b.id]) {
-      case (let x?, let y?): x < y
-      case (_?, nil): true
-      case (nil, _?): false
-      case (nil, nil): a.id < b.id
+      case (let x?, let y?): return x < y
+      case (_?, nil): return true
+      case (nil, _?): return false
+      case (nil, nil): return a.id < b.id
       }
     }
   }

@@ -12,11 +12,14 @@ enum LocateError: LocalizedError {
   case notInstalled(server: String)
   case noRuntime
   case devConfigInvalid(String)
+  case builtin
 
   var errorDescription: String? {
     switch self {
     case .notInstalled(let server):
       return "the \(server) server is not installed — install it in Bastion"
+    case .builtin:
+      return "Bastion's own server runs in-process and has no code to locate"
     case .noRuntime:
       return "this build has no embedded node runtime"
     case .devConfigInvalid(let detail):
@@ -81,6 +84,10 @@ nonisolated enum ServerLocator {
   /// the user's credentials already in the environment. What changed is who
   /// writes the list, not how a request selects from it.
   static func locate(_ server: BastionServer) throws -> ServerBinaries {
+    // Belt and braces. `Supervisor.call` branches on `.builtin` before it can
+    // reach a spawn, so this is unreachable today — and it is the sentence
+    // worth having if that branch is ever moved.
+    guard server.origin != .builtin else { throw LocateError.builtin }
     guard let node = nodeExecutable() else { throw LocateError.noRuntime }
 
     #if DEBUG

@@ -69,14 +69,21 @@ struct ServerDetail: View {
         .fixedSize(horizontal: false, vertical: true)
 
       HStack(spacing: 6) {
-        // `.local` is not a footnote now that installs happen on demand: it is
-        // the difference between an entry that installs and one that reports
-        // "not published" when you press the button.
-        switch server.distribution {
-        case .npm: Badge(server.npmName, tint: .secondary)
-        case .local: Badge("not published", tint: .orange)
+        switch server.origin {
+        case .builtin:
+          Badge("built-in", tint: .blue)
+        case .custom:
+          Badge(server.npmName, tint: .secondary)
+          Badge("custom", tint: .purple)
+        case .catalog:
+          // `.local` is not a footnote now that installs happen on demand: it
+          // is the difference between an entry that installs and one that
+          // reports "not published" when you press the button.
+          switch server.distribution {
+          case .npm: Badge(server.npmName, tint: .secondary)
+          case .local: Badge("not published", tint: .orange)
+          }
         }
-        if server.origin == .custom { Badge("custom", tint: .purple) }
         Badge(server.dialect.rawValue, tint: .secondary)
         if server.writeGate == nil {
           // Worth saying plainly. A server with no write path cannot be talked
@@ -88,7 +95,43 @@ struct ServerDetail: View {
         }
         Spacer()
       }
+
+      enableSwitch
     }
+  }
+
+  /// The middle setting, and the sentence that says what it does not do.
+  ///
+  /// Worth spelling out on screen: the neighbouring red button deletes the
+  /// profiles and sweeps the Keychain, so somebody reaching for a way to stop a
+  /// server has every reason to expect this one costs something too.
+  @ViewBuilder private var enableSwitch: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Toggle(
+        "Enabled",
+        isOn: Binding(
+          get: { server.isEnabled },
+          set: { wanted in
+            do { try ServerStore.shared.setEnabled(wanted, for: server.id) } catch {
+              lastError = error.localizedDescription
+            }
+          })
+      )
+      .toggleStyle(.switch)
+      .controlSize(.small)
+
+      if !server.isEnabled {
+        Text(
+          server.origin == .builtin
+            ? "Off. Bastion's own tools are not served, and no agent can manage Bastion."
+            : "Off. Requests are refused and nothing is running. Its profiles, their credentials "
+              + "and its downloaded code are all kept.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    .padding(.top, 2)
   }
 
   // MARK: - Package
@@ -99,7 +142,40 @@ struct ServerDetail: View {
   /// downloaded" is now a real state a server can be in. It used to be
   /// impossible: the servers were inside the app bundle, so the only answers
   /// were "yes" and "not in this build", and neither was actionable.
-  private var packageCard: some View {
+  @ViewBuilder private var packageCard: some View {
+    if server.origin == .builtin { builtinCard } else { npmCard }
+  }
+
+  /// What stands in for the package card on the one server that has no package.
+  ///
+  /// Its own card rather than an empty one, because every question the package
+  /// card answers — where is the code, is it downloaded, can I remove it — has
+  /// a different answer here, and three struck-through rows would be a worse
+  /// way to say so than one sentence.
+  private var builtinCard: some View {
+    Card(title: "Built in") {
+      VStack(alignment: .leading, spacing: 8) {
+        Text("Bastion itself. It runs inside this app, so there is nothing to download and "
+          + "nothing to keep up to date — it ships with the version you are running.")
+          .font(.callout)
+          .fixedSize(horizontal: false, vertical: true)
+
+        Text("It cannot be removed. Switching it off is how you stop it, and that keeps its "
+          + "profiles and their credentials.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+
+        Text("Secrets are write-only through it: a profile can set a credential, and no tool it "
+          + "serves can read one back.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+  }
+
+  private var npmCard: some View {
     Card(title: "Package") {
       VStack(alignment: .leading, spacing: 10) {
         let installer = ServerInstaller.shared

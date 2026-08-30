@@ -57,7 +57,14 @@ final class ServerInstaller {
   }
 
   /// The installed package's own directory, or `nil` when nothing is there.
+  ///
+  /// The built-in server has no package and no directory, and this is the one
+  /// choke point for that: `entryScript`, `installedVersion` and `isInstalled`
+  /// all route through here. Guarded rather than left to fall through, because
+  /// its `npmName` is empty and an unguarded walk would end up asking whether
+  /// `servers/bastion/node_modules/package.json` exists.
   nonisolated static func packageDirectory(of server: BastionServer) -> URL? {
+    guard server.origin != .builtin, !server.npmName.isEmpty else { return nil }
     var url = directory(of: server.id).appendingPathComponent("node_modules", isDirectory: true)
     // A scoped name is two path components on disk. Splitting rather than
     // appending the whole string keeps that true without a special case.
@@ -124,16 +131,42 @@ final class ServerInstaller {
   }
 
   nonisolated static func isInstalled(_ server: BastionServer) -> Bool {
-    entryScript(of: server) != nil
+    // The built-in server is always "installed": it is the running app.
+    if server.origin == .builtin { return true }
+    return entryScript(of: server) != nil
   }
 
   // MARK: - Installing
+
+  /// How old a published version must be before Bastion will install it,
+  /// in days — or `nil` to leave npm's own configuration alone.
+  ///
+  /// Absent by default, and absent is not the same as zero. npm reads the
+  /// user's `~/.npmrc` here (see `runInstall`), and `min-release-age` there is
+  /// a deliberate supply-chain quarantine: a window in which a compromised
+  /// release is likely to be caught and unpublished before anything installs
+  /// it. Bastion defaulting to an override would quietly switch that off for
+  /// the one kind of package it exists to run, which is the wrong way round.
+  ///
+  /// What the setting is *for* is the other half of the problem: the policy is
+  /// global, and relaxing it in `~/.npmrc` to install one day-old server
+  /// weakens every install on the machine. This narrows the exception to
+  /// Bastion.
+  nonisolated static let releaseAgeKey = "npmMinReleaseAge"
+
+  nonisolated static var releaseAgeOverride: Int? {
+    guard let stored = UserDefaults.standard.object(forKey: releaseAgeKey) as? Int,
+      stored >= 0
+    else { return nil }
+    return stored
+  }
 
   enum InstallError: LocalizedError {
     case notPublished(String)
     case noRuntime
     case npmFailed(code: Int32, detail: String)
     case noEntryPoint(package: String)
+    case quarantined(package: String)
 
     var errorDescription: String? {
       switch self {
@@ -146,6 +179,15 @@ final class ServerInstaller {
         return detail.isEmpty ? "npm exited \(code)" : detail
       case .noEntryPoint(let package):
         return "\(package) installed, but declares no runnable bin — it may not be an MCP server"
+      case .quarantined(let package):
+        // npm says "No versions available", which reads exactly like the
+        // package does not exist. It does; every version of it is simply
+        // younger than the window npm was told to apply.
+        return
+          "every published version of \(package) is newer than the release-age window npm is "
+          + "applying — `min-release-age` or `before`, usually from ~/.npmrc. Wait until a "
+          + "version is old enough, or set a shorter window for Bastion alone in Settings › "
+          + "General."
       }
     }
   }
@@ -153,6 +195,10 @@ final class ServerInstaller {
   /// Install or re-install one server. Safe to call on something already there:
   /// npm resolves `latest` again, which is what "Update" means.
   func install(_ server: BastionServer) async {
+    // Nothing to fetch — it ships inside the app. Silently rather than as an
+    // error: this is reachable from a bulk update, and a failure there would be
+    // reporting a problem that does not exist.
+    guard server.origin != .builtin else { return }
     guard !isRunning(server.id) else { return }
     running[server.id] = "Installing…"
     failures[server.id] = nil
@@ -252,6 +298,11 @@ final class ServerInstaller {
       "npm_config_cache": root.appendingPathComponent(".npm-cache", isDirectory: true).path,
       "npm_config_update_notifier": "false",
     ]
+    // env beats the user's `.npmrc`, which is the whole point: the exception is
+    // Bastion's, and `~/.npmrc` keeps saying what it said for everything else.
+    if let days = releaseAgeOverride {
+      process.environment?["npm_config_min_release_age"] = String(days)
+    }
 
     let errors = Pipe()
     process.standardOutput = FileHandle.nullDevice
@@ -267,6 +318,12 @@ final class ServerInstaller {
     process.waitUntilExit()
 
     guard process.terminationStatus == 0 else {
+      // Checked against the code rather than the sentence: `lastMeaningfulLine`
+      // drops the `code ENOVERSIONS` line on purpose, and the sentence it keeps
+      // is the one that does not explain itself.
+      if detail.contains("ENOVERSIONS") {
+        throw InstallError.quarantined(package: server.npmName)
+      }
       throw InstallError.npmFailed(
         code: process.terminationStatus,
         detail: Self.lastMeaningfulLine(of: detail))

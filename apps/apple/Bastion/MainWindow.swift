@@ -142,8 +142,14 @@ struct MainView: View {
               ServerBadge(server: server)
             }
           } icon: {
-            Image(systemName: "shippingbox")
+            // Bastion's own server is not a package, and the box icon is the
+            // one thing on the row that says it is.
+            Image(systemName: server.origin == .builtin ? "gearshape.2" : "shippingbox")
           }
+          // Dimmed rather than hidden or moved. A disabled server is still
+          // something you own and still where you left it — the sidebar's job
+          // is to say it will not answer, not to hide it until it does.
+          .foregroundStyle(server.isEnabled ? .primary : .secondary)
           .tag(MainPane.server(server.id))
         }
 
@@ -152,7 +158,10 @@ struct MainView: View {
         // as a bug; a sentence that says what is true does not. It is a label
         // rather than a second button — the one under the list is right there,
         // and two buttons a row apart doing the same thing reads as two things.
-        if servers.isEmpty {
+        // Bastion's own server is always in the list, so "empty" now means
+        // "nothing but Bastion" — otherwise the sentence would never appear
+        // again and a fresh install would look furnished when it is not.
+        if servers.allSatisfy({ $0.origin == .builtin }) {
           Text("None installed yet.")
             .font(.callout)
             .foregroundStyle(.tertiary)
@@ -323,7 +332,15 @@ private struct ServerBadge: View {
     let live = Activity.shared.instances.filter { $0.server == server.id && $0.pid > 0 }.count
     let profiles = ProfileStore.shared.profiles.filter { $0.serverID == server.id }.count
 
-    if live > 0 {
+    // First in the ladder, because it outranks everything below it: a disabled
+    // server is not installing, will not run, and its profile count is a fact
+    // about something that is not going to answer.
+    if !server.isEnabled {
+      Image(systemName: "pause.circle")
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+        .help("Disabled")
+    } else if live > 0 {
       HStack(spacing: 3) {
         Circle().fill(Color.green).frame(width: 7, height: 7)
         if live > 1 {
