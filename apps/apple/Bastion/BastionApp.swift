@@ -60,6 +60,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       if CommandLine.arguments.contains("--trial") {
         Trial.start()
       }
+      // Runs one profile's check and exits with its verdict. See
+      // `ServerCheck.runHeadless`.
+      if let raw = CommandLine.arguments.first(where: { $0.hasPrefix("--check=") }) {
+        ServerCheck.runHeadless(
+          String(raw.dropFirst("--check=".count)),
+          probing: CommandLine.arguments.contains("--probe"))
+      }
     #endif
   }
 

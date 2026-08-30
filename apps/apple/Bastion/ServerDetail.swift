@@ -25,6 +25,10 @@ struct ServerDetail: View {
   /// a separate payload: a sheet driven by two pieces of state can be presented
   /// with the wrong one, and this cannot.
   @State private var editing: ProfileEditor.Subject?
+  /// The profile whose check sheet is open. Owned here rather than by the row
+  /// for the reason `editing` is: a sheet presented from a row is torn down by
+  /// the state churn behind it, and `ProfileRow` redraws on a five-second clock.
+  @State private var checking: Profile?
   @State private var lastError: String?
   @State private var confirmingServerRemoval = false
 
@@ -46,6 +50,9 @@ struct ServerDetail: View {
     }
     .sheet(item: $editing) { subject in
       ProfileEditor(server: server, subject: subject)
+    }
+    .sheet(item: $checking) { profile in
+      ServerCheckSheet(server: server, profile: profile)
     }
   }
 
@@ -189,6 +196,10 @@ struct ServerDetail: View {
             ProfileRow(
               server: server, profile: profile,
               edit: { editing = .existing(profile) },
+              check: {
+                ServerCheck.shared.start(profile: profile, server: server)
+                checking = profile
+              },
               report: { lastError = $0 })
             if profile.id != profiles.last?.id { Divider() }
           }
@@ -286,6 +297,7 @@ private struct ProfileRow: View {
   let server: BastionServer
   let profile: Profile
   let edit: () -> Void
+  let check: () -> Void
   let report: (String?) -> Void
 
   @State private var confirmingRemoval = false
@@ -332,6 +344,9 @@ private struct ProfileRow: View {
       Spacer()
 
       VStack(alignment: .trailing, spacing: 4) {
+        Button("Test") { check() }
+          .help("Start this server, complete the handshake, and list its tools.")
+          .disabled(ServerCheck.shared.isRunning(profile))
         Button("Edit…") { edit() }
         Button("Remove") { confirmingRemoval = true }
           .font(.caption)
@@ -367,6 +382,14 @@ private struct ProfileRow: View {
     }
     if !missing.isEmpty {
       return "cannot start — missing \(missing.joined(separator: ", "))"
+    }
+    // Measured beats assumed. "Ready" was a claim about a code path nothing had
+    // walked; once a check has walked it, the row says what was found instead.
+    if let run = ServerCheck.shared.run(for: profile), !run.isRunning {
+      let when = run.startedAt.formatted(.relative(presentation: .numeric))
+      if run.failed { return "checked \(when) — the check found a problem" }
+      let count = run.tools.count
+      return "checked \(when) — \(count) tool\(count == 1 ? "" : "s"), not running now"
     }
     return "ready — starts on the first request that needs it"
   }
