@@ -56,14 +56,17 @@ console.log("icons →");
 
 const icon = await source("bastion-icon.svg");
 const menubar = await source("bastion-menubar.svg");
+const menubarActive = await source("bastion-menubar-active.svg");
 
 // Served as-is: /favicon.svg is linked by every page, /app-icon.svg is what
-// every <Logo> on the site renders, and /menubar-glyph.svg is the mark in the
-// hero's menu bar mock. All three have to exist in the built site.
+// every <Logo> on the site renders, and the two menu bar glyphs are the mark in
+// the hero's menu bar mock — idle, and with the curtain wall the app draws while
+// a server is running. All four have to exist in the built site.
 await writeFile(join(pub, "app-icon.svg"), icon);
 await writeFile(join(pub, "favicon.svg"), icon);
 await writeFile(join(pub, "menubar-glyph.svg"), menubar);
-console.log("  app-icon.svg, favicon.svg, menubar-glyph.svg  copied from design/");
+await writeFile(join(pub, "menubar-glyph-active.svg"), menubarActive);
+console.log("  app-icon.svg, favicon.svg, menubar-glyph[-active].svg  copied from design/");
 
 await png(icon, "favicon-32.png", 32);
 

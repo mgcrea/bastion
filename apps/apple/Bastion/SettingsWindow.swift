@@ -276,8 +276,14 @@ private struct GeneralPane: View {
       }
 
       Section {
-        // Only the standing question lives here. "Check for Updates…" stays in
-        // the menu bar, where somebody who wants one now would reach for it.
+        // Both questions live here now. The standing one always did; "check
+        // now" followed it out of the menu bar when that became a panel, where
+        // a row that is neither an entrance nor an exit had no weight it could
+        // be given that did not read as more drastic than Quit.
+        //
+        // It cannot simply be dropped: this is the only manual check there is,
+        // and the automatic one is off until asked for, so a build with the
+        // toggle off would otherwise have no way to look at all.
         Toggle(
           "Check for updates automatically",
           isOn: Binding(
@@ -289,6 +295,17 @@ private struct GeneralPane: View {
         Text("Off until you say otherwise. Bastion sends no identifier with the check.")
           .font(.caption).foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
+        // Not gated on the toggle. Asking once by hand is a different act from
+        // granting a standing licence to look, and refusing the first because
+        // you declined the second would be a checkbox that disables a button
+        // nobody consented away.
+        HStack {
+          Button(UpdateController.shared.isChecking ? "Checking…" : "Check for Updates…") {
+            UpdateController.shared.checkNow()
+          }
+          .disabled(UpdateController.shared.isChecking)
+          Spacer()
+        }
       } header: {
         Text("Updates")
       }

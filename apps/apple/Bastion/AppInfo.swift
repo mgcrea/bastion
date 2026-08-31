@@ -12,6 +12,20 @@ nonisolated enum AppInfo {
       ?? "0.0.0"
   }
 
+  /// The version as the menu bar popover shows it, beside the name.
+  ///
+  /// Marketing version only. The build number belongs in Settings ▸ About,
+  /// where somebody is already reading a list of identifiers; here it would be
+  /// four more characters in the one line that has to stay short enough to sit
+  /// on the app name's baseline.
+  ///
+  /// The debug marker rides along because two menu bar icons that look
+  /// identical and hold different Keychain items is otherwise a confusing
+  /// afternoon — and the popover is the surface you look at to tell them apart.
+  static var shortVersion: String {
+    version + (isDebugBuild ? " (debug)" : "")
+  }
+
   /// The major version a licence key must cover.
   ///
   /// A key is issued against `2.x` and refused by a `3.x` build, which is what

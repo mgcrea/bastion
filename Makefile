@@ -516,7 +516,9 @@ ICON_MARK    := design/bastion-mark.svg
 HASH         := \#
 ICON_PLATE    = $(HASH)FFD08A,$(HASH)F2895C
 ICON_RADIUS  := 230
-ICON_MENUBAR := design/bastion-menubar.svg
+# Two states, not one file: the wall around the fort is the running-server
+# glyph, and `MenuBarLabel` swaps them in place.
+ICON_MENUBAR := design/bastion-menubar.svg design/bastion-menubar-active.svg
 
 icon: ## Regenerate Bastion.icon and the web SVG from design/bastion-mark.svg
 	@appshot icon build --from $(ICON_MARK) \
@@ -539,10 +541,13 @@ icon: ## Regenerate Bastion.icon and the web SVG from design/bastion-mark.svg
 	@# matching two revisions before anyone noticed.
 	@node scripts/generate-lockup.mjs
 	@appshot icon check --out apps/apple/Bastion/Bastion.icon
-	@# The menu bar glyph is authored, not composed — but the imageset needs the
-	@# file *inside* it, so design/ stays the one copy anyone edits.
-	@cp $(ICON_MENUBAR) apps/apple/Bastion/Assets.xcassets/MenuBarIcon.imageset/
-	@echo "  copied $(notdir $(ICON_MENUBAR)) into MenuBarIcon.imageset"
+	@# The menu bar glyphs are authored, not composed — but each imageset needs
+	@# its file *inside* it, so design/ stays the one copy anyone edits.
+	@cp design/bastion-menubar.svg \
+		apps/apple/Bastion/Assets.xcassets/MenuBarIcon.imageset/
+	@cp design/bastion-menubar-active.svg \
+		apps/apple/Bastion/Assets.xcassets/MenuBarIconActive.imageset/
+	@echo "  copied $(notdir $(ICON_MENUBAR)) into their imagesets"
 	@# The website renders its favicon, touch icon and OG card from the same two
 	@# files. It reads design/ directly, so nothing is copied — but the PNGs it
 	@# derives are committed, and only this command's output makes them stale.

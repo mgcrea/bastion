@@ -139,12 +139,14 @@ const embedIcon = (iconSvg, { x, y, size, indent }) => {
     .replace(/<title>[\s\S]*?<\/title>/g, "")
     .replace(/^\s*\n/gm, "")
     .trimEnd();
-  // Four paths: the two hills, the curtain wall and the spur. The count is the
-  // cheap assertion; it catches an icon rebuilt from a mark that lost a shape,
-  // which is otherwise a banner that renders and is simply missing something.
+  // Three paths: the two hills and the fort. It was four until the curtain wall
+  // left the mark for the menu bar, where it is the running-server state. The
+  // count is the cheap assertion; it catches an icon rebuilt from a mark that
+  // lost a shape, which is otherwise a banner that renders and is simply
+  // missing something.
   expect(
-    (body.match(/<path\b/g) ?? []).length >= 4,
-    "the icon body has fewer than four paths — the mark is missing a shape",
+    (body.match(/<path\b/g) ?? []).length >= 3,
+    "the icon body has fewer than three paths — the mark is missing a shape",
   );
   expect(body.includes("<rect"), "the icon body has no plate");
 

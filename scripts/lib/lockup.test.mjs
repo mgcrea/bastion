@@ -24,15 +24,17 @@ const icon = readFileSync(join(design, "bastion-icon.svg"), "utf8");
 const palette = JSON.parse(readFileSync(join(design, "colors.json"), "utf8"));
 
 /**
- * The four shapes of design/bastion-mark.svg, character for character. If one of
- * these ever needs updating here, the lockup has stopped inheriting — which is
- * the only thing these tests exist to catch.
+ * The three shapes of design/bastion-mark.svg, character for character. If one
+ * of these ever needs updating here, the lockup has stopped inheriting — which
+ * is the only thing these tests exist to catch.
+ *
+ * There were four until the curtain wall left the mark. It is now the menu
+ * bar's running-server glyph and no rendering of the icon carries it.
  */
 const MARK_SHAPES = [
   "M-39.7 882.8 Q512 609.1 1063.7 882.8 V1063.7 H-39.7 Z",
   "M-39.7 935.7 Q282.5 829.8 582.6 918.1 T1121.1 891.6 V1063.7 H-39.7 Z",
-  "M247.2 776.8 L194.2 485.5 L512 194.2 L829.8 485.5 L776.8 776.8",
-  "M512 423.7 L662.1 547.3 L688.6 706.2 L335.4 706.2 L361.9 547.3 Z",
+  "M512 386.1 L758.5 589.1 L802 850 L222 850 L265.5 589.1 Z",
 ];
 
 const CARD_COPY = { headline: "A headline", subhead: "A subhead", ground: "#0b0c0f" };
@@ -41,9 +43,10 @@ describe("the mark the compositions read", () => {
   it("is the geometry design/README.md documents", () => {
     const mark = readFileSync(join(design, "bastion-mark.svg"), "utf8");
     for (const shape of MARK_SHAPES) assert.ok(mark.includes(shape), `missing ${shape}`);
-    // The one number that is chosen rather than transcribed. `make icon` has no
-    // opinion on it, so this is the only place it is written down in code.
-    assert.match(mark, /stroke-width="48\.6"/);
+    // The fort is the only shape anybody chose rather than transcribed, and the
+    // choice is its seat: at y850 the front hill crosses its feet, so it stands
+    // on the ridge instead of floating above it. The path above pins that, and
+    // `make icon` has no opinion on it.
   });
 });
 
@@ -119,7 +122,7 @@ describe("composeLockup", () => {
     // A mark that lost a shape still renders; that is exactly why it is caught.
     assert.throws(
       () => composeLockup(icon.replace(/<path[^>]*>\s*/, ""), palette),
-      /fewer than four paths/,
+      /fewer than three paths/,
     );
   });
 });

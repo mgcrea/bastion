@@ -139,6 +139,15 @@ struct BastionApp: App {
     } label: {
       MenuBarLabel()
     }
+    // A panel, not a column of menu items.
+    //
+    // The version beside the name, a gateway state that is a green or red glyph
+    // rather than a sentence read to the end, a server row carrying its call
+    // count on the trailing edge — a `.menu` builder can draw none of them. It
+    // renders menu-item primitives and turns everything else into a disabled row
+    // of text, which is why the port line was a sentence and the version was
+    // nowhere. Cupertino's popover is this shape for the same reason.
+    .menuBarExtraStyle(.window)
     // Settings and its ⌘, declared to SwiftUI rather than inserted into
     // `NSApp.mainMenu` by hand.
     //
@@ -162,109 +171,323 @@ struct BastionApp: App {
   }
 }
 
-/// The mark, not an SF Symbol. `MenuBarIcon` is `design/bastion-menubar.svg`:
-/// direction 4a's own menu bar glyph — the curtain wall closed at the base, with
-/// the spur inside it — pure black plus alpha, so AppKit tints it for light menu
-/// bars, dark ones and the highlighted state rather than us shipping three
-/// renderings.
+/// The mark, not an SF Symbol, in one of its two drawn states.
 ///
-/// It does not change with gateway state. There is one drawn glyph and inventing
-/// a second in code would be a mark nothing in `design/` accounts for; a gateway
-/// that failed to start says so in the menu and in the main window, which is
-/// where somebody who noticed the icon would look next.
+/// `MenuBarIcon` is `design/bastion-menubar.svg`, the fort on its own — the same
+/// silhouette the app icon carries. `MenuBarIconActive` is
+/// `design/bastion-menubar-active.svg`, that fort with its curtain wall standing
+/// off it, and it is shown while at least one server is live. Both are pure
+/// black plus alpha, so AppKit tints them for light menu bars, dark ones and the
+/// highlighted state rather than us shipping six renderings.
+///
+/// This does not invent a second mark in code, which is why the old single glyph
+/// existed: the wall is drawn in `design/`, the two files share the fort to the
+/// decimal, and both carry the same downward offset so nothing shifts when the
+/// state flips. Swapping a glyph that moved would read as the icon twitching
+/// rather than as something happening.
+///
+/// It is deliberately not a *health* light. A gateway that failed to start says
+/// so in the popover and in the main window; this says only whether Bastion is
+/// holding anything open on your behalf, which is the fact you cannot get any
+/// other way without opening something.
+///
+/// Read from `Activity`, not `Supervisor.running`, for the reason the popover's
+/// rows do: the supervisor's view is a lock-protected snapshot with nothing for
+/// SwiftUI to observe, so the icon would be whatever it was when the label was
+/// last built.
 private struct MenuBarLabel: View {
+  private var activity = Activity.shared
+
   var body: some View {
-    Image("MenuBarIcon")
-      // The asset carries template-rendering-intent, but SwiftUI resolves an
+    let serving = activity.instances.contains(where: \.isLive)
+    Image(serving ? "MenuBarIconActive" : "MenuBarIcon")
+      // The assets carry template-rendering-intent, but SwiftUI resolves an
       // Image by name without consulting it, so a plain Image ships black-on-
       // black in a dark menu bar. AppKit does the tinting; this only says it may.
       .renderingMode(.template)
-      .accessibilityLabel("Bastion")
+      .accessibilityLabel(serving ? "Bastion, serving" : "Bastion")
   }
 }
 
+/// The popover behind the menu bar icon.
+///
+/// A summary that carries the actions which will not wait: the name with its
+/// version on one baseline, the gateway's state as a glyph, the running servers
+/// as rows, and the entrances along the bottom. Everything that wants explaining
+/// — why a server exited, which client called what, what a write gate is — is in
+/// the main window or Settings, and stays there.
 private struct GatewayMenu: View {
+  private var activity = Activity.shared
+
   var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      // Baseline-aligned so the version reads as a suffix to the name rather
+      // than as a second heading. It goes beside the title because the popover
+      // is capped at 340pt and this is the one piece of horizontal space that
+      // costs nothing.
+      HStack(alignment: .firstTextBaseline, spacing: 6) {
+        Text("Bastion").font(.headline)
+        Text(AppInfo.shortVersion).font(.caption).foregroundStyle(.secondary)
+        Spacer()
+      }
+
+      // First, above even the gateway line. Whoever is reading this has just
+      // been told by their assistant that a call was refused, and the licence is
+      // the reason — the gateway is up and answering, which is precisely why the
+      // green line below is not the answer they need.
+      EntitlementNotice()
+
+      gatewayStatus
+
+      Divider()
+
+      ServersSection(activity: activity)
+
+      Divider()
+
+      // One row, as Cupertino has it. The three that were here — Add Server,
+      // MCP Clients, Chat — each opened a pane of the window "Open Bastion"
+      // opens, so they were a second way to do one click's work in a panel whose
+      // whole claim is that it is a summary.
+      //
+      // ⌘N went with them and came back on the main window's own Add button,
+      // which had been leaving the shortcut to this menu. ⌘K and ⌘J did not:
+      // they only ever selected a sidebar row, and a shortcut for that is one
+      // the window never had.
+      //
+      // Glass on the left, plain on the right. Nothing here is prominent — a
+      // tinted button is a recommendation, and none of these three is being
+      // recommended over the others.
+      HStack {
+        Button("Open Bastion") { MainWindowController.show() }
+          .buttonStyle(.glass)
+          .keyboardShortcut("o")
+        Spacer()
+        Button("Settings…") { SettingsWindowController.show() }
+          .keyboardShortcut(",")
+        Button("Quit") { NSApplication.shared.terminate(nil) }
+          .keyboardShortcut("q")
+      }
+      .controlSize(.small)
+    }
+    .padding(14)
+    // Cupertino's 320. It was 340 to fit a row of three buttons that is no
+    // longer there, and the widest thing left is a `<profile> / <server>` row
+    // before its trailing call count, which the narrower panel still carries.
+    .frame(width: 320)
+  }
+
+  /// Green or red, rather than a sentence you have to read to the end.
+  ///
+  /// The address stays monospaced, as it is in the main window's sidebar: it is
+  /// a thing to be copied into another app's config, not prose.
+  @ViewBuilder
+  private var gatewayStatus: some View {
     if let error = Gateway.shared.startupError {
       // The one state where nothing will ever work. It has to be visible from
-      // the menu, because the alternative is a menu bar icon that looks fine
-      // and a client that says "connection refused".
-      Text("Not serving — \(error)")
+      // here, because the alternative is a menu bar icon that looks fine and a
+      // client that says "connection refused".
+      VStack(alignment: .leading, spacing: 4) {
+        Label("Not serving", systemImage: "xmark.circle.fill")
+          .foregroundStyle(.red)
+        Text(error)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
     } else {
-      Text("Serving on 127.0.0.1:\(String(Gateway.shared.port))")
+      Label {
+        let address = Text("127.0.0.1:\(String(Gateway.shared.port))").monospaced()
+        Text("Serving on \(address)")
+      } icon: {
+        Image(systemName: "checkmark.circle.fill")
+          .foregroundStyle(.green)
+      }
+      .help("Loopback only")
     }
-    Divider()
+  }
+}
 
-    // Read from `Activity`, not from `Supervisor.running`. The supervisor's
-    // view is a lock-protected snapshot taken on whatever thread asks, which is
-    // fine for a script and wrong for a menu: SwiftUI has nothing to observe,
-    // so the rows would be whatever they were when the menu was last built.
-    let instances = Activity.shared.instances
-    if instances.isEmpty {
-      Text("No servers running")
-    } else {
-      ForEach(instances) { instance in
-        Text(
-          "\(instance.displayName) — \(instance.calls) call\(instance.calls == 1 ? "" : "s")"
-            + (instance.allowWrites ? " · writes on" : ""))
+/// What is running, capped.
+///
+/// Four rows and then a link. The popover has no scroll view and its height is
+/// bounded by construction, so a machine running eleven servers — which is not
+/// hypothetical, it is the situation the whole project exists to end — would
+/// otherwise grow a panel taller than the screen. The overflow goes to the
+/// Running pane, which is the surface with room for it.
+private struct ServersSection: View {
+  let activity: Activity
+
+  private static let visible = 4
+
+  var body: some View {
+    // Read from `Activity`, not from `Supervisor.running`. The supervisor's view
+    // is a lock-protected snapshot taken on whatever thread asks, which is fine
+    // for a script and wrong for a panel: SwiftUI has nothing to observe, so the
+    // rows would be whatever they were when it was last built.
+    let instances = activity.instances
+
+    VStack(alignment: .leading, spacing: 6) {
+      Text("Servers").font(.subheadline).bold()
+
+      if instances.isEmpty {
+        Text("No servers running.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      } else {
+        ForEach(instances.prefix(Self.visible)) { instance in
+          row(instance)
+        }
+        if instances.count > Self.visible {
+          Button("\(instances.count - Self.visible) more…") {
+            MainWindowController.show(.running)
+          }
+          .buttonStyle(.link)
+          .font(.caption)
+        }
       }
     }
+  }
 
-    Divider()
-    Button("Open Bastion") { MainWindowController.show() }
-      .keyboardShortcut("o")
-    // Its own item for the same reason "MCP Clients…" is one, and more so on a
-    // fresh install: with nothing installed, adding a server is the only useful
-    // thing in the app, and the menu bar is where Bastion is when nobody has
-    // opened a window yet.
-    Button("Add Server…") { ServerEditorHost.present() }
-      .keyboardShortcut("n")
-    // Still its own item, and still ⌘K. Wiring a client is the one task
-    // somebody arrives at the menu bar already intending to do, and making them
-    // open a window and then find a sidebar row would be a step backwards from
-    // the window this replaced.
-    Button("MCP Clients…") { MainWindowController.show(.client(ClientWiring.all[0].id)) }
-      .keyboardShortcut("k")
-    // Reachable without a window for the same reason as the two above: trying a
-    // server's tools by hand is a thing you decide to do, not a thing you
-    // discover in a sidebar.
-    Button("Chat…") { MainWindowController.show(.chat) }
-      .keyboardShortcut("j")
-    Divider()
+  private func row(_ instance: Activity.Instance) -> some View {
+    HStack(spacing: 6) {
+      // Grey, not green, for an instance that has exited. The row survives a
+      // crash on purpose — "this has restarted four times today" is only visible
+      // if it does — and a dead server still reading green is the one thing
+      // worse than no row at all.
+      Image(systemName: "circle.fill")
+        .font(.system(size: 6))
+        .foregroundStyle(instance.isLive ? Color.green : Color.secondary)
+      Text(instance.displayName)
+        .lineLimit(1)
+        .truncationMode(.middle)
+      // Orange, and a word rather than a dot. Writes being on is the fact this
+      // panel exists to make impossible to hold wrongly.
+      if instance.allowWrites {
+        Text("writes")
+          .foregroundStyle(.orange)
+      }
+      Spacer(minLength: 6)
+      Text("\(instance.calls) call\(instance.calls == 1 ? "" : "s")")
+        .foregroundStyle(.secondary)
+        .monospacedDigit()
+        // The last thing to give way. A long `<profile> / <server>` should
+        // truncate through its middle before the count loses a digit.
+        .layoutPriority(1)
+    }
+    .font(.caption)
+  }
+}
 
-    // The licence state, in the one place somebody will look when a client
-    // starts refusing. The gateway returns the same sentence to the client, but
-    // that lands in a log file nobody opens.
-    switch Entitlement.current {
-    case .licensed(let license):
-      Text("Licensed to \(license.email)")
-    case .trial:
-      Text("Trial — \(Trial.remainingText)")
-    case .refused:
-      Text(Trial.hasRun ? "Trial ended — not licensed" : "Not licensed")
-      if !Trial.hasRun {
-        // Reachable only from here. A trial that armed itself when a bridge
-        // launched the app would burn in a window nobody was watching.
-        Button("Start \(Int(Trial.duration / 60))-Minute Trial") { Trial.start() }
+/// The licence state, and only when it is a problem.
+///
+/// Nothing at all when licensed. A row that answers "yes, still licensed" every
+/// time the panel opens costs space and tells nobody anything; the email it used
+/// to carry is in Settings ▸ Licence, which is where somebody checking which key
+/// this Mac holds was going anyway.
+private struct EntitlementNotice: View {
+  @State private var revision = 0
+
+  var body: some View {
+    // A trial that runs out with the popover open must stop claiming twelve
+    // minutes left. Fifteen seconds is finer than the minute the text rounds to.
+    TimelineView(.periodic(from: .now, by: 15)) { _ in
+      VStack(alignment: .leading, spacing: 12) {
+        switch Entitlement.current {
+        case .licensed:
+          EmptyView()
+        case .trial:
+          TrialBanner()
+          Divider()
+        case .refused(let reason):
+          LicenceBanner(reason: reason) { revision += 1 }
+          Divider()
+        }
       }
     }
-    Button("Licence…") { SettingsWindowController.show(.licence) }
+    .id(revision)
+  }
+}
 
-    Divider()
+/// Unlicensed, with the reason attached and the way out under it.
+private struct LicenceBanner: View {
+  let reason: String
+  /// Called once a trial is armed, so the panel redraws now rather than at the
+  /// next tick. Pressing a button and watching nothing happen for fifteen
+  /// seconds reads as a broken button.
+  var onStartTrial: () -> Void = {}
 
-    // Check now stays; "may we check on our own" moved to Settings ▸ General.
-    // The two are not the same kind of question — one is an action somebody
-    // wants this second, the other is a standing preference — and the standing
-    // one was the only thing keeping a toggle in a menu.
-    Button(UpdateController.shared.isChecking ? "Checking…" : "Check for Updates…") {
-      UpdateController.shared.checkNow()
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Label(
+        "Unlicensed — relayed servers are refused",
+        systemImage: "exclamationmark.triangle.fill"
+      )
+      .foregroundStyle(.orange)
+      .font(.caption)
+      .fixedSize(horizontal: false, vertical: true)
+      Text(reason)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      // True, and load-bearing: the gate is on the relay, not on the app. An
+      // unlicensed user can still install servers, set credentials and wire a
+      // client, which is what makes the sentence above land at the moment they
+      // have something to lose.
+      Text("Bastion's own tools, the write gates and Settings are unaffected.")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      HStack(spacing: 8) {
+        // The trial leads, and only until it has been used. Somebody reading
+        // this has just had a call refused; the useful offer is the one that
+        // makes it work in the next ten seconds, not the one that opens a
+        // checkout.
+        //
+        // Reachable only from here, as it was before. A trial that armed itself
+        // when a bridge launched the app would burn in a window nobody was
+        // watching.
+        if !Trial.hasRun {
+          Button("Start a \(Int(Trial.duration / 60))-minute trial") {
+            Trial.start()
+            onStartTrial()
+          }
+          .buttonStyle(.glassProminent)
+          Button("Enter a key…") { SettingsWindowController.show(.licence) }
+            .buttonStyle(.glass)
+        } else {
+          Button("Enter a licence key…") { SettingsWindowController.show(.licence) }
+            .buttonStyle(.glassProminent)
+        }
+      }
+      .controlSize(.small)
     }
-    .disabled(UpdateController.shared.isChecking)
-    Button("Settings…") { SettingsWindowController.show() }
-      .keyboardShortcut(",")
+  }
+}
 
-    Divider()
-    Button("Quit Bastion") { NSApplication.shared.terminate(nil) }
-      .keyboardShortcut("q")
+/// The trial, while it is running.
+///
+/// Deliberately not styled as a warning. Nothing is wrong — everything is
+/// working, on purpose — and the orange triangle belongs to the state where it
+/// is not.
+private struct TrialBanner: View {
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Label("Trial · \(Trial.remainingText)", systemImage: "clock")
+        .foregroundStyle(.blue)
+        .font(.caption)
+      Text(
+        """
+        Every server is relaying. When the window closes they stop answering, \
+        and your client will report the calls refused.
+        """
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+      Button("Buy a licence…") { NSWorkspace.shared.open(LicenceLinks.buy) }
+        .buttonStyle(.glassProminent)
+        .controlSize(.small)
+    }
   }
 }

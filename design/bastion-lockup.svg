@@ -20,8 +20,7 @@
     <g clip-path="url(#icon-c)" transform="translate(0 0) scale(1)">
     <path d="M-39.7 882.8 Q512 609.1 1063.7 882.8 V1063.7 H-39.7 Z" fill="#B0532F" opacity=".9"></path>
     <path d="M-39.7 935.7 Q282.5 829.8 582.6 918.1 T1121.1 891.6 V1063.7 H-39.7 Z" fill="#7A2F1C"></path>
-    <path d="M247.2 776.8 L194.2 485.5 L512 194.2 L829.8 485.5 L776.8 776.8" fill="none" stroke="#FDEFDC" stroke-opacity=".78" stroke-width="48.6" stroke-linejoin="round" stroke-linecap="round"></path>
-    <path d="M512 423.7 L662.1 547.3 L688.6 706.2 L335.4 706.2 L361.9 547.3 Z" fill="#FDEFDC" fill-opacity=".9"></path>
+    <path d="M512 386.1 L758.5 589.1 L802 850 L222 850 L265.5 589.1 Z" fill="#FDEFDC" fill-opacity=".9"></path>
     </g>
   </g>
   <text x="543" y="197" fill="#151617"

@@ -237,9 +237,10 @@ struct MainView: View {
     }
     .buttonStyle(.plain)
     .foregroundStyle(.primary)
-    // No ⌘N here. The menu bar item carries it, and that one works whether or
-    // not this window is key — declaring it twice is two handlers racing for
-    // one keystroke to do the same thing.
+    // ⌘N lives here now. It used to be left to the menu bar item, which worked
+    // whether or not this window was key; that item went when the menu became a
+    // summary panel, and this is the only Add there is left to hang it on.
+    .keyboardShortcut("n")
     .help("Install a server from the catalog, or add one by npm package or URL (⌘N)")
   }
 
@@ -284,7 +285,7 @@ struct MainView: View {
       }
 
       HStack(spacing: 6) {
-        Text("Version \(AppInfo.version)\(AppInfo.isDebugBuild ? " (debug)" : "")")
+        Text("Version \(AppInfo.shortVersion)")
           .font(.caption)
           .foregroundStyle(.tertiary)
         Spacer()
