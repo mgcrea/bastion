@@ -119,6 +119,7 @@ struct InstanceRow: View {
 struct LogPane: View {
   @State private var callsOnly = false
   @State private var following = true
+  @State private var exported: String?
 
   private var entries: [LogStore.Entry] {
     let all = LogStore.shared.entries
@@ -142,11 +143,12 @@ struct LogPane: View {
         .disabled(shown.isEmpty)
         Button("Clear") { LogStore.shared.clear() }
           .disabled(LogStore.shared.entries.isEmpty)
-        // Deliberately a route rather than a second export button: the pane
-        // owns the file, its retention and its signing key, and two places to
-        // start an export is two places to keep telling the truth about what
-        // one contains.
-        Button("Export…") { SettingsWindowController.show(.audit) }
+        // The same panel the settings pane opens, not a route to it: a button
+        // labelled "Export…" that produced a settings window was a button that
+        // lied. `AuditExport` is the one copy of it.
+        Button("Export…") { exported = AuditExport.run()?.note }
+          .disabled(!AuditLog.isEnabled)
+          .help(AuditLog.isEnabled ? "Save the audit log and its manifest." : AuditExport.unavailable)
       }
       .controlSize(.small)
       .padding(.horizontal, 12)
@@ -268,6 +270,16 @@ struct LogPane: View {
           .font(.caption2)
           .foregroundStyle(.secondary)
         Spacer(minLength: 12)
+        // What the export did, where the export happened. A result reported in
+        // a window the user is no longer looking at is a result nobody reads.
+        if let exported {
+          Text(exported)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .help(exported)
+        }
         Toggle("Follow", isOn: $following)
           .toggleStyle(.checkbox)
           .font(.caption)
