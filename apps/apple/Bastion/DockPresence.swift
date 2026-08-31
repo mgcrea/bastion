@@ -37,7 +37,14 @@ enum DockPresence {
     NSApp.setActivationPolicy(wanted)
     // Becoming `.regular` does not bring the app forward on its own, and the
     // window that triggered this is the reason the user is here.
-    if wanted == .regular {
+    //
+    // Not under a capture, for the reason `HostedWindow.show()` gives at
+    // length. Guarding one of the two calls and not the other guards neither:
+    // this one fires on every demo launch, because a capture opens exactly one
+    // window into a fresh process and that is the `.accessory` -> `.regular`
+    // transition. The `setActivationPolicy` above still runs, which is what
+    // brings the app forward at all.
+    if wanted == .regular, !DemoSeed.isEnabled {
       NSApp.activate(ignoringOtherApps: true)
     }
   }

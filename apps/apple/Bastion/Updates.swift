@@ -47,6 +47,9 @@ final class UpdateController: NSObject {
   /// Called from `applicationDidFinishLaunching`. Builds nothing unless the
   /// user has already opted in.
   func startIfConsented() {
+    // Sparkle starts a scheduler the moment it is constructed, and a capture
+    // that reached the network could put an update sheet in front of the shot.
+    if DemoSeed.isEnabled { return }
     guard UserDefaults.standard.bool(forKey: "SUEnableAutomaticChecks") else { return }
     start()
   }

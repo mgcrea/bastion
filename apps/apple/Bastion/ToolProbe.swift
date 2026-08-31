@@ -27,6 +27,12 @@ enum ToolProbe {
   }
 
   static var availability: Availability {
+    // Otherwise the `chat` plate is a photograph of the feature being ABSENT on
+    // whichever Mac took it. `ChatPane` swaps its whole body for the
+    // `sparkles.slash` state on an Intel machine, on a CI runner, or on a Mac
+    // with Apple Intelligence switched off — so this is not merely wrong, it is
+    // machine-dependent, which is worse.
+    if DemoSeed.isEnabled { return .ready }
     switch SystemLanguageModel.default.availability {
     case .available:
       return .ready

@@ -87,17 +87,44 @@ final class HostedWindow {
       created.title = title
       created.styleMask = [.titled, .closable, .miniaturizable, .resizable]
       created.isReleasedWhenClosed = false
+      // Neither of this app's two windows is a document, and macOS tabs any two
+      // same-class titled, resizable windows when the user has set Desktop &
+      // Dock → "Prefer tabs when opening documents" to Always. `.automatic` is
+      // the NSWindow default, so without this the Settings window is absorbed as
+      // a TAB of the main window on those Macs — with one titlebar, one tab
+      // strip, and ⌘, appearing to do nothing because the pane it opened is
+      // behind the tab you were already looking at.
+      //
+      // Set here rather than per window because it is true of both: this app has
+      // exactly one main window and one Settings window, and neither has a
+      // second instance to be tabbed WITH in the first place.
+      created.tabbingMode = .disallowed
 
       // Read before `setFrameAutosaveName`, which both restores a remembered
       // frame and writes one. The question it answers is the only one that
       // matters: has anybody ever sized this window themselves?
+      //
+      // `!DemoSeed.isEnabled`: a remembered frame is the developer's, and a
+      // capture must not inherit whatever size they last dragged this window to.
       let remembered =
-        UserDefaults.standard.string(forKey: "NSWindow Frame \(autosaveName)") != nil
+        !DemoSeed.isEnabled
+        && UserDefaults.standard.string(forKey: "NSWindow Frame \(autosaveName)") != nil
       // SwiftUI's own fitting size, read before the autosave overwrites it. It
       // is the fallback for a remembered frame that turns out to be unusable,
       // and for a window naming no `contentSize` it is the only one there is.
       let natural = created.frame
-      created.setFrameAutosaveName(autosaveName)
+      // Never named under screenshot mode, and this is the other half of the
+      // guard above rather than a repeat of it. That one stops a capture
+      // INHERITING the developer's window size; this stops it WRITING ITS OWN
+      // back out, under the very same key the real window reads — so a
+      // `make screenshots` run would quietly resize the developer's windows to
+      // the pinned capture sizes and leave them that way. Measured in cupertino,
+      // where `NSWindow Frame settings-panes` was found holding exactly
+      // `settingsContentSize` plus a titlebar.
+      //
+      // A capture has nothing to remember anyway: it opens one window, shoots it
+      // and exits.
+      if !DemoSeed.isEnabled { created.setFrameAutosaveName(autosaveName) }
 
       // A remembered frame wins — but only if the content can live in it.
       // AppKit restores whatever was last written under that key, including a
@@ -119,7 +146,7 @@ final class HostedWindow {
       // After the autosave name, never before. Naming it resizes the window —
       // to a remembered frame when there is one, and to SwiftUI's own idea of
       // the content's width when there is not.
-      if !remembered || unusable, let contentSize {
+      if !remembered || unusable || DemoSeed.isEnabled, let contentSize {
         created.setContentSize(contentSize)
       }
       created.center()
@@ -161,7 +188,27 @@ final class HostedWindow {
     // `DockPresence.update()` fires the forceful call on the .accessory →
     // .regular transition, and every open after that early-returns straight
     // past it with the policy already .regular.
-    NSApp.activate(ignoringOtherApps: true)
+    //
+    // Except under `appshot capture`, which launches with `open -g` on purpose
+    // and activates for the moment of each shot. An app calling this at launch
+    // is then fighting the driver for the foreground, and the symptom is one
+    // shot in a run dying with "would not come to the front", on no particular
+    // screen, passing on the next attempt. Ordering our *own* windows front,
+    // above, is still fine — that is order within the app, not which app is
+    // active.
+    //
+    // Note the skill's advice runs the other way: it says a staged app on
+    // macOS 14+ MUST self-activate or every shot fails. Cupertino suppresses
+    // both this and `DockPresence`'s call and its captures work, and the reason
+    // is probably that `DockPresence` still flips the activation policy to
+    // `.regular` under demo — which for an `LSUIElement` app is itself a
+    // foreground transition. Bastion is the same shape, so it does the same
+    // thing. If a run ever dies with "would not come to the front", the fix is
+    // a self-activation in `MainView`'s `.task`, and this comment is the note
+    // saying that was considered rather than missed.
+    if !DemoSeed.isEnabled {
+      NSApp.activate(ignoringOtherApps: true)
+    }
 
     // Last, and after the window is actually on screen: `DockPresence` counts
     // visible windows, and a window ordered front after the count is a Dock

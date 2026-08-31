@@ -100,11 +100,16 @@ enum ClientWiring {
     /// given an MCP server has no config yet, and "not installed" is a
     /// different and more discouraging answer than "not configured".
     var isInstalled: Bool {
-      FileManager.default.fileExists(atPath: configURL.deletingLastPathComponent().path)
+      // Every fixture client is rooted at `/Users/you`, which exists on nobody's
+      // Mac — so without this the client plate is the "not installed" empty
+      // state on every run.
+      if DemoSeed.isEnabled { return true }
+      return FileManager.default.fileExists(atPath: configURL.deletingLastPathComponent().path)
     }
   }
 
   static var all: [Client] {
+    if DemoSeed.isEnabled { return DemoSeed.clients }
     let home = FileManager.default.homeDirectoryForCurrentUser
     let support = home.appendingPathComponent("Library/Application Support")
     return [
@@ -170,7 +175,12 @@ enum ClientWiring {
   /// directory and one from /Applications are different files and a config that
   /// pointed at the wrong one would start the wrong app.
   static var bridgePath: String {
-    Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/bastion-bridge").path
+    // Under a capture this would be the path inside the build directory the
+    // shot was taken from — `apps/apple/.build/Build/Products/Release/…`, with
+    // the developer's home in front of it. Claude Desktop's `reachLine` renders
+    // it verbatim.
+    if DemoSeed.isEnabled { return DemoSeed.bridgePath }
+    return Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/bastion-bridge").path
   }
 
   /// What every entry key starts with, and the reason it is a setting rather
@@ -331,7 +341,23 @@ enum ClientWiring {
     let disabled: Set<String>
   }
 
+  /// Whether the file itself is there.
+  ///
+  /// One place rather than a bare `fileExists` at each of the two call sites —
+  /// `status` below and `ClientDetail.read()` — because both have to answer the
+  /// same way under a capture, and a guard on one of them is a guard on
+  /// neither.
+  static func hasConfig(_ client: Client) -> Bool {
+    if DemoSeed.isEnabled { return true }
+    return FileManager.default.fileExists(atPath: client.configURL.path)
+  }
+
   static func read(_ client: Client) throws -> Config {
+    // The fixture, and never the developer's own file. This is the single worst
+    // leak in the set: `ClientDetail` renders every foreign entry's argv — which
+    // routinely holds a token — and one heading per project folder, which
+    // routinely holds a client's name.
+    if DemoSeed.isEnabled { return DemoSeed.config(for: client) }
     switch client.format {
     case .json:
       let root = try ClientWiringMerge.readJSON(client.configURL)
@@ -367,9 +393,7 @@ enum ClientWiring {
 
   static func status(of client: Client, profiles: [Profile]) -> Status {
     guard client.isInstalled else { return .notInstalled }
-    guard FileManager.default.fileExists(atPath: client.configURL.path) else {
-      return .audited(.notConfigured)
-    }
+    guard hasConfig(client) else { return .audited(.notConfigured) }
     let config: Config
     do {
       config = try read(client)

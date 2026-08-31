@@ -12,7 +12,7 @@ import SwiftUI
 /// `@AppStorage` selection and the `--pane=` deep link, so this costs four small
 /// edits in `MainWindow` and no window plumbing at all.
 struct ChatPane: View {
-  @State private var chat = ChatSession()
+  @State private var chat = DemoSeed.isEnabled ? DemoSeed.chatSession() : ChatSession()
   @State private var draft = ""
   @State private var showingTools = false
   @State private var acknowledged = false

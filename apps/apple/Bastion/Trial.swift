@@ -77,7 +77,23 @@ nonisolated enum Trial {
     Supervisor.shared.stopAll()
   }
 
-  static var deadline: Date? { state.withLock { $0 } }
+  /// A frozen countdown, for `DemoSeed` only.
+  ///
+  /// Arming a real window would be deterministic for about a minute:
+  /// `remainingMinutes` rounds up, so a genuine 28-minute deadline reads
+  /// "28 minutes left" for fifty-nine seconds and "27 minutes left" after that.
+  /// A golden accepted on one side of that boundary fails on the other, with no
+  /// code change and nothing to point at.
+  nonisolated(unsafe) static var demoRemaining: TimeInterval?
+
+  static var deadline: Date? {
+    // A deadline far enough out that `isActive` is true and `hasRun` with it —
+    // which is what stops `trialOffer` drawing a second "Start a trial" button
+    // underneath a trial that is already running. The VALUE is never rendered;
+    // `remaining` below short-circuits before anything formats it.
+    if let demoRemaining { return Date().addingTimeInterval(demoRemaining) }
+    return state.withLock { $0 }
+  }
 
   static var isActive: Bool {
     guard let deadline else { return false }
@@ -90,6 +106,9 @@ nonisolated enum Trial {
   static var hasRun: Bool { deadline != nil }
 
   static var remaining: TimeInterval {
+    // Verbatim, so the countdown does not move between the shutter and the next
+    // capture a week later.
+    if let demoRemaining { return demoRemaining }
     guard let deadline else { return 0 }
     return max(0, deadline.timeIntervalSinceNow)
   }

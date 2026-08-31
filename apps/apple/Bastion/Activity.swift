@@ -100,6 +100,24 @@ final class Activity {
         restarts: 0, lastExit: nil))
   }
 
+  /// Seed a fully-formed instance, for `DemoSeed` only.
+  ///
+  /// The live path builds one across `started` -> `negotiated` -> `called`xN,
+  /// because that is the order the wire delivers them. A fixture has no wire,
+  /// and replaying those three calls to reach a known row would mean seeding
+  /// `startedAt` through `Date()` — which is exactly the determinism this is
+  /// here to avoid.
+  func startDemo(
+    profile: String, server: String, pid: Int32?, startedAt: Date, dialect: String?,
+    allowWrites: Bool, clients: [Client], calls: Int, restarts: Int, lastExit: String?
+  ) {
+    instances.append(
+      Instance(
+        id: "\(profile)/\(server)", profile: profile, server: server, pid: pid,
+        remoteHost: nil, startedAt: startedAt, dialect: dialect, allowWrites: allowWrites,
+        clients: clients, calls: calls, restarts: restarts, lastExit: lastExit))
+  }
+
   func negotiated(id: String, dialect: String) {
     guard let index = instances.firstIndex(where: { $0.id == id }) else { return }
     instances[index].dialect = dialect

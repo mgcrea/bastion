@@ -71,6 +71,10 @@ struct LicencePane: View {
       }
     }
     .formStyle(.grouped)
+    // On this pane's own form rather than on `SettingsView`'s split view, so
+    // the signal means "the pane the stage asked for has rendered" instead of
+    // "a window exists".
+    .task { DemoSeed.signalReady(from: .settings) }
     .onAppear { entry = LicenseStore.raw ?? "" }
     .onDrop(of: [.fileURL], isTargeted: nil, perform: accept)
   }

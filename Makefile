@@ -548,6 +548,163 @@ icon: ## Regenerate Bastion.icon and the web SVG from design/bastion-mark.svg
 	@# derives are committed, and only this command's output makes them stale.
 	@echo "  next: pnpm --filter @mgcrea/bastion-website icons"
 
+# ─── app screenshots ─────────────────────────────────────────────────────────
+
+# One tool, `appshot` — never a pile of per-project scripts. Install it with
+# `cd ~/Projects/appshot && make install`. The same binary already builds the
+# icon above.
+#
+# `appshot` has no notion of a project root: every path resolves against the
+# PROCESS working directory, and nothing is ever resolved relative to the
+# config file. That is invisible here because this Makefile lives at the repo
+# root and every path below is relative to it — but it is why SHOT_WEBSITE is
+# `$(abspath …)` and why nothing in this block should be run by hand from
+# inside apps/apple.
+#
+# A capture run takes over the pointer and the active app at the moment of each
+# shot — don't use the machine while it runs, and a stray click can land in an
+# image. It needs Screen Recording permission for the TERMINAL running it;
+# nothing is granted to Bastion itself. `--wait` queues behind another
+# project's run on this Mac instead of failing, which is the ordinary case here
+# because cupertino captures on the same machine and the lock has no project
+# key.
+
+SHOT_SCREENS := running server log client chat licence
+
+# Dark only. `appshot capture` does not read the config's "appearances" key —
+# only `appshot run` does — so it needs its own flag, defaulting to `dark,light`.
+SHOT_APPEARANCES := dark
+
+# Everything the plates depend on, passed explicitly.
+#
+# A flag not passed does not default to off: it falls back to whatever is
+# persisted in the CAPTURING MAC's UserDefaults. Each of these is stable on the
+# machine that set this up, which is exactly why an omission survives review and
+# only shows up when somebody else captures.
+#
+# -clientKeyPrefix is the one specific to this app. `ClientWiring.prefix` reads
+# it straight out of UserDefaults, so a developer who once set `bastion-` gets
+# `bastion-shopify` on every entry row of the client plate. Empty is the
+# product's default; the quotes are what make the empty string survive the
+# shell, and they must stay single because the whole value is already inside
+# --extra-args="…".
+#
+# -AppleShowScrollBars matters more here than in most apps: ServerDetail has an
+# outer ScrollView, ClientDetail has that plus a nested 240pt project scroller,
+# and `Always` bakes a bar into every one of them.
+#
+# The accent is deliberately NOT pinned. Assets.xcassets/AccentColor.colorset
+# names Bastion's own ramp, so there is nothing ambient left to pin and a
+# -AppleAccentColor here would be a flag that does nothing.
+SHOT_ARGS := -ScreenshotMode YES \
+             -clientKeyPrefix '' \
+             -AppleLocale en_US \
+             -AppleLanguages '(en)' \
+             -AppleHighlightColor '0.698039 0.843137 1.000000 Blue' \
+             -AppleShowScrollBars WhenScrolling
+
+# A floor, not the whole wait: appshot then polls frames and shoots once the
+# window holds still. Left at appshot's own default because `--ready-file` makes
+# it moot — DemoSeed seeds every store synchronously before a window exists, so
+# the body running IS the content existing, and the app says so.
+SHOT_SETTLE := 0.3
+
+SHOT_DIR      := apps/apple/Screenshots
+SHOT_SOURCE   := $(SHOT_DIR)/source
+SHOT_GOLDEN   := $(SHOT_DIR)/golden
+SHOT_APPSTORE := $(SHOT_DIR)/appstore
+SHOT_CONFIG   := $(SHOT_DIR)/screenshots.config.json
+
+# Absolute, because it leaves the tree this Makefile's other paths live in.
+# `$(abspath)` is purely lexical and never stats, so a typo here yields a
+# plausible wrong path rather than an error — and `compose website` CREATES its
+# output directory, so the run would go green having written a full set into a
+# directory nobody reads.
+#
+# Pipeline-owned: `compose website` DELETES every .png in this directory before
+# writing, so nothing hand-made may be parked in it.
+SHOT_WEBSITE := $(abspath apps/website/src/assets/shots)
+
+# Release, always, and as a target-specific variable so `$(APP)` follows —
+# it is recursively expanded and reads $(CONFIG). A Debug build carries the
+# `.debug` bundle identifier, and `MainView.sidebarStatus` renders
+# "Version 1.0.0 (debug)" from it on all five main-window plates.
+# `DemoSeed` also forces `AppInfo.isDebugBuild` false, so a capture taken while
+# TUNING is not wrong either — belt and braces, because the failure is silent.
+screenshots screenshots-capture: CONFIG := Release
+
+screenshots: app ## Capture, gate against the goldens, and compose both sets
+	appshot run \
+		--app "$(APP)" \
+		--config "$(SHOT_CONFIG)" \
+		--source "$(SHOT_SOURCE)" \
+		--golden "$(SHOT_GOLDEN)" \
+		--appstore-out "$(SHOT_APPSTORE)" \
+		--website-out "$(SHOT_WEBSITE)" \
+		--screens $(SHOT_SCREENS) \
+		--extra-args="$(SHOT_ARGS)" \
+		--settle $(SHOT_SETTLE) \
+		--ready-file \
+		--wait
+
+screenshots-capture: app ## Capture only (no gate, no compose)
+	@# --config checks $(SHOT_SCREENS) against the config's screens[].id BEFORE
+	@# launching anything, so a typo staging the wrong screen under the right
+	@# filename fails now rather than two minutes later.
+	@# --extra-args needs the `=`: the value starts with `-`, and without it
+	@# ArgumentParser reads it as appshot's own flags.
+	appshot capture \
+		--app "$(APP)" \
+		--out "$(SHOT_SOURCE)" \
+		--config "$(SHOT_CONFIG)" \
+		--screens $(SHOT_SCREENS) \
+		--appearances $(SHOT_APPEARANCES) \
+		--extra-args="$(SHOT_ARGS)" \
+		--settle $(SHOT_SETTLE) \
+		--ready-file \
+		--wait
+
+screenshots-check: ## Fail if the captures drifted from the goldens
+	@# --config checks the exact expected SET, and it is the only thing that can
+	@# see two captures that are the same image — the tell that a
+	@# -ScreenshotStage value did nothing and one screen was photographed twice
+	@# under two names. Count and file validity say nothing about that, and each
+	@# would match its golden, because the golden came from the same broken run.
+	@# --require-manifest refuses a baseline nothing can vouch for: `accept`
+	@# seals the goldens (sha256 per file, plus who accepted them and with what
+	@# arguments) and this verifies the seal before comparing anything.
+	appshot check --source "$(SHOT_SOURCE)" --golden "$(SHOT_GOLDEN)" \
+		--config "$(SHOT_CONFIG)" --require-manifest
+
+screenshots-update: ## Accept the captures as the new goldens (review the diffs first)
+	appshot accept --source "$(SHOT_SOURCE)" --golden "$(SHOT_GOLDEN)"
+	@$(MAKE) --no-print-directory screenshots-compose
+
+screenshots-seal: ## Adopt the goldens on disk as the sealed baseline (one-time)
+	appshot seal --golden "$(SHOT_GOLDEN)"
+
+screenshots-selftest: ## Prove the golden gate actually fails when it should
+	appshot selftest --golden "$(SHOT_GOLDEN)"
+
+screenshots-appstore: ## Compose the framed, captioned visuals
+	appshot compose appstore \
+		--config "$(SHOT_CONFIG)" --source "$(SHOT_SOURCE)" --out "$(SHOT_APPSTORE)"
+
+screenshots-website: ## Emit bare app captures into apps/website/src/assets/shots
+	appshot compose website \
+		--config "$(SHOT_CONFIG)" --source "$(SHOT_SOURCE)" --out "$(SHOT_WEBSITE)"
+
+screenshots-compose: screenshots-appstore screenshots-website ## Recompose both sets (no re-capture)
+
+screenshots-doctor: ## Check what fails silently: font, Screen Recording, config
+	appshot doctor --config "$(SHOT_CONFIG)"
+
+screenshots-clean: ## Remove generated captures and composites (keeps the goldens)
+	@# Deliberately not $(SHOT_WEBSITE): a clean target must not delete another
+	@# half of the repo's assets, and only a full capture run regenerates them.
+	@rm -rf $(SHOT_SOURCE) $(SHOT_APPSTORE) $(SHOT_DIR)/diff
+	@echo "Removed generated screenshots. Goldens in $(SHOT_GOLDEN) kept."
+
 # ─── the workspace ───────────────────────────────────────────────────────────
 
 lint: ## oxlint the JavaScript half
@@ -563,4 +720,7 @@ format-check: ## Fail on unformatted files
 	sparkle sparkle-keys appcast node bundle sign notarize build-release \
 	install install-release install-from uninstall \
 	smoke dialect wiring-check wiring-check-real remote-check remote-live-check unit license-check revocations audit migrate servers servers-check icon \
+	screenshots screenshots-capture screenshots-check screenshots-update \
+	screenshots-seal screenshots-selftest screenshots-appstore \
+	screenshots-website screenshots-compose screenshots-doctor screenshots-clean \
 	lint format format-check

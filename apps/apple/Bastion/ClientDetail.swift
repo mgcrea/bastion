@@ -95,9 +95,7 @@ struct ClientDetail: View {
     }
 
     guard client.isInstalled else { return unread(.notInstalled) }
-    guard FileManager.default.fileExists(atPath: client.configURL.path) else {
-      return unread(.audited(.notConfigured))
-    }
+    guard ClientWiring.hasConfig(client) else { return unread(.audited(.notConfigured)) }
     let config: ClientWiring.Config
     do {
       config = try ClientWiring.read(client)

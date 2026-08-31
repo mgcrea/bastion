@@ -5,6 +5,25 @@ import SwiftUI
 /// item, and `MenuBarExtra` content is built lazily, so it cannot live there.
 final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
+    // Screenshot mode, and nothing else this function does.
+    //
+    // First, and returning: everything below reaches the developer's real
+    // machine. `ServerStore` and `ProfileStore` read their files, `DevSeed`
+    // mints a gateway token and writes to the Keychain, `Gateway.start()` binds
+    // the port the running copy already holds, and Sparkle opens a connection to
+    // the network. A capture wants none of it, and the cheapest way to be sure
+    // is to never reach any of it.
+    //
+    // `DockPresence.observe()` still runs: the policy flip it drives is what
+    // brings an `LSUIElement` app forward at all, and `HostedWindow` explains
+    // why the `activate` inside it is the part that is suppressed.
+    if DemoSeed.isEnabled {
+      DemoSeed.apply()
+      DockPresence.observe()
+      DemoSeed.openStagedWindow()
+      return
+    }
+
     // Explicitly, and before anything can ask for a profile.
     //
     // `ProfileStore` publishes a nonisolated snapshot that the connection

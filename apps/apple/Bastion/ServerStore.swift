@@ -156,6 +156,14 @@ final class ServerStore {
   }
 
   func load() {
+    // The fixture, and nothing off disk. `init()` calls this, so without the
+    // branch a capture run would open the developer's own `servers.json` and
+    // photograph whatever they happen to have installed.
+    if DemoSeed.isEnabled {
+      servers = DemoSeed.servers
+      refreshSnapshot()
+      return
+    }
     guard let data = try? Data(contentsOf: fileURL),
       let rows = try? JSONDecoder().decode([Stored].self, from: data)
     else {
@@ -274,6 +282,10 @@ final class ServerStore {
   }
 
   private func save() throws {
+    // Belt and braces. Nothing in a staged capture clicks the Enabled toggle,
+    // but `setEnabled` is one stray keystroke away and a capture must not be
+    // able to write the fixture over the developer's real list.
+    if DemoSeed.isEnabled { return }
     refreshSnapshot()
     AppSupport.ensureDirectory()
     let rows = servers.map { server -> Stored in

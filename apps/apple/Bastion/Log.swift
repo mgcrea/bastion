@@ -91,6 +91,24 @@ final class LogStore {
     weight += entries[index].weight
   }
 
+  /// Seed one entry at a fixed instant, for `DemoSeed` only.
+  ///
+  /// Separate from `append`/`appendCall` rather than an optional `at:` on
+  /// either, and for two reasons. The live path must never be able to choose a
+  /// timestamp — a log whose clock is an argument is a log nobody can reason
+  /// about. And it must never be able to skip the stderr mirror, which is what
+  /// this deliberately does: a capture run should not spray fixture lines into
+  /// whatever terminal launched it.
+  func appendDemo(
+    at: Date, origin: String, level: Level, _ text: String,
+    arguments: String? = nil, result: String? = nil, failed: Bool = false
+  ) {
+    add(
+      Entry(
+        at: at, origin: origin, level: level, text: text, arguments: arguments, result: result,
+        failed: failed))
+  }
+
   private func add(_ entry: Entry) {
     entries.append(entry)
     weight += entry.weight

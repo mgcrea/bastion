@@ -117,6 +117,15 @@ final class ProfileStore {
   }
 
   func load() {
+    // The fixture, and nothing off disk. See `ServerStore.load` — same branch,
+    // same reason, and this one matters more: `profiles.json` names the
+    // developer's own accounts.
+    if DemoSeed.isEnabled {
+      profiles = DemoSeed.profiles
+      orphaned = []
+      refreshSnapshot()
+      return
+    }
     guard let data = try? Data(contentsOf: fileURL),
       let rows = try? JSONDecoder().decode([Stored].self, from: data)
     else {
@@ -152,6 +161,7 @@ final class ProfileStore {
   }
 
   func save() throws {
+    if DemoSeed.isEnabled { return }
     refreshSnapshot()
     AppSupport.ensureDirectory()
     let rows =

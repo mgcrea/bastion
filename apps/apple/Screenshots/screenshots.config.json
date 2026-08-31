@@ -1,0 +1,94 @@
+{
+  "//": "Captions, theme and order for `appshot compose`. Text, so marketing copy changes without touching code or re-capturing. See the `screenshots-*` targets in the root Makefile.",
+  "//output": "The Mac App Store's 16:10 canvas. Bastion does not ship on the App Store — it is a signed Developer ID build sold direct, see docs/licensing.md — but this is still the right size: it is the one shape the compositor accepts, and it is what a README, a Product Hunt gallery and an OG card all want. DemoSeed pins the main window to 1180x620, which is close enough to 1.6:1 that the capture fills the width without letterboxing.",
+  "output": {
+    "width": 2880,
+    "height": 1800
+  },
+  "//appearances": "Dark only, on purpose. apps/website/src/styles/global.css puts it plainly — dark is the base, not an override, and the one light region on the site is a section on a light plate rather than a light theme. Capturing light too would double the run and commit six goldens that nothing renders and nobody reviews. Adding \"light\" here and to the Makefile's SHOT_APPEARANCES is the whole change if the site ever grows one.",
+  "appearances": ["dark"],
+  "//fontFamily": "SF Pro Display is NOT part of a stock macOS install — it ships in Apple's SF font pack. `make screenshots-doctor` refuses to compose if it does not resolve, which is the only way to catch a silent substitution.",
+  "fontFamily": "'SF Pro Display', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif",
+  "layout": {
+    "margin": 180,
+    "textTop": 150,
+    "titleFontSize": 104,
+    "titleWeight": 700,
+    "titleLineHeight": 1.12,
+    "subtitleFontSize": 46,
+    "subtitleWeight": 500,
+    "textGap": 30,
+    "screenshotGap": 90,
+    "cornerRadius": 26,
+    "shadow": {
+      "blur": 52,
+      "opacity": 0.34,
+      "dy": 26
+    },
+    "maxTitleLines": 2
+  },
+  "//themes": "Not a second palette. Every colour here is out of design/colors.json, which is the app icon's own set and the one apps/website/src/styles/global.css already quotes — a store image in colours the site does not use reads as a different product. The mark is a curtain wall on a dusk ridge, so the warmth is a floor under the window and the cold ground is above it, where the type sits.",
+  "//angle": "270 = bottom-up. Degrees CLOCKWISE, y-DOWN, and appshot means it literally: offset 0 lands where the axis starts, so at 270 that is the bottom edge. NOT the CSS convention design/colors.json uses for `plate` and `wash` — see the note on `gradientAxis` in scripts/lib/lockup.mjs before porting an angle either way.",
+  "//floor": "The warm floor and the window's drop shadow (layout.shadow: blur 52, opacity 0.34) occupy the same band, so #7A2F1C — the mark's own `hillFore` — is chosen to sit UNDER the shadow rather than compete with it. Lifting it toward the accent's #F2895C is what makes the shadow read as dirt. The 0.24 stop is what keeps it a floor instead of a wash.",
+  "themes": {
+    "dark": {
+      "background": {
+        "angle": 270,
+        "stops": [
+          { "offset": 0, "color": "#7A2F1C" },
+          { "offset": 0.24, "color": "#241a1a" },
+          { "offset": 0.6, "color": "#101215" },
+          { "offset": 1, "color": "#0B0C0F" }
+        ]
+      },
+      "title": "#F4F2EF",
+      "subtitle": "#9B9A96"
+    }
+  },
+  "//screens": "Order here IS the order of the framed set — it stamps the 01-, 02- prefix. The capture filenames stay unnumbered, so reordering never renames an image. `id` matches <id>.png in source/, and it is also the -ScreenshotStage value DemoSeed.Stage parses.",
+  "//website": "The basename `appshot compose website` writes into apps/website/src/assets/shots/. All six are on the site. The captions there are deliberately NOT these: a framed plate is read alone and out of context, so it has to say what the app IS; on the site the section header has already done that, so each caption says what that particular pane answers. The two rot separately and should.",
+  "screens": [
+    {
+      "//": "The claim the whole product rests on, and the one the website currently DRAWS — apps/website/src/components/Hero.astro fakes an Activity Monitor showing four mcp-shopify processes against one. This is that picture, taken rather than drawn. The subtitle states no count: `three clients` is a fact about the fixture in DemoSeed, and a caption that quotes a fixture is a caption that goes stale the first time somebody adds a row to it.",
+      "id": "running",
+      "website": "running",
+      "title": "One process per profile,\nnot one per editor.",
+      "subtitle": "Every client that wants a server spawns its own copy. Bastion runs one, and shows you who is attached to it."
+    },
+    {
+      "//": "The credential model, and the only pane that pictures it. Two profiles of one server are two identities — the answer to the obvious objection to a shared gateway — and the Environment card below them is read off the real catalog by ServerDetail, so a variable added to servers.json changes this plate rather than leaving it stale. The `secret` badge the subtitle promises sits on SHOPIFY_CLIENT_SECRET at the bottom of the frame: it was BELOW the fold while DemoSeed.contentSize was 620 and came into shot when the sidebar pushed that to 700. Check it is still in frame before changing either number, because a caption pointing at something outside the picture is exactly the rot this file exists to avoid.",
+      "id": "server",
+      "website": "server",
+      "title": "Two profiles, two identities,\none installed server.",
+      "subtitle": "prod is running; staging is one credential short and says which one. Anything marked secret is held in the Keychain, and nothing in the app reads it back."
+    },
+    {
+      "//": "The audit claim. The fixture carries arguments on purpose and it is the opposite of cupertino's rule: Bastion's own footer under this list promises it records what a tool was called with, so a plate with bare tool names would contradict the sentence printed on it. The «redacted» row is the other half of that promise.",
+      "id": "log",
+      "website": "log",
+      "title": "Every call, with what\nit was called with.",
+      "subtitle": "Which profile, which tool, and the arguments — in memory, never on disk. Credentials are redacted before they are recorded, not after."
+    },
+    {
+      "//": "The sentence that makes writing into somebody else's config file defensible at all: the entry carries a bearer token issued to that client, and never a credential. The `Other servers in this file` card underneath is the migration story — those entries carry no token, no write gate and no line in the log.",
+      "id": "client",
+      "website": "client",
+      "title": "Wired into your editor,\nnot living inside it.",
+      "subtitle": "One entry per profile, each carrying a revocable loopback token. The servers you configured by hand are left exactly as they are."
+    },
+    {
+      "//": "The only plate where a tool call is a live event rather than a record. It is also the answer to `how do I know this works before I wire it into anything` — which is a different question from the log's, and asked first.",
+      "id": "chat",
+      "website": "chat",
+      "title": "Try a tool before you\nwire it into anything.",
+      "subtitle": "Ask a question against one profile, on the on-device model, and watch the arguments it invents and what came back."
+    },
+    {
+      "//": "Not the main window. DemoSeed orders nothing out — it never opens the main window on this stage at all, because appshot photographs the largest ordinary window and would otherwise capture that instead, at the right size, showing a real screen, silently. The trial state rather than the licensed one: licensed renders three lines and an empty form, and the trial is the more interesting claim anyway.",
+      "id": "licence",
+      "website": "licence",
+      "title": "Thirty minutes,\nnothing held back.",
+      "subtitle": "Every server relays and every write gate obeys its own switch. The trial answers whether this works on your Mac; the refund answers the other question."
+    }
+  ]
+}

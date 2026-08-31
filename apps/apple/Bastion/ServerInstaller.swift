@@ -114,6 +114,11 @@ final class ServerInstaller {
   /// about a directory this app does not watch, and the first time somebody
   /// clears Application Support it becomes a confident lie.
   nonisolated static func installedVersion(of server: BastionServer) -> String? {
+    // Off the fixture table, not off this Mac's Application Support. All three
+    // of these answer a question about the capturing machine otherwise, so the
+    // server plate's Package card would say whatever happened to be installed
+    // the day the shot was taken.
+    if DemoSeed.isEnabled { return DemoSeed.installedVersion(of: server) }
     guard let directory = packageDirectory(of: server),
       let data = try? Data(contentsOf: directory.appendingPathComponent("package.json")),
       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -143,6 +148,7 @@ final class ServerInstaller {
   /// this file has no business changing that from underneath them. The SDK's
   /// own constant is the same fact, sitting in a file, costing nothing.
   nonisolated static func protocolCeiling(of server: BastionServer) -> (protocol: String, sdk: String)? {
+    if DemoSeed.isEnabled { return DemoSeed.protocolCeiling(of: server) }
     guard server.origin != .builtin else { return nil }
     // Hoisted to the install prefix in practice — one prefix per server means
     // nothing competes for that slot — but a package that pins its own copy
@@ -230,6 +236,7 @@ final class ServerInstaller {
   }
 
   nonisolated static func isInstalled(_ server: BastionServer) -> Bool {
+    if DemoSeed.isEnabled { return DemoSeed.isInstalled(server) }
     // Nothing to install means nothing missing. Bastion's own server is the
     // running app, and a remote one is somebody else's process on somebody
     // else's machine — neither has a directory, and reporting either as "not

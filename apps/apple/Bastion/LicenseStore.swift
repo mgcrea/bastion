@@ -16,13 +16,41 @@ import Foundation
 nonisolated enum LicenseStore {
   private static let defaultsKey = "license"
 
+  /// What `DemoSeed` wants this Mac to look like. Set before any view is built,
+  /// read by everything below.
+  ///
+  /// This is not a hole in the licence check. Bastion's source is public and the
+  /// gate is a dozen readable lines in `Gateway`; anyone minded to bypass it
+  /// would edit those rather than hunt for a flag that is false unless
+  /// `appshot capture` set it.
+  nonisolated(unsafe) static var demoLicensed = false
+
+  /// A key of the right SHAPE and deliberately not of the right signature.
+  ///
+  /// It is rendered, never verified — `check` below branches before
+  /// `LicenseKey.check` ever sees it. That is the point: a demo key that
+  /// actually verified would be a valid licence sitting in a public repository.
+  static let demoKey =
+    "BSTN1-DEMO0000-0000AAAA-BBBBCCCC-DDDDEEEE-FFFF0000-11112222-3333DEMO"
+
   /// The stored key as typed, or nil. Kept separate from `check` so the entry
   /// field can show what is there even when it is being refused.
   static var raw: String? {
-    UserDefaults.standard.string(forKey: defaultsKey)
+    // `LicencePane.onAppear` puts this into a 92pt `TextEditor`, in every
+    // entitlement state — so without the branch the developer's own 240-character
+    // key is photographed at full size on the licence plate.
+    if DemoSeed.isEnabled { return demoLicensed ? demoKey : nil }
+    return UserDefaults.standard.string(forKey: defaultsKey)
   }
 
-  static var check: LicenseCheck { LicenseKey.check(raw) }
+  static var check: LicenseCheck {
+    if DemoSeed.isEnabled {
+      return demoLicensed
+        ? .valid(DemoSeed.license)
+        : .refused("no licence key on this Mac")
+    }
+    return LicenseKey.check(raw)
+  }
   static var current: License? { check.license }
   static var isLicensed: Bool { current != nil }
 

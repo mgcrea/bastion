@@ -67,7 +67,17 @@ final class ChatSession {
   private var bound: [any Tool] = []
   private nonisolated let callIDs = OSAllocatedUnfairLock<Int>(initialState: 1000)
 
-  var isReady: Bool { session != nil }
+  /// Set by `DemoSeed.chat()` only.
+  ///
+  /// A demo session cannot have a real one: `LanguageModelSession` is
+  /// unconstructible on a Mac without Apple Intelligence, which is exactly the
+  /// machine this has to keep working on. So readiness is widened by one flag
+  /// rather than faked with an object — `send` still guards on `session != nil`
+  /// and does nothing, which is correct: nothing types into this pane under a
+  /// capture.
+  private var demoReady = false
+
+  var isReady: Bool { session != nil || demoReady }
 
   var eligibility: ToolProbe.Eligibility? {
     guard let server, let profile else { return nil }
@@ -110,6 +120,26 @@ final class ChatSession {
   }
 
   var isOverBudget: Bool { used > Self.budget }
+
+  /// A session with a completed exchange in it, for `DemoSeed` only.
+  ///
+  /// It fills the same fields `load` and `finishLoading` do, in the same order,
+  /// and stops short of `rebuild()` — which is the one step that needs a model.
+  /// `used` is deliberately NOT set: it is computed off `cost(of:)` against the
+  /// fixture schemas, so the budget line in the header is a claim the fixture
+  /// has to satisfy rather than a number typed into a screenshot.
+  func adoptDemo(
+    profile: Profile, server: BastionServer, tools: [MCPTool], selected: Set<String>,
+    withheld: [String], messages: [Message]
+  ) {
+    self.profile = profile
+    self.server = server
+    self.tools = tools.sorted(by: Self.before)
+    self.selected = selected
+    self.withheld = withheld
+    self.messages = messages
+    demoReady = true
+  }
 
   // MARK: - Loading a profile's tools
 

@@ -50,14 +50,20 @@ enum SettingsPane: String, CaseIterable, Identifiable {
 /// into `NSApp.mainMenu` by hand does not survive.
 @MainActor
 enum SettingsWindowController {
+  /// A `static let` rather than the inline string it was, so `DemoSeed.pin`
+  /// can match a window on it. Matching on the title instead would be matching
+  /// on a localizable string, and matching on "the first window that is not the
+  /// main one" is the secondary-window trap.
+  static let autosaveName = "settings-panes"
+
   private static let hosted = HostedWindow(
     title: "Bastion Settings",
-    autosaveName: "settings-panes",
+    autosaveName: autosaveName,
     // Named explicitly, unlike the main window. SwiftUI's fitting size for a
     // grouped `Form` is the width the longest footer sentence would like to
     // avoid wrapping, which is a settings window half again as wide as it has
     // any reason to be.
-    contentSize: NSSize(width: 660, height: 420)
+    contentSize: DemoSeed.isEnabled ? DemoSeed.settingsContentSize : NSSize(width: 660, height: 420)
   ) {
     SettingsView()
   }
@@ -77,11 +83,14 @@ struct SettingsView: View {
 
   private var pane: Binding<SettingsPane?> {
     Binding(
-      get: { SettingsPane(rawValue: selection) ?? .general },
-      set: { selection = ($0 ?? .general).rawValue })
+      get: { current },
+      set: { if !DemoSeed.isEnabled { selection = ($0 ?? .general).rawValue } })
   }
 
-  private var current: SettingsPane { SettingsPane(rawValue: selection) ?? .general }
+  private var current: SettingsPane {
+    if DemoSeed.isEnabled, case .settings(let staged) = DemoSeed.stage.subject { return staged }
+    return SettingsPane(rawValue: selection) ?? .general
+  }
 
   private func row(_ pane: SettingsPane) -> some View {
     Label(pane.title, systemImage: pane.symbol).tag(pane)

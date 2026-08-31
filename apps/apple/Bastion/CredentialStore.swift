@@ -81,6 +81,10 @@ nonisolated enum CredentialStore {
 
   /// Read a profile's OAuth token set, if it has one.
   static func readTokens(profile: String, server: String) -> RemoteOAuth.TokenSet? {
+    // `ProfileEnvironment.missing` asks this for every OAuth auth mode, so it is
+    // on the redraw path of any pane listing profiles. Same reason as
+    // `accounts`: no real keychain under a capture.
+    if DemoSeed.isEnabled { return nil }
     guard
       let raw = read(.oauth, account: oauthAccount(profile: profile, server: server)),
       let data = raw.data(using: .utf8)
@@ -179,6 +183,12 @@ nonisolated enum CredentialStore {
   /// which matters for deletion: a profile that is removed must not leave a
   /// credential behind under a variable name the manifest has since dropped.
   static func accounts(_ scope: Scope) -> [String] {
+    // Never the real keychain under a capture. Not for what it would *show* —
+    // this returns account names, not values — but for what it would ask: the
+    // query runs against the keychain of an app whose bundle identifier matches
+    // the developer's own, and a per-item ACL prompt is a modal dialog arriving
+    // in the middle of a shutter.
+    if DemoSeed.isEnabled { return [] }
     var query = baseQuery(scope, account: nil)
     query[kSecReturnAttributes as String] = true
     query[kSecMatchLimit as String] = kSecMatchLimitAll
@@ -210,7 +220,12 @@ nonisolated enum CredentialStore {
 
   /// The same, for a caller with a single profile to ask about.
   static func storedVariables(profile: String, server: String) -> Set<String> {
-    storedVariables(in: accounts(.profile), profile: profile, server: server)
+    // `accounts` returns nothing under a capture, so without this every demo
+    // profile would report every secret missing — and the server plate would be
+    // four orange "cannot start" rows instead of the working ladder with one
+    // deliberate gap in it that the caption is about.
+    if DemoSeed.isEnabled { return DemoSeed.storedVariables(profile: profile, server: server) }
+    return storedVariables(in: accounts(.profile), profile: profile, server: server)
   }
 
   private static func baseQuery(_ scope: Scope, account: String?) -> [String: Any] {

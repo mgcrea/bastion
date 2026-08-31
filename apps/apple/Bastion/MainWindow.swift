@@ -69,6 +69,10 @@ enum MainWindowController {
 
   private static let hosted = HostedWindow(
     title: "Bastion", autosaveName: autosaveName,
+    // Named only under a capture. Outside one this window wants SwiftUI's own
+    // fitting size floored by `MainView`'s minimums, which is the right
+    // behaviour and the reason it never passed a size before.
+    contentSize: DemoSeed.isEnabled ? DemoSeed.contentSize : nil,
     content: { MainView() })
 
   static func show() { hosted.show() }
@@ -106,11 +110,22 @@ struct MainView: View {
   /// that is already open.
   private var pane: Binding<MainPane?> {
     Binding(
-      get: { MainPane(rawValue: selection) ?? .running },
-      set: { selection = ($0 ?? .running).rawValue })
+      get: { current },
+      // Swallowed under a capture: `current` would ignore the write anyway, and
+      // letting it through would put the stage's pane into the developer's own
+      // `@AppStorage`.
+      set: { if !DemoSeed.isEnabled { selection = ($0 ?? .running).rawValue } })
   }
 
-  private var current: MainPane { MainPane(rawValue: selection) ?? .running }
+  /// The stage decides under a capture, and `@AppStorage` decides otherwise.
+  ///
+  /// Deliberately not a launch argument routed through `MainPane.defaultsKey`.
+  /// That would write the developer's remembered pane on every capture, and it
+  /// would be a second parser for `MainPane.rawValue` to disagree with.
+  private var current: MainPane {
+    if DemoSeed.isEnabled { return DemoSeed.stage.pane }
+    return MainPane(rawValue: selection) ?? .running
+  }
 
   var body: some View {
     NavigationSplitView {
@@ -126,6 +141,11 @@ struct MainView: View {
     .sheet(item: $editor.subject) { subject in
       ServerEditor(subject: subject)
     }
+    // Everything these panes read was seeded synchronously in `DemoSeed.apply()`
+    // before this window existed, so the body running IS the content existing —
+    // no network, no disk, nothing async. That is what makes the ready signal a
+    // fact here rather than an optimisation over `--settle`.
+    .task { DemoSeed.signalReady(from: .main) }
   }
 
   // MARK: - Sidebar
