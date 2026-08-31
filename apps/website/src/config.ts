@@ -174,6 +174,33 @@ export const TRIAL = {
  */
 export const APP_VERSION = "1.0.0";
 
+/**
+ * The MCP clients Bastion can wire in one click.
+ *
+ * `apps/apple/Bastion/ClientWiring.swift` is the authority; this is the copy the
+ * page reads, and the two are kept in step by hand. Naming them matters more
+ * than it looks: "works with your MCP client" is what every gateway claims, and
+ * the question a visitor actually has is whether it knows about the one they
+ * use.
+ *
+ * Codex is one entry and three surfaces — ChatGPT, the Codex CLI and the IDE
+ * extension share a single TOML config, which is why it is spliced rather than
+ * re-serialised like the JSON four.
+ */
+export const CLIENTS = [
+  { name: "Claude Code", config: "~/.claude.json" },
+  { name: "Claude Desktop", config: "claude_desktop_config.json", viaBridge: true },
+  { name: "VS Code", config: "User/mcp.json" },
+  { name: "Cursor", config: "~/.cursor/mcp.json" },
+  { name: "ChatGPT & Codex", config: "~/.codex/config.toml" },
+] as const;
+
+/** "Claude Code, Claude Desktop, VS Code, Cursor and ChatGPT & Codex". */
+export const clientList = (() => {
+  const names = CLIENTS.map((c) => c.name);
+  return names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+})();
+
 /** macOS 26 or later: the icon is an Icon Composer bundle, which nothing older renders. */
 export const REQUIRES = "macOS 26 or later";
 

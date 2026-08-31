@@ -1,6 +1,6 @@
 ---
 import SectionHeader from "./SectionHeader.astro";
-import { DIALECT } from "../config";
+import { DIALECT, clientList } from "../config";
 
 /**
  * The build order, as it actually stands. The root README's Status table is the
@@ -69,7 +69,7 @@ const STATUS = [
   },
   {
     k: "Client wiring",
-    v: "One click per client: a token minted, written into their config, and every other entry in the file left byte-for-byte alone.",
+    v: `One click for ${clientList}: a token minted, written into their config, and every other entry in the file left byte-for-byte alone.`,
     tag: "built",
     tone: "text-ok-ink",
   },
