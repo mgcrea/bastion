@@ -51,6 +51,11 @@
 set -uo pipefail
 
 APP="${1:?usage: verify-servers.sh path/to/Bastion.app}"
+# Absolute, because the install probe below runs from a temp directory. A
+# relative path here resolves against the caller's cwd, so `cd "$PREFIX" &&
+# "$NODE" ...` reported the package as uninstallable when what was actually
+# missing was node itself. Make's invocation passes a relative path.
+APP="$(cd "$(dirname "$APP")" && pwd)/$(basename "$APP")"
 NODE="$APP/Contents/Resources/node"
 NPM="$APP/Contents/Resources/npm/bin/npm-cli.js"
 # Read-only, published, and the first server the build order takes end to end —

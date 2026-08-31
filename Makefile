@@ -295,13 +295,24 @@ sparkle-keys: sparkle ## Generate or reuse the EdDSA update-signing key
 # The appcast is one item, not a history. Sparkle only needs the newest, and a
 # feed that accumulates every release is a feed that has to stay consistent with
 # every zip still on the CDN.
+# The appcast is a RELEASE ASSET, not a site asset, and the enclosure points at the
+# tag's own upload. Both halves of that matter. Publishing a release then never
+# needs a site deploy, which is the only reason `/appcast.xml` in
+# apps/website/public/_redirects can be a permanent 302 — and SUFeedURL is baked
+# into every binary ever shipped, so it has to be a URL that outlives any decision
+# about where files live. It previously wrote into the site and pointed at
+# bastion.mgcrea.io/releases/Bastion-<version>.zip, a path nothing serves.
+# `stat` is called BSD-first, GNU-second: Homebrew's coreutils puts a GNU `stat`
+# ahead of /usr/bin on many machines, where `-f%z` fails with "invalid option"
+# and the enclosure came out as length="" — a malformed appcast whose only
+# symptom is somebody else's update failing.
 appcast: ## Sign the release zip and write a one-item appcast
 	@test -f apps/apple/.build/Bastion.zip || { echo "run 'make build-release' first"; exit 1; }
 	@version=$$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
 		"$(RELEASE_APP)/Contents/Info.plist"); \
 	build=$$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' \
 		"$(RELEASE_APP)/Contents/Info.plist"); \
-	length=$$(stat -f%z apps/apple/.build/Bastion.zip); \
+	length=$$(stat -f%z apps/apple/.build/Bastion.zip 2>/dev/null || stat -c%s apps/apple/.build/Bastion.zip); \
 	signature=$$($(SPARKLE_TOOLS)/sign_update apps/apple/.build/Bastion.zip | sed 's/.*sparkle:edSignature="\([^"]*\)".*/\1/'); \
 	notes=$$(awk '/^## /{ if (n++) exit } n' CHANGELOG.md 2>/dev/null | tail -n +2); \
 	printf '%s\n' \
@@ -315,14 +326,14 @@ appcast: ## Sign the release zip and write a one-item appcast
 		"      <sparkle:shortVersionString>$$version</sparkle:shortVersionString>" \
 		"      <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>" \
 		"      <description><![CDATA[$$notes]]></description>" \
-		"      <enclosure url=\"https://bastion.mgcrea.io/releases/Bastion-$$version.zip\"" \
+		"      <enclosure url=\"https://github.com/mgcrea/bastion/releases/download/app-v$$version/Bastion.zip\"" \
 		"                 length=\"$$length\"" \
 		"                 type=\"application/octet-stream\"" \
 		"                 sparkle:edSignature=\"$$signature\" />" \
 		"    </item>" \
 		'  </channel>' \
-		'</rss>' > apps/website/public/appcast.xml
-	@echo "  wrote apps/website/public/appcast.xml"
+		'</rss>' > apps/apple/.build/appcast.xml
+	@echo "  wrote apps/apple/.build/appcast.xml"
 
 notarize: ## Submit the signed bundle to Apple and staple the ticket
 	@test -n "$$AC_KEY_ID" || { echo "set AC_KEY_ID, AC_ISSUER_ID and AC_KEY_PATH first" >&2; exit 1; }
