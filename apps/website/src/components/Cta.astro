@@ -1,5 +1,5 @@
 ---
-import { REPO_URL, SHIPPED } from "../config";
+import { PRICE, REPO_URL, SHIPPED } from "../config";
 import Logo from "./Logo.astro";
 ---
 
@@ -24,20 +24,39 @@ import Logo from "./Logo.astro";
 
   <p class="relative m-0 max-w-[52ch] px-5 text-[16.5px] leading-[1.6] text-fg/56 text-pretty">
     A program that holds every credential you own should be readable and compilable by the people
-    trusting it. The licence is not settled yet, and that is a gap rather than a position.
+    trusting it. The source is public and stays public; what is sold is the signed build.
   </p>
 
   {/*
-    There is no download button, and the flag is why. `SHIPPED` gates the one
-    element that would name something you can get; everything else on this page
-    is true whether or not there is a release, which is the rule config.ts
-    states — a string outside a SHIPPED branch has to stand on its own.
+    `SHIPPED` gates the elements that name something you can get. Everything else
+    on this page is true whether or not there is a release, which is the rule
+    config.ts states: a string outside a SHIPPED branch has to stand on its own.
+
+    Buy points at /buy rather than at Stripe. That path is a redirect the site
+    owns, so the checkout URL can move without editing a page — and the app's
+    Licence pane links the same one, which matters more, because a URL compiled
+    into a shipped binary can never be repointed.
   */}
   <div class="relative flex flex-wrap items-center justify-center gap-3 px-5 pt-1.5">
+    {
+      SHIPPED && (
+        <a
+          href="/download"
+          class="plate rounded-md px-6 py-3.5 text-[15px] font-semibold text-accent-ink shadow-[0_14px_34px_-14px_rgb(242_137_92/75%)]"
+        >
+          Download for macOS
+        </a>
+      )
+    }
     <a
       href={REPO_URL}
       rel="noopener"
-      class="plate rounded-md px-6 py-3.5 text-[15px] font-semibold text-accent-ink shadow-[0_14px_34px_-14px_rgb(242_137_92/75%)]"
+      class:list={[
+        "rounded-md px-6 py-3.5 text-[15px] font-semibold",
+        SHIPPED
+          ? "border border-white/10 bg-white/5 text-fg/80"
+          : "plate text-accent-ink shadow-[0_14px_34px_-14px_rgb(242_137_92/75%)]",
+      ]}
     >
       Read the source ↗
     </a>
@@ -49,7 +68,18 @@ import Logo from "./Logo.astro";
   </div>
 
   {
-    !SHIPPED && (
+    SHIPPED ? (
+      <p class="relative m-0 text-[12.5px] text-fg/38">
+        {PRICE.amount} — {PRICE.covers}. {PRICE.refund}.{" "}
+        <a href="/buy" class="underline underline-offset-2">
+          Buy a licence
+        </a>{" "}
+        ·{" "}
+        <a href="/terms" class="underline underline-offset-2">
+          terms
+        </a>
+      </p>
+    ) : (
       <p class="relative m-0 text-[12.5px] text-fg/38">
         No release yet — the app is code-signed for development only.
       </p>

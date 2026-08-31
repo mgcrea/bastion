@@ -24,10 +24,7 @@
 # to /buy from the Licence pane — a URL compiled into shipped binaries, which
 # must never be a Stripe URL directly.
 #
-# Not wired up yet. There is no payment link to point at until one is created in
-# Stripe, and pointing this at a placeholder would be worse than a 404: a 302 to
-# the wrong page reads as a broken checkout rather than as one that does not
-# exist. Uncomment the line, paste the live payment link, and deploy — that is
-# the whole of switching purchases on, and swapping in the test-mode twin is how
-# fulfilment gets rehearsed end to end.
-# /buy        https://buy.stripe.com/REPLACE_WITH_LIVE_PAYMENT_LINK  302
+# The live payment link, created from the 1.x launch price. Its twin in test mode
+# is the one to point at when exercising fulfilment end to end; swapping this line
+# is the whole of that switch.
+/buy          https://buy.stripe.com/aFaeVd4NW1tQdta0WOdZ601  302

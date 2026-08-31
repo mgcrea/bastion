@@ -1,0 +1,47 @@
+---
+/**
+ * The EULA, served from the file the app ships.
+ *
+ * Read at build time from `apps/apple/EULA` rather than copied into this page,
+ * because the two must never disagree: this URL is what Stripe Checkout links
+ * as the terms a buyer consents to, and §6 of that document promises the
+ * consent appears there. A page that drifted from the shipped text would make
+ * the agreement describe a checkout that does not exist.
+ *
+ * Plain text, rendered as plain text. It is a legal document, not a landing
+ * page, and reformatting it into headings and cards would be a second rendering
+ * to keep in sync for no gain to the person reading it.
+ */
+import Footer from "../components/Footer.astro";
+import Nav from "../components/Nav.astro";
+import Layout from "../layouts/Layout.astro";
+
+// `?raw`, not `readFileSync`. Vite resolves this against THIS file at build
+// time and inlines the bytes; a runtime read resolves against the bundled
+// chunk, which lands in dist/ and cannot see apps/apple at all.
+import eula from "../../../apple/EULA?raw";
+---
+
+<Layout
+  title="Licence terms — Bastion"
+  description="The end user licence agreement for the signed, notarized builds of Bastion: what a key covers, offline validation, and the thirty-day refund."
+>
+  <Nav />
+  <main class="wrap py-20">
+    <h1 class="m-0 font-display text-[clamp(28px,4.4vw,40px)] font-semibold tracking-[-0.04em]">
+      Licence terms
+    </h1>
+    <p class="mt-4 mb-0 max-w-[62ch] text-[16px] leading-[1.6] text-fg/56 text-pretty">
+      This covers the signed builds. The source is separate and has
+      <a href="https://github.com/mgcrea/bastion/blob/main/apps/apple/LICENSE" class="underline">
+        its own licence
+      </a>; the reasoning behind both is in
+      <a href="https://github.com/mgcrea/bastion/blob/main/docs/licensing.md" class="underline">
+        docs/licensing.md
+      </a>.
+    </p>
+    <pre
+      class="mt-10 mb-0 overflow-x-auto font-mono text-[13px] leading-[1.65] whitespace-pre-wrap text-fg/72">{eula}</pre>
+  </main>
+  <Footer />
+</Layout>

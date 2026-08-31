@@ -9,13 +9,14 @@ enum LicenceLinks {
   /// would be a payment link nobody could ever repoint.
   static let buy = URL(string: "https://bastion.mgcrea.io/buy")!
 
-  /// False until /buy resolves to a real payment link.
+  /// True as of 1.0.0: /buy resolves to the live Stripe payment link.
   ///
-  /// The same flag, for the same reason, as `SHIPPED` on the website: a button
-  /// here is a promise that there is something on the other end of it, and
-  /// /buy is deliberately left out of `_redirects` until a payment link exists.
-  /// Switching purchases on is two edits — that line, and this one.
-  static let isSelling = false
+  /// The same flag, for the same reason, as `SHIPPED` on the website — a button
+  /// here is a promise that there is something on the other end of it. The two
+  /// move together, and this one is the slower half: the site can be redeployed
+  /// in a minute, while a build that has shipped carries whatever it was
+  /// compiled with until the next release.
+  static let isSelling = true
 }
 
 /// Entering a licence key, seeing what happened to it, and — when there is none

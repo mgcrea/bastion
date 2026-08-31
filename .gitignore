@@ -37,10 +37,12 @@ dist/
 !.env.example
 # Worker secrets. `.dev.vars` is what `wrangler dev` reads locally; `.prod.vars`
 # is the set `pnpm secrets:prod` pushes. Both hold the licence signing key.
-.dev.vars
-.prod.vars
-!.dev.vars.example
-!.prod.vars.example
+# Globbed rather than listed. `.test.vars` was not covered by the two names that
+# were here, and it carries the signing key — one forgotten filename is all it
+# takes to commit the one secret that can never be rotated without refusing
+# every key ever issued.
+*.vars
+!*.vars.example
 .mcp.json
 *.p8
 *.p12

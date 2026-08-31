@@ -107,11 +107,32 @@ export const DIALECT = {
  * False until there is something to download.
  *
  * It gates the CTA, and it does not gate everything: any string outside a
- * SHIPPED branch has to be true on its own. The app is code-signed for
- * development only and nothing is licensed, both of which the page says in those
- * words rather than leaving to a flag.
+ * SHIPPED branch has to be true on its own.
+ *
+ * True as of 1.0.0 — signed, notarized, and published as a GitHub release. The
+ * two sentences it used to guard, about a development-only signature and an
+ * unsettled licence, are gone rather than hidden behind the flag: both are now
+ * false, and a flag is not the place to retire a claim.
  */
-export const SHIPPED = false;
+export const SHIPPED = true;
+
+/**
+ * The price, as charged.
+ *
+ * EUR because that is the currency the Stripe price object is denominated in and
+ * the one this account settles in. Quoting a USD figure the checkout does not
+ * charge is the kind of small lie that becomes a support thread, so the number
+ * here and `unit_amount` on the price are the same number.
+ *
+ * One price, one major version, every Mac. 2.0 is a new purchase; nothing here
+ * promises an upgrade discount, because that decision has not been made and a
+ * marketing page is a bad place to make it by accident.
+ */
+export const PRICE = {
+  amount: "€14.99",
+  covers: "every 1.x release, on every Mac you own",
+  refund: "Thirty days, full refund, no reason needed",
+} as const;
 
 /** macOS 26 or later: the icon is an Icon Composer bundle, which nothing older renders. */
 export const REQUIRES = "macOS 26 or later";
