@@ -342,6 +342,10 @@ A Debug build carries its own bundle identifier, `io.mgcrea.bastion.debug`. That
 Keychain items are scoped by app identity, so a shared identifier means a debug build reads,
 overwrites and deletes the credentials the real app is holding.
 
+[`docs/keychain.md`](docs/keychain.md) covers the rest: which scope holds what, why keychain prompts
+happened and what actually fixed them, and what adopting the data protection keychain would cost —
+including why the entitlement is worth having for iCloud sync and _not_ worth having to stop prompts.
+
 ### Running a server before there is a profile editor
 
 There is no UI for creating a profile yet. Until there is, a Debug build imports one from a file —
