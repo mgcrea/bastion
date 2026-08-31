@@ -2,6 +2,13 @@
 .idea/
 *.swp
 
+# Agent tooling state. Note this also keeps .claude/skills/ local: a project
+# skill committed here would be shared with every clone, and this is the choice
+# not to. Ignored rather than merely untracked because the release path runs
+# `git add` over a dirty tree, and an untracked-but-visible directory is one
+# `git add -A` away from riding along into a release commit.
+.claude
+
 # Xcode
 build/
 DerivedData/
