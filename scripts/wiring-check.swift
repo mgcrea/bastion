@@ -90,7 +90,16 @@ struct WiringCheck {
     // object, an `inputs` key — are shapes nobody would have invented.
     let paths = CommandLine.arguments.dropFirst().filter { !$0.hasPrefix("-") }
     if !paths.isEmpty {
-      for path in paths { realFileSurvives(URL(fileURLWithPath: path)) }
+      for path in paths {
+        let url = URL(fileURLWithPath: path)
+        // A client's format is a fact about its path here, as it is in
+        // `ClientWiring.all`.
+        if url.pathExtension == "toml" {
+          realTOMLFileSurvives(url)
+        } else {
+          realFileSurvives(url)
+        }
+      }
       print("\n\(checks - failures)/\(checks) passed")
       exit(failures > 0 ? 1 : 0)
     }
@@ -124,6 +133,7 @@ struct WiringCheck {
     tomlRendersOnlyOurOwnShape()
     tomlNeverRewritesAHandWrittenEntry()
     tomlDuplicateKeyIsImpossible()
+    tomlBackupAtomicityAndMode()
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 { exit(1) }
@@ -1449,5 +1459,106 @@ struct WiringCheck {
         (rescanned.tables["shopify"]?.value["url"] as? String)
           == "http://127.0.0.1:\(port)/s/prod/shopify")
     }
+  }
+
+  /// The byte overload, through the same properties `backupAndNoLitter` asserts
+  /// for the JSON one -- because a TOML write goes through it too, and "the
+  /// backup is recoverable" is not a claim worth holding on one format only.
+  static func tomlBackupAtomicityAndMode() {
+    print("\nWriting a TOML config")
+    let fm = FileManager.default
+    let directory = fm.temporaryDirectory
+      .appendingPathComponent("bastion-toml-\(UUID().uuidString)")
+    try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: directory) }
+
+    let config = directory.appendingPathComponent("config.toml")
+    try? codexConfig.write(to: config, atomically: true, encoding: .utf8)
+
+    guard let document = try? ClientWiringTOML.read(config) else {
+      return check("the fixture reads back", false)
+    }
+    let text = ClientWiringTOML.spliced(document, removing: [], upserting: tomlEntries())
+    let backup = try? ClientWiringMerge.write(
+      Data(text.utf8), to: config, backupSuffix: "bastion-backup")
+
+    check("a backup was made", backup != nil)
+    check(
+      "the backup holds the original bytes",
+      (try? String(contentsOf: backup!, encoding: .utf8)) == codexConfig)
+    check(
+      "the config on disk is the spliced text, to the byte",
+      (try? String(contentsOf: config, encoding: .utf8)) == text)
+    check(
+      "and it reads back with our entries in it",
+      names(try? ClientWiringTOML.read(config)) == ["computer-use", "node_repl", "shopify", "stripe"])
+
+    let mode = (try? fm.attributesOfItem(atPath: config.path))?[.posixPermissions] as? NSNumber
+    check("the written config is 0600 — it now carries a token", mode?.intValue == 0o600)
+
+    let left = (try? fm.contentsOfDirectory(atPath: directory.path)) ?? []
+    check("no .tmp left behind", !left.contains { $0.hasSuffix(".tmp") })
+    check("exactly config + backup", left.count == 2)
+
+    // A `~/.codex` that does not exist yet is the ordinary first-run case.
+    let fresh = directory.appendingPathComponent("nested/.codex/config.toml")
+    let blocks = ClientWiringTOML.spliced(
+      ClientWiringTOML.empty, removing: [], upserting: tomlEntries())
+    let none = try? ClientWiringMerge.write(
+      Data(blocks.utf8), to: fresh, backupSuffix: "bastion-backup")
+    check("no backup for a file that did not exist", none == nil)
+    check("parent directories created", fm.fileExists(atPath: fresh.path))
+    check("and the new file is exactly our blocks", names(try? ClientWiringTOML.read(fresh)) == ["shopify", "stripe"])
+  }
+
+  /// The `wiring-check-real` half for a TOML config.
+  ///
+  /// Read-only: scanned, spliced in memory and compared. Fixtures only cover
+  /// the shapes somebody thought of, and a config.toml that has been lived in
+  /// holds the ones nobody would have invented.
+  static func realTOMLFileSurvives(_ url: URL) {
+    print("\n\(url.path)")
+    let document: ClientWiringTOML.Document
+    do {
+      document = try ClientWiringTOML.read(url)
+    } catch {
+      return check("it scans (\(error.localizedDescription))", false)
+    }
+    check("it scans, \(document.lines.count) lines", true)
+
+    let ours = Set(document.tables.filter { ClientWiringMerge.isOurs($0.value.value) }.keys)
+    let theirs = document.tables.keys.filter { !ours.contains($0) }.sorted()
+    check(
+      "\(document.tables.count) servers found, \(theirs.count) of them not ours", true)
+
+    let written = tomlEntries()
+    let out = ClientWiringTOML.spliced(document, removing: [], upserting: written)
+
+    // The claim, against a file nobody wrote for a test.
+    check(
+      "taking our blocks back out gives the file back, to the byte",
+      ClientWiringTOML.spliced(
+        try! ClientWiringTOML.scan(out), removing: Set(written.keys), upserting: [:])
+        == document.text)
+    check(
+      "wiring it twice changes nothing the second time",
+      ClientWiringTOML.spliced(
+        try! ClientWiringTOML.scan(out), removing: [], upserting: written) == out)
+
+    let rescanned = try? ClientWiringTOML.scan(out)
+    check("the result still scans", rescanned != nil)
+    check(
+      "every server it held is still there",
+      theirs.allSatisfy { rescanned?.tables[$0] != nil })
+    check(
+      "and says exactly what it said",
+      theirs.allSatisfy { deepEqual(document.tables[$0]?.value, rescanned?.tables[$0]?.value) })
+    check(
+      "no name was written twice",
+      rescanned?.tables.values.allSatisfy { $0.ranges.count <= 2 } == true)
+    check("our entries were added", written.keys.allSatisfy { rescanned?.tables[$0] != nil })
+    check(
+      "and read back as ours",
+      written.keys.allSatisfy { ClientWiringMerge.isOurs(rescanned?.tables[$0]?.value) })
   }
 }

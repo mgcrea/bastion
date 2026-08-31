@@ -423,7 +423,8 @@ wiring-check-real: wiring-check ## Prove the merge against the real client confi
 	@apps/apple/.build/wiring-check \
 		"$(HOME)/.claude.json" \
 		"$(HOME)/Library/Application Support/Claude/claude_desktop_config.json" \
-		"$(HOME)/Library/Application Support/Code/User/mcp.json"
+		"$(HOME)/Library/Application Support/Code/User/mcp.json" \
+		"$(HOME)/.codex/config.toml"
 
 audit: app remote-check ## Assert the listener is loopback-only and refuses foreign Origin/Host
 	@scripts/audit-listener.sh
