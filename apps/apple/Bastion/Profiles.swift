@@ -287,6 +287,16 @@ nonisolated enum ProfileEnvironment {
       "XDG_CACHE_HOME": state.appendingPathComponent("cache", isDirectory: true).path,
     ]
 
+    // Before the merge, deliberately. A callback URL Bastion assigns is a
+    // default, not an override: somebody who has already registered a URL with
+    // the upstream app and typed it into the profile must keep it, or this
+    // "fix" silently breaks the logins that were working.
+    for callback in server.callbackEnv {
+      if let port = callbackPort(profile: profile.name, server: server.id) {
+        env[callback.name] = callback.url(port: port)
+      }
+    }
+
     env.merge(values(for: profile, server: server)) { _, resolved in resolved }
 
     // Last, and unconditionally in both directions. Setting the gate only when
@@ -311,6 +321,78 @@ nonisolated enum ProfileEnvironment {
     }
 
     return env
+  }
+
+  // MARK: - Loopback callback ports
+
+  /// The loopback port this profile's server catches its OAuth callback on.
+  ///
+  /// Assigned once and then kept, which is the whole design constraint: Reddit
+  /// and X both compare `redirect_uri` byte for byte against what is registered
+  /// on the app, and only the user can change that registration. A port picked
+  /// fresh on each spawn would be correct exactly once.
+  ///
+  /// Per profile, for the same reason `stateEnv` is: two profiles on one
+  /// default port are two identities racing for one socket, and the loser is
+  /// whichever logged in second.
+  ///
+  /// `nil` rather than a throw or a fallback constant. The caller's response is
+  /// to leave the variable unset, which lets the server use its own documented
+  /// default — a working single-profile login. Inventing a number we could not
+  /// bind would produce the one outcome worth avoiding: a URL shown in the
+  /// editor, registered upstream by hand, that nothing is listening on.
+  nonisolated static func callbackPort(profile: String, server: String) -> Int? {
+    let file = directory(profile: profile, server: server)
+      .appendingPathComponent("callback-port", isDirectory: false)
+
+    if let text = try? String(contentsOf: file, encoding: .utf8),
+      let port = Int(text.trimmingCharacters(in: .whitespacesAndNewlines)),
+      (1024...65535).contains(port)
+    {
+      return port
+    }
+
+    guard let port = freePort() else { return nil }
+    try? FileManager.default.createDirectory(
+      at: file.deletingLastPathComponent(), withIntermediateDirectories: true,
+      attributes: [.posixPermissions: 0o700])
+    try? Data("\(port)\n".utf8).write(to: file, options: .atomic)
+    return port
+  }
+
+  /// One free loopback port, borrowed from the kernel and handed straight back.
+  ///
+  /// Bind to port 0, read what was assigned, close. There is a race here — the
+  /// port is free at the moment it is read, not at the moment the child binds
+  /// it — and it is the right race to take: the alternative is holding a socket
+  /// open for a child that may not be spawned for days, on a port the child
+  /// then cannot bind because Bastion is sitting on it.
+  private nonisolated static func freePort() -> Int? {
+    let fd = Darwin.socket(AF_INET, SOCK_STREAM, 0)
+    guard fd >= 0 else { return nil }
+    defer { close(fd) }
+
+    var address = sockaddr_in()
+    address.sin_family = sa_family_t(AF_INET)
+    address.sin_addr.s_addr = INADDR_LOOPBACK.bigEndian
+    address.sin_port = 0
+
+    let bound = withUnsafePointer(to: &address) { pointer in
+      pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+        Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+      }
+    }
+    guard bound == 0 else { return nil }
+
+    var actual = sockaddr_in()
+    var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+    let named = withUnsafeMutablePointer(to: &actual) { pointer in
+      pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+        getsockname(fd, $0, &length)
+      }
+    }
+    guard named == 0 else { return nil }
+    return Int(UInt16(bigEndian: actual.sin_port))
   }
 
   /// Every variable this profile has a value for, from `profiles.json` and the
@@ -432,6 +514,18 @@ nonisolated enum ProfileEnvironment {
           // missing, and naming one would send somebody looking for a field
           // that is supposed to stay empty.
           return CredentialStore.readTokens(profile: profile.name, server: server.id) != nil
+        // A `.childOAuth` mode is NOT a gate, and this is the one place the
+        // two OAuth kinds must part company. A remote server with no
+        // credential can do nothing, so `.oauth` unsatisfied means unusable.
+        // A child that logs itself in still works signed out — mcp-reddit
+        // serves public reads anonymously, on purpose — and Bastion cannot
+        // know whether it is signed in without asking it, which is a spawn
+        // and a round trip. Answering "no" here would paint every Reddit
+        // profile permanently unusable, including the ones working fine; the
+        // authoritative answer is the Authorization section's own dot, which
+        // asks the child.
+        case .childOAuth:
+          return true
         }
       }
       if !satisfied {
@@ -439,7 +533,7 @@ nonisolated enum ProfileEnvironment {
           .map { mode in
             switch mode.kind {
             case .env: "\(mode.displayName) (\(mode.env.joined(separator: " + ")))"
-            case .oauth: "\(mode.displayName) — authorize it in Bastion"
+            case .oauth, .childOAuth: "\(mode.displayName) — authorize it in Bastion"
             }
           }
           .joined(separator: ", or ")

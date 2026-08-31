@@ -553,12 +553,11 @@ struct ServerDetail: View {
                 .textSelection(.enabled)
               if variable.isRequired { Badge("required", tint: .secondary) }
               if variable.isSecret { Badge("secret", tint: .blue) }
-              if server.callbackEnv.contains(variable.name) {
-                // Named rather than quietly rewritten. The manifest says
-                // Bastion should assign a loopback callback port per profile;
-                // it does not do that yet, and a URL written as though it had
-                // would not match the upstream app registration.
-                Badge("callback — set by hand", tint: .orange)
+              if server.callbackEnv.contains(where: { $0.name == variable.name }) {
+                // Assigned per profile, and still worth a badge: the URL has to
+                // be registered upstream by hand, so a user who never sees the
+                // word "callback" here finds out at a redirect_uri mismatch.
+                Badge("callback — assigned per profile", tint: .blue)
               }
               Spacer()
             }
@@ -574,9 +573,17 @@ struct ServerDetail: View {
             Text("A profile satisfies one of:")
               .font(.caption).foregroundStyle(.secondary)
             ForEach(server.authModes) { mode in
-              Text("• \(mode.displayName) — \(mode.env.joined(separator: " + "))")
-                .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(.secondary)
+              // Switched on kind, like `ProfileEditor.missingValues` and
+              // `ProfileEnvironment.missing`. A mode satisfied by signing in
+              // names no variables, and joining an empty list left this line
+              // reading "• Sign in with Stripe — " with a dash to nowhere.
+              Text(
+                mode.isInteractive
+                  ? "• \(mode.displayName) — sign in"
+                  : "• \(mode.displayName) — \(mode.env.joined(separator: " + "))"
+              )
+              .font(.system(.caption2, design: .monospaced))
+              .foregroundStyle(.secondary)
             }
           }
         }

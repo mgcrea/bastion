@@ -160,10 +160,31 @@ are dropped whatever the setting says, and any value under a key the server's ma
 is blanked. That is a rule in one place — `CallCapture` — rather than a habit at three call sites,
 and `make builtin` plants a canary through `set_credential` and asserts it never comes back out.
 
-**Nothing recorded is written to disk.** The log is a bounded ring in memory, cleared when Bastion
-quits. This is not a matter of intent: every ordinary log line is mirrored to stderr, which for an
-app started by LaunchServices outlives the process, so payloads take a separate path that never
-reaches it. `make builtin` asserts that too, against the real bundle.
+**Nothing recorded is written to disk unless you ask for it.** By default the log is a bounded ring
+in memory, cleared when Bastion quits. This is not a matter of intent: every ordinary log line is
+mirrored to stderr, which for an app started by LaunchServices outlives the process, so payloads
+take a separate path that never reaches it. `make builtin` asserts that too, against the real
+bundle.
+
+Settings › Activity turns on a durable **audit log**: append-only JSONL under Application Support,
+0600, in segments, with retention by age and size. Whether that file carries arguments and results
+is a second switch, off on its own — keeping a record of *which* tools ran is a smaller thing to
+leave on disk than keeping what they were called with.
+
+Each record carries a hash of the one before it, so an edited field, a removed record or a truncated
+file can be detected. That is the whole claim, and it is worth being exact about: it catches
+tampering by something that does not know it is a chain, and corruption by something that was not
+trying. It is **not** proof against anyone who can write the file, because they can recompute it.
+Retention drops whole segments for the same reason — a chain cannot lose a record from the middle
+and still verify.
+
+Export writes the segments plus a `manifest.json` naming each one, its record count and its digest,
+with the chain head. The count matters: a chain cannot detect its own truncation, because lopping
+off the tail leaves a shorter valid chain. Signing is optional and goes in `signature.json` beside
+the manifest rather than inside it — a signature written into the bytes it signs is what makes half
+the signed-JSON formats in the world ambiguous. A signature proves the export came from this Mac and
+was not altered afterwards; it does not prove the log was not curated before it was signed, and it
+means nothing to a recipient who has not been given the key some other way.
 
 An agent asking Bastion for recent activity is answered with **its own profile's lines** — which it
 already sent and received, so it learns nothing it did not have. Another profile's lines never carry
@@ -247,7 +268,8 @@ Built and verified:
 | **`make audit`**        | the five security rules, against the real bundle                                    |
 | **`make dialect`**      | 24 conformance checks across both eras                                              |
 | **`make builtin`**      | the write gate hides the write tools, and no tool returns a secret                  |
-| **`make unit`**         | dialect, HTTP parser and call capture, malformed input included — 100 checks        |
+| **`make unit`**         | dialect, HTTP parser, call capture and the audit chain — 183 checks                 |
+| **`make audit-check`**  | an export signature through a round trip, key loss included — 18 checks             |
 | **`make remote-check`** | where a remote server may live, the SSE collapse, and the OAuth client — 79 checks  |
 
 Bastion is what the 2026-07-28 spec calls a **dual-era server**. A modern client declares its
@@ -376,7 +398,7 @@ be re-imported. Debug-only by design: a release build that imported credentials 
 could drop in its Application Support directory would be a way to add a profile to somebody else's
 gateway.
 
-Four of the nine catalog servers are not published to npm, and in a Debug build a checkout wins over
+One of the nine catalog servers is not published to npm, and in a Debug build a checkout wins over
 an install anyway, so dogfooding wants
 `~/Library/Application Support/io.mgcrea.bastion.debug/dev.json` pointing at them:
 

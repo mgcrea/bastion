@@ -187,9 +187,9 @@ struct ServerEditor: View {
           HStack(spacing: 6) {
             Text(entry.displayName).bold()
             if !entry.hasWritePath { Badge("read-only", tint: .green) }
-            // Said here rather than discovered at install time. Four of the
-            // nine are not published, and finding that out from a failed
-            // install is finding it out one step too late.
+            // Said here rather than discovered at install time. Not every
+            // entry is published, and finding that out from a failed install
+            // is finding it out one step too late.
             if entry.transport.isRemote {
               Badge("remote", tint: .blue)
             } else if entry.package?.distribution == .local {

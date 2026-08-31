@@ -99,10 +99,39 @@
     "                profile's own directory, because two profiles sharing one",
     "                token file are two identities sharing one login.",
     "",
-    "  callbackEnv   Env vars naming a loopback OAuth callback URL. Two profiles",
-    "                collide on the default port, and the upstream app",
-    "                registration has to match - so these are surfaced to the",
-    "                user rather than rewritten behind their back.",
+    "  callbackEnv   Env vars naming a loopback OAuth callback URL. Bastion",
+    "                assigns each profile its own port and builds the URL from",
+    "                `format`, a template over {port}, because two profiles on",
+    "                one default port are two logins racing for one socket. The",
+    "                assigned URL is shown in the profile editor and has to be",
+    "                registered upstream, which is why it is allocated once and",
+    "                then kept: an app registration matched byte for byte cannot",
+    "                survive a port picked afresh on every spawn. A value the",
+    "                user types wins over the assignment.",
+    "",
+    "  authModes     The ways a profile can be credentialed, and `kind` says WHO",
+    "                does the work. Three answers, and conflating any two of",
+    "                them is how a button appears that cannot work:",
+    "",
+    "                  env       The user fills the named variables and Bastion",
+    "                            sends them. The default, and the only kind",
+    "                            that names variables at all.",
+    "",
+    "                  oauth     REMOTE ONLY. Bastion is the OAuth client:",
+    "                            discovery, dynamic registration, PKCE, and a",
+    "                            token in its own Keychain scope that no tool",
+    "                            can read back. Needs an endpoint to discover",
+    "                            against, which a child has not got.",
+    "",
+    "                  childOAuth  CHILD ONLY. The server logs ITSELF in - it",
+    "                            owns the client id, opens the browser, catches",
+    "                            its own loopback callback and keeps the refresh",
+    "                            token in its own per-profile state file. Bastion",
+    "                            drives that flow through the server's own tools",
+    "                            (`loginTool`, `statusTool`, `logoutTool`) and",
+    "                            reports what they say, and holds nothing. The",
+    "                            button looks identical to the user; the",
+    "                            custody is the opposite.",
     "",
     "  env[].header  REMOTE ONLY. A variable's SINK. Every variable used to",
     "                land in one place - an environment variable on a child -",
@@ -205,16 +234,28 @@
         "kind": "child",
         "npmName": "@mgcrea/mcp-reddit",
         "binName": "reddit-mcp",
-        "distribution": "local",
+        "distribution": "npm",
         "localPath": "mcp-reddit"
       },
       "docsUrl": "https://github.com/mgcrea/mcp-reddit",
       "dialect": "2025-11-25",
       "writeGate": "REDDIT_ALLOW_WRITES",
       "gateBypass": [],
-      "authModes": [],
+      "authModes": [
+        {
+          "id": "oauth2",
+          "displayName": "Sign in with Reddit",
+          "kind": "childOAuth",
+          "loginTool": "reddit_auth_login",
+          "statusTool": "reddit_auth_status",
+          "logoutTool": "reddit_auth_logout",
+          "env": []
+        }
+      ],
       "stateEnv": ["REDDIT_TOKEN_PATH"],
-      "callbackEnv": ["REDDIT_REDIRECT_URI"],
+      "callbackEnv": [
+        { "name": "REDDIT_REDIRECT_URI", "format": "http://127.0.0.1:{port}/callback" }
+      ],
       "env": [
         {
           "name": "REDDIT_CLIENT_ID",
@@ -287,7 +328,9 @@
         }
       ],
       "stateEnv": ["X_API_CONFIG", "X_API_TOKEN_FILE"],
-      "callbackEnv": ["X_API_REDIRECT_URI"],
+      "callbackEnv": [
+        { "name": "X_API_REDIRECT_URI", "format": "http://127.0.0.1:{port}/callback" }
+      ],
       "env": [
         {
           "name": "X_API_BEARER_TOKEN",
@@ -882,7 +925,7 @@
         "kind": "child",
         "npmName": "@mgcrea/mcp-keycloak",
         "binName": "keycloak-mcp",
-        "distribution": "local",
+        "distribution": "npm",
         "localPath": "mcp-keycloak"
       },
       "docsUrl": null,

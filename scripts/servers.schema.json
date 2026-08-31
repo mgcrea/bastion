@@ -148,8 +148,23 @@
                 }
               },
               "kind": {
-                "enum": ["env", "oauth"],
-                "description": "How the credential is obtained. 'env' (the default) means the user fills the named variables. 'oauth' means Bastion runs an OAuth 2.1 flow and holds the token itself, so the mode names no variables at all. Remote transports only."
+                "enum": ["env", "oauth", "childOAuth"],
+                "description": "Who obtains the credential. 'env' (the default) means the user fills the named variables. 'oauth' means Bastion runs an OAuth 2.1 flow and holds the token itself, so the mode names no variables at all; remote transports only. 'childOAuth' means the server logs itself in and keeps its own refresh token in its per-profile state, and Bastion only drives and reports that flow through the server's own tools; child transports only, and it names no variables either."
+              },
+              "loginTool": {
+                "type": "string",
+                "minLength": 1,
+                "description": "childOAuth only. The server's own tool that performs the login. It opens a browser and blocks until its loopback callback lands."
+              },
+              "statusTool": {
+                "type": "string",
+                "minLength": 1,
+                "description": "childOAuth only. The server's own tool reporting whether it is signed in. This is the only way Bastion knows: it never sees the token."
+              },
+              "logoutTool": {
+                "type": "string",
+                "minLength": 1,
+                "description": "childOAuth only. The server's own tool that forgets the stored token."
               }
             }
           }
@@ -165,10 +180,22 @@
         "callbackEnv": {
           "type": "array",
           "items": {
-            "type": "string",
-            "pattern": "^[A-Z][A-Z0-9_]*$"
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "format"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]*$"
+              },
+              "format": {
+                "type": "string",
+                "pattern": "\\{port\\}",
+                "description": "A template over {port}. The path lives here rather than in Swift, for the same reason `Bearer` lives in env[].header.format rather than in a profile."
+              }
+            }
           },
-          "description": "Env vars naming a loopback OAuth callback URL, whose port must be unique per profile."
+          "description": "Env vars naming a loopback OAuth callback URL. Bastion allocates one port per profile and builds the URL from `format`, so two profiles cannot race for one socket. Allocated once and kept, because the URL has to match an upstream app registration byte for byte."
         },
         "env": {
           "type": "array",

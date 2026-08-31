@@ -53,7 +53,21 @@ struct ProfileEditor: View {
   /// Authorization state, kept separately from `error` so a failed sign-in does
   /// not look like a failed save.
   @State private var isAuthorized: Bool = false
+  /// What the child last said about its own login, for a `.childOAuth` server.
+  ///
+  /// Four states rather than a Bool, because "not asked" is a real answer here
+  /// and is not the same as "signed out". Only the child knows, asking costs a
+  /// spawn, and rendering the unasked case as "Not authorized" would invite
+  /// somebody to sign in on top of a login that already works.
+  @State private var childAuthState: ChildAuthState = .unknown
   @State private var authorizing = false
+
+  enum ChildAuthState {
+    case unknown
+    case checking
+    case signedIn
+    case signedOut
+  }
   @State private var authError: String?
 
   init(server: BastionServer, subject: Subject) {
@@ -102,43 +116,7 @@ struct ProfileEditor: View {
           Text("Profile")
         }
 
-        if let oauth = server.authModes.first(where: { $0.kind == .oauth }) {
-          Section {
-            HStack(spacing: 10) {
-              Circle()
-                .fill(isAuthorized ? Color.green : Color.secondary)
-                .frame(width: 7, height: 7)
-              Text(isAuthorized ? "Authorized" : "Not authorized")
-                .font(.callout)
-              Spacer()
-              if authorizing {
-                ProgressView().controlSize(.small)
-              } else if isAuthorized {
-                Button("Sign out", role: .destructive) { signOut() }
-              } else {
-                Button(oauth.displayName) { authorize() }
-                  .buttonStyle(.borderedProminent)
-              }
-            }
-            if let authError {
-              Text(authError)
-                .font(.caption).foregroundStyle(.red)
-                .fixedSize(horizontal: false, vertical: true)
-            }
-            Text(
-              isAuthorized
-                ? "Bastion holds the token and refreshes it. It is never written to a config "
-                  + "file and no tool can read it back. While this profile is authorized the "
-                  + "token is what Bastion sends, whatever is in the values below."
-                : "Opens \(server.displayName) in a browser once. Bastion keeps the token in the "
-                  + "Keychain and every client shares it without ever seeing it — nothing is "
-                  + "pasted into a config file.")
-              .font(.caption).foregroundStyle(.secondary)
-              .fixedSize(horizontal: false, vertical: true)
-          } header: {
-            Text("Authorization")
-          }
-        }
+        authorizationSection
 
         Section {
           ForEach(server.env) { variable in
@@ -153,10 +131,7 @@ struct ProfileEditor: View {
           Text("Values")
         } footer: {
           if !server.callbackEnv.isEmpty {
-            Text(
-              "Bastion does not yet assign a loopback callback port per profile, so any callback "
-                + "URL above must be set by hand and must match the upstream app registration.")
-              .font(.caption).foregroundStyle(.secondary)
+            callbackFooter
           }
         }
 
@@ -175,53 +150,14 @@ struct ProfileEditor: View {
           Text("Activity")
         }
 
-        if server.hasWritePath {
-          Section {
-            Toggle("Allow writes", isOn: $allowWrites)
-
-            if let gate = server.writeGate {
-              Text(
-                "Sets \(gate) for this profile alone. Another profile of the same server can have "
-                  + "it off at the same time.")
-                .font(.caption).foregroundStyle(.secondary)
-              if !server.gateBypass.isEmpty {
-                Text(
-                  "\(server.gateBypass.joined(separator: ", ")) is forced off either way, so this "
-                    + "toggle is the only switch on that wire.")
-                  .font(.caption).foregroundStyle(.secondary)
-              }
-            } else {
-              // A remote server has no environment, so there is no variable to
-              // name — the gate is a list of tools Bastion will not forward.
-              Text(
-                server.writeTools.isEmpty
-                  ? "For this profile alone. With writes off, Bastion does not forward any tool "
-                    + "this server marks as not read-only."
-                  : "For this profile alone. With writes off, Bastion does not forward "
-                    + "\(server.writeTools.joined(separator: ", ")) — nor any tool this server "
-                    + "marks as not read-only.")
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-              // The limit, at the point somebody decides whether to trust the
-              // switch. Said here as well as on the server's own card, because
-              // this is the screen where the decision is actually made.
-              Text(
-                "This filters what Bastion forwards, not what the server accepts. Anything else "
-                  + "holding this credential can call the same API directly, so its own scopes "
-                  + "are the real limit.")
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            }
-          } header: {
-            Text("Writes")
-          }
-        }
+        writesSection
       }
       .formStyle(.grouped)
       // The badge is read from the Keychain rather than remembered, so it is
-      // right after a sign-out that happened in another window.
-      .onAppear(perform: refreshAuthorization)
+      // right after a sign-out that happened in another window. A `.childOAuth`
+      // server is asked only if it is already running — see
+      // `refreshAuthorization` — so opening this sheet never spawns anything.
+      .onAppear { refreshAuthorization() }
 
       Divider()
 
@@ -299,6 +235,18 @@ struct ProfileEditor: View {
         // about a profile the gateway then refuses.
         case .oauth:
           return isAuthorized
+        // A `.childOAuth` mode is NOT a gate, and this is the one place the
+        // two OAuth kinds must part company. A remote server with no
+        // credential can do nothing, so `.oauth` unsatisfied means unusable.
+        // A child that logs itself in still works signed out — mcp-reddit
+        // serves public reads anonymously, on purpose — and Bastion cannot
+        // know whether it is signed in without asking it, which is a spawn
+        // and a round trip. Answering "no" here would paint every Reddit
+        // profile permanently unusable, including the ones working fine; the
+        // authoritative answer is the Authorization section's own dot, which
+        // asks the child.
+        case .childOAuth:
+          return true
         }
       }
       if !satisfied {
@@ -306,7 +254,7 @@ struct ProfileEditor: View {
           .map { mode in
             switch mode.kind {
             case .env: "\(mode.displayName) (\(mode.env.joined(separator: " + ")))"
-            case .oauth: "\(mode.displayName) — authorize it above"
+            case .oauth, .childOAuth: "\(mode.displayName) — authorize it above"
             }
           }
           .joined(separator: ", or ")
@@ -316,29 +264,304 @@ struct ProfileEditor: View {
     return missing
   }
 
+  /// The Authorization section, lifted out of `body`.
+  ///
+  /// Not a stylistic split: `body` is one expression, and adding a third
+  /// auth kind to it pushed the whole form past what the type checker will
+  /// solve. Anything added here should stay here.
+  @ViewBuilder private var authorizationSection: some View {
+  if let oauth = server.authModes.first(where: \.isInteractive) {
+    Section {
+      HStack(spacing: 10) {
+        Circle()
+          .fill(authorizationTint(for: oauth))
+          .frame(width: 7, height: 7)
+        Text(authorizationLabel(for: oauth))
+          .font(.callout)
+        Spacer()
+        if authorizing || childAuthState == .checking {
+          ProgressView().controlSize(.small)
+        } else if isSignedIn(for: oauth) {
+          Button("Sign out", role: .destructive) { signOut() }
+        } else {
+          // Offered next to the button rather than instead of it: an
+          // unknown state is not a reason to make signing in harder, and
+          // checking is the cheaper of the two for somebody who suspects
+          // they are already signed in.
+          if oauth.kind == .childOAuth, childAuthState == .unknown {
+            Button("Check") { refreshAuthorization(forceCheck: true) }
+          }
+          Button(oauth.displayName) { authorize() }
+            .buttonStyle(.borderedProminent)
+        }
+      }
+      if let authError {
+        Text(authError)
+          .font(.caption).foregroundStyle(.red)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      // Two kinds, two different true sentences. Bastion holds a
+      // `.oauth` token and can promise things about it; a `.childOAuth`
+      // token belongs to the server, and printing the Keychain promise
+      // over it would be a claim about custody Bastion does not have.
+      Text(authorizationCaption(for: oauth))
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+      if oauth.kind == .childOAuth, server.writeGate != nil {
+        // Scopes are fixed at the consent screen. mcp-reddit asks for the
+        // write scopes only when its gate is already on, so a login taken
+        // before the toggle was saved comes back read-only and every
+        // write fails later with a 403 that looks like a Reddit problem.
+        Text(
+          "The write toggle below is part of what is requested: sign in after setting it, "
+            + "and sign in again if you change it.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    } header: {
+      Text("Authorization")
+    }
+  }
+  }
+
+  /// The per-profile callback URL, lifted out of `body` for the same reason.
+  @ViewBuilder private var callbackFooter: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text(
+        "Bastion gives this profile its own callback port, so two profiles of "
+          + "\(server.displayName) are two logins rather than one race. Register the "
+          + "URL below with the upstream app — it is matched byte for byte — or set the "
+          + "variable above to one you have already registered, which wins.")
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      ForEach(server.callbackEnv) { callback in
+        // Selectable, because the whole point is that it gets pasted
+        // into somebody's app registration page.
+        Text(assignedCallback(callback) ?? "\(callback.name): assigned when saved")
+          .font(.system(.caption2, design: .monospaced))
+          .textSelection(.enabled)
+          .foregroundStyle(.secondary)
+      }
+    }
+  }
+
+  /// The Writes section, lifted out of `body` for the same reason as the
+  /// Authorization one: the form is a single expression and was already at
+  /// the edge of what the type checker will solve.
+  @ViewBuilder private var writesSection: some View {
+  if server.hasWritePath {
+    Section {
+      Toggle("Allow writes", isOn: $allowWrites)
+
+      if let gate = server.writeGate {
+        Text(
+          "Sets \(gate) for this profile alone. Another profile of the same server can have "
+            + "it off at the same time.")
+          .font(.caption).foregroundStyle(.secondary)
+        if !server.gateBypass.isEmpty {
+          Text(
+            "\(server.gateBypass.joined(separator: ", ")) is forced off either way, so this "
+              + "toggle is the only switch on that wire.")
+            .font(.caption).foregroundStyle(.secondary)
+        }
+      } else {
+        // A remote server has no environment, so there is no variable to
+        // name — the gate is a list of tools Bastion will not forward.
+        Text(
+          server.writeTools.isEmpty
+            ? "For this profile alone. With writes off, Bastion does not forward any tool "
+              + "this server marks as not read-only."
+            : "For this profile alone. With writes off, Bastion does not forward "
+              + "\(server.writeTools.joined(separator: ", ")) — nor any tool this server "
+              + "marks as not read-only.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+
+        // The limit, at the point somebody decides whether to trust the
+        // switch. Said here as well as on the server's own card, because
+        // this is the screen where the decision is actually made.
+        Text(
+          "This filters what Bastion forwards, not what the server accepts. Anything else "
+            + "holding this credential can call the same API directly, so its own scopes "
+            + "are the real limit.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    } header: {
+      Text("Writes")
+    }
+  }
+  }
+
   // MARK: - Authorization
 
-  private func refreshAuthorization() {
-    isAuthorized = RemoteOAuthSession.isAuthorized(profile: name, server: server.id)
+  /// The interactive mode this editor is showing, if any.
+  private var authMode: BastionServer.AuthMode? {
+    server.authModes.first(where: \.isInteractive)
+  }
+
+  /// The profile as it stands in the editor, which is what a sign-in has to run
+  /// under: `allowWrites` is part of what a `.childOAuth` server asks consent
+  /// for, so a token minted against the saved value would carry the wrong
+  /// scopes the moment somebody flips the toggle and signs in without saving.
+  private var draftProfile: Profile {
+    Profile(
+      name: name, serverID: server.id, values: [:], allowWrites: allowWrites,
+      captureMode: CallCapture.Mode(rawValue: capture))
+  }
+
+  /// The callback URL this profile has been assigned, or `nil` before there is
+  /// a profile to assign one to.
+  ///
+  /// Read-only here and deliberately not shown as an editable default: writing
+  /// it into `values` would freeze today's port into the profile, and the
+  /// assignment is meant to be Bastion's to keep. A user who wants a specific
+  /// URL types it into the variable above, which wins at spawn time.
+  private func assignedCallback(_ callback: BastionServer.CallbackVar) -> String? {
+    let trimmed = name.trimmingCharacters(in: .whitespaces)
+    guard !trimmed.isEmpty,
+      let port = ProfileEnvironment.callbackPort(profile: trimmed, server: server.id)
+    else { return nil }
+    return "\(callback.name)=\(callback.url(port: port))"
+  }
+
+  /// Whether this profile is signed in, for whichever kind is on screen.
+  private func isSignedIn(for mode: BastionServer.AuthMode) -> Bool {
+    mode.kind == .childOAuth ? childAuthState == .signedIn : isAuthorized
+  }
+
+  private func authorizationTint(for mode: BastionServer.AuthMode) -> Color {
+    if mode.kind == .childOAuth, childAuthState == .unknown { return .secondary.opacity(0.4) }
+    return isSignedIn(for: mode) ? .green : .secondary
+  }
+
+  private func authorizationLabel(for mode: BastionServer.AuthMode) -> String {
+    if mode.kind == .childOAuth {
+      switch childAuthState {
+      case .unknown: return "Not checked"
+      case .checking: return "Checking…"
+      case .signedIn: return "Signed in"
+      case .signedOut: return "Not signed in"
+      }
+    }
+    return isAuthorized ? "Authorized" : "Not authorized"
+  }
+
+  private func authorizationCaption(for mode: BastionServer.AuthMode) -> String {
+    switch mode.kind {
+    case .oauth:
+      return isAuthorized
+        ? "Bastion holds the token and refreshes it. It is never written to a config "
+          + "file and no tool can read it back. While this profile is authorized the "
+          + "token is what Bastion sends, whatever is in the values below."
+        : "Opens \(server.displayName) in a browser once. Bastion keeps the token in the "
+          + "Keychain and every client shares it without ever seeing it — nothing is "
+          + "pasted into a config file."
+    case .childOAuth:
+      return childAuthState == .signedIn
+        ? "The server holds this login itself, in this profile's own directory — Bastion "
+          + "never sees the token. Another profile of \(server.displayName) is a separate "
+          + "account and signs in separately."
+        : "Opens \(server.displayName) in a browser once. The server catches the callback "
+          + "and keeps the token in this profile's own directory; Bastion starts the flow "
+          + "and never holds the result. Public reads work signed out."
+    case .env:
+      return ""
+    }
+  }
+
+  private func refreshAuthorization(forceCheck: Bool = false) {
+    guard let mode = authMode else { return }
+    switch mode.kind {
+    case .oauth:
+      isAuthorized = RemoteOAuthSession.isAuthorized(profile: name, server: server.id)
+    case .childOAuth:
+      // Only the child knows, and asking costs a spawn — which opening an
+      // editor must not do. So the dot has a third state: asked, or not asked
+      // yet. It resolves for free when the server is already running, and on
+      // demand otherwise. Painting "not authorized" for "have not looked" would
+      // be the worst of the three, because it reads as a fact and invites
+      // somebody to sign in again over a login that is already there.
+      let profile = draftProfile
+      guard ProfileStore.lookup(name: name, server: server.id) != nil else {
+        childAuthState = .signedOut
+        return
+      }
+      let mode = mode
+      let server = server
+      guard forceCheck || Supervisor.shared.running.contains(where: { $0.id == profile.id })
+      else {
+        childAuthState = .unknown
+        return
+      }
+      childAuthState = .checking
+      Task { @MainActor in
+        let signedIn = await Task.detached {
+          try? ChildOAuthSession.isSignedIn(profile: profile, server: server, mode: mode)
+        }.value
+        childAuthState = signedIn.map { $0 ? .signedIn : .signedOut } ?? .unknown
+      }
+    case .env:
+      break
+    }
   }
 
   private func authorize() {
-    // A profile has to exist before it can hold a token: the Keychain account
-    // is `<profile>/<server>/oauth`, so authorizing an unsaved name would file
-    // the token under a profile that may never be saved.
+    // Before `authorizing` is set, all of it: a guard that returns after the
+    // spinner is on leaves the spinner on.
+    guard let mode = authMode else { return }
+
+    // A profile has to exist before it can hold a login. For `.oauth` that is
+    // the Keychain account `<profile>/<server>/oauth`, which an unsaved name
+    // would file under a profile that may never be saved. For `.childOAuth` it
+    // is stronger — the login runs *in* the child, and there is no child until
+    // there is a saved profile to spawn one for.
     guard !name.trimmingCharacters(in: .whitespaces).isEmpty else {
-      authError = "Give the profile a name first — the token is filed under it."
+      authError = "Give the profile a name first — the login is filed under it."
       return
     }
+    if mode.kind == .childOAuth,
+      ProfileStore.lookup(name: name, server: server.id) == nil
+    {
+      authError =
+        "Save the profile first — signing in runs \(server.displayName) with these settings."
+      return
+    }
+
     authorizing = true
     authError = nil
-    let profile = Profile(
-      name: name, serverID: server.id, values: [:], allowWrites: allowWrites,
-      captureMode: CallCapture.Mode(rawValue: capture))
+    let profile = draftProfile
+    let server = server
     Task { @MainActor in
       defer { authorizing = false }
       do {
-        try await RemoteOAuthSession.shared.authorize(profile: profile, server: server)
+        switch mode.kind {
+        case .oauth:
+          try await RemoteOAuthSession.shared.authorize(profile: profile, server: server)
+        case .childOAuth:
+          // Off the main actor, and for longer than the remote flow: this call
+          // is a `tools/call` that blocks in the child until the browser comes
+          // back, so on the main actor it would freeze the editor for as long
+          // as the user takes to read a consent screen.
+          let outcome = await Task.detached { () -> Result<Bool, Error> in
+            do {
+              return .success(
+                try ChildOAuthSession.logIn(profile: profile, server: server, mode: mode))
+            } catch { return .failure(error) }
+          }.value
+          switch outcome {
+          case .success(let signedIn):
+            childAuthState = signedIn ? .signedIn : .signedOut
+            if !signedIn {
+              authError = "\(server.displayName) did not report a signed-in account."
+            }
+            return
+          case .failure(let error): throw error
+          }
+        case .env:
+          return
+        }
         refreshAuthorization()
       } catch {
         authError = error.localizedDescription
@@ -347,9 +570,9 @@ struct ProfileEditor: View {
   }
 
   private func signOut() {
-    let profile = Profile(
-      name: name, serverID: server.id, values: [:], allowWrites: allowWrites,
-      captureMode: CallCapture.Mode(rawValue: capture))
+    let profile = draftProfile
+    let server = server
+    guard let mode = authMode else { return }
     authorizing = true
     authError = nil
     Task { @MainActor in
@@ -359,7 +582,14 @@ struct ProfileEditor: View {
       // reads as the app hanging.
       let outcome = await Task.detached { () -> Error? in
         do {
-          try RemoteOAuthSession.shared.signOut(profile: profile, server: server)
+          switch mode.kind {
+          case .oauth:
+            try RemoteOAuthSession.shared.signOut(profile: profile, server: server)
+          case .childOAuth:
+            try ChildOAuthSession.logOut(profile: profile, server: server, mode: mode)
+          case .env:
+            break
+          }
           return nil
         } catch { return error }
       }.value

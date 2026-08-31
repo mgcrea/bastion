@@ -190,9 +190,18 @@ const validate = (servers) => {
       p(`writeGate ${s.writeGate} is not in env`);
     }
 
-    for (const key of ["stateEnv", "callbackEnv"]) {
-      for (const name of s[key] ?? []) {
-        if (!envNames.has(name)) p(`${key} names ${name}, which is not in env`);
+    for (const name of s.stateEnv ?? []) {
+      if (!envNames.has(name)) p(`stateEnv names ${name}, which is not in env`);
+    }
+    // A callback entry carries a template as well as a name, because the URL is
+    // built rather than typed. `{port}` is the whole point of the field: a
+    // format without it is a constant, which is the collision the field exists
+    // to remove.
+    for (const c of s.callbackEnv ?? []) {
+      const name = c?.name;
+      if (!envNames.has(name)) p(`callbackEnv names ${name}, which is not in env`);
+      if (typeof c?.format !== "string" || !c.format.includes("{port}")) {
+        p(`callbackEnv ${name}: format must be a template containing {port}`);
       }
     }
 
@@ -233,14 +242,44 @@ const validate = (servers) => {
       if (typeof m.displayName !== "string" || !m.displayName) {
         problems.push(`${mat}: displayName is required`);
       }
-      // An OAuth mode names no variables, because there are none to name: the
-      // credential is minted by Bastion at a browser and lives in its own
-      // Keychain scope, never in `values` and never in the profile editor.
+      // Neither OAuth kind names variables, because there are none to name.
+      // What differs is custody, and each kind is refused on the transport that
+      // cannot honour it: `oauth` needs an endpoint to discover against, which a
+      // child has not got, and `childOAuth` needs a child to call tools on,
+      // which a remote server is not. Getting this wrong is not a cosmetic
+      // mistake - it renders a button that opens a browser and can never
+      // complete.
       const kind = m.kind ?? "env";
-      if (!["env", "oauth"].includes(kind)) problems.push(`${mat}: kind must be "env" or "oauth"`);
+      const TOOLS = ["loginTool", "statusTool", "logoutTool"];
+      if (!["env", "oauth", "childOAuth"].includes(kind)) {
+        problems.push(`${mat}: kind must be "env", "oauth" or "childOAuth"`);
+      }
+      if (kind !== "childOAuth") {
+        for (const key of TOOLS) {
+          if (m[key] !== undefined) problems.push(`${mat}: ${key} is childOAuth-only`);
+        }
+      }
       if (kind === "oauth") {
         if (!isRemote) problems.push(`${mat}: an OAuth mode only makes sense on a remote server`);
         if ((m.env ?? []).length) problems.push(`${mat}: an OAuth mode names no variables`);
+        continue;
+      }
+      if (kind === "childOAuth") {
+        if (isRemote) {
+          problems.push(
+            `${mat}: a childOAuth mode is driven through the child's own tools, so it needs a child`,
+          );
+        }
+        if ((m.env ?? []).length) problems.push(`${mat}: a childOAuth mode names no variables`);
+        // Named, not inferred from the id. Bastion calls these by name on a
+        // real child, so a wrong one is a button that fails at -32601 - and a
+        // convention like `<id>_auth_login` would be a guess this file is in
+        // no position to make about somebody else's tool names.
+        for (const key of TOOLS) {
+          if (typeof m[key] !== "string" || !m[key]) {
+            problems.push(`${mat}: ${key} is required on a childOAuth mode`);
+          }
+        }
         continue;
       }
       if (!Array.isArray(m.env) || m.env.length === 0) {
@@ -309,8 +348,17 @@ const swiftAuthMode = (m) =>
     `          id: ${swiftString(m.id)},`,
     `          displayName: ${swiftString(m.displayName)},`,
     `          kind: .${m.kind ?? "env"},`,
-    `          env: ${swiftStringList(m.env)}),`,
+    `          env: ${swiftStringList(m.env)},`,
+    `          loginTool: ${swiftOptionalString(m.loginTool ?? null)},`,
+    `          statusTool: ${swiftOptionalString(m.statusTool ?? null)},`,
+    `          logoutTool: ${swiftOptionalString(m.logoutTool ?? null)}),`,
   ].join("\n");
+
+const swiftCallbackVar = (c) =>
+  `.init(name: ${swiftString(c.name)}, format: ${swiftString(c.format)})`;
+
+const swiftCallbackList = (cs) =>
+  cs.length === 0 ? "[]" : `[${cs.map(swiftCallbackVar).join(", ")}]`;
 
 const swiftEnvVar = (e) =>
   [
@@ -359,7 +407,7 @@ const swiftServer = (s) => {
       ? `      authModes: [],`
       : `      authModes: [\n${s.authModes.map(swiftAuthMode).join("\n")}\n      ],`,
     `      stateEnv: ${swiftStringList(s.stateEnv)},`,
-    `      callbackEnv: ${swiftStringList(s.callbackEnv)},`,
+    `      callbackEnv: ${swiftCallbackList(s.callbackEnv)},`,
     `      env: [\n${s.env.map(swiftEnvVar).join("\n")}\n      ]),`,
   ].join("\n");
 };
@@ -431,23 +479,31 @@ const mdDetail = (s) => {
     );
   }
   if (s.authModes.length) {
-    out.push(
-      "Fill exactly one of: " +
-        s.authModes
-          .map((m) =>
-            m.kind === "oauth"
-              ? `**${m.displayName}** (no variables — Bastion holds the token)`
-              : `**${m.displayName}** (${m.env.map(mdCode).join(" + ")})`,
-          )
-          .join(", "),
-      "",
-    );
+    // Every kind gets its own sentence, because the parenthesis is the only
+    // thing telling a reader where the credential ends up - and an OAuth mode
+    // has no variables to list, so the env branch renders it as a name and a
+    // dangling dash.
+    const modeText = (m) => {
+      switch (m.kind) {
+        case "oauth":
+          return `**${m.displayName}** (no variables — Bastion holds the token)`;
+        case "childOAuth":
+          return `**${m.displayName}** (no variables — the server holds its own token)`;
+        default:
+          return `**${m.displayName}** (${m.env.map(mdCode).join(" + ")})`;
+      }
+    };
+    out.push("Satisfy exactly one of: " + s.authModes.map(modeText).join(", "), "");
   }
   if (s.stateEnv.length) {
     out.push(`Per-profile state: ${s.stateEnv.map(mdCode).join(", ")}`, "");
   }
   if (s.callbackEnv.length) {
-    out.push(`Per-profile OAuth callback: ${s.callbackEnv.map(mdCode).join(", ")}`, "");
+    out.push(
+      "Per-profile OAuth callback: " +
+        s.callbackEnv.map((c) => `${mdCode(c.name)} as ${mdCode(c.format)}`).join(", "),
+      "",
+    );
   }
   if (s.gateBypass.length) {
     out.push(

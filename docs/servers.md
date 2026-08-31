@@ -89,8 +89,15 @@ that at this layer — it is what sharing an identity means.
 
 Bastion sees the JSON-RPC frames crossing the gateway: which profile, which
 tool, and the arguments it was called with — and what came back, for a profile
-that asks for it. A credential is never recorded, and none of it is written to
-disk. It does **not** see what a server then does over the network or on the
+that asks for it. A credential is never recorded.
+
+None of it is written to disk unless you turn on the audit log in
+Settings › Activity, which keeps append-only segments under Application Support
+with a hash chain over them. That chain detects an edited, removed or truncated
+record; it is not proof against anyone who can write the file, because they can
+recompute it.
+
+It does **not** see what a server then does over the network or on the
 filesystem. A server that reads a file it was never asked about does so out of
 Bastion's sight. The Activity window is a record of requests, not a sandbox.
 
@@ -141,14 +148,14 @@ asserts both eras against a running build.
 | Server | Id | Binary | Source | Write gate | Secrets |
 | --- | --- | --- | --- | --- | --- |
 | [App Store Connect](https://github.com/mgcrea/mcp-appstore-connect) | `appstore-connect` | `appstore-connect-mcp` | `@mgcrea/mcp-appstore-connect` (npm) | `APP_STORE_CONNECT_ALLOW_WRITES` | 1 |
-| [Reddit](https://github.com/mgcrea/mcp-reddit) | `reddit` | `reddit-mcp` | `mcp-reddit` (local) | `REDDIT_ALLOW_WRITES` | 1 |
+| [Reddit](https://github.com/mgcrea/mcp-reddit) | `reddit` | `reddit-mcp` | `@mgcrea/mcp-reddit` (npm) | `REDDIT_ALLOW_WRITES` | 1 |
 | [X](https://github.com/mgcrea/mcp-x-api) | `x-api` | `x-api-mcp` | `mcp-x-api` (local) | `X_API_ALLOW_WRITES` | 2 |
 | [UniFi Protect](https://github.com/mgcrea/mcp-unifi-protect) | `unifi-protect` | `unifi-protect-mcp` | `@mgcrea/mcp-unifi-protect` (npm) | `UNIFI_PROTECT_ALLOW_WRITES` | 3 |
 | [UniFi Network](https://github.com/mgcrea/mcp-unifi-network) | `unifi-network` | `unifi-network-mcp` | `@mgcrea/mcp-unifi-network` (npm) | `UNIFI_ALLOW_WRITES` | 2 |
 | [Stripe](https://docs.stripe.com/mcp) | `stripe` | — | `https://mcp.stripe.com` (remote) | `stripe_api_write`, `create_refund`, `stripe_report` (by name) | 1 |
 | [Shopify](https://github.com/mgcrea/mcp-shopify) | `shopify` | `shopify-mcp` | `@mgcrea/mcp-shopify` (npm) | read-only | 1 |
 | OVHcloud | `ovh-api` | `ovh-api-mcp` | `@mgcrea/mcp-ovh-api` (npm) | `OVH_ALLOW_WRITES` | 4 |
-| Keycloak | `keycloak` | `keycloak-mcp` | `mcp-keycloak` (local) | `KEYCLOAK_ALLOW_WRITES` | 2 |
+| Keycloak | `keycloak` | `keycloak-mcp` | `@mgcrea/mcp-keycloak` (npm) | `KEYCLOAK_ALLOW_WRITES` | 2 |
 
 ### App Store Connect
 
@@ -169,7 +176,7 @@ task in the build order.
 | `APP_STORE_CONNECT_CONFIG` | — | — | Config file path. Bastion points this at the profile's own directory. |
 | `APP_STORE_CONNECT_ALLOW_WRITES` | — | — | Enables the mutating tools: version metadata, screenshots, submissions, pricing. |
 
-Fill exactly one of: **Inline private key** (`APP_STORE_CONNECT_P8`), **Private key file** (`APP_STORE_CONNECT_P8_PATH`)
+Satisfy exactly one of: **Inline private key** (`APP_STORE_CONNECT_P8`), **Private key file** (`APP_STORE_CONNECT_P8_PATH`)
 
 Per-profile state: `APP_STORE_CONNECT_CONFIG`
 
@@ -190,9 +197,11 @@ which are per-identity, so both must be per-profile.
 | `REDDIT_TOKEN_PATH` | — | — | Where the refresh token is stored. Per-profile, or two profiles share one login. |
 | `REDDIT_ALLOW_WRITES` | — | — | Enables posting, commenting and voting. |
 
+Satisfy exactly one of: **Sign in with Reddit** (no variables — the server holds its own token)
+
 Per-profile state: `REDDIT_TOKEN_PATH`
 
-Per-profile OAuth callback: `REDDIT_REDIRECT_URI`
+Per-profile OAuth callback: `REDDIT_REDIRECT_URI` as `http://127.0.0.1:{port}/callback`
 
 ### X
 
@@ -219,11 +228,11 @@ on this API a read has a price, so an unbounded profile is a bill.
 | `X_ADS_ENABLED` | — | — | Registers the Ads API tools. Needs a user context. |
 | `X_ADS_ALLOW_WRITES` | — | — | Enables campaign mutations. No effect without X_ADS_ENABLED. |
 
-Fill exactly one of: **App-only bearer token** (`X_API_BEARER_TOKEN`), **OAuth2 user context** (`X_API_CLIENT_ID`)
+Satisfy exactly one of: **App-only bearer token** (`X_API_BEARER_TOKEN`), **OAuth2 user context** (`X_API_CLIENT_ID`)
 
 Per-profile state: `X_API_CONFIG`, `X_API_TOKEN_FILE`
 
-Per-profile OAuth callback: `X_API_REDIRECT_URI`
+Per-profile OAuth callback: `X_API_REDIRECT_URI` as `http://127.0.0.1:{port}/callback`
 
 ### UniFi Protect
 
@@ -257,7 +266,7 @@ profiles is the leak this app exists to prevent.
 | `UNIFI_PROTECT_DEVICE_CACHE_TTL` | — | — | Camera id-to-name cache lifetime in seconds. Defaults to 60. |
 | `UNIFI_PROTECT_ALLOW_WRITES` | — | — | Registers the mutating tools: recording settings, PTZ, device configuration. |
 
-Fill exactly one of: **Cloud API key** (`UNIFI_PROTECT_API_KEY` + `UNIFI_PROTECT_CONSOLE_ID`), **Local account** (`UNIFI_PROTECT_HOST` + `UNIFI_PROTECT_USERNAME` + `UNIFI_PROTECT_PASSWORD`)
+Satisfy exactly one of: **Cloud API key** (`UNIFI_PROTECT_API_KEY` + `UNIFI_PROTECT_CONSOLE_ID`), **Local account** (`UNIFI_PROTECT_HOST` + `UNIFI_PROTECT_USERNAME` + `UNIFI_PROTECT_PASSWORD`)
 
 Per-profile state: `UNIFI_PROTECT_CONFIG`, `UNIFI_PROTECT_SESSION_FILE`, `UNIFI_PROTECT_SNAPSHOT_DIR`
 
@@ -287,7 +296,7 @@ questions, one gated for changes - is the shape this is built for.
 | `UNIFI_CONFIG` | — | — | Config file path. Bastion points this at the profile's own directory. |
 | `UNIFI_ALLOW_WRITES` | — | — | Enables the mutating tools: WLANs, port profiles, firewall rules, device adoption. |
 
-Fill exactly one of: **Console API key** (`UNIFI_HOST` + `UNIFI_API_KEY`), **Cloud API key** (`UNIFI_API_KEY` + `UNIFI_CONSOLE_ID`), **Local admin account** (`UNIFI_HOST` + `UNIFI_USERNAME` + `UNIFI_PASSWORD`)
+Satisfy exactly one of: **Console API key** (`UNIFI_HOST` + `UNIFI_API_KEY`), **Cloud API key** (`UNIFI_API_KEY` + `UNIFI_CONSOLE_ID`), **Local admin account** (`UNIFI_HOST` + `UNIFI_USERNAME` + `UNIFI_PASSWORD`)
 
 Per-profile state: `UNIFI_CONFIG`
 
@@ -334,7 +343,7 @@ write gate cannot take back a permission the key already grants.
 
 Hidden with writes off: `stripe_api_write`, `create_refund`, `stripe_report` — and any tool the server annotates as not read-only. This filters what Bastion forwards; it does not bind the server, so the credential's own scopes remain the real boundary.
 
-Fill exactly one of: **Sign in with Stripe** (no variables — Bastion holds the token), **Restricted API key** (`STRIPE_SECRET_KEY`)
+Satisfy exactly one of: **Sign in with Stripe** (no variables — Bastion holds the token), **Restricted API key** (`STRIPE_SECRET_KEY`)
 
 ### Shopify
 
@@ -372,7 +381,7 @@ exactly the sort of detail a hand-written profile form gets wrong.
 | `OVH_REGION` | — | — | Default storage region, e.g. GRA, SBG, UK. |
 | `OVH_ALLOW_WRITES` | — | — | Enables uploading, deleting and re-policying objects and containers. |
 
-Fill exactly one of: **OAuth2 service account** (`OVH_CLIENT_ID` + `OVH_CLIENT_SECRET`), **Application key triplet** (`OVH_APPLICATION_KEY` + `OVH_APPLICATION_SECRET` + `OVH_CONSUMER_KEY`), **Access token** (`OVH_ACCESS_TOKEN`)
+Satisfy exactly one of: **OAuth2 service account** (`OVH_CLIENT_ID` + `OVH_CLIENT_SECRET`), **Application key triplet** (`OVH_APPLICATION_KEY` + `OVH_APPLICATION_SECRET` + `OVH_CONSUMER_KEY`), **Access token** (`OVH_ACCESS_TOKEN`)
 
 ### Keycloak
 
@@ -393,5 +402,5 @@ instance could hold only one of them.
 | `KEYCLOAK_PASSWORD` | — | yes | Admin password. |
 | `KEYCLOAK_ALLOW_WRITES` | — | — | Enables creating and modifying realms, clients, users and roles. |
 
-Fill exactly one of: **Client credentials** (`KEYCLOAK_CLIENT_SECRET`), **Username and password** (`KEYCLOAK_USERNAME` + `KEYCLOAK_PASSWORD`)
+Satisfy exactly one of: **Client credentials** (`KEYCLOAK_CLIENT_SECRET`), **Username and password** (`KEYCLOAK_USERNAME` + `KEYCLOAK_PASSWORD`)
 <!-- </generated:servers> -->

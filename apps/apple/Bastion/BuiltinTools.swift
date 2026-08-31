@@ -483,10 +483,24 @@ enum BuiltinTools {
     if let gate = server.writeGate { out["write_gate"] = gate }
     if let docs = server.docsURL { out["docs_url"] = docs.absoluteString }
     if !server.stateEnv.isEmpty { out["state_env"] = server.stateEnv }
-    if !server.callbackEnv.isEmpty { out["callback_env"] = server.callbackEnv }
+    if !server.callbackEnv.isEmpty {
+      out["callback_env"] = server.callbackEnv.map { ["name": $0.name, "format": $0.format] }
+    }
     if !server.authModes.isEmpty {
-      out["auth_modes"] = server.authModes.map {
-        ["id": $0.id, "display_name": $0.displayName, "env": $0.env]
+      // `kind` is reported because `env: []` alone is ambiguous: it reads as a
+      // mode with nothing to fill, when it means a mode nothing CAN fill by
+      // typing. Without it the answer to "how do I credential this profile"
+      // is a blank.
+      out["auth_modes"] = server.authModes.map { mode -> [String: Any] in
+        var entry: [String: Any] = [
+          "id": mode.id, "display_name": mode.displayName, "env": mode.env,
+        ]
+        switch mode.kind {
+        case .env: entry["kind"] = "env"
+        case .oauth: entry["kind"] = "oauth"
+        case .childOAuth: entry["kind"] = "childOAuth"
+        }
+        return entry
       }
     }
     return out
@@ -706,6 +720,19 @@ enum BuiltinTools {
         "id": id, "added": true,
         "note": "'\(id)' is in your list. It is a remote server — nothing is downloaded and no "
           + "process is started. It needs a profile before any client can reach it.",
+      ]
+    }
+    // An unpublished entry has nothing to fetch either. Starting the install
+    // anyway would fail with "not published to npm yet" and leave the server
+    // sitting in `failures`, under a note telling the caller to poll for an
+    // "installed" that is never coming. Say it here instead, the way the
+    // catalog picker already does.
+    guard server.package?.distribution == .npm else {
+      return [
+        "id": id, "added": true,
+        "note": "'\(id)' is in your list, but it is not published to npm — its code cannot be "
+          + "downloaded, and it resolves only against a local checkout in a Debug build. It "
+          + "needs a profile before any client can reach it.",
       ]
     }
     Task { await ServerInstaller.shared.install(server) }

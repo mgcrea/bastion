@@ -101,8 +101,8 @@ nonisolated enum ServerLocator {
     #if DEBUG
       // The checkout wins in Debug, which is what `make dev-config` is for:
       // dogfooding against an edit you just made beats whatever npm last
-      // resolved. Four of the nine catalog entries are unpublished, so for most
-      // of v1 this is not a fallback — it is the only path that resolves.
+      // resolved. One catalog entry is still unpublished, so for that one this
+      // is not a preference but the only path that resolves.
       if let dev = try developmentBinaries(package, node: node) { return dev }
     #endif
 

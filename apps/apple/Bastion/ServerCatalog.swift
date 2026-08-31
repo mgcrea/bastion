@@ -108,14 +108,14 @@ nonisolated struct BastionServer: Identifiable, Hashable {
   /// Bastion redirects each of these into the profile's own directory.
   let stateEnv: [String]
   /// Env vars naming a **loopback OAuth callback URL**. Two profiles collide
-  /// on the default port, so Bastion assigns one per profile and rewrites the
+  /// on the default port, so Bastion assigns one per profile and builds the
   /// URL — and then has to say so, because the upstream app registration has to
   /// match and only the user can change that.
   ///
   /// Deliberately not the servers' own `*_HTTP_PORT` variables: those select a
   /// standalone HTTP transport Bastion never uses. Bastion *is* the HTTP front;
   /// it speaks stdio to the child.
-  let callbackEnv: [String]
+  let callbackEnv: [CallbackVar]
   let env: [EnvVar]
   /// Where this definition came from. Last, and defaulted, so the generated
   /// catalog below does not have to say `.catalog` nine times.
@@ -291,6 +291,17 @@ nonisolated struct BastionServer: Identifiable, Hashable {
     /// every mode that has always worked that way.
     var kind: Kind = .env
     let env: [String]
+    /// The child's own login tool. `.childOAuth` only, `nil` everywhere else.
+    ///
+    /// Named in the manifest rather than derived from `id`, because these are
+    /// somebody else's tool names and a convention guessed here would fail as a
+    /// -32601 at the moment a user clicks a button.
+    var loginTool: String? = nil
+    /// The child's own tool reporting whether it is signed in. `.childOAuth`
+    /// only. It is the *only* way Bastion knows: it never sees the token.
+    var statusTool: String? = nil
+    /// The child's own tool that forgets the stored token. `.childOAuth` only.
+    var logoutTool: String? = nil
 
     enum Kind: Hashable {
       /// The user fills the named variables and Bastion sends them.
@@ -298,7 +309,46 @@ nonisolated struct BastionServer: Identifiable, Hashable {
       /// Bastion runs an OAuth 2.1 flow and holds the token itself. Names no
       /// variables, because there are none: the token lives in its own Keychain
       /// scope and is never offered to the profile editor as an editable field.
+      ///
+      /// **Remote only.** The flow starts by discovering against an endpoint,
+      /// and a child has not got one.
       case oauth
+      /// The server logs *itself* in. Bastion drives the flow through the
+      /// server's own tools and reports what they say, and holds nothing: the
+      /// client id is the server's, the browser is opened by the child, the
+      /// callback is caught on the child's own socket, and the refresh token
+      /// stays in the child's per-profile state file.
+      ///
+      /// **Child only**, for the mirror of the reason `.oauth` is remote only:
+      /// there has to be a child to call the tools on.
+      ///
+      /// To a user this is the same button as `.oauth`. The difference is
+      /// custody, and it is worth keeping the two kinds apart precisely because
+      /// the UI cannot show it — treating them as one would put Bastion's
+      /// "no tool can read this token back" promise on a token Bastion does
+      /// not hold and cannot make that promise about.
+      case childOAuth
+    }
+
+    /// Whether this mode is satisfied by signing in rather than by typing.
+    ///
+    /// Both OAuth kinds name no variables, so every "is this profile usable"
+    /// site has to treat them alike; only the *mechanism* differs.
+    var isInteractive: Bool { kind == .oauth || kind == .childOAuth }
+  }
+
+  /// A loopback callback URL Bastion builds for one profile.
+  ///
+  /// `format` is a template over `{port}` so the path stays in the manifest,
+  /// for the same reason `HeaderSink.format` keeps `Bearer` out of a profile.
+  struct CallbackVar: Identifiable, Hashable {
+    var id: String { name }
+    let name: String
+    let format: String
+
+    /// The URL for an assigned port.
+    func url(port: Int) -> String {
+      format.replacingOccurrences(of: "{port}", with: String(port))
     }
   }
 
@@ -369,12 +419,18 @@ nonisolated enum ServerCatalog {
           id: "inline-key",
           displayName: "Inline private key",
           kind: .env,
-          env: ["APP_STORE_CONNECT_P8"]),
+          env: ["APP_STORE_CONNECT_P8"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
         .init(
           id: "key-file",
           displayName: "Private key file",
           kind: .env,
-          env: ["APP_STORE_CONNECT_P8_PATH"]),
+          env: ["APP_STORE_CONNECT_P8_PATH"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
       ],
       stateEnv: ["APP_STORE_CONNECT_CONFIG"],
       callbackEnv: [],
@@ -426,16 +482,25 @@ nonisolated enum ServerCatalog {
         .init(
           npmName: "@mgcrea/mcp-reddit",
           binName: "reddit-mcp",
-          distribution: .local,
+          distribution: .npm,
           localPath: "mcp-reddit")),
       docsURL: URL(string: "https://github.com/mgcrea/mcp-reddit"),
       dialect: .v2025_11_25,
       writeGate: "REDDIT_ALLOW_WRITES",
       writeTools: [],
       gateBypass: [],
-      authModes: [],
+      authModes: [
+        .init(
+          id: "oauth2",
+          displayName: "Sign in with Reddit",
+          kind: .childOAuth,
+          env: [],
+          loginTool: "reddit_auth_login",
+          statusTool: "reddit_auth_status",
+          logoutTool: "reddit_auth_logout"),
+      ],
       stateEnv: ["REDDIT_TOKEN_PATH"],
-      callbackEnv: ["REDDIT_REDIRECT_URI"],
+      callbackEnv: [.init(name: "REDDIT_REDIRECT_URI", format: "http://127.0.0.1:{port}/callback")],
       env: [
         .init(
           name: "REDDIT_CLIENT_ID",
@@ -495,15 +560,21 @@ nonisolated enum ServerCatalog {
           id: "bearer",
           displayName: "App-only bearer token",
           kind: .env,
-          env: ["X_API_BEARER_TOKEN"]),
+          env: ["X_API_BEARER_TOKEN"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
         .init(
           id: "oauth2",
           displayName: "OAuth2 user context",
           kind: .env,
-          env: ["X_API_CLIENT_ID"]),
+          env: ["X_API_CLIENT_ID"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
       ],
       stateEnv: ["X_API_CONFIG", "X_API_TOKEN_FILE"],
-      callbackEnv: ["X_API_REDIRECT_URI"],
+      callbackEnv: [.init(name: "X_API_REDIRECT_URI", format: "http://127.0.0.1:{port}/callback")],
       env: [
         .init(
           name: "X_API_BEARER_TOKEN",
@@ -585,12 +656,18 @@ nonisolated enum ServerCatalog {
           id: "cloud",
           displayName: "Cloud API key",
           kind: .env,
-          env: ["UNIFI_PROTECT_API_KEY", "UNIFI_PROTECT_CONSOLE_ID"]),
+          env: ["UNIFI_PROTECT_API_KEY", "UNIFI_PROTECT_CONSOLE_ID"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
         .init(
           id: "local",
           displayName: "Local account",
           kind: .env,
-          env: ["UNIFI_PROTECT_HOST", "UNIFI_PROTECT_USERNAME", "UNIFI_PROTECT_PASSWORD"]),
+          env: ["UNIFI_PROTECT_HOST", "UNIFI_PROTECT_USERNAME", "UNIFI_PROTECT_PASSWORD"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
       ],
       stateEnv: ["UNIFI_PROTECT_CONFIG", "UNIFI_PROTECT_SESSION_FILE", "UNIFI_PROTECT_SNAPSHOT_DIR"],
       callbackEnv: [],
@@ -694,17 +771,26 @@ nonisolated enum ServerCatalog {
           id: "console",
           displayName: "Console API key",
           kind: .env,
-          env: ["UNIFI_HOST", "UNIFI_API_KEY"]),
+          env: ["UNIFI_HOST", "UNIFI_API_KEY"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
         .init(
           id: "cloud",
           displayName: "Cloud API key",
           kind: .env,
-          env: ["UNIFI_API_KEY", "UNIFI_CONSOLE_ID"]),
+          env: ["UNIFI_API_KEY", "UNIFI_CONSOLE_ID"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
         .init(
           id: "legacy",
           displayName: "Local admin account",
           kind: .env,
-          env: ["UNIFI_HOST", "UNIFI_USERNAME", "UNIFI_PASSWORD"]),
+          env: ["UNIFI_HOST", "UNIFI_USERNAME", "UNIFI_PASSWORD"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
       ],
       stateEnv: ["UNIFI_CONFIG"],
       callbackEnv: [],
@@ -830,12 +916,18 @@ nonisolated enum ServerCatalog {
           id: "oauth2",
           displayName: "Sign in with Stripe",
           kind: .oauth,
-          env: []),
+          env: [],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
         .init(
           id: "bearer",
           displayName: "Restricted API key",
           kind: .env,
-          env: ["STRIPE_SECRET_KEY"]),
+          env: ["STRIPE_SECRET_KEY"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
       ],
       stateEnv: [],
       callbackEnv: [],
@@ -925,17 +1017,26 @@ nonisolated enum ServerCatalog {
           id: "oauth2",
           displayName: "OAuth2 service account",
           kind: .env,
-          env: ["OVH_CLIENT_ID", "OVH_CLIENT_SECRET"]),
+          env: ["OVH_CLIENT_ID", "OVH_CLIENT_SECRET"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
         .init(
           id: "signature",
           displayName: "Application key triplet",
           kind: .env,
-          env: ["OVH_APPLICATION_KEY", "OVH_APPLICATION_SECRET", "OVH_CONSUMER_KEY"]),
+          env: ["OVH_APPLICATION_KEY", "OVH_APPLICATION_SECRET", "OVH_CONSUMER_KEY"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
         .init(
           id: "accessToken",
           displayName: "Access token",
           kind: .env,
-          env: ["OVH_ACCESS_TOKEN"]),
+          env: ["OVH_ACCESS_TOKEN"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
       ],
       stateEnv: [],
       callbackEnv: [],
@@ -1002,7 +1103,7 @@ nonisolated enum ServerCatalog {
         .init(
           npmName: "@mgcrea/mcp-keycloak",
           binName: "keycloak-mcp",
-          distribution: .local,
+          distribution: .npm,
           localPath: "mcp-keycloak")),
       docsURL: nil,
       dialect: .v2025_11_25,
@@ -1014,12 +1115,18 @@ nonisolated enum ServerCatalog {
           id: "client_credentials",
           displayName: "Client credentials",
           kind: .env,
-          env: ["KEYCLOAK_CLIENT_SECRET"]),
+          env: ["KEYCLOAK_CLIENT_SECRET"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
         .init(
           id: "password",
           displayName: "Username and password",
           kind: .env,
-          env: ["KEYCLOAK_USERNAME", "KEYCLOAK_PASSWORD"]),
+          env: ["KEYCLOAK_USERNAME", "KEYCLOAK_PASSWORD"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
       ],
       stateEnv: [],
       callbackEnv: [],
