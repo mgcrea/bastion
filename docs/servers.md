@@ -38,16 +38,48 @@ arriving over the wire can name a package, a path or an argv.
 the rule above does not already buy — the person choosing was always the user —
 and it cost Bastion the ability to run any server mgcrea had not written.
 
-A custom server is added by **npm package**, not by command line. It supplies a
-package, a bin name and the variables it reads; Bastion installs it with the
-embedded runtime and spawns it with an environment Bastion built. There is no
-field for a path and no field for an argv, which is what keeps "add a server"
-from becoming "run this command".
+A custom server is added by **npm package** or by **https URL**, never by a
+command line. A package entry supplies a package, a bin name and the variables
+it reads; Bastion installs it with the embedded runtime and spawns it with an
+environment Bastion built. There is no field for a path and no field for an
+argv, which is what keeps "add a server" from becoming "run this command".
+
+A **remote** entry supplies a URL instead, and that is the same rule meeting a
+second transport. A URL in the list is a `fetch(whatever_you_typed)` primitive
+pointed at whatever it resolves to, so the KEPT rule above needs a second
+clause: nothing arriving over the wire can name an endpoint either, and the
+endpoints the list may hold are constrained. `RemoteEndpoint` refuses anything
+but https to a public host — loopback, private, link-local and the cloud
+metadata address included, and Bastion's own gateway most of all, since a
+server pointed back at `127.0.0.1:8720` would be a way to replay one client's
+bearer token against every other profile. It is checked on every request rather
+than once when the entry is added, because a name that passed yesterday can
+resolve somewhere else today. `make remote-check` asserts all of it.
 
 What Bastion does not do is curate. That problem is solved and free elsewhere —
 Docker MCP Toolkit ships hundreds of curated servers, Anthropic ships MCPB
 double-click install and an official registry. The part worth building is the
 runtime underneath: supervision, identity, and a record of what was called.
+
+## What a remote server keeps, and what it gives up
+
+Bastion's headline claim is one process per server instead of one per editor.
+A remote server has no process, so that claim simply does not apply to it —
+and it is worth saying which of the reasons for a gateway survive:
+
+| | Remote server |
+| --- | --- |
+| One process, N clients | **Gone.** There was never a process to share. |
+| Credentials in the Keychain | **Stronger.** The alternative is a key in plaintext in every repo's `.mcp.json`, which is the problem this app opens with. |
+| Every tool call recorded | **Unchanged.** The same JSON-RPC frames cross the same gateway. |
+| Per-profile identity | **Kept.** `prod/stripe` beside `connect/stripe` is two identities, one app. |
+| Per-profile write gate | **Weakened**, and by name only — see the Write gate note above. |
+
+One thing is genuinely worse than running your own copy. **The upstream rate
+limit becomes a shared resource.** With one process per client each client spent
+its own budget; behind one profile they spend one, so a client in a loop can
+exhaust a limit for every other client of the same profile. There is no fix for
+that at this layer — it is what sharing an identity means.
 
 ## What the audit log can and cannot see
 
@@ -87,7 +119,17 @@ asserts both eras against a running build.
   is not published yet and resolves only against a checkout named by `dev.json`
   in a Debug build. Adding a `local` entry works; installing it reports "not
   published", which is the honest answer and better than a spawn that fails
-  later.
+  later. `remote` is somebody else's server at an https URL: nothing is
+  installed, no process is started, and the Binary column is empty because there
+  is none.
+- **Write gate** on a remote entry names **tools**, not a variable. A child gets
+  an environment variable that switches its destructive tools off inside the
+  server; a remote server has no environment, so the gate moves to the only
+  thing Bastion controls — what it forwards. The named tools are absent from
+  `tools/list` with writes off, as is any tool the server itself annotates as
+  not read-only. **This filters Bastion, not the server:** anyone holding the
+  credential can call the same API directly, and the credential's own scopes
+  remain the real boundary.
 
 <!-- <generated:servers> generated from servers.json by `make servers` — do not edit by hand -->
 
@@ -98,7 +140,7 @@ asserts both eras against a running build.
 | [X](https://github.com/mgcrea/mcp-x-api) | `x-api` | `x-api-mcp` | `mcp-x-api` (local) | `X_API_ALLOW_WRITES` | 2 |
 | [UniFi Protect](https://github.com/mgcrea/mcp-unifi-protect) | `unifi-protect` | `unifi-protect-mcp` | `@mgcrea/mcp-unifi-protect` (npm) | `UNIFI_PROTECT_ALLOW_WRITES` | 3 |
 | [UniFi Network](https://github.com/mgcrea/mcp-unifi-network) | `unifi-network` | `unifi-network-mcp` | `@mgcrea/mcp-unifi-network` (npm) | `UNIFI_ALLOW_WRITES` | 2 |
-| Stripe | `stripe` | `stripe-mcp` | `mcp-stripe` (local) | `STRIPE_ALLOW_WRITES` | 1 |
+| [Stripe](https://docs.stripe.com/mcp) | `stripe` | — | `https://mcp.stripe.com` (remote) | `stripe_api_write`, `create_refund`, `stripe_report` (by name) | 1 |
 | [Shopify](https://github.com/mgcrea/mcp-shopify) | `shopify` | `shopify-mcp` | `@mgcrea/mcp-shopify` (npm) | read-only | 1 |
 | OVHcloud | `ovh-api` | `ovh-api-mcp` | `@mgcrea/mcp-ovh-api` (npm) | `OVH_ALLOW_WRITES` | 4 |
 | Keycloak | `keycloak` | `keycloak-mcp` | `mcp-keycloak` (local) | `KEYCLOAK_ALLOW_WRITES` | 2 |
@@ -246,26 +288,48 @@ Per-profile state: `UNIFI_CONFIG`
 
 ### Stripe
 
-Stripe API: customers, subscriptions, invoices, charges, payouts and balance.
+Stripe's own remote MCP server: the API surface, plus documentation and knowledge-base search.
 
-PLACEHOLDER. @mgcrea/mcp-stripe is not published and there is no checkout
-for it yet, so installing this entry fails with 'not published'. It is in
-the catalog because the catalog is a starting point rather than a promise
-about what is installed - which is exactly the distinction this file lost
-when it was a closed list.
+REMOTE. This entry used to be a placeholder for @mgcrea/mcp-stripe, a
+package that was never written and never published. Stripe operates a
+real MCP server, so Bastion fronts that one instead: the part worth
+building here was never a Stripe client, it was the runtime underneath
+one - identity, credentials in the Keychain, and a record of every call.
+
+The id is unchanged on purpose. Anyone who made a profile against the
+placeholder keeps it.
+
+DIALECT MEASURED 2026-08-31, and it is the oldest in this file. A live
+handshake negotiates 2025-03-26 - two revisions behind the default an
+unmeasured entry would have carried, which is exactly why the default is
+never left in place. serverInfo reports stripe-mcp 1.0.0.
+
+WRITE TOOLS ARE TWO LISTS, and the measurement is why. Of the four tools
+hidden with writes off, only stripe_api_write is named below; the other
+three - stripe_analytics, stripe_implementation_planner and
+send_stripe_mcp_feedback - were caught solely by Stripe's own
+readOnlyHint:false annotation. A hand-written denylist would have missed
+three quarters of them, so the annotation is not a belt-and-braces extra
+here, it is the half that works.
+
+create_refund and stripe_report are named below and were NOT offered by
+the account this was measured against. Kept rather than deleted: they
+are in Stripe's published tool table, an account that exposes them wants
+them gated, and a name that is never offered costs nothing.
 
 Money moves through this one, so the gate is not a formality. Prefer a
-restricted key scoped to reads and let the profile stay gated off.
+restricted key scoped to reads and let the profile stay gated off - the
+write gate cannot take back a permission the key already grants.
 
-| Variable | Required | Secret | Meaning |
-| --- | --- | --- | --- |
-| `STRIPE_SECRET_KEY` | yes | yes | Restricted or secret API key. A restricted key is the right one here: the write gate cannot take back a permission the key already grants. |
-| `STRIPE_ACCOUNT_ID` | — | — | Connected account to act on behalf of, sent as Stripe-Account. |
-| `STRIPE_API_VERSION` | — | — | Pin the API version instead of using the account default. |
-| `STRIPE_CONFIG` | — | — | Config file path. Bastion points this at the profile's own directory. |
-| `STRIPE_ALLOW_WRITES` | — | — | Enables the mutating tools: refunds, subscription changes, invoice actions. |
+| Variable | Required | Secret | Sent as | Meaning |
+| --- | --- | --- | --- | --- |
+| `STRIPE_SECRET_KEY` | — | yes | `Authorization: Bearer {value}` | Restricted API key, sent as the bearer token. A restricted key is the right one here: the write gate filters what Bastion forwards, it cannot take back a permission the key already grants. |
+| `STRIPE_ACCOUNT_ID` | — | — | `Stripe-Account: {value}` | Connected account to act on behalf of, sent as Stripe-Account. Stripe does not support OAuth in this mode, so a profile using it must authenticate with a restricted key. |
+| `STRIPE_API_VERSION` | — | — | `Stripe-Version: {value}` | Pin the API version instead of using the account default, sent as Stripe-Version. |
 
-Per-profile state: `STRIPE_CONFIG`
+Hidden with writes off: `stripe_api_write`, `create_refund`, `stripe_report` — and any tool the server annotates as not read-only. This filters what Bastion forwards; it does not bind the server, so the credential's own scopes remain the real boundary.
+
+Fill exactly one of: **Sign in with Stripe** (no variables — Bastion holds the token), **Restricted API key** (`STRIPE_SECRET_KEY`)
 
 ### Shopify
 

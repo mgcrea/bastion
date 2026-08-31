@@ -13,6 +13,7 @@ enum LocateError: LocalizedError {
   case noRuntime
   case devConfigInvalid(String)
   case builtin
+  case remote(server: String)
 
   var errorDescription: String? {
     switch self {
@@ -20,6 +21,8 @@ enum LocateError: LocalizedError {
       return "the \(server) server is not installed — install it in Bastion"
     case .builtin:
       return "Bastion's own server runs in-process and has no code to locate"
+    case .remote(let server):
+      return "\(server) is a remote server — there is nothing to install and no process to start"
     case .noRuntime:
       return "this build has no embedded node runtime"
     case .devConfigInvalid(let detail):
@@ -84,10 +87,15 @@ nonisolated enum ServerLocator {
   /// the user's credentials already in the environment. What changed is who
   /// writes the list, not how a request selects from it.
   static func locate(_ server: BastionServer) throws -> ServerBinaries {
-    // Belt and braces. `Supervisor.call` branches on `.builtin` before it can
-    // reach a spawn, so this is unreachable today — and it is the sentence
-    // worth having if that branch is ever moved.
-    guard server.origin != .builtin else { throw LocateError.builtin }
+    // Belt and braces. `Supervisor.call` branches on the transport before it
+    // can reach a spawn, so neither of these is reachable today — and they are
+    // the sentences worth having if that branch is ever moved.
+    switch server.transport {
+    case .inProcess: throw LocateError.builtin
+    case .remote: throw LocateError.remote(server: server.id)
+    case .child: break
+    }
+    guard let package = server.package else { throw LocateError.builtin }
     guard let node = nodeExecutable() else { throw LocateError.noRuntime }
 
     #if DEBUG
@@ -95,7 +103,7 @@ nonisolated enum ServerLocator {
       // dogfooding against an edit you just made beats whatever npm last
       // resolved. Four of the nine catalog entries are unpublished, so for most
       // of v1 this is not a fallback — it is the only path that resolves.
-      if let dev = try developmentBinaries(server, node: node) { return dev }
+      if let dev = try developmentBinaries(package, node: node) { return dev }
     #endif
 
     guard let script = ServerInstaller.entryScript(of: server) else {
@@ -130,13 +138,13 @@ nonisolated enum ServerLocator {
       return DevConfig(node: node, repo: repo)
     }
 
-    private static func developmentBinaries(_ server: BastionServer, node: URL) throws
+    private static func developmentBinaries(_ package: BastionServer.Package, node: URL) throws
       -> ServerBinaries?
     {
       guard let dev = try developmentConfig() else { return nil }
 
       let script = URL(fileURLWithPath: dev.repo)
-        .appendingPathComponent(server.localPath)
+        .appendingPathComponent(package.localPath)
         .appendingPathComponent("dist/cli.js")
 
       // Absent, not fatal. A custom server the developer added by package name

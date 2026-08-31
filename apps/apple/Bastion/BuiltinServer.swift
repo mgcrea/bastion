@@ -54,18 +54,17 @@ nonisolated enum BuiltinServer {
     id: id,
     displayName: "Bastion",
     summary: "Bastion itself: servers, profiles, credentials, clients, and what is running.",
-    // Empty, not a plausible-looking package name. Nothing installs this, and
-    // an installer path that slips past its guard should fail visibly rather
-    // than go looking for `@mgcrea/mcp-bastion` on the registry.
-    npmName: "",
-    binName: "",
-    distribution: .npm,
-    localPath: "",
+    // Not an empty package name pretending to be one. There is nothing to
+    // install and nothing to spawn, and saying that in the type means an
+    // installer path that slips past its guard cannot go looking for
+    // `@mgcrea/mcp-bastion` on the registry — `server.package` is nil.
+    transport: .inProcess,
     docsURL: URL(string: "https://github.com/mgcrea/bastion"),
     // The only modern server in the list, because it is the only one Bastion
     // wrote. Nothing in `Dialect` has to translate for it.
     dialect: .v2026_07_28,
     writeGate: writeGate,
+    writeTools: [],
     gateBypass: [],
     authModes: [],
     stateEnv: [],

@@ -193,21 +193,40 @@ enum BuiltinTools {
 
     Declaration(
       "add_custom_server", title: "Add a custom server",
-      "Add any MCP server published to npm. Bastion runs it by package and bin name — never by "
-        + "command line — so there is no way to specify arguments or a path.",
+      "Add any MCP server, as either an npm package or a remote https endpoint. Give npm_name "
+        + "for one Bastion runs, or url for one somebody else runs — never both. Bastion runs a "
+        + "package by package and bin name, never by command line, so there is no way to specify "
+        + "arguments or a path; and a url must be https to a public host, so it cannot be pointed "
+        + "at this machine or this network.",
       properties: [
         "id": schema("string", "Kebab-case. Becomes a URL path segment and a directory name."),
         "display_name": schema("string", "Shown in the window."),
         "summary": schema("string", "One line describing what it does."),
-        "npm_name": schema("string", "The npm package, e.g. '@scope/mcp-thing'."),
+        "npm_name": schema(
+          "string", "The npm package, e.g. '@scope/mcp-thing'. Omit for a remote server."),
         "bin_name": schema("string", "The bin entry to run. Optional; resolved from the package."),
+        "url": schema(
+          "string",
+          "For a REMOTE server: the https endpoint, e.g. 'https://mcp.example.com'. Nothing is "
+            + "installed and no process is started. Every variable then needs a header, because "
+            + "there is no environment to put it in."),
         "docs_url": schema("string", "Optional documentation URL."),
         "dialect": schema(
           "string",
           "Optional MCP revision the server speaks. Defaults to 2025-11-25, which is what an SDK "
             + "built this year negotiates."),
         "write_gate": schema(
-          "string", "Optional env var that turns the server's destructive tools on."),
+          "string",
+          "Optional env var that turns the server's destructive tools on. Package servers only — "
+            + "a remote server has no environment."),
+        "write_tools": [
+          "type": "array", "items": ["type": "string"],
+          "description":
+            "REMOTE servers only, and the counterpart to write_gate: tool names Bastion will not "
+            + "forward while the profile's write gate is off. A filter over what Bastion sends, "
+            + "never a promise about what the server will refuse — the credential's own scopes "
+            + "are the real limit.",
+        ],
         "state_env": [
           "type": "array", "items": ["type": "string"],
           "description":
@@ -225,12 +244,27 @@ enum BuiltinTools {
               "secret": schema(
                 "boolean", "Whether it holds a credential. Secrets go to the Keychain."),
               "description": schema("string", "What it is, for whoever fills it in."),
+              "header": [
+                "type": "object",
+                "description":
+                  "REMOTE servers only, and required for each of their variables: the request "
+                  + "header this value becomes. A variable with no header would be collected, "
+                  + "stored and then never sent.",
+                "properties": [
+                  "name": schema("string", "Header name, e.g. 'Authorization'."),
+                  "format": schema(
+                    "string",
+                    "Template containing {value}, e.g. 'Bearer {value}', so the profile holds the "
+                      + "credential rather than the scheme."),
+                ],
+                "required": ["name", "format"],
+              ],
             ],
             "required": ["name"],
           ],
         ],
       ],
-      required: ["id", "display_name", "npm_name", "env"], mutates: true),
+      required: ["id", "display_name", "env"], mutates: true),
 
     Declaration(
       "remove_server", title: "Remove a server",
@@ -408,12 +442,31 @@ enum BuiltinTools {
       },
       "profiles": ProfileStore.shared.profiles.filter { $0.serverID == server.id }.map(\.name),
     ]
-    if server.origin == .builtin {
+    // The transport, said in whatever terms make sense for it. An agent asking
+    // about a remote server wants the endpoint and the fact that there is
+    // nothing to install; npm fields would be four nulls it has to interpret.
+    switch server.transport {
+    case .inProcess:
+      out["transport"] = "in-process"
       out["note"] = "Bastion itself. Runs in-process, installs nothing, and cannot be removed."
-    } else {
-      out["npm_name"] = server.npmName
-      out["bin_name"] = server.binName
-      out["published"] = server.distribution == .npm
+    case .remote(let endpoint):
+      out["transport"] = "remote"
+      out["url"] = endpoint.absoluteString
+      out["note"] =
+        "Somebody else runs this one. Bastion relays to it with the profile's credential, "
+        + "records every call, and installs nothing. There is no process to supervise."
+      if !server.writeTools.isEmpty {
+        out["write_tools"] = server.writeTools
+        out["write_tools_note"] =
+          "Hidden from tools/list while the profile's write gate is off. This filters what "
+          + "Bastion forwards; it does not bind the server, so the credential's own scopes "
+          + "remain the real boundary."
+      }
+    case .child(let package):
+      out["transport"] = "child"
+      out["npm_name"] = package.npmName
+      out["bin_name"] = package.binName
+      out["published"] = package.distribution == .npm
       out["installed"] = ServerInstaller.isInstalled(server)
       if let version = ServerInstaller.installedVersion(of: server) {
         out["installed_version"] = version
@@ -432,11 +485,22 @@ enum BuiltinTools {
   }
 
   private static func listCatalog() -> Any {
-    ServerStore.shared.available.map {
-      [
-        "id": $0.id, "display_name": $0.displayName, "summary": $0.summary,
-        "npm_name": $0.npmName, "published": $0.distribution == .npm,
+    ServerStore.shared.available.map { server -> [String: Any] in
+      var row: [String: Any] = [
+        "id": server.id, "display_name": server.displayName, "summary": server.summary,
       ]
+      switch server.transport {
+      case .child(let package):
+        row["transport"] = "child"
+        row["npm_name"] = package.npmName
+        row["published"] = package.distribution == .npm
+      case .remote(let endpoint):
+        row["transport"] = "remote"
+        row["url"] = endpoint.absoluteString
+      case .inProcess:
+        row["transport"] = "in-process"
+      }
+      return row
     }
   }
 
@@ -444,9 +508,16 @@ enum BuiltinTools {
   ///
   /// `secrets_set` reports which secret variables have something in the
   /// Keychain, because "is it configured" is the question worth answering and
-  /// it can be answered without reading the value back out.
+  /// it is answered from account names alone — nothing here decrypts, so
+  /// listing profiles cannot raise a Keychain prompt.
+  ///
+  /// One `accounts` query for the whole call, not one per profile and certainly
+  /// not one per variable: this used to read every secret of every profile
+  /// three times over, which on a dozen items meant dozens of ACL checks for a
+  /// question none of them had to answer.
   private static func listProfiles(_ arguments: [String: Any]) -> Any {
     let filter = arguments["server"] as? String
+    let accounts = CredentialStore.accounts(.profile)
     return ProfileStore.shared.profiles
       .filter { filter == nil || $0.serverID == filter }
       .map { profile -> [String: Any] in
@@ -458,18 +529,13 @@ enum BuiltinTools {
           "values": profile.values,
         ]
         guard let server = ServerStore.shared.server(id: profile.serverID) else { return row }
+        let stored = CredentialStore.storedVariables(
+          in: accounts, profile: profile.name, server: profile.serverID)
         let secrets = server.env.filter(\.isSecret).map(\.name)
-        row["secrets_set"] = secrets.filter { name in
-          let account = CredentialStore.account(
-            profile: profile.name, server: profile.serverID, variable: name)
-          return !(CredentialStore.read(.profile, account: account) ?? "").isEmpty
-        }
-        row["secrets_unset"] = secrets.filter { name in
-          let account = CredentialStore.account(
-            profile: profile.name, server: profile.serverID, variable: name)
-          return (CredentialStore.read(.profile, account: account) ?? "").isEmpty
-        }
-        let missing = ProfileEnvironment.missing(for: profile, server: server)
+        row["secrets_set"] = secrets.filter { stored.contains($0) }
+        row["secrets_unset"] = secrets.filter { !stored.contains($0) }
+        let present = ProfileEnvironment.present(for: profile, server: server, stored: stored)
+        let missing = ProfileEnvironment.missing(for: profile, server: server, present: present)
         if !missing.isEmpty { row["missing"] = missing }
         return row
       }
@@ -508,13 +574,19 @@ enum BuiltinTools {
       "licence": entitlement,
       "protocol_versions": Dialect.supportedVersions.map(\.rawValue),
       "running": Activity.shared.instances.map { instance in
-        [
+        var row: [String: Any] = [
           "id": instance.id, "profile": instance.profile, "server": instance.server,
-          "pid": Int(instance.pid), "started_at": ISO8601DateFormatter().string(from: instance.startedAt),
+          "started_at": ISO8601DateFormatter().string(from: instance.startedAt),
           "allow_writes": instance.allowWrites, "calls": instance.calls,
           "restarts": instance.restarts,
           "clients": instance.clients.map { ["id": $0.id, "calls": $0.calls] },
-        ] as [String: Any]
+        ]
+        // A pid or a host, never a zero standing in for one. An agent reading
+        // `"pid": 0` would have to know that means "no process"; a missing key
+        // beside `"host"` says it.
+        if let pid = instance.pid { row["pid"] = Int(pid) }
+        if let host = instance.remoteHost { row["host"] = host }
+        return row
       },
     ]
   }
@@ -562,6 +634,16 @@ enum BuiltinTools {
     // tens of seconds, which is longer than a tool call should hold a
     // connection open for. The list entry exists either way, which is what
     // makes a failure retryable rather than a dead end.
+    // A remote catalog entry has nothing to download, so telling an agent to
+    // poll for "installed" would be telling it to wait for an event that never
+    // comes. `install_server` still names the step it performed: adding it.
+    guard server.package != nil else {
+      return [
+        "id": id, "added": true,
+        "note": "'\(id)' is in your list. It is a remote server — nothing is downloaded and no "
+          + "process is started. It needs a profile before any client can reach it.",
+      ]
+    }
     Task { await ServerInstaller.shared.install(server) }
     return [
       "id": id, "added": true,
@@ -572,7 +654,23 @@ enum BuiltinTools {
 
   private static func addCustomServer(_ arguments: [String: Any]) throws -> Any {
     let id = try string(arguments, "id")
-    let npmName = try string(arguments, "npm_name")
+    // A package or an endpoint, never both and never neither. Refused here with
+    // the sentence rather than defaulted, because guessing which one was meant
+    // is guessing whether to run code on this machine or send a credential off
+    // it — the two things this argument chooses between.
+    let npmName = arguments["npm_name"] as? String
+    let url = arguments["url"] as? String
+    switch (npmName?.isEmpty == false, url?.isEmpty == false) {
+    case (false, false):
+      throw ToolError.badArgument(
+        name: "npm_name", expected: "a package name, or a url for a remote server")
+    case (true, true):
+      throw ToolError.badArgument(
+        name: "url", expected: "either npm_name or url, not both — they are different servers")
+    default: break
+    }
+    let isRemote = url?.isEmpty == false
+
     guard let rawEnv = arguments["env"] as? [[String: Any]], !rawEnv.isEmpty else {
       throw ToolError.badArgument(name: "env", expected: "a non-empty array of variable objects")
     }
@@ -585,35 +683,48 @@ enum BuiltinTools {
         name: name,
         required: entry["required"] as? Bool ?? false,
         secret: entry["secret"] as? Bool ?? false,
-        description: entry["description"] as? String ?? "")
+        description: entry["description"] as? String ?? "",
+        header: (entry["header"] as? [String: Any]).flatMap { raw in
+          guard let name = raw["name"] as? String, let format = raw["format"] as? String
+          else { return nil }
+          return .init(name: name, format: format)
+        })
     }
 
     let definition = ServerStore.Definition(
       displayName: arguments["display_name"] as? String ?? id,
       summary: arguments["summary"] as? String ?? "",
-      npmName: npmName,
+      npmName: isRemote ? nil : npmName,
       // A package is free to put its entry point anywhere, and `ServerInstaller`
       // resolves it from the installed package.json when this is empty. Guessing
       // `<id>-mcp` is a catalog convention, not a fact about somebody else's
       // package.
-      binName: arguments["bin_name"] as? String ?? "",
+      binName: isRemote ? nil : (arguments["bin_name"] as? String ?? ""),
+      url: url,
       docsUrl: arguments["docs_url"] as? String,
       dialect: arguments["dialect"] as? String ?? BastionServer.Dialect.v2025_11_25.rawValue,
-      writeGate: arguments["write_gate"] as? String,
-      stateEnv: arguments["state_env"] as? [String] ?? [],
+      writeGate: isRemote ? nil : arguments["write_gate"] as? String,
+      writeTools: isRemote ? arguments["write_tools"] as? [String] : nil,
+      stateEnv: isRemote ? [] : (arguments["state_env"] as? [String] ?? []),
       env: env)
 
     try ServerStore.shared.upsert(
       custom: id, definition: definition,
       replacing: ServerStore.shared.contains(id) ? id : nil)
 
-    if let server = ServerStore.shared.server(id: id) {
+    // Nothing to fetch for a remote server, and `install` would return silently
+    // — but the NOTE is the part that matters: telling an agent to poll for
+    // "installed" on a server that never installs is telling it to wait forever.
+    if !isRemote, let server = ServerStore.shared.server(id: id) {
       Task { await ServerInstaller.shared.install(server) }
     }
     return [
       "id": id, "added": true,
-      "note": "'\(id)' is in your list and \(npmName) is downloading. It needs a profile before "
-        + "any client can reach it.",
+      "note": isRemote
+        ? "'\(id)' is in your list and points at \(url ?? ""). Nothing is downloaded and no "
+          + "process is started. It needs a profile before any client can reach it."
+        : "'\(id)' is in your list and \(npmName ?? id) is downloading. It needs a profile "
+          + "before any client can reach it.",
     ]
   }
 

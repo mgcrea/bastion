@@ -67,10 +67,14 @@ final class ServerInstaller {
   /// purpose. Measured, not assumed: `npm install zod@latest --dry-run` under
   /// `min-release-age=30` plans `4.5.4 => 4.4.3`.
   enum Availability: Equatable {
-    /// npm plans no change: what is installed is what it would install.
+    /// npm plans nothing at all — not one package in the closure would move.
     case upToDate
     case newer(String)
     case pinnedOlder(String)
+    /// The server package is current and the tree around it is not what npm
+    /// would build: dependencies missing, or sitting outside their ranges. The
+    /// count is packages.
+    case needsRepair(Int)
     case failed(String)
   }
 
@@ -92,11 +96,11 @@ final class ServerInstaller {
   /// its `npmName` is empty and an unguarded walk would end up asking whether
   /// `servers/bastion/node_modules/package.json` exists.
   nonisolated static func packageDirectory(of server: BastionServer) -> URL? {
-    guard server.origin != .builtin, !server.npmName.isEmpty else { return nil }
+    guard let package = server.package, !package.npmName.isEmpty else { return nil }
     var url = directory(of: server.id).appendingPathComponent("node_modules", isDirectory: true)
     // A scoped name is two path components on disk. Splitting rather than
     // appending the whole string keeps that true without a special case.
-    for component in server.npmName.split(separator: "/") {
+    for component in package.npmName.split(separator: "/") {
       url = url.appendingPathComponent(String(component), isDirectory: true)
     }
     guard FileManager.default.fileExists(atPath: url.appendingPathComponent("package.json").path)
@@ -117,6 +121,73 @@ final class ServerInstaller {
     return json["version"] as? String
   }
 
+  /// The newest MCP protocol the *installed code* can speak, with the SDK
+  /// version that decides it — or `nil` when the package does not ship one.
+  ///
+  /// Read off disk, for the same reason `installedVersion` is: the alternative
+  /// is a claim about a directory this app does not watch. `server.dialect` is
+  /// the *catalog's* claim, written by hand in `servers.json` and generated
+  /// into `ServerCatalog`; an npm update cannot move it, so after an update the
+  /// two can disagree and only this one is about the code that is actually
+  /// there.
+  ///
+  /// Off disk rather than over the wire, and that is the interesting choice.
+  /// The wire cannot answer this question today: `Supervisor.performHandshake`
+  /// asks the child for `server.dialect`, and the SDK's `initialize` echoes any
+  /// version in its `SUPPORTED_PROTOCOL_VERSIONS` back — so a child that has
+  /// gained a newer protocol still answers with the old one it was asked for,
+  /// and the drift warning in `ServerCheck` never fires. Measuring it properly
+  /// would mean asking for a version no child supports, which changes what
+  /// every spawn negotiates; both `ServerCheck` and `ToolProbe` are built on
+  /// reusing the live supervised child rather than probing a private one, and
+  /// this file has no business changing that from underneath them. The SDK's
+  /// own constant is the same fact, sitting in a file, costing nothing.
+  nonisolated static func protocolCeiling(of server: BastionServer) -> (protocol: String, sdk: String)? {
+    guard server.origin != .builtin else { return nil }
+    // Hoisted to the install prefix in practice — one prefix per server means
+    // nothing competes for that slot — but a package that pins its own copy
+    // nests it, and then the nested one is what runs.
+    let candidates = [
+      packageDirectory(of: server)?.appendingPathComponent("node_modules", isDirectory: true),
+      directory(of: server.id).appendingPathComponent("node_modules", isDirectory: true),
+    ].compactMap { $0?.appendingPathComponent("@modelcontextprotocol/sdk", isDirectory: true) }
+
+    for sdk in candidates {
+      guard
+        let manifest = try? Data(contentsOf: sdk.appendingPathComponent("package.json")),
+        let json = try? JSONSerialization.jsonObject(with: manifest) as? [String: Any],
+        let version = json["version"] as? String
+      else { continue }
+      for build in ["dist/esm/types.js", "dist/cjs/types.js"] {
+        guard let latest = latestProtocol(in: sdk.appendingPathComponent(build)) else { continue }
+        return (latest, version)
+      }
+    }
+    return nil
+  }
+
+  /// `LATEST_PROTOCOL_VERSION` out of one of the SDK's built files.
+  ///
+  /// Only the head of the file is read. This runs inside a SwiftUI body, the
+  /// file is 80KB of bundled Zod schemas, and the constant is declared in the
+  /// first few lines of both builds — paying for the rest on every redraw would
+  /// be paying for nothing.
+  private nonisolated static func latestProtocol(in file: URL) -> String? {
+    guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
+    defer { try? handle.close() }
+    guard let head = try? handle.read(upToCount: 16 * 1024) else { return nil }
+
+    let text = String(decoding: head, as: UTF8.self)
+    guard
+      let declaration = text.range(
+        of: "LATEST_PROTOCOL_VERSION[^0-9]{1,32}[0-9]{4}-[0-9]{2}-[0-9]{2}",
+        options: .regularExpression),
+      let date = text[declaration].range(
+        of: "[0-9]{4}-[0-9]{2}-[0-9]{2}", options: .regularExpression)
+    else { return nil }
+    return String(text[declaration][date])
+  }
+
   /// The script to hand to node.
   ///
   /// Taken from the package's own `bin` map, not assumed to be `dist/cli.js`.
@@ -124,7 +195,7 @@ final class ServerInstaller {
   /// a custom entry names somebody else's package, where it holds for no reason
   /// at all.
   nonisolated static func entryScript(of server: BastionServer) -> URL? {
-    guard let directory = packageDirectory(of: server),
+    guard let package = server.package, let directory = packageDirectory(of: server),
       let data = try? Data(contentsOf: directory.appendingPathComponent("package.json")),
       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
     else { return nil }
@@ -138,7 +209,7 @@ final class ServerInstaller {
       // A package with one unnamed-looking bin is the common case and refusing
       // it over a name mismatch would be pedantry with a broken server at the
       // end of it.
-      relative = map[server.binName] ?? map[server.npmName] ?? (map.count == 1 ? map.values.first : nil)
+      relative = map[package.binName] ?? map[package.npmName] ?? (map.count == 1 ? map.values.first : nil)
     default:
       relative = nil
     }
@@ -159,8 +230,11 @@ final class ServerInstaller {
   }
 
   nonisolated static func isInstalled(_ server: BastionServer) -> Bool {
-    // The built-in server is always "installed": it is the running app.
-    if server.origin == .builtin { return true }
+    // Nothing to install means nothing missing. Bastion's own server is the
+    // running app, and a remote one is somebody else's process on somebody
+    // else's machine — neither has a directory, and reporting either as "not
+    // installed" would put a permanent red badge next to a server that works.
+    guard server.package != nil else { return true }
     return entryScript(of: server) != nil
   }
 
@@ -225,10 +299,11 @@ final class ServerInstaller {
   /// any running child of this server is stopped, because the code it was
   /// running is no longer the code on disk.
   func install(_ server: BastionServer) async {
-    // Nothing to fetch — it ships inside the app. Silently rather than as an
-    // error: this is reachable from a bulk update, and a failure there would be
+    // Nothing to fetch — Bastion's own server ships inside the app, and a
+    // remote one is not code Bastion holds. Silently rather than as an error:
+    // this is reachable from a bulk update, and a failure there would be
     // reporting a problem that does not exist.
-    guard server.origin != .builtin else { return }
+    guard let package = server.package else { return }
     guard !isRunning(server.id) else { return }
     running[server.id] = "Installing…"
     failures[server.id] = nil
@@ -237,9 +312,9 @@ final class ServerInstaller {
 
     let result = await Task.detached(priority: .userInitiated) { () -> Result<String, Error> in
       do {
-        try Self.runInstall(server)
+        try Self.runInstall(server, package: package)
         guard Self.entryScript(of: server) != nil else {
-          throw InstallError.noEntryPoint(package: server.npmName)
+          throw InstallError.noEntryPoint(package: package.npmName)
         }
         return .success(Self.installedVersion(of: server) ?? "unknown")
       } catch {
@@ -250,7 +325,7 @@ final class ServerInstaller {
     running[server.id] = nil
     switch result {
     case .success(let version):
-      hostLog("install", .info, "\(server.id): installed \(server.npmName)@\(version)")
+      hostLog("install", .info, "\(server.id): installed \(package.npmName)@\(version)")
       // The code under any running child has just been replaced, so the child
       // goes. Same rule as `ProfileStore.upsert` and `ServerStore.setEnabled`,
       // and for the same reason: a process still answering out of the tree that
@@ -281,28 +356,35 @@ final class ServerInstaller {
   /// would make "Bastion talks to the network when you ask it to" stop being
   /// true, for a badge nobody asked for.
   func checkForUpdate(_ server: BastionServer) async {
-    guard server.origin != .builtin, server.distribution == .npm else { return }
+    guard let package = server.package, package.distribution == .npm else { return }
     guard !isRunning(server.id), !isChecking(server.id) else { return }
     // Nothing on disk to compare against, and "up to date" would be a lie about
     // a package that is not there. Install is the button for this state.
     guard let installed = Self.installedVersion(of: server) else { return }
 
     checking.insert(server.id)
-    let result = await Task.detached(priority: .userInitiated) { () -> Result<String?, Error> in
-      do { return .success(try Self.runCheck(server)) } catch { return .failure(error) }
+    let result = await Task.detached(priority: .userInitiated) { () -> Result<Plan, Error> in
+      do { return .success(try Self.runCheck(server, package: package)) } catch { return .failure(error) }
     }.value
     checking.remove(server.id)
 
     switch result {
-    case .success(let resolved):
-      guard let resolved, resolved != installed else {
+    case .success(.nothing):
+      availability[server.id] = .upToDate
+    case .success(.dependencies(let count)):
+      availability[server.id] = .needsRepair(count)
+      hostLog(
+        "install", .info,
+        "\(server.id): \(package.npmName) is current, but \(count) package(s) in its tree are not")
+    case .success(.package(let resolved)):
+      guard resolved != installed else {
         availability[server.id] = .upToDate
         return
       }
       availability[server.id] =
         Self.isVersion(resolved, newerThan: installed) ? .newer(resolved) : .pinnedOlder(resolved)
       hostLog(
-        "install", .info, "\(server.id): \(server.npmName) \(installed) → \(resolved) available")
+        "install", .info, "\(server.id): \(package.npmName) \(installed) → \(resolved) available")
     case .failure(let error):
       availability[server.id] = .failed(error.localizedDescription)
       hostLog("install", .error, "\(server.id): check failed — \(error.localizedDescription)")
@@ -323,9 +405,9 @@ final class ServerInstaller {
 
   // MARK: - The subprocess
 
-  private nonisolated static func runInstall(_ server: BastionServer) throws {
-    guard server.distribution == .npm else {
-      throw InstallError.notPublished(server.npmName)
+  private nonisolated static func runInstall(_ server: BastionServer, package: BastionServer.Package) throws {
+    guard package.distribution == .npm else {
+      throw InstallError.notPublished(package.npmName)
     }
     guard let node = ServerLocator.nodeExecutable(), let npm = ServerLocator.npmCLI() else {
       throw InstallError.noRuntime
@@ -347,7 +429,7 @@ final class ServerInstaller {
 
     let process = Process()
     process.executableURL = node
-    process.arguments = Self.installArguments(server, npm: npm, in: directory)
+    process.arguments = Self.installArguments(package, npm: npm, in: directory)
     process.currentDirectoryURL = directory
     process.environment = Self.npmEnvironment()
 
@@ -369,7 +451,7 @@ final class ServerInstaller {
       // drops the `code ENOVERSIONS` line on purpose, and the sentence it keeps
       // is the one that does not explain itself.
       if detail.contains("ENOVERSIONS") {
-        throw InstallError.quarantined(package: server.npmName)
+        throw InstallError.quarantined(package: package.npmName)
       }
       throw InstallError.npmFailed(
         code: process.terminationStatus,
@@ -385,10 +467,10 @@ final class ServerInstaller {
   /// argument lists that drifted apart would produce a badge advertising a
   /// version the install then refuses.
   private nonisolated static func installArguments(
-    _ server: BastionServer, npm: URL, in directory: URL
+    _ package: BastionServer.Package, npm: URL, in directory: URL
   ) -> [String] {
     [
-      npm.path, "install", "\(server.npmName)@latest",
+      npm.path, "install", "\(package.npmName)@latest",
       "--prefix", directory.path,
       // What ships is the runtime closure and nothing else.
       "--omit=dev", "--no-package-lock", "--no-audit", "--no-fund",
@@ -447,9 +529,21 @@ final class ServerInstaller {
   /// Only stdout is read. `--json` puts the plan there and, on failure, an
   /// `error` object with npm's own code in it, so the second pipe the human
   /// text would need is not worth the deadlock it has to be written around.
-  private nonisolated static func runCheck(_ server: BastionServer) throws -> String? {
-    guard server.distribution == .npm else {
-      throw InstallError.notPublished(server.npmName)
+  /// What one dry run came back with.
+  private enum Plan {
+    /// An empty plan. Not "the server package is current" — nothing is.
+    case nothing
+    /// The server package itself would land at this version.
+    case package(String)
+    /// The server package is untouched and this many other packages are not.
+    case dependencies(Int)
+  }
+
+  private nonisolated static func runCheck(
+    _ server: BastionServer, package: BastionServer.Package
+  ) throws -> Plan {
+    guard package.distribution == .npm else {
+      throw InstallError.notPublished(package.npmName)
     }
     guard let node = ServerLocator.nodeExecutable(), let npm = ServerLocator.npmCLI() else {
       throw InstallError.noRuntime
@@ -461,7 +555,7 @@ final class ServerInstaller {
     // Nothing is written: no stub is rewritten, no tree is touched. The prefix
     // already has the `package.json` the install left there, and `--dry-run`
     // resolves against the installed tree without changing it.
-    process.arguments = installArguments(server, npm: npm, in: directory) + ["--dry-run", "--json"]
+    process.arguments = installArguments(package, npm: npm, in: directory) + ["--dry-run", "--json"]
     process.currentDirectoryURL = directory
     process.environment = npmEnvironment()
 
@@ -485,7 +579,7 @@ final class ServerInstaller {
 
     if let error = plan?["error"] as? [String: Any] {
       if error["code"] as? String == "ENOVERSIONS" {
-        throw InstallError.quarantined(package: server.npmName)
+        throw InstallError.quarantined(package: package.npmName)
       }
       throw InstallError.npmFailed(
         code: process.terminationStatus, detail: error["summary"] as? String ?? "")
@@ -494,20 +588,30 @@ final class ServerInstaller {
       throw InstallError.npmFailed(code: process.terminationStatus, detail: "")
     }
 
+    let added = (plan["add"] as? [[String: Any]]) ?? []
+    let changed = (plan["change"] as? [[String: Any]]) ?? []
+    let removed = (plan["remove"] as? [[String: Any]]) ?? []
+
     // The package by name, not the first entry: the plan covers the whole
     // dependency closure, and a transitive bump is not the version on screen.
-    if let change = (plan["change"] as? [[String: Any]])?.first(where: {
-      ($0["to"] as? [String: Any])?["name"] as? String == server.npmName
-    }) {
-      return (change["to"] as? [String: Any])?["version"] as? String
+    if let change = changed.first(where: {
+      ($0["to"] as? [String: Any])?["name"] as? String == package.npmName
+    }), let version = (change["to"] as? [String: Any])?["version"] as? String {
+      return .package(version)
     }
     // `add` rather than `change` when the tree lost the package underneath us.
-    if let added = (plan["add"] as? [[String: Any]])?.first(where: {
-      $0["name"] as? String == server.npmName
-    }) {
-      return added["version"] as? String
+    if let add = added.first(where: { $0["name"] as? String == package.npmName }),
+      let version = add["version"] as? String {
+      return .package(version)
     }
-    return nil
+
+    // Everything else npm plans. Filtering this away made a half-deleted
+    // `node_modules` report as "up to date", which is the one state where the
+    // button matters most: measured, an install of `@mgcrea/mcp-shopify` with
+    // `zod` and the SDK removed plans two adds and says nothing about the
+    // server package at all.
+    let rest = added.count + changed.count + removed.count
+    return rest == 0 ? .nothing : .dependencies(rest)
   }
 
   /// Newer for the purpose of choosing a *sentence*, and nothing else.

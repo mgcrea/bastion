@@ -78,7 +78,11 @@ struct ServerCheckSheet: View {
         if let live = Activity.shared.instances.first(where: { $0.id == profile.id }) {
           Divider()
           HStack(spacing: 10) {
-            if live.pid > 0 { Label("pid \(live.pid)", systemImage: "cpu") }
+            if let pid = live.pid, pid > 0 {
+              Label("pid \(pid)", systemImage: "cpu")
+            } else if let host = live.remoteHost {
+              Label(host, systemImage: "network")
+            }
             if let dialect = live.dialect { Label(dialect, systemImage: "number") }
             Label(
               "\(live.clients.count) client\(live.clients.count == 1 ? "" : "s")",

@@ -220,7 +220,7 @@ struct MainView: View {
     // No ⌘N here. The menu bar item carries it, and that one works whether or
     // not this window is key — declaring it twice is two handlers racing for
     // one keystroke to do the same thing.
-    .help("Install a server from the catalog, or add one by npm package (⌘N)")
+    .help("Install a server from the catalog, or add one by npm package or URL (⌘N)")
   }
 
   /// What used to be the Activity window's header, moved to where it is true of
@@ -335,7 +335,7 @@ private struct ServerBadge: View {
   let server: BastionServer
 
   var body: some View {
-    let live = Activity.shared.instances.filter { $0.server == server.id && $0.pid > 0 }.count
+    let live = Activity.shared.instances.filter { $0.server == server.id && $0.isLive }.count
     let profiles = ProfileStore.shared.profiles.filter { $0.serverID == server.id }.count
 
     // First in the ladder, because it outranks everything below it: a disabled

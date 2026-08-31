@@ -71,12 +71,30 @@ struct ServerEditor: View {
     var id = ""
     var displayName = ""
     var summary = ""
+    /// Which shape this entry is. The custom form asks for a package OR an
+    /// endpoint, never both, because the two are different servers rather than
+    /// two ways of describing one.
+    var kind: Kind = .child
     var npmName = ""
     var binName = ""
+    var url = ""
     var docsUrl = ""
     var dialect = BastionServer.Dialect.v2025_11_25
     var writeGate = ""
     var variables: [Variable] = [Variable()]
+
+    enum Kind: Hashable { case child, remote }
+
+    /// Whether the chosen transport still lacks the one field it cannot do
+    /// without. Shape only — `RemoteEndpoint` decides whether a URL is
+    /// *allowed*, and it says why in a sentence, which is a better answer than
+    /// a Save button that stays greyed out with no explanation.
+    var transportIsIncomplete: Bool {
+      switch kind {
+      case .child: npmName.trimmed.isEmpty
+      case .remote: url.trimmed.isEmpty
+      }
+    }
 
     struct Variable: Identifiable {
       let id = UUID()
@@ -85,6 +103,11 @@ struct ServerEditor: View {
       var isRequired = false
       var isSecret = false
       var isState = false
+      /// Remote only: the header this variable becomes, and the template that
+      /// wraps it. `Authorization` + `Bearer {value}` is the common case and
+      /// the placeholder says so.
+      var headerName = ""
+      var headerFormat = "{value}"
     }
   }
 
@@ -167,12 +190,17 @@ struct ServerEditor: View {
             // Said here rather than discovered at install time. Four of the
             // nine are not published, and finding that out from a failed
             // install is finding it out one step too late.
-            if entry.distribution == .local { Badge("not published", tint: .orange) }
+            if entry.transport.isRemote {
+              Badge("remote", tint: .blue)
+            } else if entry.package?.distribution == .local {
+              Badge("not published", tint: .orange)
+            }
           }
           Text(entry.summary)
             .font(.caption).foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
-          Text(entry.npmName)
+          // The package, or the endpoint — whichever this entry actually has.
+          Text(entry.package?.npmName ?? entry.endpoint?.absoluteString ?? "")
             .font(.system(.caption2, design: .monospaced))
             .foregroundStyle(.tertiary)
         }
@@ -197,14 +225,36 @@ struct ServerEditor: View {
           }
         }
 
-        Card(title: "Package") {
+        Card(title: "Transport") {
           VStack(alignment: .leading, spacing: 8) {
-            Field(
-              "npm package", text: $draft.npmName, placeholder: "@acme/mcp-acme",
-              help: "Installed on demand into Bastion's own directory, with the embedded runtime.")
-            Field(
-              "Binary", text: $draft.binName, placeholder: "acme-mcp",
-              help: "The bin entry to run. Left empty, Bastion uses the package's only one.")
+            Picker("", selection: $draft.kind) {
+              Text("npm package").tag(Draft.Kind.child)
+              Text("Remote URL").tag(Draft.Kind.remote)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            if draft.kind == .child {
+              Field(
+                "npm package", text: $draft.npmName, placeholder: "@acme/mcp-acme",
+                help:
+                  "Installed on demand into Bastion's own directory, with the embedded runtime.")
+              Field(
+                "Binary", text: $draft.binName, placeholder: "acme-mcp",
+                help: "The bin entry to run. Left empty, Bastion uses the package's only one.")
+            } else {
+              Field(
+                "URL", text: $draft.url, placeholder: "https://mcp.example.com",
+                help:
+                  "https only, and it has to be somewhere else — an address on this machine or "
+                  + "this network is refused.")
+              Text(
+                "Nothing is installed and no process is started. What Bastion adds is the "
+                  + "credential in the Keychain instead of in every config file, one identity "
+                  + "per profile, and a record of every call.")
+                .font(.caption2).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
             Field("Docs URL", text: $draft.docsUrl, placeholder: "https://…")
             HStack {
               Text("Protocol").frame(width: 96, alignment: .leading).font(.callout)
@@ -227,14 +277,18 @@ struct ServerEditor: View {
         Card(title: "Environment") {
           VStack(alignment: .leading, spacing: 10) {
             Text(
-              "The variables this server reads. Bastion passes these and nothing else — a "
-                + "variable that is not listed here can never be set on the child process.")
+              draft.kind == .child
+                ? "The variables this server reads. Bastion passes these and nothing else — a "
+                  + "variable that is not listed here can never be set on the child process."
+                : "What Bastion sends with each request. A remote server has no environment, so "
+                  + "each variable names the header it becomes — Authorization with a format of "
+                  + "Bearer {value} is the usual one.")
               .font(.caption).foregroundStyle(.secondary)
               .fixedSize(horizontal: false, vertical: true)
 
             ForEach($draft.variables) { $variable in
               VariableRow(
-                variable: $variable,
+                variable: $variable, isRemote: draft.kind == .remote,
                 remove: { draft.variables.removeAll { $0.id == variable.id } })
               Divider()
             }
@@ -257,6 +311,7 @@ struct ServerEditor: View {
 
   private struct VariableRow: View {
     @Binding var variable: Draft.Variable
+    var isRemote = false
     let remove: () -> Void
 
     var body: some View {
@@ -271,10 +326,26 @@ struct ServerEditor: View {
         TextField("What it is", text: $variable.summary)
           .textFieldStyle(.roundedBorder)
           .font(.caption)
+        if isRemote {
+          HStack(spacing: 8) {
+            TextField("Authorization", text: $variable.headerName)
+              .textFieldStyle(.roundedBorder)
+              .font(.system(.caption, design: .monospaced))
+            TextField("Bearer {value}", text: $variable.headerFormat)
+              .textFieldStyle(.roundedBorder)
+              .font(.system(.caption, design: .monospaced))
+          }
+          Text(
+            "The header this becomes, and the template around it. {value} is where the "
+              + "credential goes, so a profile holds the key and not the word Bearer.")
+            .font(.caption2).foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
         HStack(spacing: 12) {
           Toggle("Required", isOn: $variable.isRequired)
           Toggle("Secret", isOn: $variable.isSecret)
-          Toggle("Per-profile file", isOn: $variable.isState)
+          // A remote server has no filesystem here to redirect.
+          if !isRemote { Toggle("Per-profile file", isOn: $variable.isState) }
           Spacer()
         }
         .font(.caption)
@@ -335,7 +406,7 @@ struct ServerEditor: View {
       if tab == .custom || isEditing {
         Button(isEditing ? "Save" : "Add") { saveCustom() }
           .keyboardShortcut(.defaultAction)
-          .disabled(draft.id.isEmpty || draft.npmName.isEmpty)
+          .disabled(draft.id.isEmpty || draft.transportIsIncomplete)
       }
     }
     .padding(16)
@@ -351,15 +422,23 @@ struct ServerEditor: View {
       id: server.id,
       displayName: server.displayName,
       summary: server.summary,
-      npmName: server.npmName,
-      binName: server.binName,
+      // Without this the form opens on "npm package" for a server that has
+      // none, showing an empty field and a Save button that will not enable.
+      kind: server.transport.isRemote ? .remote : .child,
+      npmName: server.package?.npmName ?? "",
+      binName: server.package?.binName ?? "",
+      url: server.endpoint?.absoluteString ?? "",
       docsUrl: server.docsURL?.absoluteString ?? "",
       dialect: server.dialect,
       writeGate: server.writeGate ?? "",
       variables: server.env.map {
         .init(
           name: $0.name, summary: $0.summary, isRequired: $0.isRequired, isSecret: $0.isSecret,
-          isState: state.contains($0.name))
+          isState: state.contains($0.name),
+          // Round-tripped, or editing a remote server would silently rewrite
+          // every variable's header to the Authorization default.
+          headerName: $0.header?.name ?? "",
+          headerFormat: $0.header?.format ?? "{value}")
       })
   }
 
@@ -373,7 +452,7 @@ struct ServerEditor: View {
       // Except when it cannot be fetched. An unpublished entry would land a red
       // "not published to npm yet" on a server the user just added on purpose,
       // having already been told so on the row they added it from.
-      if entry.distribution == .npm {
+      if entry.package?.distribution == .npm {
         Task { await ServerInstaller.shared.install(entry) }
       }
       dismiss()
@@ -385,22 +464,36 @@ struct ServerEditor: View {
   private func saveCustom() {
     let variables = draft.variables.filter { !$0.name.trimmed.isEmpty }
     let gate = draft.writeGate.trimmed
+    let isRemote = draft.kind == .remote
     let definition = ServerStore.Definition(
       displayName: draft.displayName.trimmed.isEmpty ? draft.id.trimmed : draft.displayName.trimmed,
       summary: draft.summary.trimmed,
-      npmName: draft.npmName.trimmed,
+      // Only the fields the chosen transport actually has. Writing both would
+      // put a package name on a remote row, and the next load would read it
+      // back as a server that installs something.
+      npmName: isRemote ? nil : draft.npmName.trimmed,
       // Empty means "the package's only bin", which `entryScript` already
       // falls back to. Defaulting it to the id here would name a bin that does
       // not exist and turn that fallback off.
-      binName: draft.binName.trimmed,
+      binName: isRemote ? nil : draft.binName.trimmed,
+      url: isRemote ? draft.url.trimmed : nil,
       docsUrl: draft.docsUrl.trimmed.isEmpty ? nil : draft.docsUrl.trimmed,
       dialect: draft.dialect.rawValue,
-      writeGate: gate.isEmpty ? nil : gate,
-      stateEnv: variables.filter(\.isState).map { $0.name.trimmed },
-      env: variables.map {
+      writeGate: isRemote || gate.isEmpty ? nil : gate,
+      writeTools: nil,
+      stateEnv: isRemote ? [] : variables.filter(\.isState).map { $0.name.trimmed },
+      env: variables.map { variable in
         .init(
-          name: $0.name.trimmed, required: $0.isRequired, secret: $0.isSecret,
-          description: $0.summary.trimmed.isEmpty ? "Set on the profile." : $0.summary.trimmed)
+          name: variable.name.trimmed, required: variable.isRequired, secret: variable.isSecret,
+          description: variable.summary.trimmed.isEmpty
+            ? "Set on the profile." : variable.summary.trimmed,
+          header: isRemote
+            ? .init(
+              name: variable.headerName.trimmed.isEmpty
+                ? "Authorization" : variable.headerName.trimmed,
+              format: variable.headerFormat.contains("{value}")
+                ? variable.headerFormat.trimmed : "{value}")
+            : nil)
       })
 
     // A gate the server never reads gates nothing, and it would read as off in

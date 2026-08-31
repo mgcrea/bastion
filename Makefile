@@ -423,8 +423,44 @@ wiring-check-real: wiring-check ## Prove the merge against the real client confi
 		"$(HOME)/Library/Application Support/Claude/claude_desktop_config.json" \
 		"$(HOME)/Library/Application Support/Code/User/mcp.json"
 
-audit: app ## Assert the listener is loopback-only and refuses foreign Origin/Host
+audit: app remote-check ## Assert the listener is loopback-only and refuses foreign Origin/Host
 	@scripts/audit-listener.sh
+
+# The outbound half of the same question. `audit-listener.sh` asserts what may
+# reach Bastion; this asserts where Bastion may reach. A remote server's URL is
+# the analogue of a command line, so "nothing arriving over the wire can name
+# one" needs the same kind of check the spawn rule already has -- including that
+# a server cannot be pointed back at Bastion's own gateway, where a client's
+# bearer token would be replayed against every other profile.
+#
+# No running app needed: the rules are a pure function of a URL, and the SSE
+# collapse is a pure function of a body. Compiling the two files with the checks
+# beside them is the same trade `wiring-check` makes.
+remote-check: ## Assert where a remote server may live, the SSE collapse, and the OAuth client
+	@mkdir -p apps/apple/.build
+	@swiftc -O -o apps/apple/.build/remote-check \
+		apps/apple/Bastion/RemoteEndpoint.swift \
+		apps/apple/Bastion/ServerSentEvents.swift \
+		apps/apple/Bastion/RemoteOAuth.swift \
+		apps/apple/Bastion/RemoteOAuthCallback.swift \
+		apps/apple/Bastion/Log.swift \
+		scripts/remote-check.swift
+	@apps/apple/.build/remote-check
+
+# The other half, against a REAL remote server and a running build.
+#
+# A local fake would have to live on 127.0.0.1, which `RemoteEndpoint` refuses
+# by design and must go on refusing -- so rather than add a bypass that would
+# delete the property under test, this points at mcp.stripe.com and uses the
+# one thing that needs no credential: an unauthenticated `initialize` is
+# answered with 401, which exercises DNS pre-flight, https, the POST, the
+# profile's headers, the status mapping and the sentence a client is left
+# holding. What it cannot prove is a successful call.
+#
+# Not in `make audit`: it needs the network, and an audit that fails on a train
+# is an audit people learn to skip.
+remote-live-check: app ## Assert the remote transport end to end against mcp.stripe.com
+	@scripts/remote-live-check.sh
 
 # ─── the manifest ────────────────────────────────────────────────────────────
 
@@ -492,5 +528,5 @@ format-check: ## Fail on unformatted files
 .PHONY: help app run stop dev-config clean \
 	sparkle sparkle-keys appcast node bundle sign notarize build-release \
 	install install-release install-from uninstall \
-	smoke dialect wiring-check wiring-check-real license-check revocations audit migrate servers servers-check icon \
+	smoke dialect wiring-check wiring-check-real remote-check remote-live-check license-check revocations audit migrate servers servers-check icon \
 	lint format format-check

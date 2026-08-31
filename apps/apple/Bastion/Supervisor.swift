@@ -33,6 +33,14 @@ nonisolated final class Supervisor: @unchecked Sendable {
     case unknownProfile(profile: String, server: String)
     case notConfigured(profile: String, missing: [String])
     case startFailed(String)
+    /// A remote server answered, and the answer was no.
+    ///
+    /// Its own case rather than `startFailed` because there is nothing to
+    /// start: "could not start the server" in front of "Stripe refused your
+    /// key" describes a step that does not exist and sends the reader looking
+    /// for a process. The detail is already a whole sentence, so this adds
+    /// nothing to it.
+    case remoteRefused(String)
     case circuitOpen(profile: String, until: Date)
     case childDied(String)
     case timedOut(seconds: Int)
@@ -52,6 +60,8 @@ nonisolated final class Supervisor: @unchecked Sendable {
         return "profile '\(profile)' is missing \(missing.joined(separator: ", "))"
       case .startFailed(let detail):
         return "could not start the server: \(detail)"
+      case .remoteRefused(let detail):
+        return detail
       case .circuitOpen(let profile, let until):
         let seconds = max(1, Int(until.timeIntervalSinceNow.rounded(.up)))
         return
@@ -67,6 +77,11 @@ nonisolated final class Supervisor: @unchecked Sendable {
   }
 
   private let instances = OSAllocatedUnfairLock<[String: Instance]>(initialState: [:])
+  /// Remote sessions, keyed the same way. A separate table rather than a
+  /// protocol over both: the two share a method name and nothing else, and an
+  /// abstraction that hid "this one has a pid and that one does not" would hide
+  /// the single most important difference between them.
+  private let remotes = OSAllocatedUnfairLock<[String: RemoteInstance]>(initialState: [:])
   /// One creation at a time per profile, and only per profile.
   ///
   /// Measured, on the first multi-client test: four concurrent first requests
@@ -118,15 +133,28 @@ nonisolated final class Supervisor: @unchecked Sendable {
       throw SupervisorError.unknownProfile(profile: profileName, server: serverID)
     }
 
-    // Bastion itself. Answered in-process: there is no package to install, no
-    // child to spawn, and none of the machinery below it — no id remapping, no
-    // waiter, no restart — has anything to be out of step with.
-    if server.origin == .builtin {
+    // Dispatch on HOW this server is reached, which is the question being
+    // asked. This used to test `origin == .builtin` — asking where a definition
+    // came from in order to work out how to talk to it — and that conflation
+    // had exactly one server to be wrong about until there were two kinds.
+    switch server.transport {
+    case .inProcess:
+      // Bastion itself. There is no package to install, no child to spawn, and
+      // none of the machinery below — no id remapping, no waiter, no restart —
+      // has anything to be out of step with.
       return try BuiltinServer.handle(frame, era: era, profile: profile, client: client)
-    }
 
-    let instance = try instanceFor(profile: profile, server: server)
-    return try instance.handle(frame, era: era, client: client)
+    case .remote:
+      // Somebody else's server. Nothing is supervised, because nothing here is
+      // running it; what Bastion still does is hold the credential, be the one
+      // identity, and write the audit line.
+      let instance = try remoteInstanceFor(profile: profile, server: server)
+      return try instance.handle(frame, era: era, client: client)
+
+    case .child:
+      let instance = try instanceFor(profile: profile, server: server)
+      return try instance.handle(frame, era: era, client: client)
+    }
   }
 
   /// Stop everything. Called when the app quits.
@@ -137,12 +165,21 @@ nonisolated final class Supervisor: @unchecked Sendable {
       return all
     }
     for instance in live { instance.stop(reason: "Bastion is quitting") }
+
+    let remote = remotes.withLock { taken -> [RemoteInstance] in
+      let all = Array(taken.values)
+      taken.removeAll()
+      return all
+    }
+    for instance in remote { instance.stop(reason: "Bastion is quitting") }
   }
 
   func stop(profile: String, server: String) {
     let key = "\(profile)/\(server)"
     let instance = instances.withLock { $0.removeValue(forKey: key) }
     instance?.stop(reason: "stopped by request")
+    let remote = remotes.withLock { $0.removeValue(forKey: key) }
+    remote?.stop(reason: "stopped by request")
     Task(priority: Activity.priority) { @MainActor in Activity.shared.stopped(id: key) }
   }
 
@@ -160,7 +197,42 @@ nonisolated final class Supervisor: @unchecked Sendable {
   /// connection, which reads as Bastion breaking rather than as Bastion
   /// updating.
   var inFlightCount: Int {
-    instances.withLock { $0.values.reduce(0) { $0 + $1.pendingCount } }
+    let children = instances.withLock { $0.values.reduce(0) { $0 + $1.pendingCount } }
+    // Remote calls count too. They are the ones most likely to be slow — a real
+    // API call over somebody else's network — so leaving them out would make
+    // the number most wrong exactly when it matters.
+    let remote = remotes.withLock { $0.values.reduce(0) { $0 + $1.pendingCount } }
+    return children + remote
+  }
+
+  /// The remote counterpart to `instanceFor`, and deliberately much smaller.
+  ///
+  /// There is nothing to spawn, so there is no start race worth a per-key gate
+  /// out here — what does need serialising is the upstream handshake, and
+  /// `RemoteInstance` owns that itself. What survives is the missing-variable
+  /// check, because a profile with no credential fails the same way whichever
+  /// transport it is on, and saying so before a request leaves the machine is
+  /// better than relaying a 401 back.
+  private func remoteInstanceFor(profile: Profile, server: BastionServer) throws
+    -> RemoteInstance
+  {
+    let key = profile.id
+    if let existing = remotes.withLock({ $0[key] }) { return existing }
+
+    let missing = ProfileEnvironment.missing(for: profile, server: server)
+    guard missing.isEmpty else {
+      throw SupervisorError.notConfigured(profile: profile.name, missing: missing)
+    }
+
+    let created = try RemoteInstance(profile: profile, server: server)
+    // Last writer wins, and the loser is simply dropped: creating one opens no
+    // process and no connection, so a lost race costs an object rather than an
+    // orphaned child.
+    return remotes.withLock { table in
+      if let existing = table[key] { return existing }
+      table[key] = created
+      return created
+    }
   }
 
   private func instanceFor(profile: Profile, server: BastionServer) throws -> Instance {

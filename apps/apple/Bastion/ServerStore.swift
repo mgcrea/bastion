@@ -105,11 +105,20 @@ final class ServerStore {
   struct Definition: Codable, Hashable {
     var displayName: String
     var summary: String
-    var npmName: String
-    var binName: String
+    /// The npm package, for a child entry. Optional so that a `servers.json`
+    /// written before remote servers existed decodes unchanged — every row in
+    /// one carries both, and a row carrying neither is a row this build wrote
+    /// for a remote server.
+    var npmName: String?
+    var binName: String?
+    /// The endpoint, for a remote entry. Its presence is what makes a row
+    /// remote; `transport(for:)` reads exactly this.
+    var url: String?
     var docsUrl: String?
     var dialect: String
     var writeGate: String?
+    /// Remote only, and the counterpart to `writeGate`.
+    var writeTools: [String]?
     var stateEnv: [String]
     var env: [Variable]
 
@@ -118,6 +127,31 @@ final class ServerStore {
       var required: Bool
       var secret: Bool
       var description: String
+      /// Where the value lands on a remote request. Absent for a child, whose
+      /// variables are environment variables.
+      var header: Header?
+
+      struct Header: Codable, Hashable {
+        var name: String
+        var format: String
+      }
+    }
+
+    /// A URL means remote; anything else is the child shape this file has
+    /// always held.
+    ///
+    /// Falls back to a child with empty names rather than trapping: this
+    /// decodes a file a user can hand-edit, and a malformed row should reach
+    /// the "not installed" state where it can be seen and fixed, not crash the
+    /// app on launch.
+    var transport: BastionServer.Transport {
+      if let url, let endpoint = URL(string: url), endpoint.scheme == "https" {
+        return .remote(endpoint: endpoint)
+      }
+      return .child(
+        .init(
+          npmName: npmName ?? "", binName: binName ?? "", distribution: .npm,
+          localPath: "mcp-custom"))
     }
   }
 
@@ -217,20 +251,24 @@ final class ServerStore {
       id: id,
       displayName: definition.displayName,
       summary: definition.summary,
-      npmName: definition.npmName,
-      binName: definition.binName,
-      distribution: .npm,
-      localPath: "mcp-\(id)",
+      transport: definition.url == nil
+        ? .child(
+          .init(
+            npmName: definition.npmName ?? "", binName: definition.binName ?? "",
+            distribution: .npm, localPath: "mcp-\(id)"))
+        : definition.transport,
       docsURL: definition.docsUrl.flatMap(URL.init(string:)),
       dialect: BastionServer.Dialect(rawValue: definition.dialect) ?? .v2025_11_25,
       writeGate: definition.writeGate,
+      writeTools: definition.writeTools ?? [],
       gateBypass: [],
       authModes: [],
       stateEnv: definition.stateEnv,
       callbackEnv: [],
       env: definition.env.map {
         .init(
-          name: $0.name, isRequired: $0.required, isSecret: $0.secret, summary: $0.description)
+          name: $0.name, isRequired: $0.required, isSecret: $0.secret, summary: $0.description,
+          header: $0.header.map { .init(name: $0.name, format: $0.format) })
       },
       origin: .custom)
   }
@@ -260,15 +298,18 @@ final class ServerStore {
     Definition(
       displayName: server.displayName,
       summary: server.summary,
-      npmName: server.npmName,
-      binName: server.binName,
+      npmName: server.package?.npmName,
+      binName: server.package?.binName,
+      url: server.endpoint?.absoluteString,
       docsUrl: server.docsURL?.absoluteString,
       dialect: server.dialect.rawValue,
       writeGate: server.writeGate,
+      writeTools: server.writeTools.isEmpty ? nil : server.writeTools,
       stateEnv: server.stateEnv,
       env: server.env.map {
         .init(
-          name: $0.name, required: $0.isRequired, secret: $0.isSecret, description: $0.summary)
+          name: $0.name, required: $0.isRequired, secret: $0.isSecret, description: $0.summary,
+          header: $0.header.map { .init(name: $0.name, format: $0.format) })
       })
   }
 
@@ -279,6 +320,7 @@ final class ServerStore {
     case unusableID(String)
     case unknownCatalogEntry(String)
     case unusablePackage(String)
+    case unusableEndpoint(String)
     case unusableVariable(String)
     case noVariables
     case renameWouldStrand(from: String, to: String, profiles: Int)
@@ -296,6 +338,8 @@ final class ServerStore {
         return "'\(id)' is not in the catalog"
       case .unusablePackage(let name):
         return "'\(name)' is not a usable npm package name"
+      case .unusableEndpoint(let detail):
+        return detail
       case .unusableVariable(let name):
         return "'\(name)' is not a usable environment variable name"
       case .noVariables:
@@ -361,12 +405,38 @@ final class ServerStore {
     // load — `resolve` returns the built-in definition for this id whatever the
     // row says, so the entry the user typed would silently stop existing.
     guard id != BuiltinServer.id else { throw StoreError.reservedID(id) }
-    guard Self.isValidPackage(definition.npmName) else {
-      throw StoreError.unusablePackage(definition.npmName)
+    // A custom entry supplies a PACKAGE or an ENDPOINT, and both are checked
+    // here rather than at the point of use. `spawn(whatever_you_typed)` and
+    // `fetch(whatever_you_typed)` are the same hole wearing two transports, and
+    // the list is the one place either can be closed before anything reaches
+    // the supervisor.
+    switch definition.transport {
+    case .child(let package):
+      guard Self.isValidPackage(package.npmName) else {
+        throw StoreError.unusablePackage(package.npmName)
+      }
+    case .remote(let endpoint):
+      // Shape only. Resolution happens at request time, where a name that
+      // resolves somewhere else tomorrow is caught on the day it does — a
+      // check here that passed once would be a check the user believes.
+      do { try RemoteEndpoint.validateShape(endpoint) } catch {
+        throw StoreError.unusableEndpoint(error.localizedDescription)
+      }
+    case .inProcess:
+      throw StoreError.reservedID(id)
     }
     guard !definition.env.isEmpty else { throw StoreError.noVariables }
     for variable in definition.env where !Self.isValidVariable(variable.name) {
       throw StoreError.unusableVariable(variable.name)
+    }
+    // A remote variable with no sink is collected, stored in the Keychain and
+    // then never sent. The generator refuses that in the manifest; this is the
+    // same rule for an entry somebody typed.
+    if definition.url != nil {
+      for variable in definition.env where variable.header == nil {
+        throw StoreError.unusableEndpoint(
+          "\(variable.name) has no header, so nothing would ever send it")
+      }
     }
     if id != original, contains(id) { throw StoreError.duplicateID(id) }
 

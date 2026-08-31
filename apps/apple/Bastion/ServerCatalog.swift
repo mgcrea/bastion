@@ -39,24 +39,16 @@ nonisolated struct BastionServer: Identifiable, Hashable {
   let displayName: String
   /// One line, shown in the menu and on the server's row in the main window.
   let summary: String
-  /// The npm package to install. Catalog entries are always
-  /// `@mgcrea/mcp-<id>` and the generator enforces that; a custom entry names
-  /// somebody else's package and is held only to npm's own naming rules.
-  let npmName: String
-  /// The `bin` entry to run out of that package. `<id>-mcp` for everything in
-  /// the catalog, and looked up in the installed `package.json` rather than
-  /// assumed — a package is free to put its entry point anywhere.
-  let binName: String
-  /// Whether the package is actually published.
+  /// How Bastion reaches this server, and the field the rest of the app
+  /// branches on.
   ///
-  /// Not decoration now that installs happen on demand: `.local` is the
-  /// difference between an entry a stranger can install and one that resolves
-  /// only against a checkout named by `dev.json`. Four of the nine catalog
-  /// entries are `.local` today.
-  let distribution: Distribution
-  /// Directory name in the mgcrea-ai checkout, for `.local` and for DEBUG
-  /// overrides of `.npm`.
-  let localPath: String
+  /// An enum with a payload rather than four optionals: a remote server has no
+  /// package, no bin name and nothing to install, and expressing that as four
+  /// `nil`s would make "is this one set?" a question every call site has to
+  /// remember to ask. This way the compiler asks it. Same standard as the
+  /// entitlements file — a property that is true by construction is checkable,
+  /// one arrived at by deletion is not.
+  let transport: Transport
   let docsURL: URL?
   /// The dialect the server itself speaks.
   ///
@@ -78,6 +70,23 @@ nonisolated struct BastionServer: Identifiable, Hashable {
   /// reason `ServerHost.swift` gives for one process per connection: write
   /// permissions do not have to be shared just because a process is.
   let writeGate: String?
+  /// The remote counterpart to `writeGate`: tool names the gate hides.
+  ///
+  /// A child gets an environment variable that switches its destructive tools
+  /// off inside the server. A remote server has no environment, so the only
+  /// thing Bastion controls is what it forwards — and it forwards these only
+  /// with the profile's write gate on. Absent from `tools/list` rather than
+  /// offered and refused, exactly as `BuiltinTools` already does it, so a model
+  /// never plans around a tool it cannot use.
+  ///
+  /// **This filters Bastion, not the server.** Anyone holding the credential
+  /// can call the same API directly; the real boundary is the scopes the
+  /// credential itself carries. The UI has to say so rather than let a switch
+  /// imply a promise the switch cannot keep.
+  ///
+  /// Bastion additionally gates any tool the server annotates as not read-only,
+  /// so a mutating tool added after this list was written is still caught.
+  let writeTools: [String]
   /// Env vars that would turn writes on **independently of `writeGate`**.
   /// Bastion always forces these to `"0"`.
   ///
@@ -124,6 +133,17 @@ nonisolated struct BastionServer: Identifiable, Hashable {
   /// which is far too much to mean "not right now".
   var isEnabled: Bool = true
 
+  /// The package, or `nil` when there is nothing to install.
+  ///
+  /// The one unwrap a child-only path needs, so that "what does this do for a
+  /// remote server?" is answered explicitly and in one place per function.
+  var package: Package? {
+    if case .child(let package) = transport { package } else { nil }
+  }
+
+  /// Where a remote server lives, or `nil` for a child.
+  var endpoint: URL? { transport.endpoint }
+
   /// Which list a definition was born in.
   ///
   /// Only the UI and `ServerStore`'s persistence care. Everything downstream —
@@ -141,6 +161,66 @@ nonisolated struct BastionServer: Identifiable, Hashable {
     /// Bastion itself. Runs in-process, installs nothing, and cannot be
     /// removed — only switched off.
     case builtin
+  }
+
+  /// A package Bastion runs, or an endpoint somebody else operates.
+  enum Transport: Hashable {
+    /// An npm package, installed on demand and spoken to over stdio. The
+    /// original and still the only kind that gets supervised: one process, N
+    /// clients, backoff, a circuit breaker and an idle stop.
+    case child(Package)
+    /// An https endpoint. Nothing is installed and no process is started, so
+    /// none of the supervision above applies — what does is the credential in
+    /// the Keychain, the audit line, and the per-profile identity, which is
+    /// three of the four reasons to put a gateway in front of a server at all.
+    ///
+    /// The URL is always the user's, resolved by id out of the installed list.
+    /// Nothing arriving over the wire can name one — the same rule that keeps
+    /// a request from naming a package, applied to the thing that replaces a
+    /// package. `RemoteEndpoint` enforces the rest.
+    case remote(endpoint: URL)
+    /// Bastion's own server, answered inside this process. No package, no
+    /// child, no endpoint, and nothing to install.
+    ///
+    /// This is the transport question — *how is it reached* — and `origin` is
+    /// the provenance one. They coincide for exactly one server, and the
+    /// distinction earns its keep at the point of dispatch: `Supervisor` used
+    /// to branch on `origin == .builtin`, which asked where a definition came
+    /// from in order to work out how to reach it. It branches here now.
+    case inProcess
+
+    var isRemote: Bool { if case .remote = self { true } else { false } }
+
+    /// The endpoint, or nil for a child. Named rather than pattern-matched at
+    /// every call site that only wants to show a host.
+    var endpoint: URL? { if case .remote(let url) = self { url } else { nil } }
+  }
+
+  /// Everything needed to install and run a child, and nothing a remote server
+  /// has any answer for.
+  ///
+  /// Grouped rather than spread across four cases of the enum so that a call
+  /// site which only works on children says so **once** — `guard let package =
+  /// server.package else { … }` — instead of unwrapping the same fact four
+  /// times. The guard is the point: it makes every one of them state what it
+  /// does when there is no package, which is the question the old shape let
+  /// them all skip.
+  struct Package: Hashable {
+    /// Catalog entries are always `@mgcrea/mcp-<id>` and the generator
+    /// enforces that; a custom entry names somebody else's package and is held
+    /// only to npm's own naming rules.
+    let npmName: String
+    /// The `bin` entry to run out of that package. Looked up in the installed
+    /// `package.json` rather than assumed — a package is free to put its entry
+    /// point anywhere.
+    let binName: String
+    /// Whether the package is actually published. `.local` is the difference
+    /// between an entry a stranger can install and one that resolves only
+    /// against a checkout named by `dev.json`.
+    let distribution: Distribution
+    /// Directory name in the mgcrea-ai checkout, for `.local` and for DEBUG
+    /// overrides of `.npm`.
+    let localPath: String
   }
 
   enum Distribution: Hashable {
@@ -185,7 +265,21 @@ nonisolated struct BastionServer: Identifiable, Hashable {
   struct AuthMode: Identifiable, Hashable {
     let id: String
     let displayName: String
+    /// How the credential is obtained.
+    ///
+    /// Defaulted so the generated table below does not have to say `.env` for
+    /// every mode that has always worked that way.
+    var kind: Kind = .env
     let env: [String]
+
+    enum Kind: Hashable {
+      /// The user fills the named variables and Bastion sends them.
+      case env
+      /// Bastion runs an OAuth 2.1 flow and holds the token itself. Names no
+      /// variables, because there are none: the token lives in its own Keychain
+      /// scope and is never offered to the profile editor as an editable field.
+      case oauth
+    }
   }
 
   struct EnvVar: Identifiable, Hashable {
@@ -196,6 +290,30 @@ nonisolated struct BastionServer: Identifiable, Hashable {
     /// echoed into the Activity window or a log line.
     let isSecret: Bool
     let summary: String
+    /// Where the value goes on a **remote** server.
+    ///
+    /// Every variable used to land in one place — an environment variable on a
+    /// child — so there was nothing to say. A remote server has no
+    /// environment, and a variable with nowhere to land is one collected from
+    /// the user, stored in the Keychain, and then silently never sent.
+    ///
+    /// `nil` for every child variable, and the generator refuses the
+    /// mismatch either way.
+    var header: HeaderSink?
+  }
+
+  /// A variable's landing place on a remote request.
+  ///
+  /// `format` is a template over `{value}` so that `Bearer` lives in the
+  /// manifest and not in the profile: a user pastes a key, not a scheme, and a
+  /// credential rotated later does not have to be re-prefixed by hand.
+  struct HeaderSink: Hashable {
+    let name: String
+    let format: String
+
+    func rendered(_ value: String) -> String {
+      format.replacingOccurrences(of: "{value}", with: value)
+    }
   }
 }
 
@@ -215,22 +333,27 @@ nonisolated enum ServerCatalog {
       id: "appstore-connect",
       displayName: "App Store Connect",
       summary: "App Store Connect API: apps, versions, builds, TestFlight, listings, analytics, sales.",
-      npmName: "@mgcrea/mcp-appstore-connect",
-      binName: "appstore-connect-mcp",
-      distribution: .npm,
-      localPath: "mcp-appstore-connect",
+      transport: .child(
+        .init(
+          npmName: "@mgcrea/mcp-appstore-connect",
+          binName: "appstore-connect-mcp",
+          distribution: .npm,
+          localPath: "mcp-appstore-connect")),
       docsURL: URL(string: "https://github.com/mgcrea/mcp-appstore-connect"),
       dialect: .v2025_11_25,
       writeGate: "APP_STORE_CONNECT_ALLOW_WRITES",
+      writeTools: [],
       gateBypass: [],
       authModes: [
         .init(
           id: "inline-key",
           displayName: "Inline private key",
+          kind: .env,
           env: ["APP_STORE_CONNECT_P8"]),
         .init(
           id: "key-file",
           displayName: "Private key file",
+          kind: .env,
           env: ["APP_STORE_CONNECT_P8_PATH"]),
       ],
       stateEnv: ["APP_STORE_CONNECT_CONFIG"],
@@ -279,13 +402,16 @@ nonisolated enum ServerCatalog {
       id: "reddit",
       displayName: "Reddit",
       summary: "Reddit API: subreddits, posts, comments, search, and the user's own history.",
-      npmName: "@mgcrea/mcp-reddit",
-      binName: "reddit-mcp",
-      distribution: .local,
-      localPath: "mcp-reddit",
+      transport: .child(
+        .init(
+          npmName: "@mgcrea/mcp-reddit",
+          binName: "reddit-mcp",
+          distribution: .local,
+          localPath: "mcp-reddit")),
       docsURL: URL(string: "https://github.com/mgcrea/mcp-reddit"),
       dialect: .v2025_11_25,
       writeGate: "REDDIT_ALLOW_WRITES",
+      writeTools: [],
       gateBypass: [],
       authModes: [],
       stateEnv: ["REDDIT_TOKEN_PATH"],
@@ -333,22 +459,27 @@ nonisolated enum ServerCatalog {
       id: "x-api",
       displayName: "X",
       summary: "X (Twitter) API v2: posts, threads, timelines, search, bookmarks, and the Ads API.",
-      npmName: "@mgcrea/mcp-x-api",
-      binName: "x-api-mcp",
-      distribution: .local,
-      localPath: "mcp-x-api",
+      transport: .child(
+        .init(
+          npmName: "@mgcrea/mcp-x-api",
+          binName: "x-api-mcp",
+          distribution: .local,
+          localPath: "mcp-x-api")),
       docsURL: URL(string: "https://github.com/mgcrea/mcp-x-api"),
       dialect: .v2025_11_25,
       writeGate: "X_API_ALLOW_WRITES",
+      writeTools: [],
       gateBypass: [],
       authModes: [
         .init(
           id: "bearer",
           displayName: "App-only bearer token",
+          kind: .env,
           env: ["X_API_BEARER_TOKEN"]),
         .init(
           id: "oauth2",
           displayName: "OAuth2 user context",
+          kind: .env,
           env: ["X_API_CLIENT_ID"]),
       ],
       stateEnv: ["X_API_CONFIG", "X_API_TOKEN_FILE"],
@@ -418,22 +549,27 @@ nonisolated enum ServerCatalog {
       id: "unifi-protect",
       displayName: "UniFi Protect",
       summary: "UniFi Protect: cameras, event history, recordings, snapshots and NVR status.",
-      npmName: "@mgcrea/mcp-unifi-protect",
-      binName: "unifi-protect-mcp",
-      distribution: .npm,
-      localPath: "mcp-unifi-protect",
+      transport: .child(
+        .init(
+          npmName: "@mgcrea/mcp-unifi-protect",
+          binName: "unifi-protect-mcp",
+          distribution: .npm,
+          localPath: "mcp-unifi-protect")),
       docsURL: URL(string: "https://github.com/mgcrea/mcp-unifi-protect"),
       dialect: .v2025_11_25,
       writeGate: "UNIFI_PROTECT_ALLOW_WRITES",
+      writeTools: [],
       gateBypass: [],
       authModes: [
         .init(
           id: "cloud",
           displayName: "Cloud API key",
+          kind: .env,
           env: ["UNIFI_PROTECT_API_KEY", "UNIFI_PROTECT_CONSOLE_ID"]),
         .init(
           id: "local",
           displayName: "Local account",
+          kind: .env,
           env: ["UNIFI_PROTECT_HOST", "UNIFI_PROTECT_USERNAME", "UNIFI_PROTECT_PASSWORD"]),
       ],
       stateEnv: ["UNIFI_PROTECT_CONFIG", "UNIFI_PROTECT_SESSION_FILE", "UNIFI_PROTECT_SNAPSHOT_DIR"],
@@ -522,26 +658,32 @@ nonisolated enum ServerCatalog {
       id: "unifi-network",
       displayName: "UniFi Network",
       summary: "UniFi Network API: sites, devices, clients, WLANs, port and firewall configuration.",
-      npmName: "@mgcrea/mcp-unifi-network",
-      binName: "unifi-network-mcp",
-      distribution: .npm,
-      localPath: "mcp-unifi-network",
+      transport: .child(
+        .init(
+          npmName: "@mgcrea/mcp-unifi-network",
+          binName: "unifi-network-mcp",
+          distribution: .npm,
+          localPath: "mcp-unifi-network")),
       docsURL: URL(string: "https://github.com/mgcrea/mcp-unifi-network"),
       dialect: .v2025_11_25,
       writeGate: "UNIFI_ALLOW_WRITES",
+      writeTools: [],
       gateBypass: [],
       authModes: [
         .init(
           id: "console",
           displayName: "Console API key",
+          kind: .env,
           env: ["UNIFI_HOST", "UNIFI_API_KEY"]),
         .init(
           id: "cloud",
           displayName: "Cloud API key",
+          kind: .env,
           env: ["UNIFI_API_KEY", "UNIFI_CONSOLE_ID"]),
         .init(
           id: "legacy",
           displayName: "Local admin account",
+          kind: .env,
           env: ["UNIFI_HOST", "UNIFI_USERNAME", "UNIFI_PASSWORD"]),
       ],
       stateEnv: ["UNIFI_CONFIG"],
@@ -623,55 +765,79 @@ nonisolated enum ServerCatalog {
           isSecret: false,
           summary: "Enables the mutating tools: WLANs, port profiles, firewall rules, device adoption."),
       ]),
-    // PLACEHOLDER. @mgcrea/mcp-stripe is not published and there is no checkout
-    // for it yet, so installing this entry fails with 'not published'. It is in
-    // the catalog because the catalog is a starting point rather than a promise
-    // about what is installed - which is exactly the distinction this file lost
-    // when it was a closed list.
+    // REMOTE. This entry used to be a placeholder for @mgcrea/mcp-stripe, a
+    // package that was never written and never published. Stripe operates a
+    // real MCP server, so Bastion fronts that one instead: the part worth
+    // building here was never a Stripe client, it was the runtime underneath
+    // one - identity, credentials in the Keychain, and a record of every call.
+    //
+    // The id is unchanged on purpose. Anyone who made a profile against the
+    // placeholder keeps it.
+    //
+    // DIALECT MEASURED 2026-08-31, and it is the oldest in this file. A live
+    // handshake negotiates 2025-03-26 - two revisions behind the default an
+    // unmeasured entry would have carried, which is exactly why the default is
+    // never left in place. serverInfo reports stripe-mcp 1.0.0.
+    //
+    // WRITE TOOLS ARE TWO LISTS, and the measurement is why. Of the four tools
+    // hidden with writes off, only stripe_api_write is named below; the other
+    // three - stripe_analytics, stripe_implementation_planner and
+    // send_stripe_mcp_feedback - were caught solely by Stripe's own
+    // readOnlyHint:false annotation. A hand-written denylist would have missed
+    // three quarters of them, so the annotation is not a belt-and-braces extra
+    // here, it is the half that works.
+    //
+    // create_refund and stripe_report are named below and were NOT offered by
+    // the account this was measured against. Kept rather than deleted: they
+    // are in Stripe's published tool table, an account that exposes them wants
+    // them gated, and a name that is never offered costs nothing.
     //
     // Money moves through this one, so the gate is not a formality. Prefer a
-    // restricted key scoped to reads and let the profile stay gated off.
+    // restricted key scoped to reads and let the profile stay gated off - the
+    // write gate cannot take back a permission the key already grants.
     BastionServer(
       id: "stripe",
       displayName: "Stripe",
-      summary: "Stripe API: customers, subscriptions, invoices, charges, payouts and balance.",
-      npmName: "@mgcrea/mcp-stripe",
-      binName: "stripe-mcp",
-      distribution: .local,
-      localPath: "mcp-stripe",
-      docsURL: nil,
-      dialect: .v2025_11_25,
-      writeGate: "STRIPE_ALLOW_WRITES",
+      summary: "Stripe's own remote MCP server: the API surface, plus documentation and knowledge-base search.",
+      transport: .remote(endpoint: URL(string: "https://mcp.stripe.com")!),
+      docsURL: URL(string: "https://docs.stripe.com/mcp"),
+      dialect: .v2025_03_26,
+      writeGate: nil,
+      writeTools: ["stripe_api_write", "create_refund", "stripe_report"],
       gateBypass: [],
-      authModes: [],
-      stateEnv: ["STRIPE_CONFIG"],
+      authModes: [
+        .init(
+          id: "oauth2",
+          displayName: "Sign in with Stripe",
+          kind: .oauth,
+          env: []),
+        .init(
+          id: "bearer",
+          displayName: "Restricted API key",
+          kind: .env,
+          env: ["STRIPE_SECRET_KEY"]),
+      ],
+      stateEnv: [],
       callbackEnv: [],
       env: [
         .init(
           name: "STRIPE_SECRET_KEY",
-          isRequired: true,
+          isRequired: false,
           isSecret: true,
-          summary: "Restricted or secret API key. A restricted key is the right one here: the write gate cannot take back a permission the key already grants."),
+          summary: "Restricted API key, sent as the bearer token. A restricted key is the right one here: the write gate filters what Bastion forwards, it cannot take back a permission the key already grants.",
+          header: .init(name: "Authorization", format: "Bearer {value}")),
         .init(
           name: "STRIPE_ACCOUNT_ID",
           isRequired: false,
           isSecret: false,
-          summary: "Connected account to act on behalf of, sent as Stripe-Account."),
+          summary: "Connected account to act on behalf of, sent as Stripe-Account. Stripe does not support OAuth in this mode, so a profile using it must authenticate with a restricted key.",
+          header: .init(name: "Stripe-Account", format: "{value}")),
         .init(
           name: "STRIPE_API_VERSION",
           isRequired: false,
           isSecret: false,
-          summary: "Pin the API version instead of using the account default."),
-        .init(
-          name: "STRIPE_CONFIG",
-          isRequired: false,
-          isSecret: false,
-          summary: "Config file path. Bastion points this at the profile's own directory."),
-        .init(
-          name: "STRIPE_ALLOW_WRITES",
-          isRequired: false,
-          isSecret: false,
-          summary: "Enables the mutating tools: refunds, subscription changes, invoice actions."),
+          summary: "Pin the API version instead of using the account default, sent as Stripe-Version.",
+          header: .init(name: "Stripe-Version", format: "{value}")),
       ]),
     // No write gate because there is no write path: every tool is a read.
     // That is why the build order takes this one end-to-end first — a bug in
@@ -680,13 +846,16 @@ nonisolated enum ServerCatalog {
       id: "shopify",
       displayName: "Shopify",
       summary: "Shopify Admin GraphQL API: products, variants, collections, metafields, locations.",
-      npmName: "@mgcrea/mcp-shopify",
-      binName: "shopify-mcp",
-      distribution: .npm,
-      localPath: "mcp-shopify",
+      transport: .child(
+        .init(
+          npmName: "@mgcrea/mcp-shopify",
+          binName: "shopify-mcp",
+          distribution: .npm,
+          localPath: "mcp-shopify")),
       docsURL: URL(string: "https://github.com/mgcrea/mcp-shopify"),
       dialect: .v2025_11_25,
       writeGate: nil,
+      writeTools: [],
       gateBypass: [],
       authModes: [],
       stateEnv: [],
@@ -720,26 +889,32 @@ nonisolated enum ServerCatalog {
       id: "ovh-api",
       displayName: "OVHcloud",
       summary: "OVHcloud API, focused on Object Storage: containers, objects, policies, regions.",
-      npmName: "@mgcrea/mcp-ovh-api",
-      binName: "ovh-api-mcp",
-      distribution: .npm,
-      localPath: "mcp-ovh-api",
+      transport: .child(
+        .init(
+          npmName: "@mgcrea/mcp-ovh-api",
+          binName: "ovh-api-mcp",
+          distribution: .npm,
+          localPath: "mcp-ovh-api")),
       docsURL: nil,
       dialect: .v2025_11_25,
       writeGate: "OVH_ALLOW_WRITES",
+      writeTools: [],
       gateBypass: [],
       authModes: [
         .init(
           id: "oauth2",
           displayName: "OAuth2 service account",
+          kind: .env,
           env: ["OVH_CLIENT_ID", "OVH_CLIENT_SECRET"]),
         .init(
           id: "signature",
           displayName: "Application key triplet",
+          kind: .env,
           env: ["OVH_APPLICATION_KEY", "OVH_APPLICATION_SECRET", "OVH_CONSUMER_KEY"]),
         .init(
           id: "accessToken",
           displayName: "Access token",
+          kind: .env,
           env: ["OVH_ACCESS_TOKEN"]),
       ],
       stateEnv: [],
@@ -803,22 +978,27 @@ nonisolated enum ServerCatalog {
       id: "keycloak",
       displayName: "Keycloak",
       summary: "Keycloak Admin REST API: realms, clients, users, roles, sessions.",
-      npmName: "@mgcrea/mcp-keycloak",
-      binName: "keycloak-mcp",
-      distribution: .local,
-      localPath: "mcp-keycloak",
+      transport: .child(
+        .init(
+          npmName: "@mgcrea/mcp-keycloak",
+          binName: "keycloak-mcp",
+          distribution: .local,
+          localPath: "mcp-keycloak")),
       docsURL: nil,
       dialect: .v2025_11_25,
       writeGate: "KEYCLOAK_ALLOW_WRITES",
+      writeTools: [],
       gateBypass: [],
       authModes: [
         .init(
           id: "client_credentials",
           displayName: "Client credentials",
+          kind: .env,
           env: ["KEYCLOAK_CLIENT_SECRET"]),
         .init(
           id: "password",
           displayName: "Username and password",
+          kind: .env,
           env: ["KEYCLOAK_USERNAME", "KEYCLOAK_PASSWORD"]),
       ],
       stateEnv: [],

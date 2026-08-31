@@ -46,7 +46,13 @@ final class Activity {
     let id: String
     let profile: String
     let server: String
-    var pid: Int32
+    /// The child's pid, or `nil` for a server with no process — Bastion's own,
+    /// and every remote one. `-1` still means "exited", which is a different
+    /// fact from "never had one".
+    var pid: Int32?
+    /// The host a remote instance answers on, in the place a pid would go.
+    /// Nil for a child, whose pid is the more useful identifier.
+    var remoteHost: String?
     var startedAt: Date
     /// The version the child actually negotiated, not the one it was asked for.
     var dialect: String?
@@ -59,18 +65,29 @@ final class Activity {
     var lastExit: String?
 
     var displayName: String { "\(profile) / \(server)" }
+
+    /// Whether this will answer a request right now.
+    ///
+    /// A child says so with a live pid. A remote server has none and cannot
+    /// die, so what stands in for "running" is that Bastion still holds a
+    /// session with it — `stopped` removes the row when it does not.
+    var isLive: Bool { (pid ?? 0) > 0 || remoteHost != nil }
   }
 
   private(set) var instances: [Instance] = []
 
   // MARK: - From the supervisor
 
-  func started(id: String, profile: String, server: String, pid: Int32, allowWrites: Bool) {
+  func started(
+    id: String, profile: String, server: String, pid: Int32?, allowWrites: Bool,
+    remoteHost: String? = nil
+  ) {
     if let index = instances.firstIndex(where: { $0.id == id }) {
       // A restart, not a new instance. Keeping the row — and its client list —
       // is the point: "this server has restarted four times today" is only
       // visible if the row survives the restart that would otherwise clear it.
       instances[index].pid = pid
+      instances[index].remoteHost = remoteHost
       instances[index].startedAt = Date()
       instances[index].restarts += 1
       instances[index].dialect = nil
@@ -78,9 +95,9 @@ final class Activity {
     }
     instances.append(
       Instance(
-        id: id, profile: profile, server: server, pid: pid, startedAt: Date(),
-        dialect: nil, allowWrites: allowWrites, clients: [], calls: 0, restarts: 0,
-        lastExit: nil))
+        id: id, profile: profile, server: server, pid: pid, remoteHost: remoteHost,
+        startedAt: Date(), dialect: nil, allowWrites: allowWrites, clients: [], calls: 0,
+        restarts: 0, lastExit: nil))
   }
 
   func negotiated(id: String, dialect: String) {
@@ -124,7 +141,11 @@ final class Activity {
 
   // MARK: - Derived
 
-  var runningCount: Int { instances.filter { $0.pid > 0 }.count }
+  /// A child with a live pid, or a remote server Bastion holds a session with.
+  /// "Running" means "will answer", which is the question the menu is asking.
+  var runningCount: Int {
+    instances.filter { ($0.pid ?? 0) > 0 || $0.remoteHost != nil }.count
+  }
   var totalCalls: Int { instances.reduce(0) { $0 + $1.calls } }
 
   /// Every client currently attached to anything, deduplicated.

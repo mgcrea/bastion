@@ -68,10 +68,50 @@ const validate = (servers) => {
     if (seen.has(s.id)) p("duplicate id");
     seen.add(s.id);
 
-    for (const key of ["displayName", "summary", "npmName", "binName", "localPath", "dialect"]) {
+    for (const key of ["displayName", "summary", "dialect"]) {
       if (typeof s[key] !== "string" || !s[key]) p(`${key} is required`);
     }
-    if (!["npm", "local"].includes(s.distribution)) p('distribution must be "npm" or "local"');
+
+    // ── the transport, and the fields it makes meaningful
+    //
+    // Checked before anything reads them, because every rule below this point
+    // asks a different question of a child than of a remote endpoint: a child
+    // has a package to install and an environment to set, and a remote server
+    // has neither.
+    const t = s.transport ?? {};
+    const isChild = t.kind === "child";
+    const isRemote = t.kind === "remote";
+    if (!isChild && !isRemote) p('transport.kind must be "child" or "remote"');
+
+    if (isChild) {
+      for (const key of ["npmName", "binName", "localPath"]) {
+        if (typeof t[key] !== "string" || !t[key]) p(`transport.${key} is required`);
+      }
+      if (!["npm", "local"].includes(t.distribution)) {
+        p('transport.distribution must be "npm" or "local"');
+      }
+    }
+
+    if (isRemote) {
+      // https only, and said here as well as in Swift. The Swift check is the
+      // one that protects a running gateway; this one stops a bad URL reaching
+      // a generated file and nine other copies of it in the first place.
+      if (typeof t.url !== "string" || !t.url.startsWith("https://")) {
+        p("transport.url must be an https URL");
+      }
+      // A remote server has no environment, so the env-var-shaped fields are
+      // not merely unused - carrying one would be a promise Bastion cannot
+      // keep, and it would read in every UI as if it were in force.
+      if (s.writeGate !== null) p("a remote server has no environment: writeGate must be null");
+      if ((s.stateEnv ?? []).length)
+        p("a remote server has no on-disk state: stateEnv must be empty");
+      if ((s.callbackEnv ?? []).length)
+        p("a remote server has no child to redirect: callbackEnv must be empty");
+    } else if (s.writeTools !== undefined) {
+      p("writeTools is remote-only — a child server gates writes with writeGate");
+    }
+    if (s.writeTools !== undefined && !Array.isArray(s.writeTools))
+      p("writeTools must be an array");
     if (!DIALECTS.includes(s.dialect)) p(`dialect must be one of ${DIALECTS.join(", ")}`);
     if (s.docsUrl !== null && !(s.docsUrl ?? "").startsWith("https://")) {
       p("docsUrl must be an https URL or null");
@@ -95,9 +135,13 @@ const validate = (servers) => {
     // this: it names somebody else's package, and `@acme/mcp-foo` shipping a
     // `foo` binary is nobody's mistake. `ServerStore` validates those instead,
     // which is why that check lives in Swift and this one does not move.
-    if (s.npmName !== `@mgcrea/mcp-${s.id}`) p(`npmName must be @mgcrea/mcp-${s.id}`);
-    if (s.binName !== `${s.id}-mcp`) p(`binName must be ${s.id}-mcp`);
-    if (s.localPath !== `mcp-${s.id}`) p(`localPath must be mcp-${s.id}`);
+    // Nothing to derive for a remote entry: the endpoint belongs to whoever
+    // operates it, and `mcp.stripe.com` is not Bastion's to name.
+    if (isChild) {
+      if (t.npmName !== `@mgcrea/mcp-${s.id}`) p(`transport.npmName must be @mgcrea/mcp-${s.id}`);
+      if (t.binName !== `${s.id}-mcp`) p(`transport.binName must be ${s.id}-mcp`);
+      if (t.localPath !== `mcp-${s.id}`) p(`transport.localPath must be mcp-${s.id}`);
+    }
 
     // ── coherence
     const envNames = new Set((s.env ?? []).map((e) => e.name));
@@ -110,6 +154,31 @@ const validate = (servers) => {
       if (typeof e.secret !== "boolean") problems.push(`${eat}: secret must be a boolean`);
       if (typeof e.description !== "string" || !e.description) {
         problems.push(`${eat}: description is required`);
+      }
+
+      // A variable's SINK. On a child it is an environment variable and there
+      // is nothing to say; on a remote server there is no environment, so a
+      // variable with no header is a variable that goes nowhere - collected
+      // from the user, stored in the Keychain, and silently never sent.
+      if (isRemote && !e.header) {
+        problems.push(`${eat}: a remote server's variable needs a header, or it goes nowhere`);
+      }
+      if (!isRemote && e.header) {
+        problems.push(
+          `${eat}: header is remote-only — a child's variables are environment variables`,
+        );
+      }
+      if (e.header) {
+        if (!/^[A-Za-z][A-Za-z0-9-]*$/.test(e.header.name ?? "")) {
+          problems.push(`${eat}: header.name must be a header name`);
+        }
+        // The template is what keeps the word "Bearer" out of the profile, so
+        // a value that never interpolates is a header sent with a literal
+        // template in it - which fails upstream as an auth error, the least
+        // debuggable possible symptom.
+        if (typeof e.header.format !== "string" || !e.header.format.includes("{value}")) {
+          problems.push(`${eat}: header.format must be a template containing {value}`);
+        }
       }
     }
     if (envNames.size !== (s.env ?? []).length) p("duplicate env name");
@@ -141,6 +210,20 @@ const validate = (servers) => {
       p("gateBypass has no meaning without a writeGate");
     }
 
+    // A remote gate names TOOLS rather than a variable, so the coherence check
+    // that catches a typo is a different one: there is no env list to check a
+    // name against, and the list is a denylist, so a typo here reads as a tool
+    // that is simply not gated. Only shape and duplicates are checkable
+    // offline; `make dialect` is where a name meets a real tools/list.
+    const toolNames = new Set();
+    for (const name of s.writeTools ?? []) {
+      if (typeof name !== "string" || !/^[a-zA-Z][a-zA-Z0-9_.-]*$/.test(name)) {
+        p(`writeTools names ${JSON.stringify(name)}, which is not a tool name`);
+      }
+      if (toolNames.has(name)) p(`writeTools names ${name} twice`);
+      toolNames.add(name);
+    }
+
     const modeIds = new Set();
     for (const [j, m] of (s.authModes ?? []).entries()) {
       const mat = `${at}.authModes[${j}]${m.id ? ` (${m.id})` : ""}`;
@@ -149,6 +232,16 @@ const validate = (servers) => {
       modeIds.add(m.id);
       if (typeof m.displayName !== "string" || !m.displayName) {
         problems.push(`${mat}: displayName is required`);
+      }
+      // An OAuth mode names no variables, because there are none to name: the
+      // credential is minted by Bastion at a browser and lives in its own
+      // Keychain scope, never in `values` and never in the profile editor.
+      const kind = m.kind ?? "env";
+      if (!["env", "oauth"].includes(kind)) problems.push(`${mat}: kind must be "env" or "oauth"`);
+      if (kind === "oauth") {
+        if (!isRemote) problems.push(`${mat}: an OAuth mode only makes sense on a remote server`);
+        if ((m.env ?? []).length) problems.push(`${mat}: an OAuth mode names no variables`);
+        continue;
       }
       if (!Array.isArray(m.env) || m.env.length === 0) {
         problems.push(`${mat}: env must be a non-empty array`);
@@ -215,6 +308,7 @@ const swiftAuthMode = (m) =>
     `        .init(`,
     `          id: ${swiftString(m.id)},`,
     `          displayName: ${swiftString(m.displayName)},`,
+    `          kind: .${m.kind ?? "env"},`,
     `          env: ${swiftStringList(m.env)}),`,
   ].join("\n");
 
@@ -224,8 +318,24 @@ const swiftEnvVar = (e) =>
     `          name: ${swiftString(e.name)},`,
     `          isRequired: ${e.required},`,
     `          isSecret: ${e.secret},`,
-    `          summary: ${swiftString(e.description)}),`,
+    e.header
+      ? `          summary: ${swiftString(e.description)},\n` +
+        `          header: .init(name: ${swiftString(e.header.name)}, format: ${swiftString(e.header.format)})),`
+      : `          summary: ${swiftString(e.description)}),`,
   ].join("\n");
+
+/** The transport, as the enum payload that makes the other shape unrepresentable. */
+const swiftTransport = (t) =>
+  t.kind === "child"
+    ? [
+        `      transport: .child(`,
+        `        .init(`,
+        `          npmName: ${swiftString(t.npmName)},`,
+        `          binName: ${swiftString(t.binName)},`,
+        `          distribution: .${t.distribution},`,
+        `          localPath: ${swiftString(t.localPath)})),`,
+      ].join("\n")
+    : `      transport: .remote(endpoint: URL(string: ${swiftString(t.url)})!),`;
 
 /** `2025-11-25` → `.v2025_11_25`. Derived, so a new revision needs no edit here. */
 const swiftDialect = (dialect) => `.v${dialect.replaceAll("-", "_")}`;
@@ -239,13 +349,11 @@ const swiftServer = (s) => {
     `      id: ${swiftString(s.id)},`,
     `      displayName: ${swiftString(s.displayName)},`,
     `      summary: ${swiftString(s.summary)},`,
-    `      npmName: ${swiftString(s.npmName)},`,
-    `      binName: ${swiftString(s.binName)},`,
-    `      distribution: .${s.distribution},`,
-    `      localPath: ${swiftString(s.localPath)},`,
+    swiftTransport(s.transport),
     `      docsURL: ${swiftOptionalURL(s.docsUrl)},`,
     `      dialect: ${swiftDialect(s.dialect)},`,
     `      writeGate: ${swiftOptionalString(s.writeGate)},`,
+    `      writeTools: ${swiftStringList(s.writeTools ?? [])},`,
     `      gateBypass: ${swiftStringList(s.gateBypass)},`,
     s.authModes.length === 0
       ? `      authModes: [],`
@@ -279,27 +387,58 @@ const mdRow = (s) =>
   [
     s.docsUrl === null ? mdEscape(s.displayName) : `[${mdEscape(s.displayName)}](${s.docsUrl})`,
     mdCode(s.id),
-    mdCode(s.binName),
-    s.distribution === "npm" ? `${mdCode(s.npmName)} (npm)` : `${mdCode(s.localPath)} (local)`,
-    s.writeGate === null ? "read-only" : mdCode(s.writeGate),
+    s.transport.kind === "child" ? mdCode(s.transport.binName) : "—",
+    s.transport.kind === "remote"
+      ? `${mdCode(s.transport.url)} (remote)`
+      : s.transport.distribution === "npm"
+        ? `${mdCode(s.transport.npmName)} (npm)`
+        : `${mdCode(s.transport.localPath)} (local)`,
+    s.writeGate !== null
+      ? mdCode(s.writeGate)
+      : (s.writeTools ?? []).length
+        ? `${s.writeTools.map(mdCode).join(", ")} (by name)`
+        : "read-only",
     s.env.filter((e) => e.secret).length || "—",
   ].join(" | ");
 
 const mdDetail = (s) => {
   const out = [`### ${s.displayName}`, "", s.summary, ""];
   if (s.notes.length) out.push(s.notes.join("\n"), "");
-  out.push("| Variable | Required | Secret | Meaning |", "| --- | --- | --- | --- |");
+  const remote = s.transport.kind === "remote";
+  out.push(
+    remote
+      ? "| Variable | Required | Secret | Sent as | Meaning |"
+      : "| Variable | Required | Secret | Meaning |",
+    remote ? "| --- | --- | --- | --- | --- |" : "| --- | --- | --- | --- |",
+  );
   for (const e of s.env) {
-    out.push(
-      `| ${mdCode(e.name)} | ${e.required ? "yes" : "—"} | ${e.secret ? "yes" : "—"} | ${mdEscape(e.description)} |`,
-    );
+    const cells = [
+      mdCode(e.name),
+      e.required ? "yes" : "—",
+      e.secret ? "yes" : "—",
+      ...(remote ? [mdCode(`${e.header.name}: ${e.header.format}`)] : []),
+      mdEscape(e.description),
+    ];
+    out.push(`| ${cells.join(" | ")} |`);
   }
   out.push("");
+  if ((s.writeTools ?? []).length) {
+    out.push(
+      `Hidden with writes off: ${s.writeTools.map(mdCode).join(", ")} — and any tool the ` +
+        "server annotates as not read-only. This filters what Bastion forwards; it does not " +
+        "bind the server, so the credential's own scopes remain the real boundary.",
+      "",
+    );
+  }
   if (s.authModes.length) {
     out.push(
       "Fill exactly one of: " +
         s.authModes
-          .map((m) => `**${m.displayName}** (${m.env.map(mdCode).join(" + ")})`)
+          .map((m) =>
+            m.kind === "oauth"
+              ? `**${m.displayName}** (no variables — Bastion holds the token)`
+              : `**${m.displayName}** (${m.env.map(mdCode).join(" + ")})`,
+          )
           .join(", "),
       "",
     );
@@ -358,6 +497,7 @@ const tsServer = (s) =>
     `    displayName: ${tsString(s.displayName)},`,
     `    summary: ${tsString(s.summary)},`,
     `    writeGate: ${tsOptionalString(s.writeGate)},`,
+    `    transport: ${tsString(s.transport.kind)},`,
     `    dialect: ${tsString(s.dialect)},`,
     "  },",
   ].join("\n");

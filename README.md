@@ -58,14 +58,40 @@ What is genuinely given up is isolation between two clients of the _same_ profil
 trade, and it is the right one: they are the same identity with the same permissions, which is
 exactly the case where a second process bought nothing but memory.
 
+For a **remote** server none of this applies, because there is no process to share. Three of the
+four reasons to put a gateway in front of a server survive — the Keychain, the audit line, and
+per-profile identity — and one does not. The write gate is the one that weakens: a child gets an
+environment variable that switches its destructive tools off inside the server, and a remote server
+has no environment, so the gate becomes a list of tool names Bastion refuses to forward. That
+filters Bastion, not the server. Anyone holding the credential can call the same API directly, and
+the credential's own scopes are the real boundary — which is why the Stripe entry says to use a
+restricted key.
+
 ## Servers
 
 **Bastion ships with nothing installed.** It ships with a _catalog_ of nine, listed in
 [`servers.json`](servers.json) and documented in [docs/servers.md](docs/servers.md); the list an
 install actually runs lives in Application Support, starts empty, and the user edits it. Install
-from the catalog, or add any other MCP server by npm package name. Code is fetched on demand into
+Install from the catalog, or add any other MCP server by npm package name. Code is fetched on demand into
 Bastion's own directory and run with the Node runtime in the app — the bundle carries node and npm
 and no servers at all.
+
+For a remote server there is a second way to authenticate, and it is the one worth having.
+**Bastion runs the OAuth dance once, per profile, and every client shares the result without ever
+seeing a token** — nothing is typed into a config file, and access is revoked from the provider's
+own dashboard rather than hunted for across four repos. Press _Sign in with Stripe_ on a profile;
+Bastion discovers the authorization server from the 401, registers itself dynamically, runs PKCE
+S256 in an ephemeral browser window, and keeps the token in the Keychain, refreshing it behind
+every client's back. A restricted key still works and is not going away — it is the only thing that
+works for a Connect platform acting on a connected account, where Stripe does not support OAuth.
+
+One entry in the catalog is not a package. **Stripe runs its own MCP server**, and Bastion fronts
+that rather than shipping a client for it — the entry used to be a placeholder for
+`@mgcrea/mcp-stripe`, a package nobody ever wrote. This is the same position the catalog already
+takes: what is worth building is the runtime underneath a server, not another server. A **remote**
+entry has no package, no process and nothing to install; what it still has is the credential in the
+Keychain instead of in every repo's `.mcp.json`, one identity per profile, and every call in the
+audit log. What it does not have is the headline — see [Status](#status).
 
 What is still **closed** is how a request selects one, and that is the half that was ever a security
 property. The child inherits the user's credentials and runs unsandboxed, so "run whatever the
@@ -150,6 +176,17 @@ Five rules, in the first commit that opened a socket rather than a hardening pas
 The order of 2, 3 and 4 is load-bearing: a rebinding attempt must be refused with 403 whether or not
 it also guessed a token, or the 401 tells an attacker their `Host` was accepted.
 
+A remote server adds a sixth, and it is the same rule pointed outward. The five above constrain what
+may reach Bastion; a URL in the installed list constrains where Bastion may reach, and it is the
+analogue of a command line — `fetch(whatever_you_typed)` beside `spawn(whatever_you_typed)`.
+
+6. A remote endpoint is **https to a public host**, checked on every request rather than once when
+   it was added, because a name that passed yesterday can resolve somewhere else today. Loopback,
+   private, link-local and the cloud metadata address are refused; so is Bastion's own gateway,
+   which is the sharp one — a "remote server" pointed at `127.0.0.1:8720` would be a way to replay
+   one client's bearer token against every other profile in the app. A cross-origin redirect is
+   refused rather than followed without the credential.
+
 ```bash
 make audit
 ```
@@ -161,6 +198,11 @@ any variable the manifest marks secret. It replaces cupertino's `audit-network.s
 network at all — Bastion cannot make. The property worth keeping was "a claim CI can check", not the
 particular claim.
 
+[`scripts/remote-check.swift`](scripts/remote-check.swift) asserts rule 6 as a pure function of a
+URL — 45 checks, no app and no network — and `make remote-live-check` asserts the whole path against
+Stripe's real server, which needs no credential because an unauthenticated `initialize` is answered
+with a 401 that exercises every step but the last.
+
 The app ships with **no entitlements file at all**. Spawning children and binding loopback need
 none, and with the sandbox off `com.apple.security.network.server` is unnecessary. An empty
 permission set that is true by construction is checkable; one arrived at by deletion is not, so the
@@ -170,22 +212,25 @@ audit asserts the setting is absent rather than empty.
 
 Built and verified:
 
-|                      |                                                                                     |
-| -------------------- | ----------------------------------------------------------------------------------- |
-| **Gateway**          | loopback HTTP, `Origin` / `Host` / bearer, hand-written so the checks are auditable |
-| **Supervisor**       | one child per profile, id remapping, backoff, circuit breaker, idle stop            |
-| **Dialect**          | dual-era: modern 2026-07-28 and legacy `initialize`, onto legacy children           |
-| **Catalog**          | nine seeded servers, a generator, and a CI drift check                              |
-| **Server store**     | the user's own list, on-demand npm install, add, remove, and a per-server switch    |
-| **Bastion's server** | Bastion as one of its own servers, so an agent can manage it — off by default       |
-| **Keychain**         | per-profile credentials, per-client tokens                                          |
-| **Activity window**  | what is running, who is attached, and every tool call, live                         |
-| **`bastion-bridge`** | stdio hosts reach the gateway over HTTP; starts Bastion if it is not up             |
-| **Migration**        | four `.mcp.json` credential sets moved into the Keychain, configs repointed         |
-| **`make smoke`**     | four concurrent clients, colliding ids, exactly one child, `kill -9` recovery       |
-| **`make audit`**     | the five security rules, against the real bundle                                    |
-| **`make dialect`**   | 24 conformance checks across both eras                                              |
-| **`make builtin`**   | the write gate hides the write tools, and no tool returns a secret                  |
+|                         |                                                                                     |
+| ----------------------- | ----------------------------------------------------------------------------------- |
+| **Gateway**             | loopback HTTP, `Origin` / `Host` / bearer, hand-written so the checks are auditable |
+| **Supervisor**          | one child per profile, id remapping, backoff, circuit breaker, idle stop            |
+| **Dialect**             | dual-era: modern 2026-07-28 and legacy `initialize`, onto legacy children           |
+| **Catalog**             | nine seeded servers, a generator, and a CI drift check                              |
+| **Server store**        | the user's own list, on-demand npm install, add, remove, and a per-server switch    |
+| **Remote servers**      | an https endpoint fronted like any other server — Stripe's, in the catalog          |
+| **OAuth 2.1**           | discovery, dynamic registration, PKCE and refresh — one consent, every client       |
+| **Bastion's server**    | Bastion as one of its own servers, so an agent can manage it — off by default       |
+| **Keychain**            | per-profile credentials, per-client tokens                                          |
+| **Activity window**     | what is running, who is attached, and every tool call, live                         |
+| **`bastion-bridge`**    | stdio hosts reach the gateway over HTTP; starts Bastion if it is not up             |
+| **Migration**           | four `.mcp.json` credential sets moved into the Keychain, configs repointed         |
+| **`make smoke`**        | four concurrent clients, colliding ids, exactly one child, `kill -9` recovery       |
+| **`make audit`**        | the five security rules, against the real bundle                                    |
+| **`make dialect`**      | 24 conformance checks across both eras                                              |
+| **`make builtin`**      | the write gate hides the write tools, and no tool returns a secret                  |
+| **`make remote-check`** | where a remote server may live, the SSE collapse, and the OAuth client — 74 checks  |
 
 Bastion is what the 2026-07-28 spec calls a **dual-era server**. A modern client declares its
 protocol version, identity and capabilities in each request's `_meta` and needs no handshake at
@@ -198,11 +243,18 @@ None of the nine catalog servers are modern. Every one runs an SDK whose newest 
 actually run against one; that was Bastion's own pin masquerading as a fact about the servers. A
 server you add yourself is fronted the same way, and declares its own dialect when you add it.
 
+**Stripe's is the oldest dialect in the file**, and it took a credential to find out.
+`mcp.stripe.com` refuses `initialize` without one — it answers 401 with a `WWW-Authenticate` naming
+its protected-resource metadata — so for a while the entry carried the default an unmeasured server
+gets. A live handshake negotiates `2025-03-26`, two revisions behind that default, which is exactly
+why the default is never left in place: the manifest would have claimed a version this server does
+not speak, and nothing would have looked wrong.
+
 Not built yet, in build order: the signed release path — Developer ID signing, notarization,
 Sparkle, the appcast and a Homebrew cask. And a login item, which is what would let an
 `type: http` client reach Bastion from cold the way a bridge-spawning one already can.
 
-Five limitations worth knowing now:
+Seven limitations worth knowing now:
 
 - **Bastion has no login item yet.** A stdio client's bridge starts it on demand, so a Claude
   Desktop entry works from cold. A client configured with a plain `type: http` URL has no such
@@ -211,6 +263,16 @@ Five limitations worth knowing now:
   now call `http://127.0.0.1:8720/...` instead of spawning anything, so with Bastion stopped those
   servers are simply unreachable. There is no login item yet; that lands with the release path.
 
+- **A remote server's write gate is a filter, not a boundary.** A child gets an environment
+  variable that switches its destructive tools off inside the server. A remote server has no
+  environment, so the gate becomes a list of tool names Bastion will not forward — plus any tool
+  the server annotates as not read-only. Anyone holding the credential can call the same API
+  directly, so the credential's own scopes are the real boundary. For Stripe that means a
+  restricted key, which is what its catalog entry says.
+- **A remote server's rate limit is shared.** With one process per client each client spent its own
+  budget upstream. Behind one profile they spend one, so a client in a loop can exhaust the limit
+  for every other client of that profile. That is what sharing an identity means, and there is no
+  fix for it at this layer.
 - **Server-initiated requests are refused, not routed.** Sampling, elicitation and roots get a
   JSON-RPC error explaining why: a shared instance has no single client to ask, and picking one
   would hand one project's agent a prompt raised on behalf of another's. The 2026-07-28 spec
@@ -237,6 +299,8 @@ make stop           # quit it
 make audit          # assert the listener is loopback-only and refuses foreign Origin/Host
 make dialect        # assert both protocol eras against a running build
 make builtin        # assert Bastion's own server: the write gate, and the secrets wall
+make remote-check   # assert the endpoint rules, the SSE collapse, and the OAuth client
+make remote-live-check  # assert the remote transport against Stripe's real server
 make install        # install the Debug build to /Applications
 
 make bundle         # build, stage node + npm, verify the install path, and sign a Release

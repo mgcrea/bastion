@@ -46,6 +46,11 @@ struct ProfileEditor: View {
   @State private var cleared: Set<String>
   @State private var allowWrites: Bool
   @State private var error: String?
+  /// Authorization state, kept separately from `error` so a failed sign-in does
+  /// not look like a failed save.
+  @State private var isAuthorized: Bool = false
+  @State private var authorizing = false
+  @State private var authError: String?
 
   init(server: BastionServer, subject: Subject) {
     self.server = server
@@ -62,16 +67,12 @@ struct ProfileEditor: View {
 
   /// Which secrets are already held, asked by **account name only**.
   ///
-  /// `CredentialStore.accounts` lists what exists without decrypting anything,
-  /// which is the whole point: presence is what this screen needs to render and
-  /// the value is what it must not handle.
+  /// `CredentialStore.storedVariables` lists what exists without decrypting
+  /// anything, which is the whole point: presence is what this screen needs to
+  /// render and the value is what it must not handle.
   private var stored: Set<String> {
     guard let profile = subject.profile else { return [] }
-    let prefix = "\(profile.name)/\(profile.serverID)/"
-    return Set(
-      CredentialStore.accounts(.profile)
-        .filter { $0.hasPrefix(prefix) }
-        .map { String($0.dropFirst(prefix.count)) })
+    return CredentialStore.storedVariables(profile: profile.name, server: profile.serverID)
   }
 
   var body: some View {
@@ -94,6 +95,44 @@ struct ProfileEditor: View {
           }
         } header: {
           Text("Profile")
+        }
+
+        if let oauth = server.authModes.first(where: { $0.kind == .oauth }) {
+          Section {
+            HStack(spacing: 10) {
+              Circle()
+                .fill(isAuthorized ? Color.green : Color.secondary)
+                .frame(width: 7, height: 7)
+              Text(isAuthorized ? "Authorized" : "Not authorized")
+                .font(.callout)
+              Spacer()
+              if authorizing {
+                ProgressView().controlSize(.small)
+              } else if isAuthorized {
+                Button("Sign out", role: .destructive) { signOut() }
+              } else {
+                Button(oauth.displayName) { authorize() }
+                  .buttonStyle(.borderedProminent)
+              }
+            }
+            if let authError {
+              Text(authError)
+                .font(.caption).foregroundStyle(.red)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            Text(
+              isAuthorized
+                ? "Bastion holds the token and refreshes it. It is never written to a config "
+                  + "file and no tool can read it back. While this profile is authorized the "
+                  + "token is what Bastion sends, whatever is in the values below."
+                : "Opens \(server.displayName) in a browser once. Bastion keeps the token in the "
+                  + "Keychain and every client shares it without ever seeing it — nothing is "
+                  + "pasted into a config file.")
+              .font(.caption).foregroundStyle(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+          } header: {
+            Text("Authorization")
+          }
         }
 
         Section {
@@ -135,6 +174,9 @@ struct ProfileEditor: View {
         }
       }
       .formStyle(.grouped)
+      // The badge is read from the Keychain rather than remembered, so it is
+      // right after a sign-out that happened in another window.
+      .onAppear(perform: refreshAuthorization)
 
       Divider()
 
@@ -202,18 +244,81 @@ struct ProfileEditor: View {
     var missing = server.env.filter { $0.isRequired && !isSet($0) }.map(\.name)
     if !server.authModes.isEmpty {
       let satisfied = server.authModes.contains { mode in
-        mode.env.allSatisfy { name in
-          server.env.first { $0.name == name }.map(isSet) ?? false
+        switch mode.kind {
+        case .env:
+          return mode.env.allSatisfy { name in
+            server.env.first { $0.name == name }.map(isSet) ?? false
+          }
+        // Exactly the rule `ProfileEnvironment.missing` uses. Two answers to
+        // "is this profile usable" is how an editor comes to say Save is fine
+        // about a profile the gateway then refuses.
+        case .oauth:
+          return isAuthorized
         }
       }
       if !satisfied {
         let options = server.authModes
-          .map { "\($0.displayName) (\($0.env.joined(separator: " + ")))" }
+          .map { mode in
+            switch mode.kind {
+            case .env: "\(mode.displayName) (\(mode.env.joined(separator: " + ")))"
+            case .oauth: "\(mode.displayName) — authorize it above"
+            }
+          }
           .joined(separator: ", or ")
         missing.append("one of: \(options)")
       }
     }
     return missing
+  }
+
+  // MARK: - Authorization
+
+  private func refreshAuthorization() {
+    isAuthorized = RemoteOAuthSession.isAuthorized(profile: name, server: server.id)
+  }
+
+  private func authorize() {
+    // A profile has to exist before it can hold a token: the Keychain account
+    // is `<profile>/<server>/oauth`, so authorizing an unsaved name would file
+    // the token under a profile that may never be saved.
+    guard !name.trimmingCharacters(in: .whitespaces).isEmpty else {
+      authError = "Give the profile a name first — the token is filed under it."
+      return
+    }
+    authorizing = true
+    authError = nil
+    let profile = Profile(
+      name: name, serverID: server.id, values: [:], allowWrites: allowWrites)
+    Task { @MainActor in
+      defer { authorizing = false }
+      do {
+        try await RemoteOAuthSession.shared.authorize(profile: profile, server: server)
+        refreshAuthorization()
+      } catch {
+        authError = error.localizedDescription
+      }
+    }
+  }
+
+  private func signOut() {
+    let profile = Profile(
+      name: name, serverID: server.id, values: [:], allowWrites: allowWrites)
+    authorizing = true
+    authError = nil
+    Task { @MainActor in
+      defer { authorizing = false }
+      // Off the main actor: revocation is a network call, and the editor
+      // freezing while somebody's provider is slow is the kind of thing that
+      // reads as the app hanging.
+      let outcome = await Task.detached { () -> Error? in
+        do {
+          try RemoteOAuthSession.shared.signOut(profile: profile, server: server)
+          return nil
+        } catch { return error }
+      }.value
+      if let outcome { authError = outcome.localizedDescription }
+      refreshAuthorization()
+    }
   }
 
   // MARK: - Save

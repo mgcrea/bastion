@@ -73,15 +73,24 @@ struct ServerDetail: View {
         case .builtin:
           Badge("built-in", tint: .blue)
         case .custom:
-          Badge(server.npmName, tint: .secondary)
+          if let endpoint = server.endpoint {
+            Badge(endpoint.host() ?? endpoint.absoluteString, tint: .secondary)
+          } else if let package = server.package {
+            Badge(package.npmName, tint: .secondary)
+          }
           Badge("custom", tint: .purple)
         case .catalog:
           // `.local` is not a footnote now that installs happen on demand: it
           // is the difference between an entry that installs and one that
           // reports "not published" when you press the button.
-          switch server.distribution {
-          case .npm: Badge(server.npmName, tint: .secondary)
-          case .local: Badge("not published", tint: .orange)
+          if let endpoint = server.endpoint {
+            Badge("remote", tint: .blue)
+            Badge(endpoint.host() ?? endpoint.absoluteString, tint: .secondary)
+          } else {
+            switch server.package?.distribution ?? .npm {
+            case .npm: Badge(server.package?.npmName ?? server.id, tint: .secondary)
+            case .local: Badge("not published", tint: .orange)
+            }
           }
         }
         Badge(server.dialect.rawValue, tint: .secondary)
@@ -143,7 +152,11 @@ struct ServerDetail: View {
   /// impossible: the servers were inside the app bundle, so the only answers
   /// were "yes" and "not in this build", and neither was actionable.
   @ViewBuilder private var packageCard: some View {
-    if server.origin == .builtin { builtinCard } else { npmCard }
+    switch server.transport {
+    case .inProcess: builtinCard
+    case .remote(let endpoint): remoteCard(endpoint)
+    case .child: npmCard
+    }
   }
 
   /// What stands in for the package card on the one server that has no package.
@@ -175,6 +188,84 @@ struct ServerDetail: View {
     }
   }
 
+  /// What stands in for the package card on a server Bastion does not run.
+  ///
+  /// Its own card for the reason `builtinCard` gives: every question the
+  /// package card asks has a different answer here. There is nothing to
+  /// install, so an Install button would be a control with nothing to do; there
+  /// is no version, so "Check for updates" would be asking npm about a package
+  /// that does not exist; and "Remove server" means something narrower than it
+  /// does there — it forgets an address and some credentials, and deletes no
+  /// code, because Bastion never had any.
+  private func remoteCard(_ endpoint: URL) -> some View {
+    Card(title: "Remote") {
+      VStack(alignment: .leading, spacing: 10) {
+        HStack(spacing: 8) {
+          Circle().fill(Color.blue).frame(width: 7, height: 7)
+          Text(endpoint.absoluteString)
+            .font(.system(.callout, design: .monospaced))
+            .textSelection(.enabled)
+          Spacer()
+        }
+
+        Text(
+          "Somebody else runs this one. Bastion relays to it with the profile's credential and "
+            + "records every call — there is nothing to download and no process to supervise.")
+          .font(.callout)
+          .fixedSize(horizontal: false, vertical: true)
+
+        if !server.writeTools.isEmpty {
+          // The one place a user decides whether to trust the switch, so the
+          // limit belongs here rather than only in the docs.
+          Text(
+            "With writes off, Bastion will not forward: "
+              + server.writeTools.joined(separator: ", ")
+              + " — nor any tool the server marks as not read-only. That filters what Bastion "
+              + "sends, not what the server accepts: anything holding this credential can call "
+              + "the same API directly, so its own scopes are the real limit.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+
+        Text(
+          "Every client on this profile shares one budget upstream, so a rate limit one of them "
+            + "hits is a rate limit they all hit.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+
+        HStack(spacing: 8) {
+          if server.origin == .custom {
+            Button("Edit…") { edit() }
+          }
+          Spacer()
+          Button("Remove server") { confirmingServerRemoval = true }
+            .font(.caption)
+            .buttonStyle(.borderless)
+            .foregroundStyle(.red)
+        }
+      }
+    }
+    .confirmationDialog(
+      "Remove \(server.displayName)?",
+      isPresented: $confirmingServerRemoval, titleVisibility: .visible
+    ) {
+      Button("Remove", role: .destructive) { removeServer() }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      // Deliberately not the package card's sentence. No code is deleted here
+      // because none was ever downloaded, and claiming otherwise would overstate
+      // what removing this undoes.
+      Text(
+        profiles.isEmpty
+          ? "Bastion forgets the address. Nothing is deleted anywhere else."
+          : "Its \(profiles.count) profile\(profiles.count == 1 ? "" : "s") and their credentials "
+            + "in the Keychain are deleted. Any client pointing at them will stop working. "
+            + "Nothing changes at \(endpoint.host() ?? "the server itself").")
+    }
+  }
+
   private var npmCard: some View {
     Card(title: "Package") {
       VStack(alignment: .leading, spacing: 10) {
@@ -184,10 +275,10 @@ struct ServerDetail: View {
         HStack(spacing: 8) {
           if installer.isRunning(server.id) {
             ProgressView().controlSize(.small)
-            Text("Installing \(server.npmName)…").font(.callout)
+            Text("Installing \(server.package?.npmName ?? server.id)…").font(.callout)
           } else if let version {
             Circle().fill(Color.green).frame(width: 7, height: 7)
-            Text("\(server.npmName) \(version)")
+            Text("\(server.package?.npmName ?? server.id) \(version)")
               .font(.system(.callout, design: .monospaced))
               .textSelection(.enabled)
             if case .newer(let latest) = installer.availability[server.id] {
@@ -201,6 +292,7 @@ struct ServerDetail: View {
         }
 
         checkStatus
+        protocolLine
 
         if let failure = installer.failures[server.id] {
           Text(failure)
@@ -210,27 +302,26 @@ struct ServerDetail: View {
         }
 
         HStack(spacing: 8) {
-          Button(version == nil ? "Install" : "Update") {
-            Task { await installer.install(server) }
-          }
-          .disabled(installer.isRunning(server.id))
-
-          // Only with something installed to compare against, and only for a
-          // package that resolves: on a `.local` entry the answer is already on
-          // screen as "not published", and asking npm would produce a second,
-          // worse way of saying it.
-          if version != nil, server.distribution == .npm {
-            Button("Check for updates") {
-              Task { await installer.checkForUpdate(server) }
-            }
-            .disabled(installer.isRunning(server.id) || installer.isChecking(server.id))
-          }
+          packageButton(installed: version != nil)
 
           if server.origin == .custom {
             Button("Edit…") { edit() }
           }
 
           Spacer()
+
+          // Demoted, and the measurement is why. On a tree npm is happy with,
+          // re-installing changes nothing: `npm install <pkg>@latest` leaves
+          // every dependency that already satisfies a range alone — an SDK
+          // pinned back to 1.29.0 by hand survived one untouched. So this is a
+          // repair tool, not a second update button, and it sits with the other
+          // maintenance action rather than beside the one people came for.
+          if version != nil {
+            Button("Reinstall") { Task { await installer.install(server) } }
+              .font(.caption)
+              .buttonStyle(.borderless)
+              .disabled(installer.isRunning(server.id))
+          }
 
           Button("Remove server") { confirmingServerRemoval = true }
             .font(.caption)
@@ -271,6 +362,75 @@ struct ServerDetail: View {
     }
   }
 
+  /// The one button that changes with what is known, rather than two that
+  /// overlap.
+  ///
+  /// "Update" and "Check for updates" side by side left the first one with no
+  /// answerable purpose: with nothing new published, an update is a no-op, and
+  /// a button that usually does nothing teaches people to distrust the one time
+  /// it does something. So the card asks before it acts — Install, then Check
+  /// for updates, then the specific thing the check found — which is the shape
+  /// the app already uses on itself through Sparkle.
+  ///
+  /// `pinnedOlder` gets "Install", never "Update": pressing it goes backwards,
+  /// on purpose, and `checkStatus` right above says so.
+  @ViewBuilder private func packageButton(installed: Bool) -> some View {
+    let installer = ServerInstaller.shared
+    let busy = installer.isRunning(server.id) || installer.isChecking(server.id)
+
+    if !installed {
+      Button("Install") { Task { await installer.install(server) } }
+        .disabled(busy)
+    } else if server.package?.distribution != .npm {
+      // A `.local` entry resolves against a checkout, so there is nothing to
+      // ask npm about. Update is all it can offer, and it is honest here.
+      Button("Update") { Task { await installer.install(server) } }
+        .disabled(busy)
+    } else {
+      switch installer.availability[server.id] {
+      case .newer(let latest):
+        Button("Update to \(latest)") { Task { await installer.install(server) } }
+          .disabled(busy)
+      case .pinnedOlder(let resolved):
+        Button("Install \(resolved)") { Task { await installer.install(server) } }
+          .disabled(busy)
+      case .needsRepair:
+        Button("Repair install") { Task { await installer.install(server) } }
+          .disabled(busy)
+      case .upToDate, .failed, .none:
+        Button("Check for updates") { Task { await installer.checkForUpdate(server) } }
+          .disabled(busy)
+      }
+    }
+  }
+
+  /// What the installed code speaks, against what this entry claims it speaks.
+  ///
+  /// The badge in the header is the catalog's number and stays the catalog's
+  /// number: an npm update cannot change a hand-written manifest, and quietly
+  /// rewriting the badge from a measurement would leave no way to see that the
+  /// two had ever disagreed. So both are shown, and the disagreement is the
+  /// thing worth saying out loud — it is the case where Bastion is pinning a
+  /// child to an older protocol than the code on disk can speak.
+  @ViewBuilder private var protocolLine: some View {
+    if let measured = ServerInstaller.protocolCeiling(of: server) {
+      let declared = server.dialect.rawValue
+      if measured.protocol == declared {
+        Text("Speaks \(measured.protocol), which is what this entry says (SDK \(measured.sdk)).")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      } else {
+        Label(
+          "The installed code speaks \(measured.protocol) (SDK \(measured.sdk)), but this entry "
+            + "says \(declared) — and that is what Bastion asks it for at startup. Update "
+            + "servers.json and rebuild to use the newer one.",
+          systemImage: "arrow.triangle.branch")
+          .font(.caption).foregroundStyle(.orange)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+  }
+
   /// What the last check said, or that one is running.
   ///
   /// Absent until somebody presses the button, rather than an "unknown" row.
@@ -287,18 +447,31 @@ struct ServerDetail: View {
     } else {
       switch installer.availability[server.id] {
       case .upToDate:
-        Label("Up to date. npm would install what you already have.", systemImage: "checkmark.circle")
+        Label("Up to date. npm would change nothing here.", systemImage: "checkmark.circle")
           .font(.caption).foregroundStyle(.secondary)
-      case .newer(let latest):
-        Label("\(latest) is available. Update installs it and restarts anything running.", systemImage: "arrow.down.circle.fill")
+      case .needsRepair(let count):
+        Label(
+          "\(server.package?.npmName ?? "The package") is current, but \(count) "
+            + "\(count == 1 ? "package" : "packages") in its tree "
+            + "\(count == 1 ? "is" : "are") missing or out of range. Repair install rebuilds it.",
+          systemImage: "wrench.and.screwdriver")
           .font(.caption).foregroundStyle(.orange)
+          .fixedSize(horizontal: false, vertical: true)
+      case .newer:
+        // The version itself is on the row above and on the button below.
+        // What neither of those can say is what pressing it costs, so that is
+        // all this line says.
+        Label("Updating restarts anything currently running from this server.",
+          systemImage: "arrow.down.circle.fill")
+          .font(.caption).foregroundStyle(.orange)
+          .fixedSize(horizontal: false, vertical: true)
       case .pinnedOlder(let resolved):
         // Not a failure, and not an update either. The minimum package age is
         // doing exactly what it was set to do, and the honest thing is to name
         // the direction: pressing Update here goes backwards.
         Label(
           "Your minimum package age holds this at \(resolved), which is older than what is "
-            + "installed. Update would install that, not something newer.",
+            + "installed. Installing it goes backwards, not forwards.",
           systemImage: "clock.badge.exclamationmark")
           .font(.caption).foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -503,15 +676,21 @@ private struct ProfileRow: View {
   }
 
   private var dotTint: Color {
-    if let instance, instance.pid > 0 { return .green }
+    if let instance, instance.isLive { return .green }
     if !missing.isEmpty { return .orange }
     return .secondary
   }
 
   private var subtitle: String {
-    if let instance, instance.pid > 0 {
+    if let instance, instance.isLive {
       let clients = instance.clients.count
-      return "running · pid \(instance.pid) · \(clients) client\(clients == 1 ? "" : "s")"
+      // "connected" rather than "running" for a remote server: nothing here is
+      // running it, and claiming otherwise would be the app taking credit for
+      // somebody else's uptime.
+      let what =
+        instance.pid.map { "running · pid \($0)" }
+        ?? instance.remoteHost.map { "connected · \($0)" } ?? "running"
+      return "\(what) · \(clients) client\(clients == 1 ? "" : "s")"
         + " · \(instance.calls) call\(instance.calls == 1 ? "" : "s")"
     }
     if !missing.isEmpty {

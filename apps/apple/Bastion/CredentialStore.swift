@@ -25,18 +25,29 @@ nonisolated enum CredentialStore {
   enum Scope {
     case profile
     case gatewayToken
+    /// OAuth token sets for remote servers.
+    ///
+    /// A third service rather than reusing `.profile`, because these are not
+    /// the same kind of thing: a profile variable is something the user typed
+    /// and can retype, and a token set is minted by Bastion, expires, refreshes
+    /// itself, and must never be offered to `ProfileEditor` as an editable
+    /// field. Keeping them apart is what makes "show the user their variables"
+    /// unable to show a token by accident.
+    case oauth
 
     var service: String {
       let base = AppSupport.identifier
       switch self {
       case .profile: return "\(base).profile"
       case .gatewayToken: return "\(base).gateway"
+      case .oauth: return "\(base).oauth"
       }
     }
   }
 
   enum StoreError: LocalizedError {
     case keychain(OSStatus, String)
+    case emptyValue(String)
 
     var errorDescription: String? {
       switch self {
@@ -44,6 +55,8 @@ nonisolated enum CredentialStore {
         let detail =
           SecCopyErrorMessageString(status, nil).map { $0 as String } ?? "OSStatus \(status)"
         return "keychain: could not \(what) — \(detail)"
+      case .emptyValue(let account):
+        return "keychain: refusing to store an empty value for \(account)"
       }
     }
   }
@@ -57,6 +70,49 @@ nonisolated enum CredentialStore {
     "\(profile)/\(server)/\(variable)"
   }
 
+  /// The one account a profile's OAuth token set lives under.
+  ///
+  /// Deliberately the same `<profile>/<server>/` prefix the variables use, so
+  /// that `ProfileStore.remove`'s sweep catches it with the same prefix match
+  /// rather than needing to know this exists.
+  static func oauthAccount(profile: String, server: String) -> String {
+    "\(profile)/\(server)/oauth"
+  }
+
+  /// Read a profile's OAuth token set, if it has one.
+  static func readTokens(profile: String, server: String) -> RemoteOAuth.TokenSet? {
+    guard
+      let raw = read(.oauth, account: oauthAccount(profile: profile, server: server)),
+      let data = raw.data(using: .utf8)
+    else { return nil }
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    return try? decoder.decode(RemoteOAuth.TokenSet.self, from: data)
+  }
+
+  /// Replace a profile's OAuth token set. One atomic write, never a field.
+  static func writeTokens(_ tokens: RemoteOAuth.TokenSet, profile: String, server: String) throws {
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    let data = try encoder.encode(tokens)
+    try write(
+      .oauth, account: oauthAccount(profile: profile, server: server),
+      value: String(decoding: data, as: UTF8.self))
+  }
+
+  static func deleteTokens(profile: String, server: String) throws {
+    try delete(.oauth, account: oauthAccount(profile: profile, server: server))
+  }
+
+  /// The value, or `nil` — but a refusal is never silent.
+  ///
+  /// Only `errSecItemNotFound` means "not set". Everything else means the item
+  /// exists and we were not allowed to have it: a denied ACL prompt, a prompt
+  /// suppressed because the code signature no longer validates, a keychain that
+  /// has not been unlocked since boot. Collapsing those into the same `nil` is
+  /// how a spawn comes to hand a child a missing credential while the UI
+  /// cheerfully reports the variable unset. The call still returns `nil`,
+  /// because there is no value to return — but it says so first.
   static func read(_ scope: Scope, account: String) -> String? {
     var query = baseQuery(scope, account: account)
     query[kSecReturnData as String] = true
@@ -64,8 +120,14 @@ nonisolated enum CredentialStore {
 
     var item: CFTypeRef?
     let status = SecItemCopyMatching(query as CFDictionary, &item)
-    guard status == errSecSuccess, let data = item as? Data else { return nil }
-    return String(data: data, encoding: .utf8)
+    if status == errSecSuccess, let data = item as? Data {
+      return String(data: data, encoding: .utf8)
+    }
+    if status != errSecItemNotFound {
+      let error = StoreError.keychain(status, "read \(account)")
+      hostLog("keychain", .error, error.localizedDescription)
+    }
+    return nil
   }
 
   /// Write, replacing any existing value.
@@ -73,7 +135,16 @@ nonisolated enum CredentialStore {
   /// `SecItemUpdate` after a failed add rather than delete-then-add: the delete
   /// half of a delete-then-add can succeed while the add fails, which loses a
   /// credential in exchange for nothing.
+  ///
+  /// An empty value is refused rather than stored. Presence is answered by
+  /// account name — see `storedVariables` — and an item holding `""` is the one
+  /// thing that can make presence-by-name and presence-by-value disagree, which
+  /// shows up as a profile that reads as configured and cannot start. Refusing
+  /// here is also the only place a caller learns: `secret_set` passes its
+  /// argument through unchecked, so without this an empty write is a silent
+  /// no-op the caller believes worked.
   static func write(_ scope: Scope, account: String, value: String) throws {
+    guard !value.isEmpty else { throw StoreError.emptyValue(account) }
     let data = Data(value.utf8)
     var query = baseQuery(scope, account: account)
 
@@ -117,6 +188,29 @@ nonisolated enum CredentialStore {
       let rows = item as? [[String: Any]]
     else { return [] }
     return rows.compactMap { $0[kSecAttrAccount as String] as? String }
+  }
+
+  /// The variable names one profile holds a secret for.
+  ///
+  /// Presence lives in the account namespace, so this answers "is it set"
+  /// without decrypting anything: `accounts` asks for attributes only, which
+  /// never meets the per-item ACL that guards a value and so never raises the
+  /// prompt a background tool call cannot answer.
+  ///
+  /// Takes the account list rather than fetching it, so a caller ranging over
+  /// every profile pays for one query instead of one per profile.
+  static func storedVariables(in accounts: [String], profile: String, server: String) -> Set<String>
+  {
+    let prefix = "\(profile)/\(server)/"
+    return Set(
+      accounts
+        .filter { $0.hasPrefix(prefix) }
+        .map { String($0.dropFirst(prefix.count)) })
+  }
+
+  /// The same, for a caller with a single profile to ask about.
+  static func storedVariables(profile: String, server: String) -> Set<String> {
+    storedVariables(in: accounts(.profile), profile: profile, server: server)
   }
 
   private static func baseQuery(_ scope: Scope, account: String?) -> [String: Any] {

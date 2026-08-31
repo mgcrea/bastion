@@ -197,6 +197,12 @@ final class ProfileStore {
     for account in CredentialStore.accounts(.profile) where account.hasPrefix(prefix) {
       try? CredentialStore.delete(.profile, account: account)
     }
+    // And the OAuth token set, which lives under the same prefix in its own
+    // scope. Leaving it would mean a profile recreated with the same name
+    // silently inheriting the last one's authorization.
+    for account in CredentialStore.accounts(.oauth) where account.hasPrefix(prefix) {
+      try? CredentialStore.delete(.oauth, account: account)
+    }
     try save()
   }
 }
@@ -255,18 +261,7 @@ nonisolated enum ProfileEnvironment {
       "XDG_CACHE_HOME": state.appendingPathComponent("cache", isDirectory: true).path,
     ]
 
-    let known = Set(server.env.map(\.name))
-    for (key, value) in profile.values where known.contains(key) && !value.isEmpty {
-      env[key] = value
-    }
-
-    for variable in server.env where variable.isSecret {
-      let account = CredentialStore.account(
-        profile: profile.name, server: server.id, variable: variable.name)
-      if let secret = CredentialStore.read(.profile, account: account), !secret.isEmpty {
-        env[variable.name] = secret
-      }
-    }
+    env.merge(values(for: profile, server: server)) { _, resolved in resolved }
 
     // Last, and unconditionally in both directions. Setting the gate only when
     // it is on would let a stale value in `profiles.json` leave writes enabled
@@ -292,6 +287,89 @@ nonisolated enum ProfileEnvironment {
     return env
   }
 
+  /// Every variable this profile has a value for, from `profiles.json` and the
+  /// Keychain, with nothing else added.
+  ///
+  /// Split out of `build` when a second sink appeared. A child's variables
+  /// become environment variables and a remote server's become headers, but
+  /// *which variables are set* is one question with one answer, and asking it
+  /// in two places is how the profile editor comes to disagree with the thing
+  /// that actually sends them.
+  ///
+  /// The same rule as ever: a key the manifest does not list is dropped rather
+  /// than passed through. "Set anything you like on the thing holding my
+  /// credentials" is a capability, not a convenience.
+  nonisolated static func values(for profile: Profile, server: BastionServer)
+    -> [String: String]
+  {
+    var out: [String: String] = [:]
+    let known = Set(server.env.map(\.name))
+    for (key, value) in profile.values where known.contains(key) && !value.isEmpty {
+      out[key] = value
+    }
+    for variable in server.env where variable.isSecret {
+      let account = CredentialStore.account(
+        profile: profile.name, server: server.id, variable: variable.name)
+      if let secret = CredentialStore.read(.profile, account: account), !secret.isEmpty {
+        out[variable.name] = secret
+      }
+    }
+    return out
+  }
+
+  /// The other sink: what a remote server's request carries.
+  ///
+  /// A variable with no `header` produces nothing. That is not a silent drop —
+  /// the manifest generator refuses a remote variable without one, and
+  /// `ServerStore.upsert` refuses a typed entry without one — so reaching this
+  /// with a headerless variable means a hand-edited file, where dropping it is
+  /// the conservative answer.
+  ///
+  /// No write gate here and none possible: the gate on a remote server is the
+  /// tool filter in `RemoteInstance`, because there is no environment to put a
+  /// switch in. Nothing about `allowWrites` reaches the wire.
+  nonisolated static func headers(for profile: Profile, server: BastionServer)
+    -> [String: String]
+  {
+    let resolved = values(for: profile, server: server)
+    var out: [String: String] = [:]
+    for variable in server.env {
+      guard let sink = variable.header, let value = resolved[variable.name], !value.isEmpty
+      else { continue }
+      out[sink.name] = sink.rendered(value)
+    }
+    return out
+  }
+
+  /// Which of this server's variables have something behind them.
+  ///
+  /// Names, not values. A variable is set or it is not, and that answer is the
+  /// same whether it would have become an environment variable on a child or a
+  /// header on a request — so the two sinks still cannot disagree, because both
+  /// read the same account namespace this does.
+  ///
+  /// Asking by name is the whole point. `values(for:)` answers the same
+  /// question by decrypting every secret, which meets a per-item Keychain ACL
+  /// each time and turns a status request into a prompt storm — a modal dialog
+  /// in the middle of a tool call nobody is sitting there to answer. Decryption
+  /// is left to the paths that actually need a value: `values(for:)` at spawn
+  /// and `headers(for:)` on the wire.
+  ///
+  /// Takes the stored set rather than fetching it, so a caller ranging over
+  /// every profile pays for one Keychain query instead of one per profile.
+  nonisolated static func present(
+    for profile: Profile, server: BastionServer, stored: Set<String>
+  ) -> Set<String> {
+    // The same rule `values(for:)` applies: a key the manifest does not list is
+    // not a variable, so it cannot satisfy a requirement either.
+    let known = Set(server.env.map(\.name))
+    var out = Set(
+      profile.values.filter { known.contains($0.key) && !$0.value.isEmpty }.keys)
+    let secrets = Set(server.env.filter(\.isSecret).map(\.name))
+    out.formUnion(stored.filter { secrets.contains($0) })
+    return out
+  }
+
   /// What is missing before this profile can start.
   ///
   /// Reported rather than thrown at spawn time: a server that exits on a
@@ -300,8 +378,17 @@ nonisolated enum ProfileEnvironment {
   /// servers has a comment about avoiding. Bastion is in a position to say the
   /// sentence instead.
   nonisolated static func missing(for profile: Profile, server: BastionServer) -> [String] {
-    let env = build(for: profile, server: server)
-    var missing = server.env.filter { $0.isRequired && (env[$0.name] ?? "").isEmpty }
+    let stored = CredentialStore.storedVariables(profile: profile.name, server: server.id)
+    return missing(
+      for: profile, server: server,
+      present: present(for: profile, server: server, stored: stored))
+  }
+
+  /// The same, for a caller that has already worked out what is present.
+  nonisolated static func missing(
+    for profile: Profile, server: BastionServer, present: Set<String>
+  ) -> [String] {
+    var missing = server.env.filter { $0.isRequired && !present.contains($0.name) }
       .map(\.name)
 
     // An auth mode is satisfied when every variable in it is set. None
@@ -309,11 +396,26 @@ nonisolated enum ProfileEnvironment {
     // option is more useful than naming the first.
     if !server.authModes.isEmpty {
       let satisfied = server.authModes.contains { mode in
-        mode.env.allSatisfy { !(env[$0] ?? "").isEmpty }
+        switch mode.kind {
+        case .env:
+          return mode.env.allSatisfy { present.contains($0) }
+        case .oauth:
+          // Satisfied by having been authorized, which is a fact about the
+          // Keychain rather than about any variable. This is why `missing` had
+          // to learn about modes at all: an OAuth profile has no variable to be
+          // missing, and naming one would send somebody looking for a field
+          // that is supposed to stay empty.
+          return CredentialStore.readTokens(profile: profile.name, server: server.id) != nil
+        }
       }
       if !satisfied {
         let options = server.authModes
-          .map { "\($0.displayName) (\($0.env.joined(separator: " + ")))" }
+          .map { mode in
+            switch mode.kind {
+            case .env: "\(mode.displayName) (\(mode.env.joined(separator: " + ")))"
+            case .oauth: "\(mode.displayName) — authorize it in Bastion"
+            }
+          }
           .joined(separator: ", or ")
         missing.append("one of: \(options)")
       }

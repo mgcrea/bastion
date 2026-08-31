@@ -48,7 +48,7 @@ struct InstanceRow: View {
   var body: some View {
     HStack(alignment: .firstTextBaseline, spacing: 10) {
       Circle()
-        .fill(instance.pid > 0 ? Color.green : Color.secondary)
+        .fill(instance.isLive ? Color.green : Color.secondary)
         .frame(width: 7, height: 7)
 
       VStack(alignment: .leading, spacing: 3) {
@@ -83,10 +83,12 @@ struct InstanceRow: View {
   }
 
   private var subtitle: String {
-    if instance.pid <= 0 {
+    guard instance.isLive else {
       return instance.lastExit.map { "stopped — \($0)" } ?? "stopped"
     }
-    var parts = ["pid \(instance.pid)", uptime]
+    // A remote server has no pid to show, and the host is the fact that
+    // belongs in its place: it is what the credential is being sent to.
+    var parts = [instance.pid.map { "pid \($0)" } ?? instance.remoteHost ?? "in-process", uptime]
     if instance.clients.isEmpty {
       parts.append("no client yet")
     } else {

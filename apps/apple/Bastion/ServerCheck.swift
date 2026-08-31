@@ -218,7 +218,10 @@ final class ServerCheck {
 
     let info = handshake["serverInfo"] as? [String: Any]
     let negotiated = handshake["protocolVersion"] as? String
-    var identity = (info?["name"] as? String) ?? server.binName
+    // A remote server has no binary to fall back to, so it falls back to the
+    // host it answers on — which is the useful thing to see anyway.
+    var identity =
+      (info?["name"] as? String) ?? server.package?.binName ?? server.endpoint?.host() ?? server.id
     if let version = info?["version"] as? String { identity += " \(version)" }
     if let pid = livePID(id) { identity += " · pid \(pid)" }
 

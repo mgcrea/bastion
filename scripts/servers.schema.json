@@ -2,17 +2,26 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://bastion.mgcrea.io/servers.schema.json",
   "title": "Bastion server catalog",
-  "description": "The catalog Bastion ships as a starting point. It is not the list of servers a given install runs \u2014 that list lives in Application Support and the user edits it. Enforced by scripts/generate-servers.mjs before it writes anything.",
+  "description": "The catalog Bastion ships as a starting point. It is not the list of servers a given install runs — that list lives in Application Support and the user edits it. Enforced by scripts/generate-servers.mjs before it writes anything.",
   "type": "object",
   "required": ["servers"],
   "additionalProperties": false,
   "properties": {
-    "$schema": { "type": "string" },
-    "$comment": { "type": "array", "items": { "type": "string" } },
+    "$schema": {
+      "type": "string"
+    },
+    "$comment": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "servers": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/definitions/server" }
+      "items": {
+        "$ref": "#/definitions/server"
+      }
     }
   },
   "definitions": {
@@ -23,10 +32,7 @@
         "id",
         "displayName",
         "summary",
-        "npmName",
-        "binName",
-        "distribution",
-        "localPath",
+        "transport",
         "docsUrl",
         "dialect",
         "writeGate",
@@ -43,16 +49,64 @@
           "pattern": "^[a-z][a-z0-9-]*$",
           "description": "Kebab-case. Becomes a URL path segment, a profile directory name and a JSON key."
         },
-        "displayName": { "type": "string", "minLength": 1 },
-        "summary": { "type": "string", "minLength": 1 },
-        "npmName": { "type": "string", "pattern": "^(@[a-z0-9-]+/)?[a-z0-9-]+$" },
-        "binName": { "type": "string", "pattern": "^[a-z0-9-]+$" },
-        "distribution": {
-          "enum": ["npm", "local"],
-          "description": "npm means published, so Bastion can install it on demand; local means it resolves only against a checkout named by dev.json."
+        "displayName": {
+          "type": "string",
+          "minLength": 1
         },
-        "localPath": { "type": "string", "minLength": 1 },
-        "docsUrl": { "type": ["string", "null"], "pattern": "^https://" },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "transport": {
+          "description": "How Bastion reaches the server. `child` is an npm package run as a stdio subprocess; `remote` is an https endpoint somebody else operates, which Bastion installs nothing for and starts no process for.",
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "npmName", "binName", "distribution", "localPath"],
+              "properties": {
+                "kind": {
+                  "const": "child"
+                },
+                "npmName": {
+                  "type": "string",
+                  "pattern": "^(@[a-z0-9-]+/)?[a-z0-9-]+$"
+                },
+                "binName": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9-]+$"
+                },
+                "distribution": {
+                  "enum": ["npm", "local"],
+                  "description": "npm means published, so Bastion can install it on demand; local means it resolves only against a checkout named by dev.json."
+                },
+                "localPath": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "url"],
+              "properties": {
+                "kind": {
+                  "const": "remote"
+                },
+                "url": {
+                  "type": "string",
+                  "pattern": "^https://",
+                  "description": "The MCP endpoint. https only, and refused at runtime if it resolves to a loopback, private, link-local or metadata address — a URL here is the analogue of a command line, and the rule that nothing arriving over the wire can name one has to hold for URLs too."
+                }
+              }
+            }
+          ]
+        },
+        "docsUrl": {
+          "type": ["string", "null"],
+          "pattern": "^https://"
+        },
         "dialect": {
           "enum": ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"],
           "description": "The newest MCP protocol version the server itself speaks. Bastion translates to whatever each client asks for."
@@ -64,7 +118,10 @@
         },
         "gateBypass": {
           "type": "array",
-          "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          },
           "description": "Env vars that enable writes independently of the write gate. Bastion always forces these to \"0\"; they are never settable by a profile."
         },
         "authModes": {
@@ -74,24 +131,43 @@
             "additionalProperties": false,
             "required": ["id", "displayName", "env"],
             "properties": {
-              "id": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$" },
-              "displayName": { "type": "string", "minLength": 1 },
+              "id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "displayName": {
+                "type": "string",
+                "minLength": 1
+              },
               "env": {
                 "type": "array",
-                "minItems": 1,
-                "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" }
+                "minItems": 0,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z][A-Z0-9_]*$"
+                }
+              },
+              "kind": {
+                "enum": ["env", "oauth"],
+                "description": "How the credential is obtained. 'env' (the default) means the user fills the named variables. 'oauth' means Bastion runs an OAuth 2.1 flow and holds the token itself, so the mode names no variables at all. Remote transports only."
               }
             }
           }
         },
         "stateEnv": {
           "type": "array",
-          "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          },
           "description": "Env vars naming on-disk state that must be redirected per profile."
         },
         "callbackEnv": {
           "type": "array",
-          "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          },
           "description": "Env vars naming a loopback OAuth callback URL, whose port must be unique per profile."
         },
         "env": {
@@ -102,17 +178,55 @@
             "additionalProperties": false,
             "required": ["name", "required", "secret", "description"],
             "properties": {
-              "name": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
-              "required": { "type": "boolean" },
+              "name": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]*$"
+              },
+              "required": {
+                "type": "boolean"
+              },
               "secret": {
                 "type": "boolean",
                 "description": "Kept in the Keychain and never written to a config file, never echoed in the Activity window."
               },
-              "description": { "type": "string", "minLength": 1 }
+              "description": {
+                "type": "string",
+                "minLength": 1
+              },
+              "header": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "format"],
+                "description": "Remote transport only. The variable's sink: a request header rather than an environment variable on a child.",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9-]*$"
+                  },
+                  "format": {
+                    "type": "string",
+                    "pattern": "\\{value\\}",
+                    "description": "Template over {value}, so a profile holds the key rather than the word Bearer."
+                  }
+                }
+              }
             }
           }
         },
-        "notes": { "type": "array", "items": { "type": "string" } }
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "writeTools": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Remote transport only. Tool names the write gate hides, since a remote server has no environment to set a writeGate in. A filter over what Bastion forwards, never a promise about what the server will refuse."
+        }
       }
     }
   }

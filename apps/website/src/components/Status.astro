@@ -30,6 +30,18 @@ const STATUS = [
     tone: "text-ok-ink",
   },
   {
+    k: "OAuth 2.1",
+    v: "Discovery from the 401, dynamic registration, PKCE S256 and refresh. One consent per profile; every client shares the token and none of them sees it.",
+    tag: "built",
+    tone: "text-ok-ink",
+  },
+  {
+    k: "Remote servers",
+    v: "An https endpoint fronted like any other server — Stripe's is in the catalog. No process to share, so what it keeps is the Keychain, the identity and the audit line.",
+    tag: "built",
+    tone: "text-ok-ink",
+  },
+  {
     k: "Keychain",
     v: "Per-profile credentials, per-client tokens. profiles.json holds no secret value.",
     tag: "built",
@@ -74,6 +86,8 @@ const STATUS = [
 const LIMITS = [
   "The repointed repos need Bastion running: four .mcp.json files now call the gateway instead of spawning anything, and there is no login item yet.",
   "Sampling, elicitation and roots are refused with an explanatory error, not routed — a shared instance has no single client to ask.",
+  "A remote server's write gate is a filter, not a boundary: Bastion refuses to forward the named tools, but anyone holding the credential can call the same API directly. Its own scopes are the real limit.",
+  "A remote server's rate limit is shared. Behind one profile every client spends one budget upstream, so a client in a loop can exhaust it for the rest.",
   "Responses are a single JSON object, never an SSE stream: no notifications/progress on a long call.",
   "Mcp-Param-* headers are forwarded but not validated; no server in the manifest annotates a parameter yet.",
 ] as const;

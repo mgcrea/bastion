@@ -27,6 +27,12 @@ export interface Server {
   summary: string;
   /** The env var that turns writes on, or null when the server has no write path. */
   writeGate: string | null;
+  /**
+   * How Bastion reaches it: a package it runs, or an endpoint somebody else
+   * operates. The site says "one process per server", and for a remote entry
+   * there is no process — so the page has to be able to tell them apart.
+   */
+  transport: "child" | "remote";
   /** The newest protocol revision the server's SDK negotiates. */
   dialect: string;
 }
@@ -38,6 +44,7 @@ export const SERVERS: Server[] = [
     displayName: "App Store Connect",
     summary: "App Store Connect API: apps, versions, builds, TestFlight, listings, analytics, sales.",
     writeGate: "APP_STORE_CONNECT_ALLOW_WRITES",
+    transport: "child",
     dialect: "2025-11-25",
   },
   {
@@ -45,6 +52,7 @@ export const SERVERS: Server[] = [
     displayName: "Reddit",
     summary: "Reddit API: subreddits, posts, comments, search, and the user's own history.",
     writeGate: "REDDIT_ALLOW_WRITES",
+    transport: "child",
     dialect: "2025-11-25",
   },
   {
@@ -52,6 +60,7 @@ export const SERVERS: Server[] = [
     displayName: "X",
     summary: "X (Twitter) API v2: posts, threads, timelines, search, bookmarks, and the Ads API.",
     writeGate: "X_API_ALLOW_WRITES",
+    transport: "child",
     dialect: "2025-11-25",
   },
   {
@@ -59,6 +68,7 @@ export const SERVERS: Server[] = [
     displayName: "UniFi Protect",
     summary: "UniFi Protect: cameras, event history, recordings, snapshots and NVR status.",
     writeGate: "UNIFI_PROTECT_ALLOW_WRITES",
+    transport: "child",
     dialect: "2025-11-25",
   },
   {
@@ -66,20 +76,23 @@ export const SERVERS: Server[] = [
     displayName: "UniFi Network",
     summary: "UniFi Network API: sites, devices, clients, WLANs, port and firewall configuration.",
     writeGate: "UNIFI_ALLOW_WRITES",
+    transport: "child",
     dialect: "2025-11-25",
   },
   {
     id: "stripe",
     displayName: "Stripe",
-    summary: "Stripe API: customers, subscriptions, invoices, charges, payouts and balance.",
-    writeGate: "STRIPE_ALLOW_WRITES",
-    dialect: "2025-11-25",
+    summary: "Stripe's own remote MCP server: the API surface, plus documentation and knowledge-base search.",
+    writeGate: null,
+    transport: "remote",
+    dialect: "2025-03-26",
   },
   {
     id: "shopify",
     displayName: "Shopify",
     summary: "Shopify Admin GraphQL API: products, variants, collections, metafields, locations.",
     writeGate: null,
+    transport: "child",
     dialect: "2025-11-25",
   },
   {
@@ -87,6 +100,7 @@ export const SERVERS: Server[] = [
     displayName: "OVHcloud",
     summary: "OVHcloud API, focused on Object Storage: containers, objects, policies, regions.",
     writeGate: "OVH_ALLOW_WRITES",
+    transport: "child",
     dialect: "2025-11-25",
   },
   {
@@ -94,6 +108,7 @@ export const SERVERS: Server[] = [
     displayName: "Keycloak",
     summary: "Keycloak Admin REST API: realms, clients, users, roles, sessions.",
     writeGate: "KEYCLOAK_ALLOW_WRITES",
+    transport: "child",
     dialect: "2025-11-25",
   },
 ];
