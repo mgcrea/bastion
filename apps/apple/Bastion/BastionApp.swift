@@ -24,6 +24,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       return
     }
 
+    // Before anything can be logged. `LogStore` publishes rows through two
+    // hooks rather than calling the audit log itself, so nothing is kept until
+    // this runs — and with the Audit pane untouched `AuditLog` opens no file
+    // even once it is listening.
+    AuditLog.install()
+
     // Explicitly, and before anything can ask for a profile.
     //
     // `ProfileStore` publishes a nonisolated snapshot that the connection

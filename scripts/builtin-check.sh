@@ -24,6 +24,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="$ROOT/apps/apple/.build/Build/Products/Debug/Bastion.app/Contents/MacOS/Bastion"
 PORT="${BASTION_PORT:-8720}"
 SUPPORT="$HOME/Library/Application Support/io.mgcrea.bastion.debug"
+BUNDLE="io.mgcrea.bastion.debug"
 
 [ -x "$BIN" ] || { echo "no build — run \`make app\` first"; exit 2; }
 
@@ -42,6 +43,12 @@ for f in servers.json profiles.json; do
   [ -f "$SUPPORT/$f" ] && cp "$SUPPORT/$f" "$SUPPORT/$f.builtin-check-backup"
 done
 
+# The audit log is state this script both asserts the absence of and then
+# creates, so it has to start from nothing. Moved aside rather than deleted,
+# like the two files above: a developer running this must not lose a log they
+# were keeping.
+[ -d "$SUPPORT/audit" ] && mv "$SUPPORT/audit" "$SUPPORT/audit.builtin-check-backup"
+
 restore() {
   kill "${APP:-0}" 2>/dev/null || true
   wait "${APP:-0}" 2>/dev/null || true
@@ -50,6 +57,12 @@ restore() {
       mv "$SUPPORT/$f.builtin-check-backup" "$SUPPORT/$f"
     fi
   done
+  defaults delete "$BUNDLE" auditEnabled 2>/dev/null || true
+  defaults delete "$BUNDLE" auditPayloads 2>/dev/null || true
+  rm -rf "$SUPPORT/audit"
+  if [ -d "$SUPPORT/audit.builtin-check-backup" ]; then
+    mv "$SUPPORT/audit.builtin-check-backup" "$SUPPORT/audit"
+  fi
 }
 trap restore EXIT
 
@@ -210,13 +223,14 @@ check "an ordinary tool's arguments are recorded" \
   "$(tool checkrw recent_activity '{"limit":200}')" 'checkscratch'
 
 echo
-echo "A captured payload never reaches disk"
-# The claim the Activity window and the About pane both make. It is not a
-# property of intent: `hostLog` mirrors every line it is given to stderr, which
-# for a LaunchServices-started app outlives the process and lands outside
-# Bastion's 0o700 directory — so `hostCall` keeps payloads off it deliberately,
-# and this is what says it worked. The canary is a server id that exists
-# nowhere, so a hit anywhere can only have come from the argument.
+echo "With the audit log off, a payload never reaches disk"
+# The DEFAULT guarantee, and the one most people rely on without knowing it:
+# with the Audit pane untouched, the Activity window is a ring in memory and
+# nothing outlives the app. It is not a property of intent — `hostLog` mirrors
+# every line to stderr, which for a LaunchServices-started app outlives the
+# process and lands outside Bastion's 0o700 directory — so `hostCall` keeps
+# payloads off it deliberately, and this is what says it worked. The canary is a
+# server id that exists nowhere, so a hit anywhere can only be the argument.
 #
 # `list_profiles` rather than `get_server`: a tool that REFUSES names what it
 # was given in its error sentence, and that sentence is an ordinary log line
@@ -229,6 +243,48 @@ absent "and never written under Application Support" \
   "$(grep -rl 'payload-canary-zzz' "$SUPPORT" 2>/dev/null || true)" 'payload-canary-zzz'
 absent "and never mirrored to stderr" \
   "$(cat /tmp/bastion-builtin.log)" 'payload-canary-zzz'
+absent "and no audit directory is created" \
+  "$(ls "$SUPPORT/audit" 2>/dev/null || true)" 'jsonl'
+
+echo
+echo "With the audit log on, the record is on disk and the chain holds"
+# The other half of the same claim. Relaunched with the log on, because the two
+# switches are read as defaults and this asserts what they actually do — not
+# that a setting exists.
+kill "$APP" 2>/dev/null || true
+wait "$APP" 2>/dev/null || true
+sleep 1
+defaults write "$BUNDLE" auditEnabled -bool true
+defaults write "$BUNDLE" auditPayloads -bool true
+"$BIN" >>/tmp/bastion-builtin.log 2>&1 &
+APP=$!
+for _ in $(seq 1 40); do nc -z 127.0.0.1 "$PORT" 2>/dev/null && break; sleep 0.25; done
+sleep 1
+
+tool checkrw list_profiles '{"server":"ondisk-canary-zzz"}' >/dev/null
+sleep 1
+SEGMENT="$(ls "$SUPPORT"/audit/*.jsonl 2>/dev/null | head -1)"
+check  "a segment is written"            "${SEGMENT:-none}" '.jsonl'
+check  "and holds the call"              "$(cat "$SEGMENT" 2>/dev/null)" 'list_profiles'
+check  "with the argument"               "$(cat "$SEGMENT" 2>/dev/null)" 'ondisk-canary-zzz'
+check  "each record carries a link"      "$(cat "$SEGMENT" 2>/dev/null)" '"prev"'
+check  "and its own hash"                "$(cat "$SEGMENT" 2>/dev/null)" '"hash"'
+# 0600, because this file now holds what tools were called with. `.atomic`
+# would have silently reset it to 0644, which is why the writer appends.
+#
+# `/usr/bin/stat` by full path: a GNU coreutils `stat` earlier on PATH reads -f
+# as --file-system and prints block counts, so this asserted against whatever
+# Homebrew had installed rather than against the file.
+check  "the segment is readable only by its owner" \
+  "$(/usr/bin/stat -f '%Lp' "$SEGMENT" 2>/dev/null)" '600'
+# And the wall still stands: a credential is not payload, whatever is on disk.
+tool checkrw set_credential '{"profile":"one","server":"checkscratch","variable":"CHECK_TOKEN","value":"s3cr3t-canary"}' >/dev/null 2>&1 || true
+sleep 1
+absent "a credential still never reaches the file" \
+  "$(cat "$SUPPORT"/audit/*.jsonl 2>/dev/null)" 's3cr3t-canary'
+
+defaults delete "$BUNDLE" auditEnabled 2>/dev/null || true
+defaults delete "$BUNDLE" auditPayloads 2>/dev/null || true
 
 echo
 echo "recent_activity is scoped to the profile that asked"

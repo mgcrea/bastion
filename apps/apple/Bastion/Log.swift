@@ -89,6 +89,7 @@ final class LogStore {
     entries[index].result = result
     entries[index].failed = failed
     weight += entries[index].weight
+    Self.onResult?(entries[index])
   }
 
   /// Seed one entry at a fixed instant, for `DemoSeed` only.
@@ -112,6 +113,19 @@ final class LogStore {
   private func add(_ entry: Entry) {
     entries.append(entry)
     weight += entry.weight
+    // The durable copy, if anything is keeping one.
+    //
+    // Here rather than at the call sites: this is the one place every row
+    // passes through, and it is on the main actor, so whatever is listening
+    // inherits this store's ordering rather than having to establish its own. A
+    // hash chain built out of order fails verification for no reason anyone can
+    // reproduce.
+    //
+    // A hook rather than a direct call to `AuditLog`, for the same reason
+    // `Activity.priority` is spelled out below instead of read: `make
+    // remote-check` compiles this file on its own, and a hard reference would
+    // drag the audit log, the chain, the signer and the Keychain in behind it.
+    Self.onCall?(entry)
     while entries.count > limit || (weight > byteLimit && entries.count > 1) {
       weight -= entries.removeFirst().weight
     }
@@ -121,6 +135,13 @@ final class LogStore {
     entries.removeAll()
     weight = 0
   }
+
+  /// Installed by whatever wants a durable copy — `AuditLog`, at launch.
+  ///
+  /// Nil until something asks, which is also the default state of the feature:
+  /// with the Audit pane untouched nothing is listening and no file is opened.
+  static var onCall: ((Entry) -> Void)?
+  static var onResult: ((Entry) -> Void)?
 }
 
 /// Post a log line from any thread.

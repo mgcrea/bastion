@@ -142,6 +142,11 @@ struct LogPane: View {
         .disabled(shown.isEmpty)
         Button("Clear") { LogStore.shared.clear() }
           .disabled(LogStore.shared.entries.isEmpty)
+        // Deliberately a route rather than a second export button: the pane
+        // owns the file, its retention and its signing key, and two places to
+        // start an export is two places to keep telling the truth about what
+        // one contains.
+        Button("Export…") { SettingsWindowController.show(.audit) }
       }
       .controlSize(.small)
       .padding(.horizontal, 12)
@@ -249,11 +254,17 @@ struct LogPane: View {
         // constraint on anything ever added to the feed — including the
         // payloads, which is why it says where they stop rather than dropping
         // the claim now that there are some.
+        // Conditional now, because the answer to "does any of this outlive the
+        // app" is a setting. A footer that says "nothing is written to disk"
+        // while an audit log is running would be the one sentence on screen
+        // that is false.
         Text(
           "Bastion records the JSON-RPC frames crossing the gateway — which profile, which tool, "
-            + "and what it was called with. Credentials are never recorded, and nothing here is "
-            + "written to disk. It does not see what a server then does over the network or on "
-            + "disk.")
+            + "and what it was called with. Credentials are never recorded. "
+            + (AuditLog.isEnabled
+              ? "An audit log is being kept on disk — see Settings › Activity. "
+              : "Nothing here is written to disk. ")
+            + "It does not see what a server then does over the network or on disk.")
           .font(.caption2)
           .foregroundStyle(.secondary)
         Spacer(minLength: 12)

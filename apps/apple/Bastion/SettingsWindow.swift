@@ -9,6 +9,7 @@ import SwiftUI
 /// then stays free.
 enum SettingsPane: String, CaseIterable, Identifiable {
   case general
+  case audit
   case about
   case licence
 
@@ -16,7 +17,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
   static let defaultsKey = "settingsPane"
 
   /// What the app is and how it behaves…
-  static let application: [SettingsPane] = [.general, .about]
+  static let application: [SettingsPane] = [.general, .audit, .about]
 
   /// …and what was bought, which is a different question and the only reason the
   /// sidebar is in two groups rather than one list of three. Somebody opens
@@ -27,6 +28,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
   var title: String {
     switch self {
     case .general: "General"
+    case .audit: "Activity"
     case .about: "About"
     case .licence: "Licence"
     }
@@ -35,6 +37,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
   var symbol: String {
     switch self {
     case .general: "gearshape"
+    case .audit: "list.bullet.rectangle"
     case .about: "info.circle"
     case .licence: "key"
     }
@@ -119,6 +122,7 @@ struct SettingsView: View {
 
           switch current {
           case .general: GeneralPane()
+          case .audit: AuditPane()
           case .about: AboutPane()
           case .licence: LicencePane()
           }
@@ -133,8 +137,6 @@ struct SettingsView: View {
 
 private struct GeneralPane: View {
   @AppStorage("gatewayPort") private var port = Int(Gateway.defaultPort)
-  @AppStorage(CallCapture.defaultsKey) private var capture = CallCapture.defaultMode.rawValue
-  @AppStorage(CallCapture.allProfilesDefaultsKey) private var allProfiles = false
   /// -1 is "leave npm alone", which is not the same as 0. See
   /// `ServerInstaller.releaseAgeOverride`.
   @AppStorage(ServerInstaller.releaseAgeKey) private var releaseAge = -1
@@ -248,34 +250,6 @@ private struct GeneralPane: View {
       }
 
       Section {
-        Picker("Record", selection: $capture) {
-          ForEach(CallCapture.Mode.allCases, id: \.self) { mode in
-            Text(mode.label).tag(mode.rawValue)
-          }
-        }
-        Text(
-          "What every profile records unless it says otherwise. Arguments answer 'what did the "
-            + "agent actually send'; results are the unbounded half, so they are opt-in. "
-            + "Credentials are never recorded either way.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-        Text("Kept in memory only, capped, and cleared when Bastion quits.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-
-        Toggle("Let an agent read every profile's activity", isOn: $allProfiles)
-        Text(
-          "Off. An agent asking Bastion for recent activity is answered with its own profile's "
-            + "lines — which it already sent and received. Turning this on lets one profile's "
-            + "agent read another's, and another profile's lines never carry arguments or "
-            + "results whichever way this is set.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-      } header: {
-        Text("Activity")
-      }
-
-      Section {
         // Both questions live here now. The standing one always did; "check
         // now" followed it out of the menu bar when that became a panel, where
         // a row that is neither an entrance nor an exit had no weight it could
@@ -346,7 +320,8 @@ private struct AboutPane: View {
         Text(
           "The audit log records which profile, which method, which tool and the arguments it was "
             + "called with; results too, for a profile that asks for them. Credentials are never "
-            + "recorded, and none of it is written to disk. It does not see what a server then "
+            + "recorded, and none of it is written to disk unless you keep an audit log. It does "
+            + "not see what a server then "
             + "does over the network or on disk.")
           .font(.caption).foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -356,4 +331,240 @@ private struct AboutPane: View {
     }
     .formStyle(.grouped)
   }
+}
+
+/// Everything about what Bastion records.
+///
+/// A pane of its own because these settings had outgrown a `Section` in
+/// General: what the live log keeps, what an agent may read back, whether any
+/// of it survives a quit, and — once it does — how long it is kept and how it
+/// leaves the machine. Four different questions with one subject.
+///
+/// The per-profile override stays in `ProfileEditor`, beside that profile's
+/// write gate. This pane is the default; a profile is the exception to it.
+private struct AuditPane: View {
+  @AppStorage(CallCapture.defaultsKey) private var capture = CallCapture.defaultMode.rawValue
+  @AppStorage(CallCapture.allProfilesDefaultsKey) private var allProfiles = false
+  @AppStorage(AuditLog.enabledKey) private var keepFile = false
+  @AppStorage(AuditLog.payloadsKey) private var filePayloads = false
+  @AppStorage(AuditLog.maxDaysKey) private var maxDays = AuditLog.defaultMaxDays
+  @AppStorage(AuditLog.maxMegabytesKey) private var maxMegabytes = AuditLog.defaultMaxMegabytes
+
+  @State private var summary: AuditLog.Summary?
+  @State private var note: String?
+  @State private var fingerprint = AuditSigning.currentFingerprint()
+  @State private var copied = false
+
+  var body: some View {
+    Form {
+      Section {
+        Picker("Record", selection: $capture) {
+          ForEach(CallCapture.Mode.allCases, id: \.self) { mode in
+            Text(mode.label).tag(mode.rawValue)
+          }
+        }
+        Text(
+          "What every profile records unless it says otherwise. Arguments answer 'what did the "
+            + "agent actually send'; results are the unbounded half, so they are opt-in. "
+            + "Credentials are never recorded either way.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+
+        Toggle("Let an agent read every profile's activity", isOn: $allProfiles)
+        Text(
+          "Off. An agent asking Bastion for recent activity is answered with its own profile's "
+            + "lines — which it already sent and received. Turning this on lets one profile's "
+            + "agent read another's, and another profile's lines never carry arguments or "
+            + "results whichever way this is set.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      } header: {
+        Text("What is recorded")
+      }
+
+      Section {
+        Toggle("Keep an audit log on disk", isOn: $keepFile)
+        Text(
+          keepFile
+            ? "Records survive a quit, in \(AuditLog.directory.path), readable only by you."
+            : "Off. The Activity window is a ring in memory and nothing outlives the app.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+
+        Toggle("Include arguments and results in the file", isOn: $filePayloads)
+          .disabled(!keepFile)
+        Text(
+          "Off, and separate from the switch above on purpose: keeping a record of WHICH tools "
+            + "ran is a smaller thing to leave on disk than keeping what they were called with. "
+            + "Turning both on writes payloads to a file.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+
+        LabeledContent("Keep for") {
+          Stepper("\(maxDays) days", value: $maxDays, in: 1...365)
+        }
+        LabeledContent("At most") {
+          Stepper("\(maxMegabytes) MB", value: $maxMegabytes, in: 5...5000, step: 5)
+        }
+        Text(
+          "Whichever runs out first. The log is written in segments and a whole segment is "
+            + "dropped at a time — a chain cannot lose a record from the middle and still verify.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      } header: {
+        Text("On disk")
+      }
+
+      Section {
+        HStack {
+          Button("Verify") { verify() }
+          Button("Export…") { export() }
+          Button("Delete the log") { erase() }
+            .disabled(summaryIsEmpty)
+          Spacer()
+        }
+        if let summary {
+          Text(
+            summary.report.isIntact
+              ? "\(summary.records) records across \(summary.segments) "
+                + "segment\(summary.segments == 1 ? "" : "s"), \(bytes(summary.bytes)). "
+                + "The chain verifies."
+              : "\(summary.records) records, and the chain does NOT verify: "
+                + describe(summary.report.failures))
+            .font(.caption)
+            .foregroundStyle(summary.report.isIntact ? Color.secondary : .red)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        if let note {
+          Text(note).font(.caption).foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        Text(
+          "Each record carries a hash of the one before it, so an edited field, a deleted record "
+            + "or a truncated file can be detected. That is the whole claim: it catches tampering "
+            + "by something that does not know it is a chain. It is not proof against anyone who "
+            + "can write the file, because they can recompute it.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      } header: {
+        Text("The chain")
+      }
+
+      Section {
+        if let fingerprint {
+          LabeledContent {
+            Button {
+              NSPasteboard.general.clearContents()
+              NSPasteboard.general.setString((try? AuditSigning.publicKey()) ?? "", forType: .string)
+              copied = true
+            } label: {
+              Image(systemName: copied ? "checkmark" : "doc.on.doc")
+            }
+            .buttonStyle(.borderless)
+            .help("Copy the full public key")
+            .task(id: copied) {
+              guard copied else { return }
+              try? await Task.sleep(for: .seconds(2))
+              copied = false
+            }
+          } label: {
+            Text(fingerprint).font(.system(.body, design: .monospaced))
+            Text("This Mac's export key")
+          }
+        } else {
+          Text("No key yet — one is made the first time you sign an export.")
+            .font(.caption).foregroundStyle(.secondary)
+        }
+        Text(
+          "Signing an export proves it came from this Mac and has not been altered since. It "
+            + "does not prove the log was not curated before it was signed — you control this "
+            + "machine. And it only means anything to someone who already has the key above, "
+            + "sent to them some other way: a key that travels only inside the export proves "
+            + "nothing, because a forger would include their own.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+        Text(
+          "A new Mac makes a new key. Exports already signed keep verifying against the old one.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      } header: {
+        Text("Signing")
+      }
+    }
+    .formStyle(.grouped)
+    .onAppear { summary = AuditLog.verifyAll() }
+  }
+
+  private var summaryIsEmpty: Bool { (summary?.records ?? 0) == 0 }
+
+  private func verify() {
+    summary = AuditLog.verifyAll()
+    note = nil
+  }
+
+  private func export() {
+    let panel = NSSavePanel()
+    panel.title = "Export the audit log"
+    panel.nameFieldStringValue = "bastion-audit-\(Self.stamp.string(from: Date()))"
+    panel.canCreateDirectories = true
+    // A folder, not a file: the export is the segments plus a manifest, and a
+    // signature beside it rather than inside it — writing a signature into the
+    // bytes it signs is what makes half the signed-JSON formats ambiguous.
+    panel.prompt = "Export"
+
+    let sign = NSButton(checkboxWithTitle: "Sign this export", target: nil, action: nil)
+    sign.state = AuditSigning.hasKey ? .on : .off
+    sign.toolTip = "Proves the export came from this Mac and was not altered afterwards."
+    // An accessory view with no frame lays out at zero height and the checkbox
+    // is simply not there — the panel opens looking as though the option does
+    // not exist.
+    sign.frame = NSRect(x: 0, y: 0, width: 260, height: 24)
+    let holder = NSView(frame: NSRect(x: 0, y: 0, width: 280, height: 34))
+    holder.addSubview(sign)
+    panel.accessoryView = holder
+
+    guard panel.runModal() == .OK, let url = panel.url else { return }
+    do {
+      let written = try AuditLog.shared.export(to: url, sign: sign.state == .on)
+      summary = written
+      fingerprint = AuditSigning.currentFingerprint()
+      note =
+        "Exported \(written.records) records to \(url.lastPathComponent)"
+        + (sign.state == .on ? ", signed." : ", unsigned.")
+    } catch {
+      note = "Could not export: \(error.localizedDescription)"
+    }
+  }
+
+  private func erase() {
+    AuditLog.shared.clear()
+    summary = AuditLog.verifyAll()
+    note = "The log on disk is gone."
+  }
+
+  private func bytes(_ count: Int) -> String {
+    count < 1024 * 1024
+      ? "\(count / 1024) KB" : String(format: "%.1f MB", Double(count) / 1024 / 1024)
+  }
+
+  /// Say what broke, not just that something did — a verifier that reports
+  /// "invalid" and stops is a verifier nobody can act on.
+  private func describe(_ failures: [AuditChain.Failure]) -> String {
+    guard let first = failures.first else { return "no detail" }
+    let rest = failures.count > 1 ? " (and \(failures.count - 1) more)" : ""
+    switch first {
+    case .unreadable(let line): return "line \(line) is not a record\(rest)"
+    case .unknownVersion(let line, let version):
+      return "line \(line) is format \(version), which this build cannot check\(rest)"
+    case .brokenHash(let seq): return "record \(seq) was edited\(rest)"
+    case .brokenLink(let seq): return "a record before \(seq) was removed\(rest)"
+    case .outOfOrder(let seq): return "record \(seq) is out of sequence\(rest)"
+    }
+  }
+
+  private static let stamp: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd"
+    return formatter
+  }()
 }

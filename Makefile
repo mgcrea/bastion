@@ -419,6 +419,13 @@ license-check: ## Prove a minted licence key verifies in the app's own verifier
 	@node --env-file-if-exists=.env scripts/license-check.mjs \
 		| apps/apple/.build/license-check
 
+audit-check: ## Prove an export signature survives a round trip, with no app and no Keychain
+	@mkdir -p apps/apple/.build
+	@swiftc -O -o apps/apple/.build/audit-check \
+		apps/apple/Bastion/AuditSigning.swift \
+		scripts/audit-check.swift
+	@apps/apple/.build/audit-check
+
 wiring-check: ## Assert the config merge leaves other people's files alone
 	@mkdir -p apps/apple/.build
 	@swiftc -O -o apps/apple/.build/wiring-check \
@@ -459,13 +466,15 @@ audit: app remote-check ## Assert the listener is loopback-only and refuses fore
 # none, and `audit-listener.sh` only ever sends the parser well-formed requests.
 # Malformed input against a parser that runs BEFORE authentication is exactly
 # the case worth having, and it needs no app at all.
-unit: ## Assert the dialect translation, the HTTP parser and call capture, with no app and no network
+unit: ## Assert the translation, the parser, call capture and the audit chain, with no app and no network
 	@mkdir -p apps/apple/.build
 	@swiftc -O -o apps/apple/.build/unit-check \
 		apps/apple/Bastion/Dialect.swift \
 		apps/apple/Bastion/ServerCatalog.swift \
 		apps/apple/Bastion/HTTP.swift \
 		apps/apple/Bastion/CallCapture.swift \
+		apps/apple/Bastion/ToolReply.swift \
+		apps/apple/Bastion/AuditChain.swift \
 		scripts/unit-check.swift
 	@apps/apple/.build/unit-check
 

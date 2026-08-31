@@ -34,6 +34,18 @@ nonisolated enum CredentialStore {
     /// field. Keeping them apart is what makes "show the user their variables"
     /// unable to show a token by accident.
     case oauth
+    /// The key that signs an audit export.
+    ///
+    /// A fourth service, and the first PRIVATE key this app has ever held —
+    /// everything else here is a credential the user could retype or a token
+    /// Bastion can mint again. This one cannot be re-derived: lose it and old
+    /// exports still verify against the public half a recipient already has,
+    /// while new ones need a fresh pin. `AuditSigning` says so on screen rather
+    /// than implying a key is forever.
+    ///
+    /// Its own service so "delete this profile's secrets" cannot sweep it up,
+    /// which is the same argument `.oauth` makes one case above.
+    case auditSigning
 
     var service: String {
       let base = AppSupport.identifier
@@ -41,6 +53,7 @@ nonisolated enum CredentialStore {
       case .profile: return "\(base).profile"
       case .gatewayToken: return "\(base).gateway"
       case .oauth: return "\(base).oauth"
+      case .auditSigning: return "\(base).audit"
       }
     }
   }
