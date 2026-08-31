@@ -1,34 +1,42 @@
 # Clients
 
 `docs/servers.md` describes what Bastion runs and `docs/remote-servers.md` the
-transport under the remote half of it. This describes the other end: the four
+transport under the remote half of it. This describes the other end: the five
 MCP clients Bastion knows how to configure, why they do not all get the same
 entry, and what the client pane can and cannot tell you about a file it does not
 own.
 
-## The four clients
+## The five clients
 
-| Client         | Config                                                            | Root key     | Transport |
-| -------------- | ----------------------------------------------------------------- | ------------ | --------- |
-| Claude Code    | `~/.claude.json`                                                  | `mcpServers` | HTTP      |
-| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` | `mcpServers` | bridge    |
-| VS Code        | `~/Library/Application Support/Code/User/mcp.json`                | `servers`    | HTTP      |
-| Cursor         | `~/.cursor/mcp.json`                                              | `mcpServers` | HTTP      |
+| Client          | Config                                                            | Root key      | Format | Transport |
+| --------------- | ----------------------------------------------------------------- | ------------- | ------ | --------- |
+| Claude Code     | `~/.claude.json`                                                  | `mcpServers`  | JSON   | HTTP      |
+| Claude Desktop  | `~/Library/Application Support/Claude/claude_desktop_config.json` | `mcpServers`  | JSON   | bridge    |
+| VS Code         | `~/Library/Application Support/Code/User/mcp.json`                | `servers`     | JSON   | HTTP      |
+| Cursor          | `~/.cursor/mcp.json`                                              | `mcpServers`  | JSON   | HTTP      |
+| ChatGPT & Codex | `~/.codex/config.toml`                                            | `mcp_servers` | TOML   | HTTP      |
 
-Two disagreements shape the whole design, and neither is Bastion's to fix.
+Three disagreements shape the whole design, and none is Bastion's to fix.
 Clients disagree about **where servers live** in the file — `mcpServers` here,
-`servers` there — and they disagree about **whether they can reach a URL at
-all**.
+`servers` there, `mcp_servers` in a third — about **what the file is written
+in**, and about **whether they can reach a URL at all**.
+
+The last row is one client rather than three: the ChatGPT desktop app, the Codex
+CLI and the Codex IDE extension all read that same file. Three rows would mean
+three gateway tokens overwriting each other in it, and an unwire of any one of
+them taking the other two out.
 
 VS Code's path is `User/mcp.json`, deliberately not `User/settings.json`.
 settings.json is JSONC: it has comments and trailing commas, and round-tripping
 it through `JSONSerialization` would silently delete every comment in a file the
 user hand-wrote. mcp.json is strict JSON and is where VS Code keeps MCP servers
-anyway.
+anyway. Codex has no equivalent escape — its servers live in the same file as
+everything else it is configured with — which is what [the one TOML
+client](#the-one-toml-client) is about.
 
 ## Why Claude Desktop gets a bridge
 
-Three clients get a URL and no child process of their own:
+Four clients get a URL and no child process of their own:
 
 ```json
 {
@@ -36,6 +44,17 @@ Three clients get a URL and no child process of their own:
   "url": "http://127.0.0.1:8720/s/prod/stripe",
   "headers": { "Authorization": "Bearer …" }
 }
+```
+
+Codex takes a URL too, in its own spelling — no `type`, because a `url` is what
+makes an entry streamable HTTP there, and `http_headers` because that is the
+field that takes a literal token (`bearer_token_env_var` names an environment
+variable, and Bastion has no way to put one in Codex's environment):
+
+```toml
+[mcp_servers.stripe]
+url = "http://127.0.0.1:8720/s/prod/stripe"
+http_headers = { Authorization = "Bearer …" }
 ```
 
 Claude Desktop gets `bastion-bridge` instead, spawned per server:
@@ -96,6 +115,133 @@ Claude Desktop shows no Bastion tools against a green pane, this is the first
 thing to check, and `claude_desktop_config.json.bastion-backup` is the recovery
 path.
 
+## The one TOML client
+
+Four of the five configs are JSON and are serialised from a dictionary, which is
+safe because the files hold nothing but data. `~/.codex/config.toml` is not like
+that. On the machine this was written against it carries twenty-seven
+`[projects."…"]` tables, a `[features]` block, a `[shell_environment_policy.set]`
+table and a multi-line string full of markdown — hand-written structure and
+prose, with the MCP servers a small part of it.
+
+So there is no TOML library here, and that is the same objection that keeps VS
+Code on `mcp.json`: **round-tripping somebody's hand-written file through any
+serialiser reformats it and deletes its comments.** `ClientWiringTOML` instead
+locates the lines that hold MCP servers, replaces those, and quotes every other
+byte of the file verbatim. A wire against the real config produces a `diff` with
+one hunk in it, and that hunk is a pure addition.
+
+### The invariant
+
+> The scanner may fail to **describe** a server. It must never fail to **name**
+> one.
+
+A server it could see but not parse still appears in the servers dictionary,
+which makes `isOurs` false, which makes `collisions` refuse to write over it. If
+it were dropped instead, `collisions` would see nothing in the way, a wire would
+append a second `[mcp_servers.<name>]`, and **a duplicate key does not cost one
+entry — it makes the whole file fail to parse**, taking every server and every
+project trust level with it. That is a read bug with a catastrophic write
+consequence, and it is why extents and values are two different jobs:
+
+- The **lexer** decides where a table starts and stops. It may refuse, and a
+  refusal makes the client read as `unreadable` — which makes every write path
+  refuse too, because they all begin with a read.
+- The **value parser** is best effort and never refuses. A value it cannot type
+  is omitted rather than guessed; `identity` returning nothing is already a case
+  the pane knows how to render.
+
+It refuses a dotted key under `[mcp_servers]`, an array of tables, a multi-line
+inline table, an unterminated string and non-UTF-8 bytes, naming the line —
+because the remedy for each is a person looking at it.
+
+### What a span is
+
+A server's lines run from its `[mcp_servers.<name>]` header to the last line
+under it that says something, **not** to the next header. The blank line and the
+comment above the next table belong to the next table, which is what stops an
+unwire eating somebody's section separator. Leading comments are never part of a
+span either: an unwire may leave an orphan comment, which is strictly better
+than deleting a user's prose. A server can own more than one span —
+`[mcp_servers.node_repl.env]` is a second one — and removing the server takes
+both.
+
+New blocks land just past the last `mcp_servers` span in the file, counting the
+ones about to be deleted. Counting those too is what puts a second wire in the
+same place as the first, and it groups Bastion's entries with the servers
+already there rather than stranding them past an unrelated table.
+
+A deleted block takes the blank line above it, and a written block always puts
+one back — even when one is already there. Insertion and deletion are then exact
+inverses, which is what makes **wire → unwire return the original bytes**. The
+conditional version was prettier by one blank line and ate a blank line the user
+had written.
+
+One case cannot round-trip exactly, and it is worth stating rather than glossing:
+a file with **no final newline** has to gain one before anything can be appended,
+and an unwire has no way to know that newline was Bastion's.
+
+### Two traps worth naming
+
+Swift's `"\r\n"` is **one** `Character` — a grapheme cluster — so `c == "\n"` is
+false for a CRLF break and `hasSuffix("\n")` is false for a CRLF-terminated
+string. An early version read a whole CRLF file as a single line, found no
+servers in it, and appended blocks to the end of what it thought was line one.
+There is one named definition of what ends a line now.
+
+And the file's multi-line string of markdown sits directly above the first
+server. Prose is allowed to contain a `[` at column 0, a `#`, and the words of a
+table header. A line scanner that does not track `"""` and `'''` mints servers
+out of somebody's commit-message notes and then deletes the lines it invented.
+
+### What the ChatGPT app does to this file
+
+The ChatGPT desktop app **rewrites `config.toml` on launch**, and is reported to
+set `enabled = false` on a server it did not expect
+([openai/codex#34807](https://github.com/openai/codex/issues/34807)). Three
+consequences, none of them fatal:
+
+- **Formatting.** Bastion's guarantee is one-directional: _Bastion_ does not
+  reformat this file. If the ChatGPT app serialises and rewrites it, comments and
+  ordering are lost and that is not Bastion's doing — but
+  `config.toml.bastion-backup` is then a snapshot of the last pre-rewrite
+  formatting and will be stale. Codex CLI users who never launch the desktop app
+  get the full guarantee.
+- **Spans moving.** Harmless. Every read rescans and nothing is cached.
+- **`enabled = false` landing on one of ours.** This is the real one. The entry
+  still points where it should, so `isOurs` still claims it and the audit still
+  says `configured` while Codex runs none of it — the Claude Desktop blind spot
+  above, **except detectable**, because the fact is a key in the file rather than
+  something done quietly at load. The row says so, and says the remedy:
+  _Configure_ re-renders the whole block from the entry Bastion builds, and
+  `enabled` is not in it.
+
+### Per-project `.codex/config.toml` is deferred
+
+Codex also reads a `.codex/config.toml` inside a repository, closest to the
+working directory, above the global file. Bastion does not touch it, for three
+reasons of increasing weight:
+
+1. The project-scope code is Claude Code's shape — `projects[folder].mcpServers`
+   inside the one file Bastion already opens. Codex's `[projects."…"]` tables
+   carry `trust_level`, **not servers**; all twenty-seven in the real file do.
+   Reading them as an MCP project scope would be a straightforward lie, so the
+   pane renders no projects card for Codex rather than an empty one.
+2. Codex's project scope is a directory-tree lookup, not an index. Listing it
+   would mean crawling the filesystem for `.codex/config.toml` files, and there
+   is no UI here that names a folder.
+3. The decisive one: **`.codex/config.toml` lives inside a repository, and
+   Bastion writes a bearer token.** The whole defence of writing somebody else's
+   config is that what leaks is a revocable loopback token rather than a
+   brokerage refresh token. That holds for a file in `$HOME`. It does not hold
+   for a file one `git add -A` from a public commit.
+
+The only defensible version of this is `bearer_token_env_var = "BASTION_TOKEN"`,
+which puts a _name_ rather than a secret in the committed file. It needs the user
+to export the variable themselves, so it is a real feature with real onboarding
+rather than a scope tweak — and that, not convenience, is the condition under
+which this becomes worth doing.
+
 ## What goes in the file, and what never does
 
 The entry carries a **bearer token issued to that client**. It never carries a
@@ -135,6 +281,12 @@ the current bridge path or port:
   no business rewriting it.
 
 Everything else is somebody else's, permanently.
+
+Note what is **not** in that list: `type`. Nothing in the policy layer reads it,
+which is why a Codex entry — `url` and `http_headers`, no `type` — flows through
+`isOurs`, `target`, the audit, the collision check and the merge without any of
+them learning the file is TOML. The format shows up in exactly two places: the
+function that opens the file, and the one that writes it.
 
 ## What the client pane reports
 
@@ -204,7 +356,14 @@ Three properties, because the file is not Bastion's:
    `<name>.bastion-backup` first.
 3. **A crash mid-write cannot leave a truncated config.** Written to a temp file
    beside the target, then swapped. The result is `chmod 0600`, because it now
-   carries a bearer token and did not necessarily before.
+   carries a bearer token and did not necessarily before. (A no-op for Codex,
+   whose `config.toml` and `auth.json` are both already `-rw-------`.)
+
+The writer takes **bytes**, and the JSON path serialises into it, because the two
+formats disagree about everything except this. Asking the backup-and-atomicity
+question twice is how the second answer ends up subtly weaker. For TOML the first
+property is stronger than "every unrelated key survives": every unrelated
+**byte** does, because nothing outside the spliced spans is re-encoded at all.
 
 Bastion declines to write for exactly two reasons, both about a file it does not
 own and neither recoverable by trying again: a key it would write is already
@@ -220,13 +379,21 @@ appears to succeed and changes nothing.
 
 ## What asserts what
 
-|                          |                                                                                                                                                                                                                                                                  |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `make wiring-check`      | The merge, the audit, per-entry state, the foreign listings and single-key removal, against fixtures shaped like the real files. No app, no I/O beyond a temp directory.                                                                                         |
-| `make wiring-check-real` | The same properties against **your actual** Claude Code, Claude Desktop and VS Code configs. Read-only: parsed, merged and pruned in memory, then compared. Fixtures only cover the shapes somebody thought of; this covers the ones nobody would have invented. |
+|                          |                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `make wiring-check`      | The merge, the audit, per-entry state, the foreign listings and single-key removal, against fixtures shaped like the real files. No app, no I/O beyond a temp directory.                                                                                                                                                                                          |
+| `make wiring-check-real` | The same properties against **your actual** Claude Code, Claude Desktop, VS Code and Codex configs, dispatching on the file extension the way `ClientWiring` dispatches on a client's format. Read-only: parsed, merged and pruned in memory, then compared. Fixtures only cover the shapes somebody thought of; this covers the ones nobody would have invented. |
 
-`ClientWiringMerge.swift` imports nothing but Foundation precisely so those two
-targets can compile it beside `scripts/wiring-check.swift` and run the result —
+The TOML half adds its own sections, and they are all the same question asked of
+bytes rather than of parsed values: every byte outside our spans is unchanged,
+comments survive both directions, a wire is idempotent, a wire followed by an
+unwire is the original file, a hand-written entry is never re-rendered, a refusal
+never writes, and — over every fixture — **a splice can never write a name
+twice**.
+
+`ClientWiringMerge.swift` and `ClientWiringTOML.swift` import nothing but
+Foundation precisely so those two targets can compile them beside
+`scripts/wiring-check.swift` and run the result —
 which is the whole test story for a project with no test target. Everything
 policy-shaped — which clients exist, where their configs live, which key and
 which transport each gets — stays in `ClientWiring.swift`, which can keep
