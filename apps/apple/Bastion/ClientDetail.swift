@@ -33,6 +33,12 @@ struct ClientDetail: View {
     let key: String
     let state: ClientWiringMerge.EntryState
     let reach: String
+    /// The client has this entry, and has switched it off.
+    ///
+    /// Not an `EntryState` case. `enabled` is a key only Codex has, and adding
+    /// it to the audit would make four JSON clients carry a state describing
+    /// something their files cannot say.
+    var isDisabled = false
   }
 
   /// Which entry a Remove button names, and where it lives.
@@ -81,7 +87,9 @@ struct ClientDetail: View {
       Snapshot(
         status: status,
         rows: ordered.map {
-          Row(profile: $0.profile, key: $0.key, state: .missing, reach: reachLine(for: $0.profile))
+          Row(
+            profile: $0.profile, key: $0.key, state: .missing,
+            reach: reachLine(for: $0.profile))
         },
         others: [], projects: [], hasOurEntries: false)
     }
@@ -104,7 +112,8 @@ struct ClientDetail: View {
         state: ClientWiringMerge.state(
           of: servers, key: item.key,
           reach: ClientWiring.reach(for: item.profile, transport: client.transport)),
-        reach: reachLine(for: item.profile))
+        reach: reachLine(for: item.profile),
+        isDisabled: config.disabled.contains(item.key))
     }
     return Snapshot(
       // The same states the rows draw, reduced. The header sentence and the
@@ -331,6 +340,16 @@ struct ClientDetail: View {
           .fixedSize(horizontal: false, vertical: true)
       case .matches, .missing:
         EmptyView()
+      }
+      // The blind spot this pane CAN see, unlike Claude Desktop's. An entry the
+      // client has switched off still points where it should, so it audits as
+      // configured while the client runs none of it -- but unlike a silently
+      // dropped config, the fact is a key in the file.
+      if row.isDisabled {
+        Text(
+          "\(client.displayName) has this entry switched off. Configure turns it back on.")
+          .font(.caption2).foregroundStyle(.orange)
+          .fixedSize(horizontal: false, vertical: true)
       }
     }
   }
