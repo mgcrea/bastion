@@ -108,6 +108,14 @@ jobs:
         run: make unit
       - name: Client wiring 🔍
         run: make wiring-check
+      # Beside the two above and for the same reason: no app, no network, no
+      # Keychain — the stub in `audit-check.swift` stands in for one — so the
+      # signing round trip is as cheap as the parser checks. Worth having in CI
+      # rather than left to a developer, because what it holds still is what a
+      # signature is computed over: a change there leaves every export verifying
+      # on the Mac that made it and nowhere else.
+      - name: Audit export signing 🔍
+        run: make audit-check
       - name: Build 📦
         run: make app
       # The security claim, checked. This needs no credentials and no profile —
