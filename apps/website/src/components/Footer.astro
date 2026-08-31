@@ -58,14 +58,14 @@ const LEGAL = [
           until 1.0.0, when both stopped being true in the same release. A
           footer is where that kind of line survives longest, because nobody
           reads it on the way past. */}
-      <span class="text-[11.5px] leading-[1.7] text-fg/38">
+      <span class="text-[11.5px] leading-[1.7] text-fg-muted">
         Requires {REQUIRES}. Signed and notarized.<br />
         Source-available · {PRICE.amount} for the signed build
       </span>
-      <span class="flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-fg/38">
+      <span class="flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-fg-muted">
         {
           LEGAL.map((item) => (
-            <a href={item.href} class="text-fg/38 transition-colors hover:text-accent-hi">
+            <a href={item.href} class="text-fg-muted transition-colors hover:text-accent-hi">
               {item.label}
             </a>
           ))

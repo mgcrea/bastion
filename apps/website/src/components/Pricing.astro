@@ -49,10 +49,10 @@ const INCLUDED = [
 ] as const;
 ---
 
-<section id="pricing" class="scroll-mt-20 border-t border-rule py-22">
-  <div class="wrap flex flex-wrap items-start gap-16">
+<section id="pricing" class="wrap scroll-mt-20 py-[96px]">
+  <div class="flex flex-wrap items-start gap-16">
     <SectionHeader eyebrow="Price" heading="One price, one major version, every Mac you own.">
-      <p class="m-0 text-[16px] leading-[1.6] text-fg/58 text-pretty">
+      <p class="m-0 text-[16px] leading-[1.6] text-fg-dim text-pretty">
         There is no subscription and no per-seat tier. Bastion is a tool you install once and forget
         about; charging rent for a background process that holds your own credentials is not a
         business this wants to be in.
@@ -61,13 +61,13 @@ const INCLUDED = [
 
     <div class="relative flex min-w-[min(320px,100%)] flex-1 basis-[456px] flex-col">
       <div
-        class="glow pointer-events-none absolute -inset-x-8 -top-10 h-[300px]"
-        style="background:radial-gradient(50% 60% at 50% 0%,rgb(242 137 92 / 13%),transparent 72%)"
+        class="pointer-events-none absolute -inset-x-8 -top-10 h-[140px]"
+        style="background:radial-gradient(70% 100% at 50% 0%,rgb(242 137 92 / 13%),transparent 72%)"
         aria-hidden="true"
       >
       </div>
 
-      <div class="relative rounded-lg border border-rule-2 bg-bg-2 p-7 sm:p-9">
+      <div class="relative rounded-[16px] border border-rule bg-bg-2 p-7 sm:p-9">
         <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <span
             class="font-display text-[clamp(38px,6vw,54px)] leading-none font-semibold tracking-[-0.04em]"
@@ -118,7 +118,7 @@ const INCLUDED = [
           }
         </div>
 
-        <p class="m-0 mt-6 text-[13px] leading-[1.6] text-fg/45 text-pretty">
+        <p class="m-0 mt-6 text-[13px] leading-[1.6] text-fg-muted text-pretty">
           {TRIAL.sentence} No account, nothing to cancel, and the window lives in memory — quitting
           and reopening starts another one. See <a href="/terms" class="underline underline-offset-2">
             the terms

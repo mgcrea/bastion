@@ -101,11 +101,12 @@ const shots = [
  * large as the others — same traffic lights, same 13pt type, visibly bigger —
  * and a set of screenshots at two scales reads as two applications.
  *
- * So the column is 1180 CSS px for the widest capture and each other plate
+ * So the column is 1160 CSS px — the 1240 container less its padding — for the
+ * widest capture, and each other plate
  * takes its share of that, centred. `sizes` has to follow, or the browser picks
  * a candidate for a width the image is never rendered at.
  */
-const COLUMN = 1180;
+const COLUMN = 1160;
 const widest = Math.max(...shots.map((shot) => shot.image.width));
 
 const plate = (image: (typeof shots)[number]["image"]) => {
@@ -114,26 +115,34 @@ const plate = (image: (typeof shots)[number]["image"]) => {
   return {
     style: `max-width:${css}px`,
     widths: [Math.round(css * 0.65), css, css * 2],
-    sizes: `(min-width: 1240px) ${css}px, ${Math.round(share * 100)}vw`,
+    sizes: `(min-width: 1320px) ${css}px, ${Math.round(share * 100)}vw`,
   };
 };
 ---
 
-<section id="screens" class="scroll-mt-20 border-t border-rule py-22">
-  <div class="wrap">
+<section id="screens" class="wrap scroll-mt-20 py-[96px]">
+  <div>
+    {/* `max-w` because this is the one section whose header row has no second
+        column — the shots are below it, not beside it. Without a cap the
+        `flex-1` in SectionHeader grows to the full 1160 and the prose runs at
+        twice the measure of every other section on the page. */}
     <div class="flex flex-wrap items-start gap-16">
-      <SectionHeader eyebrow="The app" heading="A window, not a background process.">
-        <p class="m-0 text-[16px] leading-[1.6] text-fg/58 text-pretty">
+      <SectionHeader
+        eyebrow="The app"
+        heading="A window, not a background process."
+        class="max-w-[640px]"
+      >
+        <p class="m-0 text-[15.5px] leading-[1.68] text-fg-dim text-pretty">
           Holding the servers in one signed process rather than spawning them inside whichever
           editor asked first is what makes any of this visible: there is somewhere to look, and it
           says what happened. These are captures of that window, taken from a real build by
-          <code class="font-mono text-[14px] text-fg/75">make screenshots</code> and checked against
-          committed goldens, so they cannot quietly fall behind the app.
+          <code class="font-mono text-[14px] text-fg-dim">make screenshots</code> and checked
+          against committed goldens, so they cannot quietly fall behind the app.
         </p>
       </SectionHeader>
     </div>
 
-    <div class="mt-16 flex flex-col gap-14">
+    <div class="mt-14 flex flex-col gap-14">
       {
         shots.map(({ image, id, title, body, alt }) => (
           <figure id={`shot-${id}`} class="reveal m-0 scroll-mt-24">

@@ -1,28 +1,33 @@
 ---
 import { PRICE, REPO_URL, SHIPPED } from "../config";
+import Button from "./Button.astro";
 import Logo from "./Logo.astro";
 ---
 
 <section
   id="cta"
-  class="relative flex flex-col items-center gap-5 overflow-hidden border-t border-rule px-0 pt-26 pb-23 text-center"
+  class="wrap relative flex flex-col items-center gap-5 overflow-hidden py-[96px] text-center"
 >
+  {/* cupertino's geometry and alpha: a wash off the TOP of the plate rather
+      than a bleed off the bottom of the page, and .18 rather than .26. It used
+      to breathe on a 10s loop; a background that moves competes with the thing
+      in front of it, and there is only one thing in front of this. */}
   <div
-    class="glow pointer-events-none absolute inset-x-0 -bottom-[260px] h-[540px]"
-    style="background:radial-gradient(42% 58% at 50% 100%,rgb(242 137 92 / 26%),transparent 70%)"
+    class="pointer-events-none absolute inset-x-0 top-0 h-[220px]"
+    style="background:radial-gradient(50% 100% at 50% 0%,rgb(242 137 92 / 18%),transparent 70%)"
     aria-hidden="true"
   >
   </div>
 
-  <Logo size={76} class="float relative shadow-[0_22px_44px_-18px_rgb(242_137_92/60%)]" />
+  <Logo size={76} class="relative" />
 
   <h2
-    class="relative m-0 max-w-[19ch] font-display text-[clamp(32px,5.4vw,50px)] leading-[1.06] font-semibold tracking-[-0.04em] text-balance"
+    class="relative m-0 max-w-[19ch] font-display text-[clamp(28px,3.6vw,42px)] leading-[1.1] font-semibold tracking-[-0.04em] text-balance"
   >
     One process. One grant of trust. Read the source.
   </h2>
 
-  <p class="relative m-0 max-w-[52ch] px-5 text-[16.5px] leading-[1.6] text-fg/56 text-pretty">
+  <p class="relative m-0 max-w-[52ch] px-5 text-[16.5px] leading-[1.6] text-fg-dim text-pretty">
     A program that holds every credential you own should be readable and compilable by the people
     trusting it. The source is public and stays public; what is sold is the signed build.
   </p>
@@ -40,28 +45,16 @@ import Logo from "./Logo.astro";
   <div class="relative flex flex-wrap items-center justify-center gap-3 px-5 pt-1.5">
     {
       SHIPPED && (
-        <a
-          href="/download"
-          class="plate rounded-md px-6 py-3.5 text-[15px] font-semibold text-accent-ink shadow-[0_14px_34px_-14px_rgb(242_137_92/75%)]"
-        >
+        <Button href="/download" size="lg">
           Download for macOS
-        </a>
+        </Button>
       )
     }
-    <a
-      href={REPO_URL}
-      rel="noopener"
-      class:list={[
-        "rounded-md px-6 py-3.5 text-[15px] font-semibold",
-        SHIPPED
-          ? "border border-white/10 bg-white/5 text-fg/80"
-          : "plate text-accent-ink shadow-[0_14px_34px_-14px_rgb(242_137_92/75%)]",
-      ]}
-    >
-      Read the source ↗
-    </a>
+    <Button href={REPO_URL} external variant={SHIPPED ? "secondary" : "primary"} size="lg">
+      Read the source <span class="opacity-60">↗</span>
+    </Button>
     <code
-      class="rounded-md border border-white/10 bg-white/5 px-4.5 py-3.5 font-mono text-[13px] text-fg/72"
+      class="rounded-[10px] border border-rule-2 px-[22px] py-3 font-mono text-[13px] text-fg-dim"
     >
       make app && make audit
     </code>
@@ -69,7 +62,7 @@ import Logo from "./Logo.astro";
 
   {
     SHIPPED ? (
-      <p class="relative m-0 text-[12.5px] text-fg/38">
+      <p class="relative m-0 text-[12.5px] text-fg-muted">
         {PRICE.amount} — {PRICE.covers}. {PRICE.refund}.{" "}
         <a href="/buy" class="text-accent-hi underline underline-offset-2">
           Buy a licence
@@ -80,7 +73,7 @@ import Logo from "./Logo.astro";
         </a>
       </p>
     ) : (
-      <p class="relative m-0 text-[12.5px] text-fg/38">
+      <p class="relative m-0 text-[12.5px] text-fg-muted">
         {/* The unreachable half of the flag today, and it still has to be true:
             it said the app was code-signed for development only, which stopped
             being the case at 1.0.0. A fallback nobody renders is a fallback

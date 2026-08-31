@@ -11,25 +11,40 @@
    the accent is load-bearing precisely because it is rationed. */
 :root {
   --color-bg: #0b0c0f;
-  --color-bg-2: #101215;
+  --color-bg-2: #131419;
   --color-bg-3: #191a1d;
   --color-bg-deep: #080909;
   --color-fg: #f4f2ef;
   --color-fg-dim: #9b9a96;
   --color-fg-muted: #6e7076;
-  --color-rule: rgb(255 255 255 / 7%);
-  --color-rule-2: rgb(255 255 255 / 11%);
+  /* Opaque, not a white alpha, and shared with cupertino to the digit. An alpha
+     rule composites differently over every ground it crosses — the same class
+     drew a lighter line on the light Rules plate than on the page — so the two
+     values are stated against #0b0c0f once and used everywhere. */
+  --color-rule: #22242a;
+  --color-rule-2: #2e3037;
 
   /* Plate bottom. */
   --color-accent: #f2895c;
   /* Hover/link lift, one step up the same ramp. Type-safe on the ground. */
   --color-accent-hi: #f2a07c;
-  /* Sits on top of an accent fill. The canvas's own value, not the page bg. */
-  --color-accent-ink: #38150b;
-  /* Plate top. Used only where the gradient itself is being quoted. */
+  /* Sits on top of an accent fill. Near-black rather than the dark brown this
+     was: brown ink on a flat #f2895c fill reads as a muddier orange, which only
+     became visible once the button stopped being a gradient. cupertino's value. */
+  --color-accent-ink: #1b1c1f;
+  /* Plate top. Used only where the gradient itself is being quoted — the
+     `plate` utility is gone, so today that is three hover states in Servers.
+     Deliberately NOT renamed to cupertino's `--color-sky-top`: this name mirrors
+     `plateTop` in design/colors.json, and "sky" is cupertino's metaphor, a low
+     sun over hills. Bastion's mark is a wall on a ridge. */
   --color-plate-top: #ffd08a;
 
-  /* Status. #3E9E63 is the fill, #8FD9A9 the same hue lifted for ink. */
+  /* Status. #3E9E63 is the fill, #8FD9A9 the same hue lifted for ink.
+     Deliberately kept where the rest of this block moved to cupertino's values:
+     cupertino has one token per status doing both jobs, so its `bg-ok` paints a
+     dot in a colour picked for text. The split is the more capable of the two,
+     and #E0A63F is a truer warn than cupertino's #FFD08A — which is the icon's
+     own gradient top wearing a warning's name. */
   --color-ok: #3e9e63;
   --color-ok-ink: #8fd9a9;
   --color-warn: #e0a63f;
@@ -40,7 +55,7 @@
   --color-paper: #f8f7f3;
   --color-paper-2: #faf9f6;
   --color-ink: #151617;
-  --color-chrome: #1c1e22;
+  --color-chrome: #1c1e23;
   --color-chrome-2: #24262c;
 }
 
@@ -79,15 +94,15 @@
     -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
   --radius-xs: 5px;
-  --radius-sm: 9px;
+  --radius-sm: 8px;
   --radius-md: 12px;
-  --radius-lg: 20px;
-  --container-wide: 1336px;
+  --radius-lg: 18px;
+  --container-wide: 1240px;
 }
 
 html {
   scroll-behavior: smooth;
-  scroll-padding-top: 70px;
+  scroll-padding-top: 78px;
   color-scheme: dark;
 }
 
@@ -109,7 +124,7 @@ body {
 @utility wrap {
   max-width: var(--container-wide);
   margin-inline: auto;
-  padding-inline: clamp(20px, 4vw, 52px);
+  padding-inline: clamp(20px, 4vw, 40px);
 }
 
 /* The eyebrow over every section heading. Uppercase mono, accent on the ground
@@ -121,23 +136,6 @@ body {
   font-weight: 400;
   letter-spacing: 0.11em;
   text-transform: uppercase;
-}
-
-/* The icon's plate, quoted directly. Only the app mark and the CTA button use
-   it; the rule from design/README.md applies — vertical, two stops, never
-   rotated. */
-@utility plate {
-  background: linear-gradient(180deg, var(--color-plate-top) 0%, var(--color-accent) 100%);
-}
-
-/* The hero headline's own ramp, white into warm grey. `text-wrap: balance` is
-   part of the design rather than a nicety: the line breaks are what make a
-   76px headline read as three even lines instead of a widow. */
-@utility headline-ramp {
-  background: linear-gradient(178deg, #ffffff 20%, #bdb6ae 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
 }
 
 /* ── Scroll reveal ───────────────────────────────────────────────────────────
@@ -183,53 +181,6 @@ body {
 
 .marquee {
   animation: marquee 44s linear infinite;
-}
-
-/* ── Ambient ─────────────────────────────────────────────────────────────────
-   The hero and CTA glows breathe; the app mark floats. Both are decoration and
-   both stop under prefers-reduced-motion. */
-@keyframes glow {
-  0%,
-  100% {
-    opacity: 0.55;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.9;
-    transform: scale(1.05);
-  }
-}
-
-@keyframes float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-8px);
-  }
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 0.3;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-.glow {
-  animation: glow 10s ease-in-out infinite;
-}
-
-.float {
-  animation: float 7s ease-in-out infinite;
-}
-
-.pulse {
-  animation: pulse 2.4s ease-in-out infinite;
 }
 
 /* ── The refusal-order demo ──────────────────────────────────────────────────

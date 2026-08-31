@@ -36,14 +36,14 @@ const { eyebrow, heading, tone = "ground", as: Tag = "h2", id, class: className 
 >
   {
     eyebrow && (
-      <span class:list={["eyebrow", tone === "paper" ? "text-danger" : "text-accent-hi"]}>
+      <span class:list={["eyebrow", tone === "paper" ? "text-danger" : "text-accent"]}>
         {eyebrow}
       </span>
     )
   }
   <Tag
     id={id}
-    class="m-0 font-display text-[clamp(30px,4.6vw,46px)] leading-[1.05] font-semibold tracking-[-0.038em] text-balance"
+    class="m-0 font-display text-[clamp(32px,4.2vw,50px)] leading-[1.05] font-semibold tracking-[-0.038em] text-balance"
   >
     {heading}
   </Tag>

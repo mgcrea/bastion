@@ -71,7 +71,7 @@ const STAYS = [
     <h1 class="m-0 font-display text-[clamp(28px,4.4vw,40px)] font-semibold tracking-[-0.04em]">
       Privacy
     </h1>
-    <p class="mt-4 mb-0 max-w-[62ch] text-[16px] leading-[1.6] text-fg/56 text-pretty">
+    <p class="mt-4 mb-0 max-w-[62ch] text-[16px] leading-[1.6] text-fg-dim text-pretty">
       Bastion is a local daemon that holds every credential you own. The only defensible privacy
       posture for that is to send nothing, and the only way to make the claim worth anything is to
       say what would falsify it. Everything below is checkable in
@@ -88,7 +88,7 @@ const STAYS = [
             <div class="flex flex-wrap items-start gap-x-10 gap-y-1 border-t border-rule pt-5">
               <dt class="flex flex-1 basis-[240px] flex-col gap-1">
                 <span class="text-[15px] font-medium text-fg">{item.what}</span>
-                <span class="text-[13px] text-fg/45">{item.when}</span>
+                <span class="text-[13px] text-fg-muted">{item.when}</span>
               </dt>
               <dd class="m-0 flex-[2] basis-[420px] text-[14.5px] leading-[1.65] text-fg-dim text-pretty">
                 {item.body}
@@ -97,7 +97,7 @@ const STAYS = [
           ))
         }
       </dl>
-      <p class="mt-6 mb-0 max-w-[62ch] text-[14px] leading-[1.6] text-fg/45 text-pretty">
+      <p class="mt-6 mb-0 max-w-[62ch] text-[14px] leading-[1.6] text-fg-muted text-pretty">
         That is the whole list. There is no analytics, no telemetry, no crash reporter and no
         first-run ping.
         <a href={DOCS.audit} rel="noopener" class="underline underline-offset-2">

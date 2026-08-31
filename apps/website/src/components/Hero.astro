@@ -69,9 +69,11 @@ const CALLS = [
 ---
 
 <section id="top" class="relative overflow-hidden px-0 pt-[88px]">
+  {/* cupertino's alpha, and static. The geometry was already identical; the
+      difference was .28 against .26 and a 10s breathe this no longer has. */}
   <div
-    class="glow pointer-events-none absolute inset-x-0 -top-[200px] h-[680px]"
-    style="background:radial-gradient(58% 68% at 50% 0%,rgb(242 137 92 / 28%) 0%,rgb(242 137 92 / 5%) 46%,transparent 72%)"
+    class="pointer-events-none absolute inset-x-0 -top-[200px] h-[680px]"
+    style="background:radial-gradient(58% 68% at 50% 0%,rgb(242 137 92 / 26%) 0%,rgb(242 137 92 / 5%) 46%,transparent 72%)"
     aria-hidden="true"
   >
   </div>
@@ -79,14 +81,15 @@ const CALLS = [
   <div class="wrap relative flex flex-wrap items-center gap-16">
     <div class="flex min-w-[min(400px,100%)] flex-1 basis-[568px] flex-col gap-6">
       <div
-        class="flex items-center gap-2 self-start rounded-full border border-white/9 bg-white/5 px-3.5 py-1.5 text-[11.5px] font-medium text-fg/72"
+        class="flex items-center gap-2 self-start rounded-full border border-rule-2 px-3.5 py-1.5 text-[11.5px] font-medium text-fg-dim"
       >
         {/* The dot was `bg-warn` under an "Early" label, which is the right
             pairing for a pre-release and the wrong one for a shipped build: an
-            amber pulse next to a Download button reads as a warning about the
-            download. */}
+            amber dot next to a Download button reads as a warning about the
+            download. It also pulsed on a 2.4s loop, which read as a live status
+            indicator for something that is not live. */}
         <span
-          class:list={["pulse size-1.5 rounded-full", SHIPPED ? "bg-ok" : "bg-warn"]}
+          class:list={["size-1.5 rounded-full", SHIPPED ? "bg-ok-ink" : "bg-warn"]}
           aria-hidden="true"></span>
         {
           SHIPPED
@@ -95,13 +98,17 @@ const CALLS = [
         }
       </div>
 
+      {/* Two-tone, which is cupertino's treatment and replaces the white-into-grey
+          `headline-ramp` this used to wear. The accent lands on the payoff rather
+          than on the subject: "one server" is the mechanism, "for every client"
+          is the claim the rest of the page spends its length defending. */}
       <h1
-        class="headline-ramp m-0 font-display text-[clamp(40px,7vw,76px)] leading-[0.98] font-semibold tracking-[-0.045em] text-balance"
+        class="m-0 font-display text-[clamp(38px,5.6vw,64px)] leading-[1.02] font-semibold tracking-[-0.045em] text-balance"
       >
-        One MCP server, running once, for every client.
+        One MCP server, running once,<br /><span class="text-accent">for every client.</span>
       </h1>
 
-      <p class="m-0 max-w-[50ch] text-[19px] leading-[1.55] text-fg/62 text-pretty">
+      <p class="m-0 max-w-[50ch] text-[16.5px] leading-[1.62] text-fg-dim text-pretty">
         Bastion is a menu-bar app that supervises your MCP servers instead of letting each editor
         spawn its own. One process per profile, credentials in the Keychain, and every tool call
         recorded.
@@ -135,7 +142,7 @@ const CALLS = [
         }
       </div>
 
-      <span class="text-[12.5px] text-fg/38">
+      <span class="text-[12.5px] text-fg-muted">
         {REQUIRES} · loopback only ·{" "}
         {SHIPPED ? `${TRIAL.minutes}-minute trial, then ${PRICE.amount}` : "not shipped yet"}
       </span>
@@ -145,7 +152,7 @@ const CALLS = [
       <div class="flex items-start gap-3.5">
         <div class="flex flex-1 flex-col gap-2.5">
           <div
-            class="overflow-hidden rounded-[11px] border border-white/11 bg-bg-3 shadow-[0_18px_40px_-22px_rgb(0_0_0/90%)]"
+            class="overflow-hidden rounded-[11px] border border-white/11 bg-bg-3 shadow-[0_24px_60px_-34px_rgb(0_0_0/90%)]"
           >
             <div class="border-b border-white/8 bg-white/5 px-3.5 py-2.5 text-[11.5px] font-semibold">
               Activity Monitor
@@ -155,14 +162,14 @@ const CALLS = [
                 <div class="flex items-center gap-2.5 border-b border-white/6 px-3.5 py-2.5">
                   <span class="size-[18px] shrink-0 rounded bg-[#43454A]" aria-hidden="true" />
                   <span class="flex-1 truncate font-mono text-[11.5px]">
-                    {row.proc} <span class="text-fg/38">· {row.host}</span>
+                    {row.proc} <span class="text-fg-muted">· {row.host}</span>
                   </span>
                   <span class="shrink-0 font-mono text-[10.5px] text-danger-ink">{row.mem}</span>
                 </div>
               ))
             }
           </div>
-          <span class="font-mono text-[11px] text-fg/42">
+          <span class="font-mono text-[11px] text-fg-muted">
             {BEFORE.length} processes · {BEFORE.length} plaintext secrets · 0 logs
           </span>
         </div>
@@ -171,7 +178,7 @@ const CALLS = [
 
         <div class="flex flex-1 flex-col gap-2.5">
           <div
-            class="overflow-hidden rounded-[11px] border border-accent/28 bg-bg-3 shadow-[0_18px_44px_-20px_rgb(242_137_92/32%)]"
+            class="overflow-hidden rounded-[11px] border border-accent/28 bg-bg-3 shadow-[0_24px_60px_-34px_rgb(0_0_0/90%)]"
           >
             <div class="border-b border-white/8 bg-white/5 px-3.5 py-2.5 text-[11.5px] font-semibold">
               Activity Monitor
@@ -179,7 +186,7 @@ const CALLS = [
             <div class="flex items-center gap-2.5 px-3.5 py-2.5">
               <Logo size={18} />
               <span class="flex-1 truncate font-mono text-[11.5px]">
-                mcp-shopify <span class="text-fg/38">· all four</span>
+                mcp-shopify <span class="text-fg-muted">· all four</span>
               </span>
               <span class="shrink-0 font-mono text-[10.5px] text-ok-ink">61 MB</span>
             </div>
@@ -191,7 +198,7 @@ const CALLS = [
             >
             </div>
           </div>
-          <span class="font-mono text-[11px] text-fg/42">
+          <span class="font-mono text-[11px] text-fg-muted">
             1 process · Keychain · every call recorded
           </span>
         </div>
@@ -220,7 +227,7 @@ const CALLS = [
       What it must NOT do is disagree with the photographs. `MENU` above holds
       the same five profiles in the same states as `DemoSeed.profiles`. */}
   <div
-    class="relative mx-auto -mb-px mt-[72px] w-full max-w-[1180px] overflow-hidden rounded-t-2xl border border-b-0 border-white/10 shadow-[0_-22px_80px_-34px_rgb(242_137_92/40%)]"
+    class="relative mx-auto -mb-px mt-[72px] w-full max-w-[1160px] overflow-hidden rounded-t-2xl border border-b-0 border-rule-2"
     style="background:linear-gradient(180deg,#1B1D21 0%,#101114 100%)"
   >
     <div
@@ -268,7 +275,7 @@ const CALLS = [
       class="relative flex flex-col items-end gap-5 px-3.5 pt-2.5 lg:min-h-[412px] lg:flex-row lg:justify-end lg:gap-0"
     >
       <div
-        class="w-full max-w-[286px] overflow-hidden rounded-[11px] border border-white/12 bg-chrome/97 shadow-[0_26px_60px_-20px_rgb(0_0_0/85%)] lg:self-start"
+        class="w-full max-w-[286px] overflow-hidden rounded-[11px] border border-white/12 bg-chrome/97 shadow-[0_24px_60px_-34px_rgb(0_0_0/90%)] lg:self-start"
       >
         <div class="flex items-center gap-2.5 border-b border-white/8 px-4 py-3.5">
           <Logo size={23} />
@@ -312,9 +319,9 @@ const CALLS = [
       <div
         class="box-border flex w-full flex-col gap-3.5 rounded-t-xl border border-b-0 border-white/9 bg-[rgb(19_20_23/94%)] px-5.5 py-5 lg:absolute lg:bottom-0 lg:left-6 lg:w-[560px] lg:max-w-[calc(100%-340px)]"
       >
-        <span class="font-mono text-[11px] text-fg/40">.mcp.json</span>
+        <span class="font-mono text-[11px] text-fg-muted">.mcp.json</span>
         <span class="font-mono text-[15px] leading-[1.5] break-all text-fg/90">
-          "url": "{GATEWAY.origin}<span class="text-fg/45">/s/</span>prod<span class="text-fg/45"
+          "url": "{GATEWAY.origin}<span class="text-fg-muted">/s/</span>prod<span class="text-fg-muted"
             >/</span
           >shopify"
         </span>
@@ -330,7 +337,7 @@ const CALLS = [
                 <code class:list={["font-mono text-[11.5px]", c.lit ? "text-accent-hi" : "text-fg/70"]}>
                   {c.call}
                 </code>
-                <span class="ml-auto font-mono text-[10.5px] text-fg/42">{c.meta}</span>
+                <span class="ml-auto font-mono text-[10.5px] text-fg-muted">{c.meta}</span>
               </div>
             ))
           }

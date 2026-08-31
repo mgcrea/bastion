@@ -8,15 +8,24 @@
  * in the nav than in the hero reads as two different offers, which is the
  * opposite of what a page with one thing to sell wants.
  *
+ * Every value here is cupertino's, to the pixel. The two sites sell the same
+ * way and should ask the same way.
+ *
  * `external` is opt-in rather than inferred from the href, because the two
  * off-site links that matter most are opposite cases: GitHub wants a new tab,
  * and `/download` must not have one — it is a 302 to a zip, and a tab that
  * opens only to close itself is worse than no tab.
+ *
+ * **Responsive hiding does not belong on this component.** `hidden` passed
+ * through `class` loses to the `inline-flex` in the base list below: Tailwind
+ * emits `.inline-flex` after `.hidden` in the utilities layer and the two have
+ * equal specificity, so the button stays visible. Wrap it in a
+ * `<span class="hidden sm:block">` instead — see `Nav.astro`.
  */
 interface Props {
   href: string;
-  /** `plate` is the accent gradient; there is at most one per viewport. */
-  variant?: "plate" | "secondary" | "quiet";
+  /** `primary` is the accent fill; there is at most one per viewport. */
+  variant?: "primary" | "secondary" | "quiet";
   size?: "sm" | "md" | "lg";
   external?: boolean;
   class?: string;
@@ -25,7 +34,7 @@ interface Props {
 
 const {
   href,
-  variant = "plate",
+  variant = "primary",
   size = "md",
   external = false,
   class: className,
@@ -33,20 +42,35 @@ const {
 } = Astro.props;
 
 /**
- * `plate` is the icon's own gradient, quoted through the utility in global.css
- * rather than restated here — the accent is load-bearing precisely because it
- * is rationed, and a second definition of it is how that stops being true.
+ * A flat fill, and no shadow of any kind.
+ *
+ * `primary` was the icon's own gradient with a 34px accent-coloured glow behind
+ * it. Both are gone. A glow under a button is the page shouting at one element
+ * and it made the accent — which is load-bearing precisely because it is
+ * rationed — the loudest thing on every screen it appeared on. The gradient
+ * went with it: quoting the icon's ramp is what the app mark is for, and a
+ * button wearing it competes with the mark rather than matching it.
+ *
+ * `quiet` lifts to a full accent fill on hover rather than a paler grey. It is
+ * the nav's GitHub button, and the hover is what tells you it is a button at
+ * all.
  */
 const VARIANTS = {
-  plate: "plate font-semibold text-accent-ink shadow-[0_14px_34px_-14px_rgb(242_137_92/75%)]",
-  secondary: "border border-white/10 bg-white/5 font-semibold text-fg/80 hover:border-white/20",
-  quiet: "bg-white/8 text-fg hover:bg-white/12",
+  primary: "bg-accent font-medium text-accent-ink hover:bg-accent-hi",
+  secondary: "border border-rule-2 text-fg hover:border-fg-muted",
+  quiet:
+    "bg-[color-mix(in_srgb,var(--color-fg)_8%,transparent)] text-fg hover:bg-accent hover:text-accent-ink",
 } as const;
 
+/**
+ * `md` and `lg` name a literal 10px rather than `rounded-md`, and that is
+ * cupertino's choice rather than an oversight: the radius token moved with the
+ * cards, and a button that followed it grew a corner nobody asked for.
+ */
 const SIZES = {
-  sm: "rounded-sm px-3.5 py-[7px] text-[13px]",
-  md: "rounded-md px-5 py-2.5 text-[14px]",
-  lg: "rounded-md px-6 py-3.5 text-[15px]",
+  sm: "rounded-lg px-[13px] py-[7px] text-[13px]",
+  md: "rounded-[10px] px-[19px] py-[11px] text-[14px]",
+  lg: "rounded-[10px] px-[22px] py-3 text-[14.5px]",
 } as const;
 ---
 

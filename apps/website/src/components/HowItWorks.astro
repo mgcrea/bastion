@@ -42,12 +42,12 @@ const TRADEOFFS = [
 ] as const;
 ---
 
-<section id="how" class="border-t border-rule py-22">
-  <div class="wrap flex flex-col gap-9">
+<section id="how" class="wrap py-[96px]">
+  <div class="flex flex-col gap-9">
     <div class="flex flex-wrap items-end gap-16">
       <SectionHeader eyebrow="The runtime" heading="HTTP to the clients. stdio to the child." />
       <p
-        class="m-0 min-w-[min(320px,100%)] flex-1 basis-[380px] text-[16px] leading-[1.6] text-fg/58 text-pretty"
+        class="m-0 min-w-[min(320px,100%)] flex-1 basis-[380px] text-[16px] leading-[1.6] text-fg-dim text-pretty"
       >
         Each client points at a URL instead of a command. Bastion answers it, and keeps exactly one
         child per profile alive behind it.
@@ -57,7 +57,7 @@ const TRADEOFFS = [
     <p
       class="m-0 w-fit max-w-full overflow-x-auto rounded-md border border-white/9 bg-white/3 px-4.5 py-3.5 font-mono text-[clamp(12px,2.6vw,15px)] whitespace-nowrap text-fg/85"
     >
-      {GATEWAY.origin}<span class="text-fg/45">{GATEWAY.path}</span>
+      {GATEWAY.origin}<span class="text-fg-muted">{GATEWAY.path}</span>
     </p>
 
     <div class="flex flex-wrap gap-4">
@@ -67,7 +67,7 @@ const TRADEOFFS = [
             <h3 class="m-0 font-display text-[25px] leading-none font-semibold tracking-[-0.028em]">
               {p.title}
             </h3>
-            <p class="m-0 text-[14.5px] leading-[1.6] text-fg/60 text-pretty">{p.body}</p>
+            <p class="m-0 text-[14.5px] leading-[1.6] text-fg-dim text-pretty">{p.body}</p>
           </div>
         ))
       }
@@ -98,7 +98,7 @@ const TRADEOFFS = [
               <dt class="basis-[150px] shrink-0 font-mono text-[13.5px] leading-[1.5] font-medium text-accent-hi">
                 {t.k}
               </dt>
-              <dd class="m-0 flex-1 text-[14.5px] leading-[1.6] text-fg/60 text-pretty">{t.v}</dd>
+              <dd class="m-0 flex-1 text-[14.5px] leading-[1.6] text-fg-dim text-pretty">{t.v}</dd>
             </div>
           ))
         }

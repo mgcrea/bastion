@@ -107,8 +107,8 @@ const LIMITS = [
 ] as const;
 ---
 
-<section id="status" class="border-t border-rule py-20">
-  <div class="wrap flex flex-wrap items-start gap-16">
+<section id="status" class="wrap scroll-mt-20 py-[96px]">
+  <div class="flex flex-wrap items-start gap-16">
     <SectionHeader heading="Status">
       {/* This said "there is no client wiring, no bridge, and no notarized
           build" until all three shipped in 1.0.0. The list below is the useful
@@ -120,7 +120,7 @@ const LIMITS = [
         notarized and for sale. What is worth reading is the other column.
       </p>
       <div class="flex flex-col gap-2.5 pt-1.5">
-        <h3 class="eyebrow m-0 text-fg/40">Known gaps</h3>
+        <h3 class="eyebrow m-0 text-fg-muted">Known gaps</h3>
         <ul class="m-0 flex list-none flex-col gap-2.5 p-0">
           {
             LIMITS.map((l) => (
@@ -138,7 +138,7 @@ const LIMITS = [
             <dt class="basis-[170px] shrink-0 font-mono text-[14px] leading-[1.5] font-medium">
               {s.k}
             </dt>
-            <dd class="m-0 flex-1 basis-[240px] text-[14px] leading-[1.55] text-fg/58 text-pretty">
+            <dd class="m-0 flex-1 basis-[240px] text-[14px] leading-[1.55] text-fg-dim text-pretty">
               {s.v}
             </dd>
             <span

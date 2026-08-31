@@ -1,46 +1,117 @@
 ---
-import { DOCS, PRICE, REPO_URL, SHIPPED } from "../config";
+import { APP_VERSION, DOCS, PRICE, REPO_URL, SHIPPED } from "../config";
 import Button from "./Button.astro";
 import Logo from "./Logo.astro";
 
 /**
  * Sticky, translucent, and 58px tall to match the canvas. `scroll-padding-top`
- * in global.css is 70px rather than 58 so an anchored section does not land
+ * in global.css is 78px rather than 58 so an anchored section does not land
  * flush under the bar.
+ *
+ * Three zones, which is what makes this read as cupertino's: the lockup and
+ * version pill pinned left, the links centred in their own `<nav>`, and the
+ * buttons pinned right at `gap-2`. It used to be two, with the links and the
+ * buttons sharing one container — so the buttons sat 20-30px apart and drifted
+ * left as links were added.
+ *
+ * Five links, not six. Status came out when the container narrowed to 1240; the
+ * footer still links it, and a nav that wraps is worse than a nav that leaves
+ * something out.
  */
 const LINKS = [
   { href: "#how", label: "How it works" },
   { href: "#rules", label: "Security" },
   { href: "#servers", label: "Servers" },
   { href: "#screens", label: "The app" },
-  { href: "#status", label: "Status" },
   { href: "#pricing", label: "Price" },
 ] as const;
 ---
 
 <header
-  class="sticky top-0 z-40 h-[58px] border-b border-rule bg-bg/70 backdrop-blur-xl backdrop-saturate-150"
+  class="sticky top-0 z-50 border-b border-rule bg-[color-mix(in_srgb,var(--color-bg)_72%,transparent)] backdrop-blur-[20px] backdrop-saturate-[180%]"
 >
-  <nav class="wrap flex h-full items-center justify-between">
-    <a href="#top" class="flex items-center gap-2.5">
-      <Logo size={23} />
-      <span class="text-[14.5px] font-semibold tracking-[-0.02em]">Bastion</span>
-    </a>
+  <div class="wrap flex h-[58px] items-center justify-between gap-6">
+    <div class="flex flex-none items-center gap-2.5">
+      <a href="#top" class="flex items-center gap-[10px] text-fg">
+        <Logo size={23} />
+        <span class="font-display text-[14.5px] leading-none font-[590] tracking-[-0.02em]"
+          >Bastion</span
+        >
+      </a>
 
-    <div class="flex items-center gap-5 text-[13px] sm:gap-[30px]">
+      {/* The version, where somebody looking for "which build is this" looks
+          first. It points at the releases page rather than at /download: a
+          number is a question about history, and the answer is the list. */}
+      {
+        SHIPPED && (
+          <a
+            href="/releases"
+            target="_blank"
+            rel="noopener"
+            class="hidden rounded-full border border-rule px-2 py-[3px] font-mono text-[10.5px] leading-none font-medium text-fg-muted transition-colors hover:border-accent hover:text-accent-hi sm:block"
+          >
+            {APP_VERSION}
+          </a>
+        )
+      }
+    </div>
+
+    {/* `lg`, not cupertino's `md`, and cupertino has this wrong. At 768 there is
+        room for the lockup, the pill and two buttons, but not for five links as
+        well: Bastion wrapped the bar onto two lines, and cupertino — whose links
+        are shorter — pushed its Buy button off the right edge instead, which is
+        the worse of the two failures because nothing about it looks broken until
+        you go looking for the button. 1024 is where links and buttons both fit,
+        and it is also where the GitHub button appears, so the whole right-hand
+        cluster arrives at once. */}
+    <nav class="hidden items-center gap-[30px] lg:flex">
       {
         LINKS.map((link) => (
-          <a
-            href={link.href}
-            class="hidden text-fg-dim transition-colors hover:text-fg sm:inline"
-          >
+          <a href={link.href} class="text-[13px] text-fg-dim transition-colors hover:text-accent-hi">
             {link.label}
           </a>
         ))
       }
-      <Button href={REPO_URL} variant="quiet" size="sm" external aria-describedby="repo-note">
-        Read the source ↗
-      </Button>
+    </nav>
+
+    {/* The responsive hiding is on a wrapper rather than on the button itself,
+        and has to stay there. `Button` sets `inline-flex`, and Tailwind emits
+        `.inline-flex` AFTER `.hidden` in the utilities layer — so `hidden` on
+        the button loses to its own base class and the button shows at every
+        width. This was live on Bastion: the Download button was visible on
+        phones, beside the Buy button, on a 390px bar. */}
+    <div class="flex flex-none items-center gap-2">
+      {
+        SHIPPED ? (
+          <>
+            <span class="hidden lg:block">
+              <Button href={REPO_URL} external variant="quiet" size="sm" aria-describedby="repo-note">
+                GitHub <span class="opacity-60">↗</span>
+              </Button>
+            </span>
+            <span class="hidden sm:block">
+              <Button href="/download" variant="secondary" size="sm">
+                Download
+              </Button>
+            </span>
+            {/* Buy is the primary action, and Download is secondary — the same
+                hierarchy cupertino uses, for the same reason. The nav is the one
+                element on every page and at every scroll position, so whatever
+                sits here as the accent button is what the site is asking for.
+
+                The price is in the label rather than behind the click. Somebody
+                who learns the number only after reaching Stripe has been made to
+                work for it, and they read that as a tactic. */}
+            <Button href="/buy" size="sm">
+              Buy <span class="opacity-70">·</span> {PRICE.amount}
+            </Button>
+          </>
+        ) : (
+          <Button href={REPO_URL} external variant="quiet" size="sm" aria-describedby="repo-note">
+            GitHub <span class="opacity-60">↗</span>
+          </Button>
+        )
+      }
       {/* The caveat, kept out of the visible label so the button stays one line
           on a phone. It used to say there was no release to download, which
           stopped being true at 1.0.0 — a sentence a screen reader would have
@@ -50,29 +121,6 @@ const LINKS = [
         <a href="/download">download</a>; see <a href={DOCS.readme}>the README</a> for what is in
         each.
       </span>
-      {
-        SHIPPED && (
-          <Button href="/download" variant="secondary" size="sm" class="hidden sm:inline-flex">
-            Download
-          </Button>
-        )
-      }
-      {/* Buy is the primary action in the nav, and Download is secondary — the
-          same hierarchy cupertino uses, for the same reason. The nav is the one
-          element on every page and on every scroll position, so whatever sits
-          here as the accent button is what the site is asking for. Download was
-          taking that slot while the thing being sold had no button at all.
-
-          The price is in the label rather than behind the click. Somebody who
-          learns the number only after reaching Stripe has been made to work for
-          it, and they read that as a tactic. */}
-      {
-        SHIPPED && (
-          <Button href="/buy" size="sm">
-            Buy · {PRICE.amount}
-          </Button>
-        )
-      }
     </div>
-  </nav>
+  </div>
 </header>
