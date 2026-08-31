@@ -45,7 +45,7 @@ struct ChatPane: View {
       }
     }
     .safeAreaInset(edge: .top) { header }
-    .safeAreaInset(edge: .bottom) { composer }
+    .safeAreaInset(edge: .bottom, spacing: 0) { composer }
     #if DEBUG
       // `--chat-profile=prod/appstore-connect`, alongside `--pane=chat`.
       // Selecting a profile is the one step that cannot be reached without a
@@ -300,17 +300,32 @@ struct ChatPane: View {
     VStack(spacing: 0) {
       Divider()
       HStack(alignment: .bottom, spacing: 8) {
+        // The box is what stops the composer reading as text falling off the
+        // bottom of the window. `.plain` draws no border of its own, and in dark
+        // mode `.bar` over the transcript is the same colour as the transcript,
+        // so before this the only thing between the caret and the window edge
+        // was padding — and no amount of it looked deliberate. Same fill and
+        // corner as the tool-call blocks above, one step up in radius for a
+        // control rather than a readout.
         TextField("Ask something…", text: $draft, axis: .vertical)
           .textFieldStyle(.plain)
           .lineLimit(1...6)
           .onSubmit(send)
           .disabled(!canSend)
+          // 6, with `.controlSize(.large)` on the button below: that pairing is
+          // what makes the two exactly 28pt, so the box and the button share a
+          // top and a bottom edge instead of only meeting at the baseline.
+          // Changing either one alone puts them back out of alignment.
+          .padding(.horizontal, 10).padding(.vertical, 6)
+          .background(.quaternary.opacity(0.35), in: .rect(cornerRadius: 8))
+          .overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary, lineWidth: 1))
         Button("Send", action: send)
+          .controlSize(.large)
           .keyboardShortcut(.return, modifiers: [])
           .disabled(!canSend || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         if chat.isResponding { ProgressView().controlSize(.small) }
       }
-      .padding(.horizontal, 12).padding(.vertical, 8)
+      .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 14)
     }
     .background(.bar)
   }
