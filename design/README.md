@@ -141,11 +141,15 @@ design/bastion-mark.svg --make icon--> design/bastion-icon.svg --pnpm icons--> a
 
 Two files, one mark, two states — the shape cupertino uses for the same job:
 
-| file                         | state            | ink (measured at 18pt)    |
-| ---------------------------- | ---------------- | ------------------------- |
-| `bastion-menubar.svg`        | idle             | 23.0 × 18.2 units         |
-| `bastion-menubar-active.svg` | a server is live | 31.5 × 24.8 units         |
-| cupertino's, for scale       | idle / connected | 34.0 × 16.8 / 34.0 × 20.8 |
+| file                         | state            | ink at 18pt | ink % | mass cy |
+| ---------------------------- | ---------------- | ----------- | ----- | ------- |
+| `bastion-menubar.svg`        | idle             | 31.0 × 22.5 | 22.4  | 21.18   |
+| `bastion-menubar-active.svg` | a server is live | 31.0 × 28.2 | 29.5  | 19.66   |
+| cupertino's, for scale       | idle             | 31.0 × 19.8 | 22.5  | 21.10   |
+| cupertino's, for scale       | connected        | 31.0 × 23.8 | 28.6  | 19.74   |
+
+`ink %` is the rendered alpha as a fraction of the whole 18×18 tile — the number that says which of
+two glyphs looks heavier in a bar. The two apps are fitted to each other on it.
 
 `MenuBarLabel` in `BastionApp.swift` swaps them on `Activity.shared.instances`, and reads that
 rather than `Supervisor.running` for the reason the popover's rows do: the supervisor's view is a
@@ -154,15 +158,60 @@ spawns a process and so never appears there, which is what makes the state mean 
 
 They are still **authored, not composed** — `make icon` copies them and never derives them from the
 mark, because the sizing below is a menu bar problem the 1024 mark knows nothing about. What is no
-longer authored is the _shape_: the fort's five vertices are `bastion-mark.svg`'s own, scaled. The
-two used to differ by about 5% in aspect for no reason anybody had written down.
+longer authored is the _shape_: the fort's five vertices are `bastion-mark.svg`'s own, scaled, and
+so is the ridge. The fort and the mark used to differ by about 5% in aspect for no reason anybody
+had written down.
+
+### The ridge is Bastion's own, and it is not cupertino's
+
+The first thing to know before copying anything across. Cupertino's back hill is an **S-wave** —
+crest left, trough right. `bastion-mark.svg` draws a **symmetric dome**, crest dead centre, no
+trough:
+
+| icon, back hill | crest at  | amplitude / span | shape    |
+| --------------- | --------- | ---------------- | -------- |
+| Cupertino       | 25.5%     | 0.176            | S-wave   |
+| Bastion         | **50.0%** | 0.124            | **dome** |
+
+The glyph carries that dome, at 2.2 units against the 3.60 a proportional transcription would give —
+the same 61% restraint cupertino's hill carries. Keep the shape and move the amplitude alone. The
+two apps sharing a _construction_ while keeping their own ridges is the point; a shared hill would
+make one of them wrong.
+
+### The fort stands on the ridge, it does not set behind it
+
+This is the one place the two glyphs are built differently, and the icons decide it. In
+`bastion-mark.svg` the fort is drawn **after** the hills, so it is in front of them; cupertino's sun
+is drawn **before** its hills, so it sets behind them.
+
+Drawn faithfully — the fort's flat base overlapping the ridge — the two weld into **one connected
+component at every size**, and the ridge reads as feet sticking out sideways. That was measured, not
+argued: in a one-colour template, "in front of" and "merged with" are the same picture.
+
+So the fort's flat base rests exactly **on** the sky line (y25.70, the clip's height at the centre)
+rather than below it. The fort is never actually cut, keeps the closed base it needs for a floor,
+and the ridge sits under it with 1.05pt of sky. Cutting it cupertino-style also measures fine and
+was drawn; it was rejected because a fort that sets behind a hill is cupertino's idea, not this
+one's.
+
+### The clip is a true normal offset
+
+The ridge pushed 3 units along its own perpendicular, fitted as one cubic — not shifted vertically,
+which is only correct for a shallow curve. It exists for the **wall**, whose feet terminate on it;
+the fort sits above it untouched. Two things were checked rather than assumed: max deviation from
+the exact offset is **0.020 units = 0.010pt**, and a normal offset cusps only if it exceeds the
+curve's radius of curvature, which is **47.78 units** here against a 3-unit offset.
+
+Because the offset is perpendicular, the sky between the clip and the top of the ridge's stroke is
+exactly `3 − 0.9 = 2.1` units = **1.05pt at every point**, at any amplitude — the same figure
+cupertino's glyph holds. Resize the ridge or the fort freely; leave the 3 and the 1.8 alone.
 
 ### The wall is open at the base, and that is the whole design
 
 Closed, it is a parallel outline of the fort at every point and reads as **tramlines** — one shape
 drawn twice. That is what the old glyph did with its two nested pentagons, and it is what a naive
 "halo around the fort" produces if you offset the silhouette and join it up. Open, the wall
-terminates level with the fort's own floor and reads as a wall arcing over a keep.
+terminates on the sky line and reads as a wall arcing over a keep.
 
 Cupertino gets the same effect for free and it is worth seeing why, because it is not obvious from
 the file: its halo is a full `<circle>`, but it sits inside the clip that cuts the sun off at the
@@ -170,9 +219,9 @@ horizon, so what anybody actually sees is an **arc**. There is no closed ring ar
 either.
 
 This is also the shape the icon used to carry — the old mark's wall was open at the base too, so the
-outline could run down into the hills. There are no hills at 18pt, and that used to be an argument
-for closing it: an open wall left the silhouette with no floor. It no longer is, because the fort
-below it is solid and has a floor of its own.
+outline could run down into the hills. There used to be no hills at 18pt, which was once an argument
+for closing it: an open wall left the silhouette with no floor. Both halves of that have since gone.
+The fort below it is solid and has a floor of its own, and there is now a ridge under both.
 
 ### The numbers, and how they were picked
 
@@ -182,26 +231,38 @@ below it is solid and has a floor of its own.
 - **Stroke 1.6 units (0.8pt)** — cupertino's halo weight exactly, and half the 3.17 the old wall
   carried. Matched weights read as tramlines; one light shape around one solid one reads as a form
   inside another.
-- **Fort 22.67 units wide.** Not a drawing decision: it is the widest fort the active glyph can
-  carry while keeping a 2-unit margin, because the wall standing off it eats 8.8 units of the width
-  budget. The old glyph was 31.5 × 32.5 — nearly twice cupertino's mass, which is not what two icons
-  in one menu bar by one author should look like.
-- **Both files sit 1.18 units below centre.** The wall adds 5.6 units above the fort and 0.5 below,
-  so no one position centres both states. This splits the error exactly — idle 1.12 low, active 1.12
-  high — and it is the same compromise cupertino makes. Change it in both files or in neither: the
-  fort must not move when a server starts, or the swap reads as the icon twitching rather than as
-  something happening.
+- **Fort 20.39 units wide.** Not a drawing decision: it is fitted so the glyph's ink comes to 22.4%
+  of the tile against cupertino's 22.5%. The original glyph was 31.5 × 32.5 at a far heavier ink —
+  nearly twice cupertino's mass, which is not what two icons in one menu bar by one author should
+  look like.
+- **The seat is fitted to ink mass, not to the bounding box.** Both files are placed so the ink mass
+  lands on cupertino's line: 21.18 against 21.10 idle, 19.65 against 19.74 active. Mass rather than
+  box because the fort is a solid shape above a 0.9pt line and the eye follows the fort. Change it
+  in both files or in neither — the fort must not move when a server starts, or the swap reads as
+  the icon twitching rather than as something happening.
+- **The wall's feet stop on the sky line.** The path runs down to y34 and the clip trims it, which
+  is how cupertino's halo terminates too, so in both apps every shape stops on one line. Those two
+  end coordinates are outside the clip and carry no meaning; do not tune them.
 
 Coordinates are cupertino's 36-unit grid at 18pt, so 2 units = 1pt and the menu bar glyphs in this
 family are comparable without conversion.
 
 ### Verify by counting, not by looking
 
-At 18pt the active glyph is two connected components at 8× and 2×, and **one** at 1×, where the wall
-comes out as a grey outline rather than a black line. Cupertino's ring and sun merge at 1× too. That
-is acceptable degradation rather than a bug to chase — retina is the design target, and 1× still
-changes visibly, which is what a state needs to do. Re-measure with a component count after any
-edit; by eye at 2× you cannot see the failure.
+Counting 8-connected components of the rendered alpha at a threshold of 32:
+
+| state  | shapes            | 16pt | 18pt | 20pt |
+| ------ | ----------------- | ---- | ---- | ---- |
+| idle   | fort, ridge       | 2    | 2    | 2    |
+| active | fort, wall, ridge | 3    | 3    | 3    |
+
+It holds at 16pt, which cupertino's connected state does not — see that file's note on why 16pt is
+pixel-phase luck rather than margin, and should not be tuned against either way.
+
+At 1× everything merges into one silhouette and the wall comes out as a grey outline rather than a
+black line. Cupertino's ring and sun do the same. That is acceptable degradation rather than a bug
+to chase — retina is the design target, and 1× still changes visibly, which is what a state needs to
+do. Re-measure with a component count after any edit; by eye at 2× you cannot see the failure.
 
 ### Template images
 

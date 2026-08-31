@@ -1,21 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="18" height="18">
   <title>Bastion — menu bar template, idle</title>
-  <!-- The fort alone. `bastion-menubar-active.svg` is this file plus the
+  <!-- The fort on its ridge. `bastion-menubar-active.svg` is this file plus the
        curtain wall, shown while a server is running — read that file's note
-       before moving anything here, because the fort must be identical in the
-       two or the mark visibly twitches when a server starts.
-
-       This is the app icon's subject with nothing added, and the shape is
-       `bastion-mark.svg`'s own fort rather than a second drawing of it: the
-       icon dropped its wall too, so the Dock and an idle menu bar are now the
-       same silhouette. The wall is no longer part of the mark. It is what the
-       mark does when it is guarding something.
-
-       The glyph is still authored rather than composed, because the sizing
-       below is a menu bar problem the 1024 mark knows nothing about. What is
-       no longer authored is the *shape* — the five vertices are the mark's,
-       scaled, and the two used to differ by about 5% in aspect for no reason
-       anybody had written down.
+       before moving anything here, because the fort and the ridge must be
+       identical in the two or the mark visibly twitches when a server starts.
 
        Pure black plus alpha: AppKit tints a template image itself, for light
        menu bars, dark ones and the highlighted state, so there is one file
@@ -25,22 +13,68 @@
        same grid, so the menu bar glyphs in this family are comparable without
        conversion.
 
-       SIZE. The fort is 22.67 units wide, which is not a drawing decision: it
-       is the widest fort the *active* glyph can carry while keeping a 2-unit
-       margin, because the wall standing off it eats 8.8 units of the width
-       budget. Measured at 18pt, the two states come out 23.0 x 18.2 and
-       31.5 x 24.8, against cupertino's own 34.0 x 16.8 and 34.0 x 20.8 —
-       siblings, rather than one glyph carrying twice the mass of the other,
-       which is what the old 31.5 x 32.5 double pentagon was.
+       THE RIDGE IS BASTION'S OWN, and it is not cupertino's. That is the first
+       thing to know before copying anything across: cupertino's back hill is an
+       S-wave, crest left and trough right, while `bastion-mark.svg` draws a
+       SYMMETRIC DOME with its crest dead centre and no trough —
 
-       SITTING IT DOWN. The fort is drawn 1.18 units below the canvas centre.
-       That is the same compromise cupertino makes and for the same reason: the
-       wall adds 5.6 units above the fort and 0.5 below, so no one position
-       centres both states. This one splits the error exactly — idle sits 1.12
-       low, active 1.12 high — and it has to change in both files or in neither.
+         M-39.7 882.8 Q512 609.1 1063.7 882.8   crest at 50.0% across,
+                                                amplitude 0.1240 of span
+
+       This is that curve. Only the amplitude is dialled down: 2.2 units against
+       the 3.60 a proportional transcription would give, which is the same 61%
+       restraint cupertino's hill carries. Keep the shape and move the amplitude
+       alone. The two apps sharing a construction while keeping their own ridges
+       is the point — a shared hill would make one of them wrong.
+
+       THE FORT STANDS ON THE RIDGE, IT DOES NOT SET BEHIND IT. In the icon the
+       fort is drawn *after* the hills, so it is in front of them; cupertino's
+       sun is drawn *before*, so it sets behind. That difference decides the
+       construction here, and it was measured rather than argued: drawn
+       faithfully, with the fort's flat base overlapping the ridge, the two weld
+       into a single connected component at every size and the ridge reads as
+       feet sticking out sideways. In a one-colour template, "in front of" and
+       "merged with" are the same picture.
+
+       So the fort's flat base rests exactly ON the sky line — y25.70, the clip's
+       height at the centre — rather than below it. The fort is never actually
+       cut; it keeps the closed base it needs for a floor, and the ridge sits
+       under it with 1.05pt of sky between. Cutting it, cupertino-style, also
+       measures fine and was drawn; it was rejected because a fort that sets
+       behind a hill is cupertino's idea, not this one's.
+
+       THE CLIP IS A TRUE NORMAL OFFSET — the ridge pushed 3 units along its own
+       perpendicular, fitted as one cubic, not shifted vertically. It exists for
+       the wall in the active file, whose feet terminate on it; the fort sits
+       above it and is untouched. Max deviation from the exact offset is 0.020
+       units = 0.010pt, and a normal offset can cusp only if it exceeds the
+       curve's radius of curvature, which is 47.78 units here against a 3-unit
+       offset.
+
+       SKY. Because the offset is perpendicular, the gap between the sky line and
+       the top of the ridge's stroke is exactly 3 − 0.9 = 2.1 units = 1.05pt at
+       every point, at any amplitude — the same figure cupertino's glyph holds.
+       Resize the ridge or the fort freely; leave the 3 and the 1.8 alone.
+
+       SIZE AND SEAT. The fort is 20.39 units wide, fitted so the glyph's ink
+       comes to 22.4% of the 18x18 tile against cupertino's 22.5%, and the whole
+       thing is placed so its ink MASS — not its bounding box — lands on
+       cupertino's line (21.18 against 21.10 idle, 19.65 against 19.74 active).
+       Mass rather than box, because the fort is a solid shape above a 0.9pt
+       line and the eye follows the fort.
 
        Re-measure with a connected-component count on a real render after any
-       edit, never by eye. At 1x the failure is the wall welding to the fort,
-       and it is invisible at the 2x you will be looking at. -->
-  <path d="M18 10.11 L27.63 18.05 L29.34 28.25 L6.66 28.25 L8.37 18.05 Z" fill="#000" />
+       edit, never by eye. Idle is two components and active is three, holding
+       at 16, 18 and 20pt. -->
+  <defs>
+    <clipPath id="sky">
+      <path d="M-4 -4 L40 -4 L40 28.03 L33.37 28.03 C23.22 24.95 12.78 24.95 2.63 28.03
+               L-4 28.03 Z" />
+    </clipPath>
+  </defs>
+  <g clip-path="url(#sky)">
+    <path d="M18 9.39 L26.67 16.53 L28.2 25.7 L7.8 25.7 L9.33 16.53 Z" fill="#000" />
+  </g>
+  <path d="M3.5 30.9 Q18 26.5 32.5 30.9" fill="none" stroke="#000" stroke-width="1.8"
+    stroke-linecap="round" />
 </svg>

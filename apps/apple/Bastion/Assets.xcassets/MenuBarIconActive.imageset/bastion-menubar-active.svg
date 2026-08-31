@@ -1,47 +1,61 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="18" height="18">
   <title>Bastion — menu bar template, a server is running</title>
   <!-- The idle mark plus one shape: the curtain wall, standing off the fort.
-       The fort is identical to `bastion-menubar.svg`, deliberately — the two
-       are swapped in place in the menu bar, so any drift in it would read as
-       the icon twitching rather than as a state changing. That includes the
-       1.18-unit downward offset both files carry; read the note in the idle
-       file before changing it here, because it is a compromise between these
-       two glyphs and moving one alone is what it exists to prevent.
+       The fort, the ridge and the clip are identical to `bastion-menubar.svg`,
+       deliberately — the two are swapped in place in the menu bar, so any drift
+       would read as the icon twitching rather than as a state changing. Read
+       that file before changing anything here: the ridge is Bastion's own dome
+       rather than cupertino's wave, the fort stands on it rather than setting
+       behind it, and the clip is a true normal offset for a reason.
 
-       THE WALL IS OPEN AT THE BASE, and that is the whole design. Closed, it
-       is a parallel outline of the fort at every point and reads as tramlines,
-       one shape drawn twice — which is exactly what the old glyph did with its
-       two nested pentagons. Open, it terminates level with the fort's own
-       floor and reads as a wall arcing over a keep. Cupertino gets the same
-       effect for free: its halo is a ring clipped by the horizon, so what you
-       actually see is an arc and never a closed ring around the sun. This was
-       measured before it was believed — the closed offset was drawn, rendered
-       and rejected at 8x, where it separates cleanly and still reads as one
-       shape outlined twice.
+       THE WALL IS OPEN AT THE BASE, and that is the whole design. Closed, it is
+       a parallel outline of the fort at every point and reads as tramlines, one
+       shape drawn twice — which is exactly what the old glyph did with its two
+       nested pentagons. Open, it reads as a wall arcing over a keep.
 
-       Nothing here is new geometry. It is the fort's silhouette offset by 3.6
+       Its feet now terminate ON THE SKY LINE rather than level with the fort's
+       base. The path is drawn down to y34 and the clip trims it, which is how
+       cupertino's halo terminates too — so in both apps every shape in the
+       glyph stops on one line. Those two end coordinates are outside the clip
+       and carry no meaning; do not tune them.
+
+       Nothing here is new geometry: it is the fort's silhouette offset by 3.6
        units, so every face of the wall stands the same distance off the face
-       behind it, and it is the shape the app icon carried — also open at the
-       base — before the icon dropped it.
+       behind it, and it is the shape the app icon carried before the icon
+       dropped it.
 
        THE GAP IS MEASURED. 2.4 units separates cleanly but still reads as a
-       tramline; 3.2 buys nothing and costs the fort the width it needs to
-       carry the idle glyph on its own. 2.8 is where the wall reads as a second
-       object and the fort keeps its mass.
+       tramline; 3.2 buys nothing and costs the fort the width it needs to carry
+       the idle glyph alone. 2.8 is where the wall reads as a second object and
+       the fort keeps its mass.
 
        The stroke is 1.6 units (0.8pt) — cupertino's halo weight exactly, and
        half the 3.17 the old wall carried. Matched weights read as tramlines;
        one light shape around one solid one reads as a form inside another.
 
-       At 1x the wall does not fully resolve: it comes out as a grey outline
-       rather than a black line, and a component count says the two shapes have
-       merged, exactly as cupertino's ring and sun do at that size. That is
-       acceptable degradation rather than a bug to chase — retina is the design
-       target, and 1x still changes visibly, which is what the state needs to
-       do.
+       The wall is one-sided: it adds height above the fort and almost nothing
+       below, since its feet stop on the sky line. That is why the two states
+       are seated by ink mass rather than by bounding box, and it is the same
+       asymmetry cupertino's halo has, in the same direction.
 
-       Re-measure with a component count after any edit, never by eye. -->
-  <path d="M18 10.11 L27.63 18.05 L29.34 28.25 L6.66 28.25 L8.37 18.05 Z" fill="#000" />
-  <path d="M3.02 28.25 L5.04 16.13 L18 5.45 L30.96 16.13 L32.98 28.25" fill="none" stroke="#000"
-    stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" />
+       At 1x the wall does not fully resolve: it comes out as a grey outline
+       rather than a black line. That is acceptable degradation rather than a
+       bug to chase — retina is the design target, and 1x still changes visibly,
+       which is what the state needs to do.
+
+       Re-measure with a component count after any edit, never by eye. Three
+       components here, holding at 16, 18 and 20pt. -->
+  <defs>
+    <clipPath id="sky">
+      <path d="M-4 -4 L40 -4 L40 28.03 L33.37 28.03 C23.22 24.95 12.78 24.95 2.63 28.03
+               L-4 28.03 Z" />
+    </clipPath>
+  </defs>
+  <g clip-path="url(#sky)">
+    <path d="M18 9.39 L26.67 16.53 L28.2 25.7 L7.8 25.7 L9.33 16.53 Z" fill="#000" />
+    <path d="M2.77 34 L6.01 14.6 L18 4.73 L29.99 14.6 L33.23 34" fill="none" stroke="#000"
+      stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" />
+  </g>
+  <path d="M3.5 30.9 Q18 26.5 32.5 30.9" fill="none" stroke="#000" stroke-width="1.8"
+    stroke-linecap="round" />
 </svg>
