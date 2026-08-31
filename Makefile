@@ -411,7 +411,9 @@ license-check: ## Prove a minted licence key verifies in the app's own verifier
 wiring-check: ## Assert the config merge leaves other people's files alone
 	@mkdir -p apps/apple/.build
 	@swiftc -O -o apps/apple/.build/wiring-check \
-		apps/apple/Bastion/ClientWiringMerge.swift scripts/wiring-check.swift
+		apps/apple/Bastion/ClientWiringMerge.swift \
+		apps/apple/Bastion/ClientWiringTOML.swift \
+		scripts/wiring-check.swift
 	@apps/apple/.build/wiring-check
 
 # Read-only. Parses your actual client configs, merges in memory, and asserts
@@ -445,12 +447,13 @@ audit: app remote-check ## Assert the listener is loopback-only and refuses fore
 # none, and `audit-listener.sh` only ever sends the parser well-formed requests.
 # Malformed input against a parser that runs BEFORE authentication is exactly
 # the case worth having, and it needs no app at all.
-unit: ## Assert the dialect translation and the HTTP parser, with no app and no network
+unit: ## Assert the dialect translation, the HTTP parser and call capture, with no app and no network
 	@mkdir -p apps/apple/.build
 	@swiftc -O -o apps/apple/.build/unit-check \
 		apps/apple/Bastion/Dialect.swift \
 		apps/apple/Bastion/ServerCatalog.swift \
 		apps/apple/Bastion/HTTP.swift \
+		apps/apple/Bastion/CallCapture.swift \
 		scripts/unit-check.swift
 	@apps/apple/.build/unit-check
 

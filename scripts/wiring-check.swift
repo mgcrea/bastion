@@ -112,6 +112,12 @@ struct WiringCheck {
     foreignEntriesAreEverythingNotOurs()
     removingTakesExactlyOneKey()
 
+    tomlScannerFindsEveryServer()
+    tomlScannerIsNotFooledByProse()
+    tomlValuesDegradeRatherThanLie()
+    tomlNamesWhatItCannotParse()
+    tomlRefusesShapesItCannotSplice()
+
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 { exit(1) }
   }
@@ -843,5 +849,282 @@ struct WiringCheck {
     check(
       "a folder the file does not know changes nothing",
       deepEqual(ClientWiringMerge.removing(key: "theirs", inProject: "/Users/x/zz", from: root), root))
+  }
+
+  // MARK: - The TOML client
+
+  /// Shaped like the real `~/.codex/config.toml`: hand-written structure around
+  /// the servers, a quoted-key table, and a multi-line string full of prose
+  /// sitting exactly where it can do the most damage.
+  static let codexConfig = """
+    model = "gpt-5.6-sol"
+
+    [features]
+    multi_agent = true
+
+    [projects."/Users/olivier/Projects/swift-r2"]
+    trust_level = "trusted"
+
+    [desktop]
+    git-commit-instructions = \"\"\"
+    ## Notes
+
+    - Never write [mcp_servers.ghost] in a commit message
+    - A # here is prose, not a comment
+    \"\"\"
+
+    # the servers Codex starts itself
+    [mcp_servers.node_repl]
+    args = []
+    command = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node_repl"
+    startup_timeout_sec = 120
+
+    [mcp_servers.node_repl.env]
+    CODEX_HOME = "/Users/olivier/.codex"
+
+    [mcp_servers.computer-use]
+    command = "./Codex Computer Use.app/Contents/MacOS/SkyComputerUseClient"
+    args = ["mcp"]
+    enabled = false
+
+    [shell_environment_policy.set]
+    SHA = "9230e2bd"
+
+    """
+
+  static func scanned(_ text: String) -> ClientWiringTOML.Document? {
+    try? ClientWiringTOML.scan(text)
+  }
+
+  /// A server's spans as 1-based inclusive line pairs, for readable checks.
+  static func spans(_ document: ClientWiringTOML.Document, _ name: String) -> [[Int]] {
+    (document.tables[name]?.ranges ?? []).map { [$0.lowerBound + 1, $0.upperBound] }
+  }
+
+  static func line(_ document: ClientWiringTOML.Document, _ index: Int) -> String {
+    index < document.lines.count ? String(document.text[document.lines[index]]) : ""
+  }
+
+  static func names(_ document: ClientWiringTOML.Document?) -> [String] {
+    (document?.tables.keys.map { $0 } ?? []).sorted()
+  }
+
+  static func tomlScannerFindsEveryServer() {
+    print("\nFinding the servers in a TOML config")
+    guard let doc = scanned(codexConfig) else { return check("the fixture scans", false) }
+
+    check("both servers are found", names(doc) == ["computer-use", "node_repl"])
+    check(
+      "a quoted project table is not a server",
+      doc.tables["/Users/olivier/Projects/swift-r2"] == nil)
+
+    // Header through last-line-that-says-something, twice: the table and its
+    // subtable, with the blank line between them belonging to neither.
+    check("the spans are exactly the lines that hold it", spans(doc, "node_repl") == [[18, 21], [23, 24]])
+    check(
+      "a subtable extends its server rather than starting a new one",
+      spans(doc, "node_repl").count == 2)
+    check(
+      "and the second span is that subtable",
+      line(doc, doc.tables["node_repl"]?.ranges.last?.lowerBound ?? 0)
+        .hasPrefix("[mcp_servers.node_repl.env]"))
+
+    // A span ends at the last line that says something. The blank line under it
+    // belongs to the table below, which is what stops an unwire eating somebody
+    // else's separator.
+    check(
+      "a span stops before the blank line under it",
+      line(doc, doc.tables["computer-use"]?.ranges.first?.upperBound ?? 0)
+        .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+    check("values are read", doc.tables["node_repl"]?.value["args"] as? [Any] != nil)
+    check(
+      "including the command a foreign entry is recognised by",
+      (doc.tables["node_repl"]?.value["command"] as? String)?.hasSuffix("node_repl") == true)
+    check(
+      "a subtable's values land under it",
+      ((doc.tables["node_repl"]?.value["env"] as? [String: Any])?["CODEX_HOME"] as? String)
+        == "/Users/olivier/.codex")
+    check("a hyphenated bare name is a name", doc.tables["computer-use"] != nil)
+    check("enabled = false is read", doc.tables["computer-use"]?.isDisabled == true)
+    check("and a server without it is not disabled", doc.tables["node_repl"]?.isDisabled == false)
+    check("the disabled set names it", doc.disabled == ["computer-use"])
+
+    // Where new blocks land: past the last server, before the blank line that
+    // separates it from the next table.
+    check(
+      "the anchor is just past the last server span",
+      doc.anchor == (doc.tables["computer-use"]?.ranges.first?.upperBound ?? -1))
+
+    let quoted = scanned("[mcp_servers.\"my server\"]\nurl = \"http://x/\"\n")
+    check("a quoted table name is unquoted", quoted?.tables["my server"] != nil)
+
+    let parent = scanned(
+      "[mcp_servers]\nfoo = { command = \"/bin/foo\" }\nbar = { url = \"http://y/\" }\n")
+    check("a bare [mcp_servers] table names its keys as servers", names(parent) == ["bar", "foo"])
+    check("and parses them", (parent?.tables["foo"]?.value["command"] as? String) == "/bin/foo")
+    check("each inline entry owns exactly its own line", parent?.tables["bar"]?.ranges == [2..<3])
+
+    check("a file with no servers has none", scanned("model = \"x\"\n")?.tables.isEmpty == true)
+    check("and anchors at the end of it", scanned("model = \"x\"\n")?.anchor == 1)
+    check("an empty file scans", scanned("")?.tables.isEmpty == true)
+  }
+
+  /// The failure a line-oriented scanner walks into, stated as a check.
+  ///
+  /// The real config keeps a multi-line string of markdown directly above its
+  /// first server. Prose is allowed to contain a bracket at column 0, a hash,
+  /// and the words of a table header; none of it is TOML.
+  static func tomlScannerIsNotFooledByProse() {
+    print("\nProse in a TOML config is not TOML")
+    guard let doc = scanned(codexConfig) else { return check("the fixture scans", false) }
+
+    check("a table header inside a string mints no server", doc.tables["ghost"] == nil)
+    check("exactly two servers, not three", doc.tables.count == 2)
+    check(
+      "and the real header after the string is found at its own line",
+      line(doc, doc.tables["node_repl"]?.ranges.first?.lowerBound ?? 0)
+        .hasPrefix("[mcp_servers.node_repl]"))
+
+    let literal = scanned(
+      "a = '''\n[mcp_servers.ghost]\n# not a comment\n'''\n"
+        + "[mcp_servers.real]\nurl = \"http://z/\"\n")
+    check("a literal multi-line string is opaque too", names(literal) == ["real"])
+
+    check(
+      "a hash inside a literal string does not start a comment",
+      (scanned("[mcp_servers.a]\ncommand = '/bin/x#y'\n")?.tables["a"]?.value["command"]
+        as? String) == "/bin/x#y")
+    check(
+      "an escaped quote does not end a basic string",
+      (scanned("[mcp_servers.a]\ncommand = \"/bin/\\\"x\"\n")?.tables["a"]?.value["command"]
+        as? String) == "/bin/\"x")
+    check(
+      "a comment naming a table is still a comment",
+      scanned("# [mcp_servers.ghost]\nmodel = \"x\"\n")?.tables.isEmpty == true)
+    check(
+      "a dot inside a quoted key is not a path separator",
+      scanned("[mcp_servers.\"a.b\"]\nurl = \"http://q/\"\n")?.tables["a.b"] != nil)
+  }
+
+  /// Values are best effort, and best effort means omitting rather than
+  /// guessing. Nothing omitted here could have been a `command` or a `url`, so
+  /// nothing downstream is poorer for it.
+  static func tomlValuesDegradeRatherThanLie() {
+    print("\nA value this cannot type is omitted, not guessed")
+    let text = """
+      [mcp_servers.a]
+      command = "/bin/a"
+      when = 1979-05-27T07:32:00Z
+      ratio = 0.5
+      big = 1_000
+      nested = [[1, 2], [3]]
+      spread = [
+        "one",
+      ]
+      after = "still read"
+
+      """
+    guard let doc = scanned(text), let table = doc.tables["a"] else {
+      return check("it scans", false)
+    }
+    check("the command is right", (table.value["command"] as? String) == "/bin/a")
+    check("a datetime is omitted", table.value["when"] == nil)
+    check("a float is omitted", table.value["ratio"] == nil)
+    check("an underscored integer is omitted", table.value["big"] == nil)
+    check("a nested array is read", (table.value["nested"] as? [Any])?.count == 2)
+    check("a multi-line array is omitted", table.value["spread"] == nil)
+    check("and the key after it is still read", (table.value["after"] as? String) == "still read")
+    check("the span covers all of it, continuation lines included", spans(doc, "a") == [[1, 10]])
+    check(
+      "a plain integer is read",
+      (scanned("[mcp_servers.a]\nn = 12\n")?.tables["a"]?.value["n"] as? Int) == 12)
+  }
+
+  /// The invariant, from both ends.
+  ///
+  /// A server this can see but not describe must still be NAMED, because the
+  /// name is what `collisions` refuses on. Dropping it would let a wire append a
+  /// second `[mcp_servers.<name>]`, and a duplicate key does not cost one entry
+  /// — it costs the whole file.
+  static func tomlNamesWhatItCannotParse() {
+    print("\nA server this cannot describe is still a server")
+    let text = """
+      [mcp_servers.stripe]
+      when = 1979-05-27T07:32:00Z
+      ratio = 0.5
+
+      [mcp_servers.opaque]
+
+      [mcp_servers.inline]
+      command = { not = "a string" }
+
+      """
+    guard let doc = scanned(text) else { return check("it scans", false) }
+    check("all three are named", names(doc) == ["inline", "opaque", "stripe"])
+    check("even with nothing typed under it", doc.tables["stripe"]?.value.isEmpty == true)
+    check("even with nothing under it at all", doc.tables["opaque"]?.value.isEmpty == true)
+
+    // The consequence, which is the whole reason for the invariant.
+    let servers = doc.servers
+    check(
+      "so none of them reads as ours",
+      servers.allSatisfy { !ClientWiringMerge.isOurs($0.value) })
+    check(
+      "and a key we would write is refused rather than duplicated",
+      ClientWiringMerge.collisions(servers: servers, keys: ["stripe", "keycloak"]) == ["stripe"])
+    check(
+      "an entry whose command is not a string names no identity",
+      ClientWiringMerge.identity(of: doc.tables["inline"]?.value) == nil)
+    check(
+      "and is listed as foreign anyway",
+      ClientWiringMerge.foreignEntries(in: servers).map { $0.key }
+        == ["inline", "opaque", "stripe"])
+  }
+
+  /// What it refuses, and why a refusal is enough: every write path begins with
+  /// a read, so a scan that throws is a client that cannot be written to.
+  static func tomlRefusesShapesItCannotSplice() {
+    print("\nShapes this refuses rather than guesses at")
+    func refuses(_ label: String, _ text: String) {
+      var threw = false
+      do { _ = try ClientWiringTOML.scan(text) } catch { threw = true }
+      check(label, threw)
+    }
+
+    refuses("a dotted key under [mcp_servers]", "[mcp_servers]\nfoo.command = \"/bin/foo\"\n")
+    refuses("an array of tables", "[[mcp_servers.foo]]\ncommand = \"/bin/foo\"\n")
+    refuses("an unterminated multi-line string", "a = \"\"\"\nnever closed\n")
+    refuses("an unterminated single-line string", "[mcp_servers.a]\ncommand = \"/bin/a\n")
+    refuses("an unclosed table header", "[mcp_servers.a\n")
+    refuses("trailing junk after a header", "[mcp_servers.a] oops\n")
+    refuses("a key with no value", "[mcp_servers.a]\ncommand\n")
+    refuses("an unclosed inline table", "[mcp_servers]\nfoo = { command = \"/bin/foo\"\n")
+
+    check(
+      "non-UTF-8 bytes are refused by name",
+      {
+        let url = FileManager.default.temporaryDirectory
+          .appendingPathComponent("bastion-check-\(UUID().uuidString).toml")
+        try? Data([0xFF, 0xFE, 0x00]).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        do {
+          _ = try ClientWiringTOML.read(url)
+          return false
+        } catch {
+          return true
+        }
+      }())
+
+    check(
+      "a refusal names the line, because the remedy is a person looking at it",
+      {
+        do {
+          _ = try ClientWiringTOML.scan("model = \"x\"\n[mcp_servers]\nfoo.bar = 1\n")
+          return false
+        } catch {
+          return error.localizedDescription.contains("line 3")
+        }
+      }())
   }
 }
