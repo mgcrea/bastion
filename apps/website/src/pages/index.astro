@@ -8,6 +8,7 @@ import Marquee from "../components/Marquee.astro";
 import Nav from "../components/Nav.astro";
 import Problem from "../components/Problem.astro";
 import Rules from "../components/Rules.astro";
+import Screens from "../components/Screens.astro";
 import Servers from "../components/Servers.astro";
 import Status from "../components/Status.astro";
 import { APP_NAME, COUNTS, REPO_URL, REQUIRES, SHIPPED, SITE_URL } from "../config";
@@ -72,6 +73,10 @@ const schema = {
     <Problem />
     <HowItWorks />
     <Audit />
+    {/* After the record section and before the light Rules plate: Audit makes
+        the claim in prose, this shows the window making it, and Rules then
+        breaks the run of dark sections. */}
+    <Screens />
     <Rules />
     <Servers />
     <Status />

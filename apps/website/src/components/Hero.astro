@@ -34,11 +34,23 @@ interface MenuRow {
   dim?: boolean;
 }
 
+/**
+ * The same five profiles `DemoSeed.profiles` seeds, in the same states.
+ *
+ * That mirror is not decoration: the screenshots in `Screens.astro` further
+ * down the page are photographs of an app holding exactly this list, and a
+ * drawing that disagrees with the picture beside it is worse than no drawing.
+ * `staging/shopify` is the one short a credential here because it is the one
+ * short a credential there — which is also why `running` in that set shows four
+ * supervised instances for five profiles rather than five.
+ *
+ * Nothing enforces this. Change the two together.
+ */
 const MENU: MenuRow[] = [
   { name: "prod/shopify", state: "running", tone: "text-ok-ink", active: true },
   { name: "acme/keycloak", state: "running", tone: "text-ok-ink", active: false },
-  { name: "staging/shopify", state: "idle · stopped", tone: "text-fg/35", active: false, dim: true },
-  { name: "home/unifi-network", state: "writes off", tone: "text-fg/50", active: false },
+  { name: "staging/shopify", state: "needs a credential", tone: "text-warn", active: false, dim: true },
+  { name: "home/unifi-network", state: "idle · stopped", tone: "text-fg/35", active: false, dim: true },
   { name: "lab/unifi-network", state: "writes on", tone: "text-warn", active: false },
 ];
 
@@ -154,9 +166,24 @@ const CALLS = [
 
   {/* ── The menu bar mock ──────────────────────────────────────────────────────
       A slab of macOS with the popover open, bleeding off the bottom of the hero
-      into the marquee. It is a drawing, not a screenshot: there is no signed
-      build to screenshot yet, and a mock that admits to being one is better than
-      a screenshot of a Debug build with somebody's real store domain in it. */}
+      into the marquee. It is a drawing, not a screenshot — and the reason is no
+      longer the one that used to be written here.
+
+      It said there was no signed build to photograph, and that a mock admitting
+      to being one beat a screenshot of a Debug build with somebody's real store
+      domain in it. Both halves have moved: `make screenshots` photographs a
+      Release build from a demo fixture, and `Screens.astro` further down the
+      page carries six of those.
+
+      It stays drawn because a capture cannot do this particular job. A menu bar
+      popover is a high-layer panel rather than an ordinary window, so appshot
+      cannot photograph it at all; the two Activity Monitor panels above show
+      before and after at once, which one image cannot; and both have to reflow
+      on a phone. Those are the only three reasons anything on this page is
+      drawn, and each drawing should be able to name its own.
+
+      What it must NOT do is disagree with the photographs. `MENU` above holds
+      the same five profiles in the same states as `DemoSeed.profiles`. */}
   <div
     class="relative mx-auto -mb-px mt-[72px] w-full max-w-[1180px] overflow-hidden rounded-t-2xl border border-b-0 border-white/10 shadow-[0_-22px_80px_-34px_rgb(242_137_92/40%)]"
     style="background:linear-gradient(180deg,#1B1D21 0%,#101114 100%)"

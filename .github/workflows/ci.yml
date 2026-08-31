@@ -43,6 +43,44 @@ jobs:
       - name: Servers drift 🔍
         run: pnpm run servers:check
 
+  # The site build, and the only job that needs Git LFS.
+  #
+  # Its own job rather than a step in `manifest`, which the comment above calls
+  # the fastest signal in the repo — an astro build runs sharp over every
+  # screenshot derivative and would put a minute in front of a check that
+  # currently answers in seconds.
+  #
+  # What it is actually gating: `Screens.astro` imports the six captures through
+  # astro:assets, so a capture that was never committed, or one committed
+  # outside LFS, fails the build here rather than 404ing in production. That is
+  # the whole reason the images are imported rather than referenced out of
+  # public/.
+  website:
+    name: Website
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v5
+        with:
+          # Without this the captures arrive as 131-byte pointer files still
+          # named .png, and the failure surfaces inside sharp as a complaint
+          # about the image format rather than about the checkout.
+          lfs: true
+      - name: Setup pnpm 🔧
+        uses: pnpm/action-setup@v6
+      - name: Setup node 🔧
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          check-latest: true
+          cache: "pnpm"
+      - name: Install 🪄
+        run: pnpm install --frozen-lockfile
+      - name: Types 🔍
+        run: pnpm --filter @mgcrea/bastion-website typecheck
+      - name: Build 📦
+        run: pnpm --filter @mgcrea/bastion-website build
+
   app:
     name: App
     runs-on: macos-latest

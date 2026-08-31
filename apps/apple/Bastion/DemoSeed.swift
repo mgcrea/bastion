@@ -519,7 +519,16 @@ enum DemoSeed {
 
   // MARK: - What is running
 
-  /// Five supervised instances, each earning a distinct visual state.
+  /// Four supervised instances for five profiles, each earning a distinct
+  /// visual state.
+  ///
+  /// **`staging/shopify` is deliberately absent, and that is a consistency rule
+  /// rather than an omission.** It is the profile whose `SHOPIFY_CLIENT_SECRET`
+  /// is missing, so `ServerDetail` renders it "cannot start" on the `server`
+  /// plate — and a supervised instance of it on the `running` plate would have
+  /// the two images contradicting each other. A profile that cannot start has
+  /// never run. `apps/website/src/components/Hero.astro` draws the same five
+  /// rows and says the same thing about this one.
   ///
   /// The two-client row is the one that matters most. `InstanceRow.subtitle`
   /// was written for the case where the *token identity* and the self-reported
@@ -553,18 +562,14 @@ enum DemoSeed {
       calls: 21, restarts: 0, lastExit: nil)
 
     // Stopped, so the grey dot and the `lastExit` line have a picture. `-1`
-    // means "had a process and it exited", which `isLive` reads as not running.
+    // means "had a process and it exited", which `isLive` reads as not running
+    // and `InstanceRow` renders as "stopped — exit 0". The string is exactly
+    // what `Supervisor.childExited` builds; it has no other shape.
     activity.startDemo(
-      profile: "staging", server: "shopify", pid: -1, startedAt: ago(3 * 3600 + 2 * 60),
+      profile: "home", server: "unifi-network", pid: -1, startedAt: ago(3 * 3600 + 2 * 60),
       dialect: "2025-11-25", allowWrites: false,
-      clients: [], calls: 4, restarts: 0, lastExit: "exit 0")
-
-    // Running, but nothing has asked it for anything yet — the "no client yet"
-    // subtitle, which is the ordinary state of a server started on demand.
-    activity.startDemo(
-      profile: "home", server: "unifi-network", pid: 42016, startedAt: ago(18 * 60),
-      dialect: "2025-11-25", allowWrites: false,
-      clients: [], calls: 0, restarts: 0, lastExit: nil)
+      clients: [client("claude-code", "claude-code", 4, 2 * 3600)],
+      calls: 4, restarts: 0, lastExit: "exit 0")
 
     // Writes on and restarted twice: the two badges that turn "it feels flaky"
     // into a fact, on the one profile whose write gate means anything.

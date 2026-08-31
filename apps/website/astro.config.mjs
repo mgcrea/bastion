@@ -6,6 +6,11 @@ import { defineConfig } from "astro/config";
 export default defineConfig({
   site: "https://bastion.mgcrea.io",
   integrations: [sitemap()],
+  // Every page here is `.astro` — there is no markdown to highlight. Left at its
+  // `shiki` default, Astro warns on every start that the highlighter's inline
+  // styles fight the CSP below; it warns on the config alone, without checking
+  // whether any code block exists.
+  markdown: { syntaxHighlight: false },
   security: {
     csp: {
       directives: [
