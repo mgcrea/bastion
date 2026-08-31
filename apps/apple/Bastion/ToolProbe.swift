@@ -47,6 +47,13 @@ enum ToolProbe {
     }
   }
 
+  /// The same question without the reason, for callers deciding whether to
+  /// offer a control at all rather than what to say when they cannot.
+  static var isAvailable: Bool {
+    if case .ready = availability { return true }
+    return false
+  }
+
   // MARK: - What it is allowed to touch
 
   /// Three independent facts, strongest first.

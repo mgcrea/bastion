@@ -512,6 +512,7 @@ struct ServerDetail: View {
                 ServerCheck.shared.start(profile: profile, server: server)
                 checking = profile
               },
+              chat: { ChatRequest.present(profile: profile, server: server) },
               report: { lastError = $0 })
             if profile.id != profiles.last?.id { Divider() }
           }
@@ -628,6 +629,7 @@ private struct ProfileRow: View {
   let profile: Profile
   let edit: () -> Void
   let check: () -> Void
+  let chat: () -> Void
   let report: (String?) -> Void
 
   @State private var confirmingRemoval = false
@@ -677,6 +679,20 @@ private struct ProfileRow: View {
         Button("Test") { check() }
           .help("Start this server, complete the handshake, and list its tools.")
           .disabled(ServerCheck.shared.isRunning(profile))
+        // Two verbs, and the division between them is the point: Test proves
+        // this server answers, Chat proves the credential behind it actually
+        // works upstream. The second question is the one somebody has just
+        // after typing a secret, and until now the pane that answers it was
+        // reachable only from the sidebar, with the profile chosen again by
+        // hand.
+        //
+        // Hidden rather than disabled when there is no model. A permanently
+        // dead control next to a live one reads as something broken, and the
+        // pane itself already carries the explanation for anyone who looks.
+        if ToolProbe.isAvailable {
+          Button("Chat…") { chat() }
+            .help("Ask the on-device model something using this profile's tools.")
+        }
         Button("Edit…") { edit() }
         Button("Remove") { confirmingRemoval = true }
           .font(.caption)

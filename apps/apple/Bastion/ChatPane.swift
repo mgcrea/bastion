@@ -46,6 +46,13 @@ struct ChatPane: View {
     }
     .safeAreaInset(edge: .top) { header }
     .safeAreaInset(edge: .bottom, spacing: 0) { composer }
+    // Somebody arrived here from a profile row rather than from the sidebar.
+    // Both hooks are needed and neither is redundant: `onAppear` catches the
+    // request that was set while this pane did not exist, and `onChange`
+    // catches one set while it is already on screen — which is the ordinary
+    // case, since `MainWindowController.show(_:)` reaches an open window.
+    .onAppear { adopt(ChatRequest.shared.take()) }
+    .onChange(of: ChatRequest.shared.pending) { adopt(ChatRequest.shared.take()) }
     #if DEBUG
       // `--chat-profile=prod/appstore-connect`, alongside `--pane=chat`.
       // Selecting a profile is the one step that cannot be reached without a
@@ -363,6 +370,24 @@ struct ChatPane: View {
   private func load(_ pick: Pick) {
     acknowledged = false
     chat.load(profile: pick.profile, server: pick.server)
+  }
+
+  /// Honour an incoming request, asking first when there is something to lose.
+  ///
+  /// Routed through the same `pendingSwitch` dialog the picker uses rather than
+  /// a second one of its own. A request that arrives mid-conversation is the
+  /// identical situation — the tools are fixed at construction, so adopting it
+  /// ends the conversation — and saying so twice in two different sentences is
+  /// how the two drift apart.
+  private func adopt(_ request: ChatRequest.Pending?) {
+    guard let request else { return }
+    let pick = Pick(profile: request.profile, server: request.server)
+    guard pick.id != chat.profile?.id else { return }
+    if chat.messages.isEmpty {
+      load(pick)
+    } else {
+      pendingSwitch = pick
+    }
   }
 }
 
