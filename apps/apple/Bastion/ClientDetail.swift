@@ -127,7 +127,11 @@ struct ClientDetail: View {
       // `.codex/config.toml` inside each repository rather than a block in this
       // file, so there is nothing here to list -- and a card that rendered
       // anyway would be describing servers this file does not hold.
-      projects: config.root.map(ClientWiringMerge.foreignProjectEntries) ?? [],
+      // Called rather than passed as a function reference: `map` takes a
+      // non-isolated closure, so handing it a main-actor method leaves the
+      // isolation to be inferred at the call. `read()` is already on the main
+      // actor, which is where this belongs.
+      projects: config.root.map { ClientWiringMerge.foreignProjectEntries(in: $0) } ?? [],
       // Including entries for a profile that no longer exists, which is exactly
       // the case worth being able to clean up.
       hasOurEntries: servers.values.contains { ClientWiringMerge.isOurs($0) })

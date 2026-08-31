@@ -301,7 +301,13 @@ nonisolated final class RemoteOAuthSession: @unchecked Sendable {
       throw RemoteOAuth.OAuthError.discoveryFailed("could not build an authorization URL")
     }
 
-    await MainActor.run { NSWorkspace.shared.open(url) }
+    // Checked, not fired and forgotten. `open` returns false when nothing
+    // handled the URL, and without this the flow goes on to wait out its full
+    // five minutes and then blames a browser window that was never opened.
+    let opened = await MainActor.run { NSWorkspace.shared.open(url) }
+    guard opened else {
+      throw RemoteOAuth.OAuthError.browserFailed(url.absoluteString)
+    }
 
     // Five minutes. Long enough to find a password manager and a second factor,
     // short enough that an abandoned flow closes its socket rather than leaving
@@ -309,18 +315,26 @@ nonisolated final class RemoteOAuthSession: @unchecked Sendable {
     let redirect = try await offMain { try callback.waitForCallback(timeout: 300) }
     let code = try RemoteOAuth.code(fromCallback: redirect, expecting: state)
 
-    var request = URLRequest(url: metadata.token)
-    request.httpMethod = "POST"
-    request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-    request.setValue("application/json", forHTTPHeaderField: "Accept")
-    request.httpBody = RemoteOAuth.formBody([
-      ("grant_type", "authorization_code"),
-      ("code", code),
-      ("redirect_uri", callback.redirectURI),
-      ("client_id", clientID),
-      ("code_verifier", pkce.verifier),
-      ("resource", resource.absoluteString),
-    ])
+    // Built and finished here, then handed over immutable. Capturing a `var`
+    // in the @Sendable closure below is an error in the Swift 6 language mode,
+    // and the reason is worth keeping rather than silencing: a closure captures
+    // the VARIABLE, not its value, so a later edit to `request` would reach
+    // across threads into a request already in flight.
+    let request: URLRequest = {
+      var request = URLRequest(url: metadata.token)
+      request.httpMethod = "POST"
+      request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+      request.setValue("application/json", forHTTPHeaderField: "Accept")
+      request.httpBody = RemoteOAuth.formBody([
+        ("grant_type", "authorization_code"),
+        ("code", code),
+        ("redirect_uri", callback.redirectURI),
+        ("client_id", clientID),
+        ("code_verifier", pkce.verifier),
+        ("resource", resource.absoluteString),
+      ])
+      return request
+    }()
 
     let (status, json) = try await offMain { try self.sendJSON(request) }
     guard (200..<300).contains(status) else {

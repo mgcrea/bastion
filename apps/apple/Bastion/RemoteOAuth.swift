@@ -50,6 +50,14 @@ nonisolated enum RemoteOAuth {
     case tokenFailed(String)
     case stateMismatch
     case denied(String)
+    /// The browser never opened, so nothing was ever going to arrive.
+    ///
+    /// Its own case because the alternative is the worst kind of error: the
+    /// flow would wait out its full five minutes and then report "no answer
+    /// from the browser — the window was probably closed before authorizing",
+    /// which is confident, specific and wrong. Nobody closed a window; there
+    /// was no window.
+    case browserFailed(String)
 
     var errorDescription: String? {
       switch self {
@@ -69,6 +77,9 @@ nonisolated enum RemoteOAuth {
       case .stateMismatch:
         return "the authorization response did not match the request it answers — refused"
       case .denied(let detail): return "authorization was refused: \(detail)"
+      case .browserFailed(let url):
+        return
+          "could not open a browser to authorize. Open this and come back: \(url)"
       }
     }
   }
