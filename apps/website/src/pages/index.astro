@@ -8,6 +8,7 @@ import Marquee from "../components/Marquee.astro";
 import Nav from "../components/Nav.astro";
 import Pricing from "../components/Pricing.astro";
 import Problem from "../components/Problem.astro";
+import RunningPane from "../components/RunningPane.astro";
 import Rules from "../components/Rules.astro";
 import Screens from "../components/Screens.astro";
 import Servers from "../components/Servers.astro";
@@ -105,6 +106,10 @@ const schema = {
   <main>
     <Hero />
     <Marquee />
+    {/* The app itself, before the page starts arguing — the same slot cupertino
+        gives `SurfacePane`. The hero draws the claim; this photographs it, and
+        everything below can then refer back to something already seen. */}
+    <RunningPane />
     <Problem />
     <HowItWorks />
     <Audit />

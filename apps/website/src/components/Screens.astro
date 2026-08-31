@@ -11,6 +11,10 @@
  * This section is the other half of that arrangement: the window as it actually
  * renders, so a reader can check the drawings against it.
  *
+ * Five of the six captures. `running` is promoted out of this section into
+ * `RunningPane.astro`, one scroll below the hero, because the drawing it
+ * answers is up there — see that file's header.
+ *
  * The images are NOT hand-placed. `make screenshots` from the repository root
  * builds Bastion, launches it in demo mode onto each screen, gates the result
  * against committed goldens, and writes the files into src/assets/shots — which
@@ -29,7 +33,6 @@ import chatShot from "../assets/shots/chat.png";
 import clientShot from "../assets/shots/client.png";
 import licenceShot from "../assets/shots/licence.png";
 import logShot from "../assets/shots/log.png";
-import runningShot from "../assets/shots/running.png";
 import serverShot from "../assets/shots/server.png";
 import SectionHeader from "./SectionHeader.astro";
 
@@ -47,13 +50,6 @@ import SectionHeader from "./SectionHeader.astro";
  * name something already navigates to.
  */
 const shots = [
-  {
-    image: runningShot,
-    id: "running",
-    title: "One process per profile",
-    body: "Four supervised children for five profiles — staging/shopify is still a credential short, so it has never started. Each row carries the clients attached to it, by the identity its token was issued to and by whatever it calls itself, because the interesting case is when those two disagree.",
-    alt: "Bastion's Running pane: prod/shopify up two hours with two clients attached, acme/keycloak up 47 minutes, home/unifi-network stopped, and lab/unifi-network with a writes badge and restarted twice.",
-  },
   {
     image: serverShot,
     id: "server",
@@ -107,6 +103,12 @@ const shots = [
  * a candidate for a width the image is never rendered at.
  */
 const COLUMN = 1160;
+/**
+ * Still 2360 with `running` promoted away: four of the five remaining are the
+ * same main window. If that ever stops being true — if the only 2360 capture
+ * moved out — every plate here would silently rescale against whatever was
+ * left, which is the one way this helper can be wrong without erroring.
+ */
 const widest = Math.max(...shots.map((shot) => shot.image.width));
 
 const plate = (image: (typeof shots)[number]["image"]) => {
