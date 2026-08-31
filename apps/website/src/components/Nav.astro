@@ -1,5 +1,5 @@
 ---
-import { DOCS, REPO_URL, SHIPPED } from "../config";
+import { DOCS, PRICE, REPO_URL, SHIPPED } from "../config";
 import Button from "./Button.astro";
 import Logo from "./Logo.astro";
 
@@ -52,8 +52,24 @@ const LINKS = [
       </span>
       {
         SHIPPED && (
-          <Button href="/download" size="sm" class="hidden sm:inline-flex">
+          <Button href="/download" variant="secondary" size="sm" class="hidden sm:inline-flex">
             Download
+          </Button>
+        )
+      }
+      {/* Buy is the primary action in the nav, and Download is secondary — the
+          same hierarchy cupertino uses, for the same reason. The nav is the one
+          element on every page and on every scroll position, so whatever sits
+          here as the accent button is what the site is asking for. Download was
+          taking that slot while the thing being sold had no button at all.
+
+          The price is in the label rather than behind the click. Somebody who
+          learns the number only after reaching Stripe has been made to work for
+          it, and they read that as a tactic. */}
+      {
+        SHIPPED && (
+          <Button href="/buy" size="sm">
+            Buy · {PRICE.amount}
           </Button>
         )
       }
