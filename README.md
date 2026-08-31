@@ -168,7 +168,7 @@ bundle.
 
 Settings › Activity turns on a durable **audit log**: append-only JSONL under Application Support,
 0600, in segments, with retention by age and size. Whether that file carries arguments and results
-is a second switch, off on its own — keeping a record of *which* tools ran is a smaller thing to
+is a second switch, off on its own — keeping a record of _which_ tools ran is a smaller thing to
 leave on disk than keeping what they were called with.
 
 Each record carries a hash of the one before it, so an edited field, a removed record or a truncated
