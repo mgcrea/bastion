@@ -1,0 +1,172 @@
+---
+/**
+ * What leaves your Mac, and what does not.
+ *
+ * Written as an inventory rather than a policy, because for this product the
+ * honest version is very short and a page of boilerplate would obscure it: the
+ * app makes exactly one network request of its own, and the only personal data
+ * anything here stores is a purchase email.
+ *
+ * Every claim below is checkable against something in the repository, and the
+ * links say which — a privacy page whose assertions cannot be verified against
+ * the code is the same class of claim as a marketing screenshot of a feature
+ * that does not exist.
+ */
+import Footer from "../components/Footer.astro";
+import Nav from "../components/Nav.astro";
+import { DOCS, REPO_URL, SITE_URL } from "../config";
+import Layout from "../layouts/Layout.astro";
+
+/**
+ * `dataCollected: []` is not decoration. Schema.org has no way to say "none",
+ * so the absence of a `dataCollected` entry is the only machine-readable way to
+ * state it, and an omitted property would read as unanswered instead.
+ */
+const schema = {
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  name: "Privacy",
+  url: `${SITE_URL}/privacy`,
+  isPartOf: { "@id": `${SITE_URL}/#website` },
+  publisher: { "@id": `${SITE_URL}/#organization` },
+};
+
+/** What the app sends, in full. There is one entry, and that is the point. */
+const LEAVES = [
+  {
+    what: "An update check",
+    when: "Only after you turn updates on, then once a day.",
+    body: "Sparkle fetches an appcast from GitHub. `SUSendProfileInfo` is false and `SUEnableAutomaticChecks` is present-and-false in the Info.plist rather than absent, because an absent key is what makes Sparkle ask on second launch — this way a fresh install has already answered, and the answer is no.",
+  },
+] as const;
+
+/** What never does. Each of these is enforced somewhere nameable. */
+const STAYS = [
+  {
+    what: "Your credentials",
+    body: "They are in the Keychain, handed to a child process at spawn and never anywhere else. Nothing in the app and nothing any client can call returns one once it is set. The built-in server can say which secrets a profile has; it cannot say what they are.",
+  },
+  {
+    what: "The activity log",
+    body: "A ring buffer in memory, cleared when the app quits. Nothing writes it to disk, and nothing uploads it. Arguments are redacted before a row is recorded rather than filtered out afterwards.",
+  },
+  {
+    what: "Everything the servers do",
+    body: "A supervised server talks to whatever API it is for, using the credentials you gave that profile. Bastion is the process holding the credential, not a proxy for the traffic — it never sees or forwards a response body to anyone but the client that asked.",
+  },
+  {
+    what: "Your licence key",
+    body: "Verification is an Ed25519 signature check on your own Mac. There is no activation call, no licence server, and nothing that phones home to count installs.",
+  },
+] as const;
+---
+
+<Layout
+  title="Privacy — Bastion"
+  description="What leaves your Mac and what does not: one optional update check, no analytics, no telemetry, credentials in the Keychain and an activity log that never touches disk."
+  schema={schema}
+>
+  <Nav />
+  <main class="wrap py-20">
+    <h1 class="m-0 font-display text-[clamp(28px,4.4vw,40px)] font-semibold tracking-[-0.04em]">
+      Privacy
+    </h1>
+    <p class="mt-4 mb-0 max-w-[62ch] text-[16px] leading-[1.6] text-fg/56 text-pretty">
+      Bastion is a local daemon that holds every credential you own. The only defensible privacy
+      posture for that is to send nothing, and the only way to make the claim worth anything is to
+      say what would falsify it. Everything below is checkable in
+      <a href={REPO_URL} rel="noopener" class="underline underline-offset-2">the source</a>.
+    </p>
+
+    <section class="mt-14">
+      <h2 class="m-0 font-display text-[22px] font-semibold tracking-[-0.03em]">
+        What the app sends
+      </h2>
+      <dl class="m-0 mt-6 flex flex-col gap-6">
+        {
+          LEAVES.map((item) => (
+            <div class="flex flex-wrap items-start gap-x-10 gap-y-1 border-t border-rule pt-5">
+              <dt class="flex flex-1 basis-[240px] flex-col gap-1">
+                <span class="text-[15px] font-medium text-fg">{item.what}</span>
+                <span class="text-[13px] text-fg/45">{item.when}</span>
+              </dt>
+              <dd class="m-0 flex-[2] basis-[420px] text-[14.5px] leading-[1.65] text-fg-dim text-pretty">
+                {item.body}
+              </dd>
+            </div>
+          ))
+        }
+      </dl>
+      <p class="mt-6 mb-0 max-w-[62ch] text-[14px] leading-[1.6] text-fg/45 text-pretty">
+        That is the whole list. There is no analytics, no telemetry, no crash reporter and no
+        first-run ping.
+        <a href={DOCS.audit} rel="noopener" class="underline underline-offset-2">
+          scripts/audit-listener.sh
+        </a> asserts the gateway binds loopback and nothing else; the update check is the single
+        documented exception to that, and it is off until you switch it on.
+      </p>
+    </section>
+
+    <section class="mt-16">
+      <h2 class="m-0 font-display text-[22px] font-semibold tracking-[-0.03em]">
+        What never leaves
+      </h2>
+      <dl class="m-0 mt-6 flex flex-col gap-6">
+        {
+          STAYS.map((item) => (
+            <div class="flex flex-wrap items-start gap-x-10 gap-y-1 border-t border-rule pt-5">
+              <dt class="flex-1 basis-[240px] text-[15px] font-medium text-fg">{item.what}</dt>
+              <dd class="m-0 flex-[2] basis-[420px] text-[14.5px] leading-[1.65] text-fg-dim text-pretty">
+                {item.body}
+              </dd>
+            </div>
+          ))
+        }
+      </dl>
+    </section>
+
+    <section class="mt-16">
+      <h2 class="m-0 font-display text-[22px] font-semibold tracking-[-0.03em]">
+        Buying a licence
+      </h2>
+      <p class="mt-5 mb-0 max-w-[62ch] text-[15px] leading-[1.65] text-fg-dim text-pretty">
+        This is the one place personal data exists at all, and it exists because a licence has to be
+        deliverable and a refund has to be traceable back to a sale.
+      </p>
+      <p class="mt-4 mb-0 max-w-[62ch] text-[15px] leading-[1.65] text-fg-dim text-pretty">
+        Checkout is handled by Stripe, who take the payment details — this site never sees a card
+        number. What is kept afterwards is your email address, the Stripe session and payment
+        identifiers, and the licence issued against them. The email is used to send you the key and
+        to find the licence again if you ask for it or if a refund or dispute has to revoke it. It
+        is not used for anything else, and there is no mailing list to be added to.
+      </p>
+      <p class="mt-4 mb-0 max-w-[62ch] text-[15px] leading-[1.65] text-fg-dim text-pretty">
+        The app itself never sends your email anywhere. A key is checked offline, so an installed
+        copy has no idea who bought it.
+      </p>
+    </section>
+
+    <section class="mt-16">
+      <h2 class="m-0 font-display text-[22px] font-semibold tracking-[-0.03em]">This site</h2>
+      <p class="mt-5 mb-0 max-w-[62ch] text-[15px] leading-[1.65] text-fg-dim text-pretty">
+        Static files on Cloudflare, with no analytics script, no cookies and no third-party embeds.
+        It loads no fonts and no images from anywhere else — the content security policy in
+        <code class="font-mono text-[13.5px] text-fg/75">astro.config.mjs</code> is
+        <code class="font-mono text-[13.5px] text-fg/75">'self'</code> throughout, so a request to a
+        third party would not merely be absent, it would be refused by the browser. Cloudflare keeps
+        its own request logs, as any host does.
+      </p>
+    </section>
+
+    <section class="mt-16">
+      <h2 class="m-0 font-display text-[22px] font-semibold tracking-[-0.03em]">Asking</h2>
+      <p class="mt-5 mb-0 max-w-[62ch] text-[15px] leading-[1.65] text-fg-dim text-pretty">
+        To get a copy of what is held against your email, or to have it deleted, write to
+        <a href="mailto:support@mgcrea.io" class="underline underline-offset-2">support@mgcrea.io</a>.
+        Deleting the record revokes the licence it belongs to, because the record
+        <em>is</em> the licence — there is nothing else it could mean.
+      </p>
+    </section>
+  </main>
+  <Footer />
+</Layout>

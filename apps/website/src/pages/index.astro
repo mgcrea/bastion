@@ -6,25 +6,40 @@ import Hero from "../components/Hero.astro";
 import HowItWorks from "../components/HowItWorks.astro";
 import Marquee from "../components/Marquee.astro";
 import Nav from "../components/Nav.astro";
+import Pricing from "../components/Pricing.astro";
 import Problem from "../components/Problem.astro";
 import Rules from "../components/Rules.astro";
 import Screens from "../components/Screens.astro";
 import Servers from "../components/Servers.astro";
 import Status from "../components/Status.astro";
-import { APP_NAME, COUNTS, REPO_URL, REQUIRES, SHIPPED, SITE_URL } from "../config";
+import {
+  APP_NAME,
+  APP_VERSION,
+  COUNTS,
+  PRICE,
+  REPO_URL,
+  REQUIRES,
+  SHIPPED,
+  SITE_URL,
+} from "../config";
 import Layout from "../layouts/Layout.astro";
 
 /**
- * SoftwareApplication rather than Product: nothing is for sale, nothing is even
- * downloadable, and a price or an offer here would be a structured-data lie.
+ * SoftwareApplication rather than Product: what is described is the app, and
+ * the sale of the signed build hangs off it as an `offers`.
  *
- * `downloadUrl` appears only once there is something to download. Announcing one
- * before the first release would put a 404 into search results, which is worse
- * than being absent from them.
+ * All four of `softwareVersion`, `downloadUrl`, `license` and `offers` are
+ * gated on `SHIPPED`, together, and the reason is the same for each: every one
+ * of them is a claim about something that exists right now. A price in
+ * structured data says the thing can be bought today, and a `downloadUrl`
+ * announced early puts a 404 into search results — which is worse than being
+ * absent from them. They appear at the release or none of them does.
  *
- * There is no `license`. The app's licence is genuinely unsettled — the page
- * says so in those words — and naming one here to fill the field would be the
- * same class of lie as the offer above.
+ * This comment used to say the opposite in each case, and stayed that way
+ * through 1.0.0: nothing is for sale, nothing is downloadable, the licence is
+ * unsettled. All three stopped being true in one commit, and structured data is
+ * the last place anyone looks for stale copy — a search result is the only
+ * thing that reads it.
  */
 /**
  * Publisher and site identity. `@id` lets the SoftwareApplication schema below
@@ -61,7 +76,27 @@ const schema = {
   codeRepository: REPO_URL,
   description: `A macOS menu-bar app that supervises ${COUNTS.serversWord} MCP servers — one process per profile, credentials in the Keychain, and every tool call recorded — instead of letting every editor spawn its own copy.`,
   author: { "@type": "Person", name: "Olivier Louvignes" },
-  ...(SHIPPED ? {} : { releaseNotes: `${REPO_URL}#status` }),
+  publisher: { "@id": `${SITE_URL}/#organization` },
+  ...(SHIPPED
+    ? {
+        softwareVersion: APP_VERSION,
+        // The vanity path, not the GitHub asset URL. public/_redirects sends it
+        // to `latest/download`, so cutting a release never needs a site deploy
+        // and never leaves a versioned URL behind in somebody's index.
+        downloadUrl: `${SITE_URL}/download`,
+        // The APP's licence — the terms the signed build is sold under — not
+        // the repository's. Naming a source licence here would describe the
+        // wrong artifact for a schema whose `offers` is a paid download.
+        license: `${SITE_URL}/terms`,
+        offers: {
+          "@type": "Offer",
+          price: PRICE.numeric,
+          priceCurrency: PRICE.currency,
+          url: `${SITE_URL}/buy`,
+          availability: "https://schema.org/InStock",
+        },
+      }
+    : { releaseNotes: `${REPO_URL}#status` }),
 };
 ---
 
@@ -80,6 +115,9 @@ const schema = {
     <Rules />
     <Servers />
     <Status />
+    {/* Last before the closing plate: the page has finished arguing by here, and
+        the price is the only question left. */}
+    <Pricing />
     <Cta />
   </main>
   <Footer />

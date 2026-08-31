@@ -1,5 +1,5 @@
 ---
-import { REPO_URL, REQUIRES } from "../config";
+import { DOCS, PRICE, REPO_URL, REQUIRES } from "../config";
 import Logo from "./Logo.astro";
 
 const COLUMNS = [
@@ -8,8 +8,18 @@ const COLUMNS = [
     items: [
       { label: "How it works", href: "#how" },
       { label: "Security", href: "#rules" },
+      { label: "The app", href: "#screens" },
       { label: "Servers", href: "#servers" },
       { label: "Status", href: "#status" },
+    ],
+  },
+  {
+    heading: "Get it",
+    items: [
+      { label: "Download", href: "/download" },
+      { label: `Buy — ${PRICE.amount}`, href: "/buy" },
+      { label: "Release notes", href: "/releases" },
+      { label: "Checksum", href: "/checksum" },
     ],
   },
   {
@@ -22,6 +32,17 @@ const COLUMNS = [
     ],
   },
 ] as const;
+
+/**
+ * Separate from `COLUMNS` because these are the two links a person goes looking
+ * for rather than browses to, and burying them in a fourth heading is how a
+ * privacy page ends up unfindable.
+ */
+const LEGAL = [
+  { label: "Licence terms", href: "/terms" },
+  { label: "Privacy", href: "/privacy" },
+  { label: "Licensing, in full", href: DOCS.licensing },
+] as const;
 ---
 
 <footer
@@ -33,9 +54,22 @@ const COLUMNS = [
         <Logo size={20} />
         <span class="text-[12.5px] font-semibold text-fg">Bastion</span>
       </a>
+      {/* This said "code-signed for development only" and "licence not settled"
+          until 1.0.0, when both stopped being true in the same release. A
+          footer is where that kind of line survives longest, because nobody
+          reads it on the way past. */}
       <span class="text-[11.5px] leading-[1.7] text-fg/38">
-        Requires {REQUIRES} and Xcode 26. Code-signed for development only.<br />
-        Licence not settled · source-available intent
+        Requires {REQUIRES}. Signed and notarized.<br />
+        Source-available · {PRICE.amount} for the signed build
+      </span>
+      <span class="flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-fg/38">
+        {
+          LEGAL.map((item) => (
+            <a href={item.href} class="text-fg/38 transition-colors hover:text-accent-hi">
+              {item.label}
+            </a>
+          ))
+        }
       </span>
     </div>
 

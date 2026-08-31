@@ -22,6 +22,7 @@ export const DOCS = {
   manifest: `${REPO_URL}/blob/main/servers.json`,
   audit: `${REPO_URL}/blob/main/scripts/audit-listener.sh`,
   readme: `${REPO_URL}#readme`,
+  licensing: `${REPO_URL}/blob/main/docs/licensing.md`,
 } as const;
 
 /**
@@ -129,10 +130,49 @@ export const SHIPPED = true;
  * marketing page is a bad place to make it by accident.
  */
 export const PRICE = {
+  /** The display form, VAT included, as an EU buyer is quoted and charged. */
   amount: "€14.99",
+  /**
+   * The same number, split for structured data. Schema.org's `Offer` wants a
+   * bare decimal and a currency code, and a `€14.99` in `price` is a validation
+   * error rather than a formatting quirk — so it is split here rather than
+   * parsed back out of the display string at the call site.
+   */
+  numeric: "14.99",
+  currency: "EUR",
   covers: "every 1.x release, on every Mac you own",
   refund: "Thirty days, full refund, no reason needed",
 } as const;
+
+/**
+ * The evaluation window, and the two properties that make it worth describing
+ * rather than just offering.
+ *
+ * `Trial.swift` is the authority on both. The duration is a constant there, and
+ * "full function" is not marketing: every server relays and every write gate
+ * obeys its own switch, because a crippled demo answers the wrong question. The
+ * thing being evaluated is whether this works on this Mac against these
+ * servers, and a degraded mode cannot answer that.
+ *
+ * `minutes` is separate from `sentence` so a count never has to be read out of
+ * prose — see the rule at the top of this file.
+ */
+export const TRIAL = {
+  minutes: 30,
+  get sentence() {
+    return `A ${this.minutes}-minute trial runs the whole app, not a crippled version of it.`;
+  },
+} as const;
+
+/**
+ * The shipped version.
+ *
+ * Hand-kept against `MARKETING_VERSION` in apps/apple/Bastion.xcodeproj and the
+ * top of CHANGELOG.md. It appears in the JSON-LD beside `downloadUrl`, and it
+ * is a claim about a build that exists — so it moves in the release commit, not
+ * before it. Nothing enforces the mirror.
+ */
+export const APP_VERSION = "1.0.0";
 
 /** macOS 26 or later: the icon is an Icon Composer bundle, which nothing older renders. */
 export const REQUIRES = "macOS 26 or later";

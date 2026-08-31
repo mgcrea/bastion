@@ -1,0 +1,102 @@
+# Bastion
+
+> One supervised MCP server process per profile, instead of one per editor. A signed macOS menu-bar
+> app that runs each server once, keeps its credentials in the Keychain, and fronts it over loopback
+> HTTP so several clients share one instance — with every tool call recorded.
+
+macOS 26 or later, and macOS only. Shipped at 1.0.0 (August 2026): signed, notarized, and sold
+direct at €14.99 for every 1.x release on every Mac you own. The source is public and stays public;
+what is sold is the build. A 30-minute in-memory trial runs the whole app, not a crippled version.
+
+## The argument
+
+- Every MCP client spawns its own copy of every stdio server. Three projects open in Claude Code is
+  three `mcp-shopify` processes, three credential sets in three environments, no log, and no way to
+  see what tool was called with what argument.
+- The credentials are the sharp end. A `.mcp.json` holding a real secret in plaintext is readable by
+  anything running as you and one careless `git add` from being published. Bastion holds them in the
+  Keychain and hands them to a child at spawn; nothing in the app and nothing any client can call
+  returns one once it is set.
+- A **profile** is a named credential and configuration set — `prod/shopify`, `staging/shopify`,
+  `rgis/keycloak`. It is the answer to the obvious objection to a shared gateway: one global instance
+  is one identity, and one identity is unusable.
+- The MCP handshake happens once, at spawn. Every client's `initialize` is answered from that one
+  result, and each client's request ids are rewritten into the supervisor's own numbering and back,
+  so two clients using id `1` at the same time cannot receive each other's answers.
+- Write permission is per profile, not per process. `lab/unifi-network` with writes on beside
+  `home/unifi-network` with writes off is expressible; a process boundary never made it so.
+
+## Where clients point
+
+```
+http://127.0.0.1:8720/s/<profile>/<server>
+```
+
+Loopback only. Claude Code, Cursor, VS Code and ChatGPT/Codex reach that URL directly. Claude
+Desktop cannot — its config has no HTTP entry among its commands — so it gets `bastion-bridge`, a
+stdio shim that starts Bastion on demand. Bastion writes those entries itself, one click per client,
+and carries a revocable bearer token in each one rather than a credential.
+
+## What the record holds, and what it does not
+
+- Recorded: the profile, the method, the tool name, the arguments it was called with, and — for a
+  profile that opts in — the result and the outcome.
+- Never recorded: credentials. Redaction happens before a row is written rather than filtered out
+  afterwards.
+- Never visible at all: what a server then does over the network or on disk. Bastion is the process
+  holding the credential, not a proxy for the traffic. The page says so rather than implying
+  otherwise.
+- The log is a ring buffer in memory, cleared on quit. Nothing writes it to disk and nothing uploads
+  it.
+
+## The five security rules
+
+A loopback daemon holding every credential you own is a known shape of hole — CVE-2025-49596 was a
+listener plus no CSRF protection, and a page you visited could reach it and execute code. All five
+landed in the first commit rather than as a hardening pass:
+
+1. Bind 127.0.0.1 explicitly. Never 0.0.0.0, and not configurable.
+2. Validate Origin. The page-you-visited rule.
+3. Validate Host. The anti-rebinding rule.
+4. A per-client bearer token, minted at wiring time and kept in the Keychain.
+5. Secrets never in a config file. The token goes in the client config; the credential stays in the
+   Keychain.
+
+Refusal order is load-bearing: a foreign Origin is refused before the token is even read.
+`scripts/audit-listener.sh` asserts the listener binds loopback and nothing else, and `make audit`
+runs it.
+
+## Servers
+
+Bastion ships with nothing installed. Nine entries are in the catalog you install from — App Store
+Connect, Reddit, X API, UniFi Protect, UniFi Network, Stripe, Shopify, OVH API and Keycloak — and
+anything else on npm can be added by package name, or by URL for a remote server. Eight sit behind a
+write gate; Shopify is read-only. Code is fetched on demand into Bastion's own directory and run with
+the embedded Node runtime.
+
+`servers.json` at the repository root is the single source of truth for the catalog; the website's
+table and the app's Swift catalog are both generated from it and CI fails on drift.
+
+## Protocol
+
+Bastion serves the 2026-07-28 stateless revision to clients and speaks 2025-11-25 to its children,
+translating between the two eras. Every catalog server is legacy today; the dialect layer is what
+lets a client be modern anyway, and the day the last server flips is the day it can go. 24
+conformance checks cover the translation.
+
+## Privacy
+
+The app makes exactly one network request of its own: an update check, only after you turn updates
+on. No analytics, no telemetry, no crash reporter, no activation call. A licence key is an Ed25519
+signature verified offline, so an installed copy does not know who bought it. Full inventory:
+https://bastion.mgcrea.io/privacy
+
+## Links
+
+- Site: https://bastion.mgcrea.io
+- Source: https://github.com/mgcrea/bastion
+- Download: https://bastion.mgcrea.io/download
+- Buy: https://bastion.mgcrea.io/buy
+- Licence terms: https://bastion.mgcrea.io/terms
+- Server reference: https://github.com/mgcrea/bastion/blob/main/docs/servers.md
+- Licensing reasoning: https://github.com/mgcrea/bastion/blob/main/docs/licensing.md

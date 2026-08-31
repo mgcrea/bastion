@@ -1,5 +1,6 @@
 ---
-import { DOCS, REPO_URL } from "../config";
+import { DOCS, REPO_URL, SHIPPED } from "../config";
+import Button from "./Button.astro";
 import Logo from "./Logo.astro";
 
 /**
@@ -11,7 +12,9 @@ const LINKS = [
   { href: "#how", label: "How it works" },
   { href: "#rules", label: "Security" },
   { href: "#servers", label: "Servers" },
+  { href: "#screens", label: "The app" },
   { href: "#status", label: "Status" },
+  { href: "#pricing", label: "Price" },
 ] as const;
 ---
 
@@ -35,22 +38,25 @@ const LINKS = [
           </a>
         ))
       }
-      <a
-        href={REPO_URL}
-        rel="noopener"
-        class="rounded-sm bg-white/8 px-3.5 py-[7px] text-fg transition-colors hover:bg-white/12"
-        aria-describedby="repo-note"
-      >
+      <Button href={REPO_URL} variant="quiet" size="sm" external aria-describedby="repo-note">
         Read the source ↗
-      </a>
-      {/* The nav's only claim, kept out of the visible label so the button stays
-          one line on a phone. It is the honest caveat: the repo is what there is
-          — there is no download. */}
+      </Button>
+      {/* The caveat, kept out of the visible label so the button stays one line
+          on a phone. It used to say there was no release to download, which
+          stopped being true at 1.0.0 — a sentence a screen reader would have
+          gone on repeating past the launch, next to a Download button. */}
       <span id="repo-note" class="sr-only">
-        Opens the GitHub repository. There is no release to download yet; see <a href={DOCS.readme}>
-          the README
-        </a>.
+        Opens the GitHub repository in a new tab. The signed build is a separate
+        <a href="/download">download</a>; see <a href={DOCS.readme}>the README</a> for what is in
+        each.
       </span>
+      {
+        SHIPPED && (
+          <Button href="/download" size="sm" class="hidden sm:inline-flex">
+            Download
+          </Button>
+        )
+      }
     </div>
   </nav>
 </header>

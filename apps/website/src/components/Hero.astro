@@ -1,5 +1,6 @@
 ---
-import { COUNTS, GATEWAY, REQUIRES } from "../config";
+import { APP_VERSION, COUNTS, GATEWAY, PRICE, REQUIRES, SHIPPED, TRIAL } from "../config";
+import Button from "./Button.astro";
 import Logo from "./Logo.astro";
 
 /**
@@ -74,8 +75,18 @@ const CALLS = [
       <div
         class="flex items-center gap-2 self-start rounded-full border border-white/9 bg-white/5 px-3.5 py-1.5 text-[11.5px] font-medium text-fg/72"
       >
-        <span class="pulse size-1.5 rounded-full bg-warn" aria-hidden="true"></span>
-        Early · the gateway serves a real server end to end
+        {/* The dot was `bg-warn` under an "Early" label, which is the right
+            pairing for a pre-release and the wrong one for a shipped build: an
+            amber pulse next to a Download button reads as a warning about the
+            download. */}
+        <span
+          class:list={["pulse size-1.5 rounded-full", SHIPPED ? "bg-ok" : "bg-warn"]}
+          aria-hidden="true"></span>
+        {
+          SHIPPED
+            ? `${APP_VERSION} · signed, notarized, and sold direct`
+            : "Early · the gateway serves a real server end to end"
+        }
       </div>
 
       <h1
@@ -90,23 +101,37 @@ const CALLS = [
         recorded.
       </p>
 
+      {/* The plate button is the one thing to do next, and what that is changed
+          at 1.0.0. It used to be "How it works", because there was nothing to
+          download and the argument was the whole offer; now the argument is
+          still one click away, but it is not the primary action any more. */}
       <div class="flex flex-wrap items-center gap-3.5 pt-1">
-        <a
-          href="#how"
-          class="plate rounded-md px-6 py-3.5 text-[15px] font-semibold text-accent-ink shadow-[0_14px_34px_-14px_rgb(242_137_92/75%)]"
-        >
-          How it works →
-        </a>
-        <a
-          href="#rules"
-          class="rounded-md border border-white/10 bg-white/6 px-5.5 py-3.5 text-[15px] font-medium text-fg transition-colors hover:bg-white/10"
-        >
-          The five rules
-        </a>
+        {
+          SHIPPED ? (
+            <>
+              <Button href="/download" size="lg">
+                Download for macOS
+              </Button>
+              <Button href="#how" variant="secondary" size="lg">
+                How it works →
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button href="#how" size="lg">
+                How it works →
+              </Button>
+              <Button href="#rules" variant="secondary" size="lg">
+                The five rules
+              </Button>
+            </>
+          )
+        }
       </div>
 
       <span class="text-[12.5px] text-fg/38">
-        {REQUIRES} · loopback only · not shipped yet
+        {REQUIRES} · loopback only ·{" "}
+        {SHIPPED ? `${TRIAL.minutes}-minute trial, then ${PRICE.amount}` : "not shipped yet"}
       </span>
     </div>
 

@@ -81,7 +81,11 @@ import Logo from "./Logo.astro";
       </p>
     ) : (
       <p class="relative m-0 text-[12.5px] text-fg/38">
-        No release yet — the app is code-signed for development only.
+        {/* The unreachable half of the flag today, and it still has to be true:
+            it said the app was code-signed for development only, which stopped
+            being the case at 1.0.0. A fallback nobody renders is a fallback
+            nobody proofreads. */}
+        Between releases — build it from source with <code class="font-mono">make app</code>.
       </p>
     )
   }

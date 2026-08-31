@@ -8,7 +8,9 @@ import { DIALECT } from "../config";
  *
  * `tag` is deliberately narrow — built / green / next / not started — because a
  * status page whose vocabulary grows is one that has started describing feelings
- * rather than state.
+ * rather than state. Everything reads `built` or `green` today; the other two
+ * stay because the next thing to be in progress will want them, and inventing a
+ * vocabulary under deadline is how "mostly done" gets onto a page.
  */
 const STATUS = [
   {
@@ -67,15 +69,27 @@ const STATUS = [
   },
   {
     k: "Client wiring",
-    v: "Minting a token per client and writing it into their configs, instead of doing it by hand.",
-    tag: "next",
-    tone: "text-warn",
+    v: "One click per client: a token minted, written into their config, and every other entry in the file left byte-for-byte alone.",
+    tag: "built",
+    tone: "text-ok-ink",
+  },
+  {
+    k: "bastion-bridge",
+    v: "Stdio-only hosts like Claude Desktop reach the gateway over HTTP, and it starts Bastion if it is not up.",
+    tag: "built",
+    tone: "text-ok-ink",
+  },
+  {
+    k: "Bastion's server",
+    v: "Bastion as one of its own servers, so an agent can manage it. Off by default, and no tool of it returns a secret.",
+    tag: "built",
+    tone: "text-ok-ink",
   },
   {
     k: "Release",
-    v: "bastion-bridge for stdio-only clients like Claude Desktop, then the signed and notarized path. Nothing licensed yet.",
-    tag: "not started",
-    tone: "text-fg/35",
+    v: "Signed, notarized, and shipped from GitHub releases with a Sparkle appcast. Licences are Ed25519, verified offline, no activation call.",
+    tag: "built",
+    tone: "text-ok-ink",
   },
 ] as const;
 
@@ -96,9 +110,14 @@ const LIMITS = [
 <section id="status" class="border-t border-rule py-20">
   <div class="wrap flex flex-wrap items-start gap-16">
     <SectionHeader heading="Status">
+      {/* This said "there is no client wiring, no bridge, and no notarized
+          build" until all three shipped in 1.0.0. The list below is the useful
+          half of a status section once everything is built — what it still does
+          not do. */}
       <p class="m-0 text-[15px] leading-[1.6] text-fg/55 text-pretty">
-        The gateway serves real servers end to end and the credentials that used to sit in plaintext
-        are in the Keychain. There is no client wiring, no bridge, and no notarized build.
+        Everything in the build order landed at 1.0.0: the gateway serves real servers end to end,
+        the credentials that used to sit in plaintext are in the Keychain, and the signed build is
+        notarized and for sale. What is worth reading is the other column.
       </p>
       <div class="flex flex-col gap-2.5 pt-1.5">
         <h3 class="eyebrow m-0 text-fg/40">Known gaps</h3>

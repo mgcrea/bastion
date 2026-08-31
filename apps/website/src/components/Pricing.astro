@@ -1,0 +1,132 @@
+---
+/**
+ * What it costs, and what the number actually buys.
+ *
+ * The page carried this as one 12-point line under the closing CTA, which was
+ * right while there was nothing to buy and wrong the moment there was: the
+ * price, what it covers, the refund and the trial are four separate promises,
+ * and a reader deciding whether to pay should not have to reconstruct them from
+ * a sentence in the footer.
+ *
+ * Every string comes from `PRICE` and `TRIAL` in config.ts. Nothing is typed
+ * here, for the reason that file states: this is a fact that changes between
+ * commits, and a marketing page is the last place it should be restated.
+ */
+import { DOCS, PRICE, REPO_URL, SHIPPED, TRIAL } from "../config";
+import Button from "./Button.astro";
+import SectionHeader from "./SectionHeader.astro";
+
+/**
+ * The four claims, each of which the app or the terms can be held to.
+ *
+ * "Every 1.x release" is `PRICE.covers`, and it is the one worth reading twice:
+ * a key is checked against the major version, so 2.0 is a new purchase. That is
+ * said here rather than left to the terms, because a licence that silently
+ * stops covering a future release is exactly the surprise a pricing section
+ * exists to prevent.
+ */
+const INCLUDED = [
+  {
+    // Sentence case here, mid-sentence case in `Cta.astro`. `covers` is written
+    // as a fragment because that is how the closing line reads it — "€14.99 —
+    // every 1.x release, on every Mac you own" — so the capital belongs at this
+    // call site rather than in the constant.
+    title: PRICE.covers.replace(/^./, (c) => c.toUpperCase()),
+    body: "The key is issued to you, not to a machine, and nothing counts your installs. It is checked against the major version, so 2.0 will be a new purchase.",
+  },
+  {
+    title: "Verified offline, on your Mac",
+    body: "A key is an Ed25519 signature the app checks locally. No activation call, no licence server, and nothing that can refuse to start because a host is down.",
+  },
+  {
+    title: PRICE.refund,
+    body: "The trial answers whether this works against your servers. The refund answers whether it was worth the money, which is a different question and is asked second.",
+  },
+  {
+    title: "The source stays public",
+    body: "What is sold is the signed, notarized build. The code that holds your credentials is readable and compilable by the people trusting it.",
+  },
+] as const;
+---
+
+<section id="pricing" class="scroll-mt-20 border-t border-rule py-22">
+  <div class="wrap flex flex-wrap items-start gap-16">
+    <SectionHeader eyebrow="Price" heading="One price, one major version, every Mac you own.">
+      <p class="m-0 text-[16px] leading-[1.6] text-fg/58 text-pretty">
+        There is no subscription and no per-seat tier. Bastion is a tool you install once and forget
+        about; charging rent for a background process that holds your own credentials is not a
+        business this wants to be in.
+      </p>
+    </SectionHeader>
+
+    <div class="relative flex min-w-[min(320px,100%)] flex-1 basis-[456px] flex-col">
+      <div
+        class="glow pointer-events-none absolute -inset-x-8 -top-10 h-[300px]"
+        style="background:radial-gradient(50% 60% at 50% 0%,rgb(242 137 92 / 13%),transparent 72%)"
+        aria-hidden="true"
+      >
+      </div>
+
+      <div class="relative rounded-lg border border-rule-2 bg-bg-2 p-7 sm:p-9">
+        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <span
+            class="font-display text-[clamp(38px,6vw,54px)] leading-none font-semibold tracking-[-0.04em]"
+          >
+            {PRICE.amount}
+          </span>
+          <span class="text-[14px] text-fg-dim">once, VAT included</span>
+        </div>
+
+        <ul class="m-0 mt-7 flex list-none flex-col gap-5 p-0">
+          {
+            INCLUDED.map((item) => (
+              <li class="flex gap-3">
+                <span class="mt-[7px] size-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
+                <span class="flex flex-col gap-1">
+                  <span class="text-[14.5px] font-medium text-fg">{item.title}</span>
+                  <span class="text-[13.5px] leading-[1.6] text-fg/50 text-pretty">{item.body}</span>
+                </span>
+              </li>
+            ))
+          }
+        </ul>
+
+        {/*
+          Gated together, and on the same flag as the JSON-LD offer in
+          index.astro. A buy button is a claim that the thing can be bought right
+          now; /buy is a vanity path in public/_redirects precisely so the
+          checkout URL can move without editing a page, and the app's Licence
+          pane links the same one — a Stripe URL compiled into a shipped binary
+          could never be repointed.
+        */}
+        <div class="mt-8 flex flex-wrap items-center gap-3">
+          {
+            SHIPPED ? (
+              <>
+                <Button href="/buy" size="lg">
+                  Buy a licence
+                </Button>
+                <Button href="/download" variant="secondary" size="lg">
+                  Download for macOS
+                </Button>
+              </>
+            ) : (
+              <Button href={REPO_URL} size="lg" external>
+                Read the source ↗
+              </Button>
+            )
+          }
+        </div>
+
+        <p class="m-0 mt-6 text-[13px] leading-[1.6] text-fg/45 text-pretty">
+          {TRIAL.sentence} No account, nothing to cancel, and the window lives in memory — quitting
+          and reopening starts another one. See <a href="/terms" class="underline underline-offset-2">
+            the terms
+          </a> and <a href={DOCS.licensing} class="underline underline-offset-2">
+            the reasoning behind them
+          </a>.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>

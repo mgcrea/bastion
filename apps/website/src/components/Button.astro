@@ -1,0 +1,65 @@
+---
+/**
+ * The one place a call to action is styled.
+ *
+ * There are four of them on this page — nav, hero, pricing plate, closing plate
+ * — and they were four hand-written class strings that had already drifted
+ * apart in radius, padding and weight. A button that looks slightly different
+ * in the nav than in the hero reads as two different offers, which is the
+ * opposite of what a page with one thing to sell wants.
+ *
+ * `external` is opt-in rather than inferred from the href, because the two
+ * off-site links that matter most are opposite cases: GitHub wants a new tab,
+ * and `/download` must not have one — it is a 302 to a zip, and a tab that
+ * opens only to close itself is worse than no tab.
+ */
+interface Props {
+  href: string;
+  /** `plate` is the accent gradient; there is at most one per viewport. */
+  variant?: "plate" | "secondary" | "quiet";
+  size?: "sm" | "md" | "lg";
+  external?: boolean;
+  class?: string;
+  "aria-describedby"?: string;
+}
+
+const {
+  href,
+  variant = "plate",
+  size = "md",
+  external = false,
+  class: className,
+  ...rest
+} = Astro.props;
+
+/**
+ * `plate` is the icon's own gradient, quoted through the utility in global.css
+ * rather than restated here — the accent is load-bearing precisely because it
+ * is rationed, and a second definition of it is how that stops being true.
+ */
+const VARIANTS = {
+  plate: "plate font-semibold text-accent-ink shadow-[0_14px_34px_-14px_rgb(242_137_92/75%)]",
+  secondary: "border border-white/10 bg-white/5 font-semibold text-fg/80 hover:border-white/20",
+  quiet: "bg-white/8 text-fg hover:bg-white/12",
+} as const;
+
+const SIZES = {
+  sm: "rounded-sm px-3.5 py-[7px] text-[13px]",
+  md: "rounded-md px-5 py-2.5 text-[14px]",
+  lg: "rounded-md px-6 py-3.5 text-[15px]",
+} as const;
+---
+
+<a
+  href={href}
+  {...external ? { target: "_blank", rel: "noopener" } : {}}
+  {...rest}
+  class:list={[
+    "inline-flex items-center justify-center gap-1.5 text-center whitespace-nowrap transition-colors",
+    VARIANTS[variant],
+    SIZES[size],
+    className,
+  ]}
+>
+  <slot />
+</a>
