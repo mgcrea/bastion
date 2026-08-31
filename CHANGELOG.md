@@ -7,6 +7,58 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.1.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Added
+
+- **The audit log can be kept on disk.** Settings ▸ Activity turns on a durable log: append-only
+  files under Application Support, readable only by you, with retention by age and by size. Off by
+  default, and with it off nothing changes — the log stays a ring in memory, cleared when Bastion
+  quits, which `make builtin` asserts against the real bundle.
+
+  Whether that file carries arguments and results is a second switch, off on its own. Keeping a
+  record of _which_ tools ran is a smaller thing to leave on disk than keeping what they were
+  called with. A credential is never written either way: a tool whose argument _is_ the secret has
+  its arguments withheld whatever the setting says, and the same canary that proves it cannot be
+  read back through `recent_activity` now also proves it never reaches the file.
+
+  **Each record carries a hash of the one before it**, so an edited field, a removed record or a
+  truncated file can be detected — and the pane says exactly that much and no more. It catches
+  tampering by something that does not know it is a chain; it is not proof against anyone who can
+  write the file, because they can recompute it. Retention drops whole files at a time for the
+  same reason: a chain cannot lose a record from the middle and still verify.
+
+  This completes the hash chain that shipped unwired in 1.1.0.
+
+- **The log can be exported, and signed if you want it.** Export writes the log alongside a
+  manifest naming each file, its record count and its digest. The count is the part that matters:
+  a chain cannot detect its own truncation, because cutting off the end leaves a shorter chain
+  that still verifies. The signature goes beside the manifest rather than inside it, because a
+  signature written into the bytes it signs makes what was signed ambiguous.
+
+  Signing is optional and off unless asked for. It proves an export came from this Mac and was not
+  altered afterwards; it does not prove the log was not curated before it was signed, and it means
+  nothing to someone who has not been given the key some other way — so the pane shows a
+  fingerprint to send them once. A new Mac makes a new key, and exports already signed keep
+  verifying against the old one.
+
+- **The Activity log has a search.** It matches the tool name, the profile and the arguments and
+  results a call carried, so "which call touched order 992" is answerable without reading the
+  feed. A row whose match falls past the truncated preview opens itself, rather than appearing in
+  the results with no visible reason for being there.
+
+- **Logs and Settings are one click from the menu bar.** Two glyphs beside Quit, with ⌘L and ⌘,
+  while the panel is open. The log is the one destination the panel argues for: every line in it
+  is a count of calls, and "what were those calls" is the question the summary raises and cannot
+  answer.
+
+### Changed
+
+- **The recording settings have a pane of their own.** What the live log keeps, what an agent may
+  read back, whether any of it survives a quit, and how long it is kept are four questions with
+  one subject, and they had outgrown a section in General. The per-profile override stays beside
+  that profile's write gate, where it is the exception rather than the default.
+
 ## [1.1.0] - 2026-08-31
 
 ### Added
