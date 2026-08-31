@@ -8,24 +8,25 @@ server is running — so the mark is the fort, and the wall is what the fort doe
 something. That is also why the icon and an idle menu bar are now one silhouette instead of two
 drawings of the same idea.
 
-One source, four renderings, one command:
+One mark, every rendering, one command:
 
 ```bash
 make icon
 ```
 
-| File                                 | Role                                                                             |
-| ------------------------------------ | -------------------------------------------------------------------------------- |
-| `bastion-mark.svg`                   | **the source.** Hills, wall and spur on a transparent sky, 1024×1024. Edit this. |
-| `colors.json`                        | palette and gradients                                                            |
-| `bastion-menubar.svg`                | **authored**, not composed — the menu bar glyph, idle. Edit this too.            |
-| `bastion-menubar-active.svg`         | **authored** — the same glyph with the wall, drawn while a server runs.          |
-| `bastion-icon.svg`                   | _generated_ — plated vector for the web/README/docs                              |
-| `bastion-lockup.svg`                 | _generated_ — the icon and the word, banner for the README                       |
-| `../apps/apple/Bastion/Bastion.icon` | _generated_ — the Icon Composer bundle Xcode compiles                            |
+| File                                            | Role                                                                               |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `bastion-mark.svg`                              | **the source.** Two hills and the fort on a transparent sky, 1024×1024. Edit this. |
+| `colors.json`                                   | palette and gradients                                                              |
+| `bastion-menubar.svg`                           | **authored**, not composed — the menu bar glyph, idle. Edit this too.              |
+| `bastion-menubar-active.svg`                    | **authored** — the same glyph with the wall, drawn while a server runs.            |
+| `bastion-icon.svg`                              | _generated_ — plated vector for the web/README/docs                                |
+| `bastion-lockup.svg`                            | _generated_ — the icon and the word, banner for the README                         |
+| `../apps/apple/Bastion/Bastion.icon`            | _generated_ — the Icon Composer bundle Xcode compiles                              |
+| `…/Assets.xcassets/MenuBarIcon*.imageset/*.svg` | _generated_ — copies of the two glyphs above                                       |
 
 `make icon` writes every generated file and audits the bundle. Never hand-edit them: the mark and
-the menu bar glyph are the only geometry, which is the whole point of generating the rest.
+the two menu bar glyphs are the only geometry, which is the whole point of generating the rest.
 
 ## Why it borrows cupertino's plate
 
@@ -85,7 +86,7 @@ usual glyph-ratio check exists to catch. So it is scaled to **580** wide, roughl
 wall used to hold, and seated at **y850** rather than the wall's old 776.8.
 
 The seat is the composition. At 850 the front hill crosses the fort's feet and the back hill runs
-behind it, so it stands *on* the ridge; raise it and it floats above the hills with a visible strip
+behind it, so it stands _on_ the ridge; raise it and it floats above the hills with a visible strip
 of sky under it. Both numbers are pinned by `scripts/lib/lockup.test.mjs`, which holds the fort's
 path character for character.
 
@@ -140,11 +141,11 @@ design/bastion-mark.svg --make icon--> design/bastion-icon.svg --pnpm icons--> a
 
 Two files, one mark, two states — the shape cupertino uses for the same job:
 
-| file                         | state              | ink (measured at 18pt) |
-| ---------------------------- | ------------------ | ---------------------- |
-| `bastion-menubar.svg`        | idle               | 23.0 × 18.2 units      |
-| `bastion-menubar-active.svg` | a server is live   | 31.5 × 24.8 units      |
-| cupertino's, for scale       | idle / connected   | 34.0 × 16.8 / 34.0 × 20.8 |
+| file                         | state            | ink (measured at 18pt)    |
+| ---------------------------- | ---------------- | ------------------------- |
+| `bastion-menubar.svg`        | idle             | 23.0 × 18.2 units         |
+| `bastion-menubar-active.svg` | a server is live | 31.5 × 24.8 units         |
+| cupertino's, for scale       | idle / connected | 34.0 × 16.8 / 34.0 × 20.8 |
 
 `MenuBarLabel` in `BastionApp.swift` swaps them on `Activity.shared.instances`, and reads that
 rather than `Supervisor.running` for the reason the popover's rows do: the supervisor's view is a
@@ -153,7 +154,7 @@ spawns a process and so never appears there, which is what makes the state mean 
 
 They are still **authored, not composed** — `make icon` copies them and never derives them from the
 mark, because the sizing below is a menu bar problem the 1024 mark knows nothing about. What is no
-longer authored is the *shape*: the fort's five vertices are `bastion-mark.svg`'s own, scaled. The
+longer authored is the _shape_: the fort's five vertices are `bastion-mark.svg`'s own, scaled. The
 two used to differ by about 5% in aspect for no reason anybody had written down.
 
 ### The wall is open at the base, and that is the whole design
