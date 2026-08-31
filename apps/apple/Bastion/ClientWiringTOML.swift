@@ -235,7 +235,163 @@ enum ClientWiringTOML {
       tables: tables, anchor: anchor)
   }
 
+
+  // MARK: - Writing
+
+  /// One `[mcp_servers.<name>]` block.
+  ///
+  /// Only ever called on an entry Bastion built. A hand-written entry is never
+  /// re-rendered — read it, classify it, quote it back verbatim — and that
+  /// asymmetry is the whole safety argument. Rendering is allowed to be
+  /// opinionated about quoting and order precisely because the only thing it
+  /// ever sees is a shape this app chose.
+  static func render(name: String, entry: [String: Any], newline: String) -> String {
+    var out = "[\(rootKey).\(key(name))]" + newline
+    // What an entry points at first, because that is what somebody reading the
+    // file wants to see; everything else in a stable order after it.
+    let preferred = ["url", "command", "args", "env", "http_headers"]
+    let rest = entry.keys.filter { !preferred.contains($0) }.sorted()
+    for name in preferred + rest {
+      guard let value = entry[name], let literal = literal(value) else { continue }
+      out += "\(key(name)) = \(literal)" + newline
+    }
+    return out
+  }
+
+  /// Bare where TOML allows it, quoted otherwise.
+  ///
+  /// Bastion's own keys are always bare in practice — a profile name and a
+  /// server id are both `^[a-z0-9][a-z0-9-]*$`. Quoting is implemented and
+  /// checked anyway, because "always right in practice" is how the entry-name
+  /// prefix broke the collision defence the first time.
+  private static func key(_ name: String) -> String {
+    let bare = !name.isEmpty && name.allSatisfy {
+      $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-")
+    }
+    return bare ? name : quoted(name)
+  }
+
+  private static func quoted(_ value: String) -> String {
+    var out = "\""
+    for character in value {
+      switch character {
+      case "\\": out += "\\\\"
+      case "\"": out += "\\\""
+      case "\n": out += "\\n"
+      case "\r": out += "\\r"
+      case "\t": out += "\\t"
+      default:
+        if let scalar = character.unicodeScalars.first, character.unicodeScalars.count == 1,
+          scalar.value < 0x20
+        {
+          out += String(format: "\\u%04X", scalar.value)
+        } else {
+          out.append(character)
+        }
+      }
+    }
+    return out + "\""
+  }
+
+  private static func literal(_ value: Any) -> String? {
+    switch value {
+    case let string as String: return quoted(string)
+    case let bool as Bool: return bool ? "true" : "false"
+    case let int as Int: return String(int)
+    case let table as [String: Any]:
+      let pairs = table.keys.sorted().compactMap { name -> String? in
+        guard let value = table[name], let literal = literal(value) else { return nil }
+        return "\(key(name)) = \(literal)"
+      }
+      return pairs.isEmpty ? "{}" : "{ " + pairs.joined(separator: ", ") + " }"
+    case let array as [Any]:
+      let elements = array.compactMap { literal($0) }
+      guard elements.count == array.count else { return nil }
+      return "[" + elements.joined(separator: ", ") + "]"
+    default:
+      return nil
+    }
+  }
+
+  /// Delete the lines that hold `removing` and `upserting`, emit `upserting` at
+  /// the anchor, and quote every other byte of the file verbatim.
+  ///
+  /// `upserting`'s keys are deleted as well as written: a key being rewritten
+  /// has its old block taken out wherever it sat and a fresh one emitted at the
+  /// anchor, which is what keeps a second wire byte-identical to the first
+  /// rather than leaving the entry in two places.
+  ///
+  /// A deleted block also takes the blank line above it, and a written block
+  /// puts one back. That pair is what makes wire → unwire return the original
+  /// bytes, and what stops ten rounds of either from growing a column of blank
+  /// lines.
+  static func spliced(
+    _ document: Document,
+    removing: Set<String>,
+    upserting: [String: [String: Any]]
+  ) -> String {
+    let doomed = removing.union(upserting.keys)
+    var deleted = Set<Int>()
+    for name in doomed {
+      for range in document.tables[name]?.ranges ?? [] { deleted.formUnion(range) }
+    }
+    for name in doomed {
+      for range in document.tables[name]?.ranges ?? [] {
+        let above = range.lowerBound - 1
+        guard above >= 0, !deleted.contains(above), isBlank(document, above) else { continue }
+        deleted.insert(above)
+      }
+    }
+
+    let blocks = upserting.keys.sorted().map {
+      render(name: $0, entry: upserting[$0] ?? [:], newline: document.newline)
+    }
+
+    var out = ""
+    var written = false
+    func writeBlocks() {
+      guard !written else { return }
+      written = true
+      for block in blocks {
+        if !out.isEmpty {
+          // Close an unterminated last line before adding to it, then put in
+          // the blank line this block owns -- unconditionally, even if one is
+          // already there. Insertion and deletion are then exact inverses: the
+          // blank a wire adds is the blank an unwire takes back, so a blank
+          // line the user wrote is never counted as ours and eaten.
+          if let last = out.last, !breaks.contains(last) { out += document.newline }
+          out += document.newline
+        }
+        out += block
+      }
+    }
+
+    for index in document.lines.indices {
+      if index == document.anchor { writeBlocks() }
+      if deleted.contains(index) { continue }
+      out += document.text[document.lines[index]]
+    }
+    if document.anchor >= document.lines.count { writeBlocks() }
+    return out
+  }
+
+  private static func isBlank(_ document: Document, _ index: Int) -> Bool {
+    document.text[document.lines[index]]
+      .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
+
+
   // MARK: - Lines
+
+  /// What ends a line.
+  ///
+  /// Both, and named rather than written out at each site, because Swift makes
+  /// CRLF easy to get wrong: `"\r\n"` is ONE `Character` — a grapheme cluster —
+  /// so `c == "\n"` is false for a CRLF break and `hasSuffix("\n")` is false for
+  /// a CRLF-terminated string. Comparing against the wrong one of these reads a
+  /// whole CRLF file as a single line, finds no servers in it, and appends
+  /// blocks to the end of what it thinks is line one.
+  private static let breaks: Set<Character> = ["\n", "\r\n"]
 
   /// Every line, each carrying its own terminator.
   static func lineRanges(_ text: String) -> [Range<String.Index>] {
@@ -243,7 +399,7 @@ enum ClientWiringTOML {
     var start = text.startIndex
     var i = text.startIndex
     while i < text.endIndex {
-      let isBreak = text[i] == "\n"
+      let isBreak = breaks.contains(text[i])
       i = text.index(after: i)
       if isBreak {
         out.append(start..<i)
@@ -255,8 +411,11 @@ enum ClientWiringTOML {
   }
 
   private static func newline(of text: String, lines: [Range<String.Index>]) -> String {
-    guard let first = lines.first, text[first].hasSuffix("\n") else { return "\n" }
-    return text[first].hasSuffix("\r\n") ? "\r\n" : "\n"
+    for line in lines {
+      guard let last = text[line].last, breaks.contains(last) else { continue }
+      return String(last)
+    }
+    return "\n"
   }
 
   // MARK: - The lexer
@@ -351,9 +510,13 @@ enum ClientWiringTOML {
 
   private static func classify(_ line: Substring, at index: Int) throws -> Line {
     var cursor = Cursor(Array(line))
+    // A byte-order mark is not TOML, but editors write one and refusing the
+    // whole client over it would be a poor trade. It is quoted back verbatim
+    // like every other byte this does not own.
+    if cursor.peek == "\u{FEFF}" { cursor.advance() }
     cursor.skipSpace()
     guard let first = cursor.peek else { return .blank }
-    if first == "\n" || first == "\r" { return .blank }
+    if breaks.contains(first) || first == "\r" { return .blank }
     if first == "#" { return .comment }
 
     if first == "[" {
@@ -433,7 +596,7 @@ enum ClientWiringTOML {
       var j = i
       while j < c.count, c[j] == " " || c[j] == "\t" { j += 1 }
       guard j < c.count else { return true }
-      return c[j] == "#" || c[j] == "\n" || c[j] == "\r"
+      return c[j] == "#" || ClientWiringTOML.breaks.contains(c[j]) || c[j] == "\r"
     }
 
     private static func isBare(_ ch: Character) -> Bool {
@@ -507,7 +670,7 @@ enum ClientWiringTOML {
           }
           continue
         }
-        if ch == "\n" { return nil }
+        if ClientWiringTOML.breaks.contains(ch) { return nil }
         out.append(ch)
         advance()
       }
