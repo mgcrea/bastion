@@ -163,7 +163,9 @@ enum BuiltinTools {
     Declaration(
       "recent_activity", title: "Recent activity",
       "Bastion's recent log: which profile, which method, and the name of whatever each request "
-        + "reached for. Never arguments and never results — Bastion does not record those.",
+        + "reached for. Your own profile's lines also carry the arguments they were called with, "
+        + "and their results if this profile records those. Credentials are never recorded. "
+        + "Other profiles' lines never carry arguments or results.",
       properties: [
         "limit": schema("integer", "How many entries, newest last. Default 50, max 500."),
         "origin": schema("string", "Optional. Only lines from this '<profile>/<server>'."),
@@ -359,7 +361,12 @@ enum BuiltinTools {
 
   // MARK: - Dispatch
 
-  static func invoke(name: String, arguments: [String: Any], allowWrites: Bool) throws -> Any {
+  /// `caller` is the `<profile>/<server>` the request arrived on, used by
+  /// `recent_activity` to scope what it will report. Optional so a caller with
+  /// no profile context reads nothing profile-shaped rather than everything.
+  static func invoke(
+    name: String, arguments: [String: Any], allowWrites: Bool, caller: String? = nil
+  ) throws -> Any {
     guard let declaration = table.first(where: { $0.name == name }) else {
       throw ToolError.unknownTool(name)
     }
@@ -377,7 +384,7 @@ enum BuiltinTools {
     case "list_profiles": return listProfiles(arguments)
     case "list_clients": return listClients()
     case "status": return status()
-    case "recent_activity": return recentActivity(arguments)
+    case "recent_activity": return recentActivity(arguments, caller: caller)
 
     case "enable_server": return try setEnabled(arguments, to: true)
     case "disable_server": return try setEnabled(arguments, to: false)
@@ -595,20 +602,73 @@ enum BuiltinTools {
     ]
   }
 
-  private static func recentActivity(_ arguments: [String: Any]) -> Any {
+  /// The recent log, scoped to the profile that asked.
+  ///
+  /// `caller` is the `<profile>/<server>` the request arrived on. Scoping to it
+  /// is the important part and it is new: `origin` used to be an optional
+  /// *filter*, so an agent on `home/unifi-network` could omit it and read every
+  /// line `prod/shopify` had produced. That was harmless while a row was a tool
+  /// name and stopped being harmless the moment rows carried arguments.
+  ///
+  /// Handing back a profile's own payloads is safe by construction — the agent
+  /// sent those arguments and received those results, so it learns nothing it
+  /// did not already have. Another profile's row never carries them, whatever
+  /// the setting says.
+  ///
+  /// A caller with no profile context reads nothing rather than everything.
+  ///
+  /// The residual, worth knowing: two clients sharing one profile share one
+  /// scope, so one can read the other's calls. Narrowing to per-client is
+  /// possible; profile is the boundary everything else in Bastion uses.
+  private static func recentActivity(_ arguments: [String: Any], caller: String?) -> Any {
     let limit = min(max(arguments["limit"] as? Int ?? 50, 1), 500)
-    let origin = arguments["origin"] as? String
+    let requested = arguments["origin"] as? String
+    let widened = CallCapture.reportsAllProfiles
     let formatter = ISO8601DateFormatter()
+
     return LogStore.shared.entries
-      .filter { origin == nil || $0.origin == origin }
+      .filter { entry in
+        // Exactly the caller's own lines, and nothing else.
+        //
+        // Subsystem lines (`servers`, `profiles`) were let through at first, on
+        // the reasoning that they name no profile and carry no payload. They do
+        // name one: `[servers] info: saved custom server 'checkscratch'` tells
+        // whoever is asking what someone ELSE just configured. builtin-check
+        // caught it. An agent that needs Bastion's global state has `status`
+        // and `list_servers`, which are gated tools; this one is a window onto
+        // your own traffic.
+        guard widened || entry.origin == caller else { return false }
+        return requested == nil || entry.origin == requested
+      }
       .suffix(limit)
-      .map {
-        [
-          "at": formatter.string(from: $0.at), "origin": $0.origin,
-          "level": $0.level.rawValue, "text": $0.text,
+      .map { entry -> [String: Any] in
+        var row: [String: Any] = [
+          "at": formatter.string(from: entry.at), "origin": entry.origin,
+          "level": entry.level.rawValue, "text": entry.text,
         ]
+        guard entry.origin == caller else { return row }
+        if let arguments = entry.arguments { row["arguments"] = arguments }
+        if let result = entry.result { row["result"] = result }
+        if entry.failed { row["failed"] = true }
+        return row
       }
   }
+
+  /// Argument names on Bastion's OWN tools that carry a credential.
+  ///
+  /// `set_credential`'s whole argument list is exempted from capture by
+  /// `CallCapture.neverCapture`, which is the real defence; this is the second
+  /// line under it, so a future tool that takes a secret in a differently
+  /// named field is still blanked rather than recorded.
+  /// `nonisolated` because the audit line is written on the connection's own
+  /// thread, not the main actor — `BuiltinServer.handle` reads this twice per
+  /// call. An immutable `Set<String>` is `Sendable` and its initialisation is
+  /// already once-only, so this states what was always true rather than
+  /// changing anything; without it the secrets wall does not compile under the
+  /// Swift 6 language mode.
+  nonisolated static let secretArgumentNames: Set<String> = [
+    "value", "values", "token", "secret",
+  ]
 
   // MARK: - Writing
 
@@ -788,7 +848,12 @@ enum BuiltinTools {
 
     let profile = Profile(
       name: name, serverID: serverID, values: values,
-      allowWrites: arguments["allow_writes"] as? Bool ?? existing?.allowWrites ?? false)
+      allowWrites: arguments["allow_writes"] as? Bool ?? existing?.allowWrites ?? false,
+      // Carried over rather than defaulted, like `values` and `allowWrites`
+      // above. This tool takes no capture argument, so rebuilding the profile
+      // without it would let an agent editing an unrelated field silently
+      // reset a choice the person made in the window.
+      captureMode: existing?.captureMode)
     try ProfileStore.shared.upsert(profile)
 
     var out: [String: Any] = [

@@ -27,8 +27,16 @@ nonisolated struct Profile: Identifiable, Hashable {
   /// that may only look is a sane setup, and a single global switch makes it
   /// unexpressible.
   var allowWrites: Bool
+  /// How much of a call this profile records, or nil to follow the app-wide
+  /// default. Per profile for the same reason the write gate is: a `lab`
+  /// profile worth watching closely and a `prod` one worth watching quietly
+  /// is a sane setup, and one global switch makes it unexpressible.
+  var captureMode: CallCapture.Mode?
 
   var id: String { "\(name)/\(serverID)" }
+
+  /// What this profile actually records, default resolved.
+  var capture: CallCapture.Mode { captureMode ?? CallCapture.globalDefault }
 
   static func isValidName(_ name: String) -> Bool {
     !name.isEmpty && name.count <= 64
@@ -101,6 +109,11 @@ final class ProfileStore {
     var server: String
     var values: [String: String]
     var allowWrites: Bool
+    /// Optional so a `profiles.json` written before capture existed decodes
+    /// unchanged, with nil meaning "follow the app-wide default" — the same
+    /// additive rule `ServerStore.Stored.enabled` follows. Never make this
+    /// required and never rename it.
+    var captureMode: CallCapture.Mode?
   }
 
   func load() {
@@ -132,7 +145,8 @@ final class ProfileStore {
         return nil
       }
       return Profile(
-        name: row.name, serverID: row.server, values: row.values, allowWrites: row.allowWrites)
+        name: row.name, serverID: row.server, values: row.values, allowWrites: row.allowWrites,
+        captureMode: row.captureMode)
     }
     refreshSnapshot()
   }
@@ -142,7 +156,9 @@ final class ProfileStore {
     AppSupport.ensureDirectory()
     let rows =
       profiles.map {
-        Stored(name: $0.name, server: $0.serverID, values: $0.values, allowWrites: $0.allowWrites)
+        Stored(
+          name: $0.name, server: $0.serverID, values: $0.values, allowWrites: $0.allowWrites,
+          captureMode: $0.captureMode)
       } + orphaned
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

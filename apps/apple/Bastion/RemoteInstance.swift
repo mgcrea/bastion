@@ -46,6 +46,12 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
   private let server: BastionServer
   private let endpoint: URL
 
+  /// The manifest variables this server marks secret — the argument names
+  /// Bastion can be certain are credentials. See `CallCapture`.
+  private var secretKeys: Set<String> {
+    Set(server.env.filter(\.isSecret).map(\.name))
+  }
+
   /// How long one call may take. The same generous-but-finite number the child
   /// case uses, and for the same reason: these are real API calls and a report
   /// is slow, but a request with no ceiling is a client hung forever with
@@ -172,7 +178,8 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
       if method == "notifications/initialized" { return nil }
     }
 
-    LogStore.record(origin: key, frame: frame)
+    let logID = LogStore.record(
+      origin: key, frame: frame, mode: profile.capture, secretKeys: secretKeys)
     _ = try ensureHandshake()
 
     // The write gate, before anything leaves the machine. A refused call is a
@@ -242,6 +249,16 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     guard let object = try response.jsonRPC() else {
       throw Supervisor.SupervisorError.childDied("no response")
     }
+
+    // No correlation table needed here: one HTTP exchange carries one request,
+    // so the answer is in hand at the point the call was recorded.
+    if let logID {
+      hostCallResult(
+        logID,
+        CallCapture.result(object, mode: profile.capture, secretKeys: secretKeys),
+        failed: CallCapture.isFailure(object))
+    }
+
     // The upstream id is Bastion's own only for the handshake; for a relayed
     // request it is the client's, sent as-is and returned as-is.
     return try encode(filteredForWriteGate(object, method: method))

@@ -124,6 +124,8 @@ struct SettingsView: View {
 
 private struct GeneralPane: View {
   @AppStorage("gatewayPort") private var port = Int(Gateway.defaultPort)
+  @AppStorage(CallCapture.defaultsKey) private var capture = CallCapture.defaultMode.rawValue
+  @AppStorage(CallCapture.allProfilesDefaultsKey) private var allProfiles = false
   /// -1 is "leave npm alone", which is not the same as 0. See
   /// `ServerInstaller.releaseAgeOverride`.
   @AppStorage(ServerInstaller.releaseAgeKey) private var releaseAge = -1
@@ -237,6 +239,34 @@ private struct GeneralPane: View {
       }
 
       Section {
+        Picker("Record", selection: $capture) {
+          ForEach(CallCapture.Mode.allCases, id: \.self) { mode in
+            Text(mode.label).tag(mode.rawValue)
+          }
+        }
+        Text(
+          "What every profile records unless it says otherwise. Arguments answer 'what did the "
+            + "agent actually send'; results are the unbounded half, so they are opt-in. "
+            + "Credentials are never recorded either way.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+        Text("Kept in memory only, capped, and cleared when Bastion quits.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+
+        Toggle("Let an agent read every profile's activity", isOn: $allProfiles)
+        Text(
+          "Off. An agent asking Bastion for recent activity is answered with its own profile's "
+            + "lines — which it already sent and received. Turning this on lets one profile's "
+            + "agent read another's, and another profile's lines never carry arguments or "
+            + "results whichever way this is set.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      } header: {
+        Text("Activity")
+      }
+
+      Section {
         // Only the standing question lives here. "Check for Updates…" stays in
         // the menu bar, where somebody who wants one now would reach for it.
         Toggle(
@@ -288,8 +318,10 @@ private struct AboutPane: View {
           .font(.caption).foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
         Text(
-          "The audit log records which profile, which method and which tool — never arguments and "
-            + "never results. It does not see what a server then does over the network or on disk.")
+          "The audit log records which profile, which method, which tool and the arguments it was "
+            + "called with; results too, for a profile that asks for them. Credentials are never "
+            + "recorded, and none of it is written to disk. It does not see what a server then "
+            + "does over the network or on disk.")
           .font(.caption).foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       } header: {

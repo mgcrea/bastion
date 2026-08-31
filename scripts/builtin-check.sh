@@ -70,12 +70,19 @@ json.dump(servers, open(os.path.join(support, "servers.json"), "w"), indent=2)
 
 profiles = [
     p for p in load("profiles.json", [])
-    if not (p.get("server") == "bastion" and p.get("name") in ("checkro", "checkrw"))
+    if not (p.get("server") == "bastion" and p.get("name") in ("checkro", "checkrw", "checknosy"))
 ]
 # Two profiles of one server, which is also a check that the write gate is per
 # profile rather than per server: same tools, same install, different answer.
 profiles.append({"name": "checkro", "server": "bastion", "values": {}, "allowWrites": False})
 profiles.append({"name": "checkrw", "server": "bastion", "values": {}, "allowWrites": True})
+# A third, for the scoping check: what one profile's agent may read of another's.
+# Seeded with an explicit captureMode, which is also the fixture for the
+# preservation check further down.
+profiles.append({
+    "name": "checknosy", "server": "bastion", "values": {}, "allowWrites": True,
+    "captureMode": "argumentsAndResults",
+})
 json.dump(profiles, open(os.path.join(support, "profiles.json"), "w"), indent=2)
 PY
 
@@ -186,6 +193,62 @@ check "a secret handed to upsert_profile is refused" \
   'set with set_credential'
 absent "so it never reaches profiles.json" \
   "$(cat "$SUPPORT/profiles.json")" 's3cr3t-canary'
+
+echo
+echo "The audit log records arguments, and never a credential"
+# The log now carries what a tool was called with, which puts `set_credential`
+# — whose argument IS the secret — in the one place a model can read back.
+# `CallCapture.neverCapture` is what stops it; this is the assertion that says
+# so, and it is the reason THE WALL survived the feature.
+ACTIVITY="$(tool checkrw recent_activity '{"limit":200}')"
+check  "recent_activity records the call"     "$ACTIVITY" 'set_credential'
+absent "and never the credential it carried"  "$ACTIVITY" 's3cr3t-canary'
+# An ordinary tool's arguments ARE recorded, or the check above would pass on a
+# build that simply records nothing.
+tool checkrw get_server '{"id":"checkscratch"}' >/dev/null
+check "an ordinary tool's arguments are recorded" \
+  "$(tool checkrw recent_activity '{"limit":200}')" 'checkscratch'
+
+echo
+echo "A captured payload never reaches disk"
+# The claim the Activity window and the About pane both make. It is not a
+# property of intent: `hostLog` mirrors every line it is given to stderr, which
+# for a LaunchServices-started app outlives the process and lands outside
+# Bastion's 0o700 directory — so `hostCall` keeps payloads off it deliberately,
+# and this is what says it worked. The canary is a server id that exists
+# nowhere, so a hit anywhere can only have come from the argument.
+#
+# `list_profiles` rather than `get_server`: a tool that REFUSES names what it
+# was given in its error sentence, and that sentence is an ordinary log line
+# that has always gone to stderr. This has to be a call that succeeds, or the
+# check measures the error message instead of the capture path.
+tool checkrw list_profiles '{"server":"payload-canary-zzz"}' >/dev/null
+check  "the argument is captured in memory" \
+  "$(tool checkrw recent_activity '{"limit":200}')" 'payload-canary-zzz'
+absent "and never written under Application Support" \
+  "$(grep -rl 'payload-canary-zzz' "$SUPPORT" 2>/dev/null || true)" 'payload-canary-zzz'
+absent "and never mirrored to stderr" \
+  "$(cat /tmp/bastion-builtin.log)" 'payload-canary-zzz'
+
+echo
+echo "recent_activity is scoped to the profile that asked"
+# `origin` used to be a filter rather than a scope, so any profile's agent
+# could read every other profile's lines. Harmless while a line was a tool
+# name; a cross-profile leak the moment lines carry arguments.
+SCOPED="$(tool checknosy recent_activity '{"limit":200}')"
+absent "another profile's lines are not reported" "$SCOPED" 'checkrw/bastion'
+absent "nor their arguments"                      "$SCOPED" 'checkscratch'
+check  "its own lines still are"                  "$SCOPED" 'checknosy/bastion'
+# And asking for another profile by name is refused rather than obeyed.
+absent "naming another profile does not widen the scope" \
+  "$(tool checknosy recent_activity '{"limit":200,"origin":"checkrw/bastion"}')" 'checkscratch'
+
+# A profile's recording setting is not something this tool takes, so editing an
+# unrelated field must carry it rather than rebuild the profile without it.
+# Silent either way until someone notices their choice was undone.
+tool checkrw upsert_profile '{"name":"checknosy","server":"bastion","allow_writes":true}' >/dev/null
+check "upsert_profile preserves a capture setting it was not given" \
+  "$(cat "$SUPPORT/profiles.json")" 'argumentsAndResults'
 
 echo
 echo "Disabling"

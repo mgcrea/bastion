@@ -146,7 +146,12 @@ nonisolated enum BuiltinServer {
     // helper: a tool call here is a tool call, and leaving it out of the
     // Activity log would make the one server that can change everything the
     // one server that leaves no trace.
-    LogStore.record(origin: key, frame: frame)
+    // Bastion's own tools are recorded like anyone else's, and the one that
+    // takes a credential as an argument is the reason `CallCapture` has a
+    // never-capture list rather than a setting.
+    let logID = LogStore.record(
+      origin: key, frame: frame, mode: profile.capture,
+      secretKeys: Set(BuiltinTools.secretArgumentNames))
 
     guard let clientID else {
       // A notification naming something else. Nothing to correlate and nothing
@@ -165,10 +170,16 @@ nonisolated enum BuiltinServer {
       ])
 
     case "tools/call":
-      return try encode([
-        "jsonrpc": "2.0", "id": clientID,
-        "result": callTool(frame["params"] as? [String: Any] ?? [:], profile: profile, key: key),
-      ])
+      let result = callTool(frame["params"] as? [String: Any] ?? [:], profile: profile, key: key)
+      if let logID {
+        let answer: [String: Any] = ["result": result]
+        hostCallResult(
+          logID,
+          CallCapture.result(
+            answer, mode: profile.capture, secretKeys: Set(BuiltinTools.secretArgumentNames)),
+          failed: CallCapture.isFailure(answer))
+      }
+      return try encode(["jsonrpc": "2.0", "id": clientID, "result": result])
 
     default:
       return try encode([
@@ -195,7 +206,8 @@ nonisolated enum BuiltinServer {
 
     do {
       let value = try onMain {
-        try BuiltinTools.invoke(name: name, arguments: arguments, allowWrites: profile.allowWrites)
+        try BuiltinTools.invoke(
+          name: name, arguments: arguments, allowWrites: profile.allowWrites, caller: key)
       }
       let text: String
       if let string = value as? String {

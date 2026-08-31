@@ -42,7 +42,7 @@ const MENU: MenuRow[] = [
   { name: "lab/unifi-network", state: "writes on", tone: "text-warn", active: false },
 ];
 
-/** The two calls the Activity window has recorded. Method and tool name only — never arguments. */
+/** The two calls the Activity window has recorded, with what they were called with. */
 const CALLS = [
   { call: "tools/call · shopify_get_order", meta: "read · 84 ms", lit: true },
   { call: "tools/call · shopify_list_products", meta: "read · 39 ms", lit: false },

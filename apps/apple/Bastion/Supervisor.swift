@@ -299,7 +299,21 @@ nonisolated extension Supervisor {
     private struct Waiter {
       let clientID: Any?
       let deadline: Date
+      /// The log row this call is recorded in, so the reply can be attached to
+      /// it. Correlating through `pending` rather than through a second table:
+      /// this is already the thing that knows which response answers which
+      /// request, and a parallel map would be a second answer to that question.
+      let logID: UUID?
       let resume: (Result<Data, Error>) -> Void
+    }
+
+    /// The manifest variables this profile's server marks secret.
+    ///
+    /// The one set of argument names Bastion can be *certain* are credentials.
+    /// A third-party server's own `token` parameter is unknowable from here,
+    /// which is why `CallCapture` carries a conventional-names backstop too.
+    private var secretKeys: Set<String> {
+      Set(server.env.filter(\.isSecret).map(\.name))
     }
 
     /// How long a single call may take.
@@ -631,7 +645,8 @@ nonisolated extension Supervisor {
         if method == "notifications/initialized" { return nil }
       }
 
-      LogStore.record(origin: key, frame: frame)
+      let logID = LogStore.record(
+        origin: key, frame: frame, mode: profile.capture, secretKeys: secretKeys)
 
       // Make sure there is a child before rewriting anything into its numbering.
       try ensureRunning()
@@ -654,7 +669,8 @@ nonisolated extension Supervisor {
       let semaphore = DispatchSemaphore(value: 0)
       let waiter = Waiter(
         clientID: clientID,
-        deadline: Date().addingTimeInterval(Self.callTimeout)
+        deadline: Date().addingTimeInterval(Self.callTimeout),
+        logID: logID
       ) { result in
         // Exactly once. Three different threads can reach a waiter — the reader
         // when a response arrives, the reaper when it expires, and the exit
@@ -756,7 +772,11 @@ nonisolated extension Supervisor {
 
       let semaphore = DispatchSemaphore(value: 0)
       let outcome = OSAllocatedUnfairLock<Result<Data, Error>?>(initialState: nil)
-      let waiter = Waiter(clientID: id, deadline: Date().addingTimeInterval(30)) { result in
+      // The handshake is Bastion's own request, not a client's, so there is no
+      // log row for its reply to attach to.
+      let waiter = Waiter(
+        clientID: id, deadline: Date().addingTimeInterval(30), logID: nil
+      ) { result in
         outcome.withLock { current in
           guard current == nil else { return }
           current = result
@@ -854,6 +874,16 @@ nonisolated extension Supervisor {
 
       noteSuccess()
 
+      // The reply, for a profile that opted into results. This is the only
+      // place a child's response is ever inspected — the rest of this function
+      // is id bookkeeping — so it is where the record is completed.
+      if let logID = waiter.logID {
+        hostCallResult(
+          logID,
+          CallCapture.result(frame, mode: profile.capture, secretKeys: secretKeys),
+          failed: CallCapture.isFailure(frame))
+      }
+
       // Hand the client back its own id. It has never seen Bastion's numbering
       // and must not start now: a client that saw an id it did not send would
       // treat the response as unsolicited and drop it.
@@ -872,14 +902,23 @@ nonisolated extension Supervisor {
 }
 
 extension LogStore {
-  /// Record what a request reached for, and nothing more.
+  /// Record what a request reached for, and what it was called with.
   ///
-  /// Method names and the name of whatever was asked for — a tool, a prompt, a
-  /// resource URI — never arguments and never results. That is the claim the
-  /// Activity window makes on screen, and it is cheaper to keep here, at the
-  /// one place frames are inspected, than to remember at each call site.
-  nonisolated static func record(origin: String, frame: [String: Any]) {
-    guard let method = frame["method"] as? String else { return }
+  /// Method names, the name of whatever was asked for — a tool, a prompt, a
+  /// resource URI — and, for a profile that records them, the arguments. Never
+  /// a credential: `CallCapture` drops the tools whose argument *is* the
+  /// secret and blanks anything under a secret-looking key, and it does that
+  /// here rather than at each call site because a rule kept in one of three
+  /// callers is a rule that holds a third of the time.
+  ///
+  /// Returns the id the reply should be attached to, or nil if this frame was
+  /// not a call worth correlating. The caller keeps it across the wait.
+  @discardableResult
+  nonisolated static func record(
+    origin: String, frame: [String: Any], mode: CallCapture.Mode = .off,
+    secretKeys: Set<String> = []
+  ) -> UUID? {
+    guard let method = frame["method"] as? String else { return nil }
     let params = frame["params"] as? [String: Any]
     let identifier: String? =
       switch method {
@@ -888,10 +927,15 @@ extension LogStore {
       case "resources/read": (params?["uri"] as? String).map { "read: \($0)" }
       default: nil
       }
-    if let identifier {
-      hostLog(origin, .call, identifier)
-    } else {
+    guard let identifier else {
       hostLog(origin, .info, method)
+      return nil
     }
+    let arguments =
+      method == "tools/call"
+      ? CallCapture.arguments(
+        tool: params?["name"] as? String, params: params, mode: mode, secretKeys: secretKeys)
+      : nil
+    return hostCall(origin, identifier, arguments: arguments)
   }
 }

@@ -353,6 +353,111 @@ struct UnitCheck {
       "and shopify, which really is read-only, does not",
       ServerCatalog.all.first { $0.id == "shopify" }?.hasWritePath == false)
 
+    // MARK: - Call capture
+    //
+    // The two things this file exists to stop, both of which are silent when
+    // they go wrong: a credential reaching the log, and an unbounded payload
+    // reaching a 2000-entry ring buffer.
+
+    print("\nCall capture: what is never recorded")
+
+    let secretKeys: Set<String> = ["SHOPIFY_TOKEN"]
+    func params(_ tool: String, _ args: [String: Any]) -> [String: Any] {
+      ["name": tool, "arguments": args]
+    }
+
+    // The headline. `set_credential`'s `value` is documented to models as
+    // "never written to disk", and recording it would make that false.
+    check(
+      "set_credential's arguments are never captured",
+      CallCapture.arguments(
+        tool: "set_credential",
+        params: params("set_credential", ["profile": "prod", "value": "s3cr3t-canary"]),
+        mode: .argumentsAndResults, secretKeys: secretKeys) == nil)
+    check(
+      "and not at .arguments either",
+      CallCapture.arguments(
+        tool: "set_credential", params: params("set_credential", ["value": "s3cr3t-canary"]),
+        mode: .arguments) == nil)
+
+    let manifest = CallCapture.arguments(
+      tool: "shopify_get_order",
+      params: params("shopify_get_order", ["SHOPIFY_TOKEN": "s3cr3t-canary", "id": "992"]),
+      mode: .arguments, secretKeys: secretKeys)
+    check("a manifest secret is redacted", manifest?.contains("s3cr3t-canary") == false)
+    check("and the rest of the call survives", manifest?.contains("992") == true)
+
+    let nested = CallCapture.arguments(
+      tool: "t",
+      params: params("t", ["outer": ["inner": ["api_key": "s3cr3t-canary"]]]),
+      mode: .arguments)
+    check("a secret nested two levels down is redacted", nested?.contains("s3cr3t-canary") == false)
+
+    let inArray = CallCapture.arguments(
+      tool: "t", params: params("t", ["rows": [["password": "s3cr3t-canary"]]]), mode: .arguments)
+    check("and one inside an array", inArray?.contains("s3cr3t-canary") == false)
+
+    check("Api-Key matches api_key", CallCapture.isSecretKey("Api-Key", []))
+    check("apiKey does too", CallCapture.isSecretKey("apiKey", []))
+    check("orderId does not", !CallCapture.isSecretKey("orderId", []))
+
+    print("\nCall capture: what each mode records")
+
+    check(
+      "off records no arguments",
+      CallCapture.arguments(tool: "t", params: params("t", ["a": 1]), mode: .off) == nil)
+    check(
+      "arguments records arguments",
+      CallCapture.arguments(tool: "t", params: params("t", ["a": 1]), mode: .arguments) != nil)
+    check(
+      "arguments records no result",
+      CallCapture.result(["result": ["ok": true]], mode: .arguments) == nil)
+    check(
+      "argumentsAndResults records one",
+      CallCapture.result(["result": ["ok": true]], mode: .argumentsAndResults) != nil)
+    check(
+      "an error frame is kept",
+      CallCapture.result(["error": ["message": "no"]], mode: .argumentsAndResults) != nil)
+    check("an error frame is a failure", CallCapture.isFailure(["error": ["message": "no"]]))
+    check(
+      "an isError result is a failure",
+      CallCapture.isFailure(["result": ["isError": true]]))
+    check("a plain result is not", !CallCapture.isFailure(["result": ["ok": true]]))
+
+    print("\nCall capture: malformed input")
+
+    check(
+      "no params yields nil", CallCapture.arguments(tool: "t", params: nil, mode: .arguments) == nil)
+    check(
+      "no arguments key yields nil",
+      CallCapture.arguments(tool: "t", params: ["name": "t"], mode: .arguments) == nil)
+    check(
+      "empty arguments yield nil",
+      CallCapture.arguments(tool: "t", params: params("t", [:]), mode: .arguments) == nil)
+    check("no frame yields nil", CallCapture.result(nil, mode: .argumentsAndResults) == nil)
+    check(
+      "a frame with neither result nor error yields nil",
+      CallCapture.result(["jsonrpc": "2.0"], mode: .argumentsAndResults) == nil)
+
+    print("\nCall capture: the size cap")
+
+    let long = String(repeating: "a", count: 10_000)
+    let capped = CallCapture.truncate(long, to: 4096)
+    check("truncation bounds the byte count", capped.utf8.count < 4200)
+    check("and says how much went", capped.contains("+5904 bytes"))
+    check("short text is untouched", CallCapture.truncate("hi", to: 4096) == "hi")
+
+    // A cut landing mid-scalar would produce something that is not a String.
+    // é is two UTF-8 bytes, so a cap of 3 must stop after the first one.
+    let multibyte = String(repeating: "é", count: 100)
+    let cut = CallCapture.truncate(multibyte, to: 3)
+    check("a cut lands on a character boundary", cut.hasPrefix("é") && !cut.hasPrefix("éé"))
+    check("multibyte truncation still reports bytes", cut.contains("bytes"))
+
+    let big = CallCapture.arguments(
+      tool: "t", params: params("t", ["body": long]), mode: .arguments)
+    check("a captured argument is capped", (big?.utf8.count ?? 0) < 4200)
+
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 {
       print("\(failures) failed")

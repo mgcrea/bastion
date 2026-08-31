@@ -2,23 +2,29 @@
 import SectionHeader from "./SectionHeader.astro";
 
 /** What crosses the gateway, and is therefore recorded. */
-const SEES = ["profile", "method", "tool name", "duration", "outcome"] as const;
+const SEES = ["profile", "method", "tool name", "arguments", "results", "outcome"] as const;
 
 /**
- * What does not. This list is the honest half of the section and it is longer
- * than it looks: "arguments" and "results" are absent by choice, and the other
- * two are absent because Bastion is not in that path at all.
+ * What does not. This list is the honest half of the section. "credentials" is
+ * absent by choice and enforced in one place; the other two are absent because
+ * Bastion is not in that path at all and no setting can put it there.
+ *
+ * "results" moved out of this list when a profile could opt into them, and
+ * "arguments" when they became the default. Anything added to SEES has to come
+ * out of here in the same commit, or the page is claiming a blindness it no
+ * longer has.
  */
-const BLIND = ["arguments", "results", "egress", "file reads"] as const;
+const BLIND = ["credentials", "egress", "file reads"] as const;
 ---
 
 <section class="border-t border-rule py-22">
   <div class="wrap flex flex-wrap items-start gap-16">
     <SectionHeader eyebrow="The record" heading="A record of requests, not a sandbox.">
       <p class="m-0 text-[16px] leading-[1.6] text-fg/58 text-pretty">
-        Bastion sees the JSON-RPC frames crossing the gateway. It does not see what a server then
-        does over the network or on the filesystem — and the page says so rather than implying
-        otherwise.
+        Bastion sees the JSON-RPC frames crossing the gateway, down to what each tool was called
+        with. Credentials are never recorded and nothing is written to disk. It does not see what a
+        server then does over the network or on the filesystem — and the page says so rather than
+        implying otherwise.
       </p>
     </SectionHeader>
 

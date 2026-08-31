@@ -245,12 +245,15 @@ struct LogPane: View {
     VStack(alignment: .leading, spacing: 6) {
       Divider()
       HStack(alignment: .firstTextBaseline) {
-        // Load-bearing, not decoration. Bastion records the method and the name
-        // of whatever a request reached for and stops there; keeping this
-        // sentence true is a constraint on anything ever added to the feed.
+        // Load-bearing, not decoration. Keeping this sentence true is a
+        // constraint on anything ever added to the feed — including the
+        // payloads, which is why it says where they stop rather than dropping
+        // the claim now that there are some.
         Text(
-          "Bastion records the JSON-RPC frames crossing the gateway — which profile, which tool. "
-            + "It does not see what a server then does over the network or on disk.")
+          "Bastion records the JSON-RPC frames crossing the gateway — which profile, which tool, "
+            + "and what it was called with. Credentials are never recorded, and nothing here is "
+            + "written to disk. It does not see what a server then does over the network or on "
+            + "disk.")
           .font(.caption2)
           .foregroundStyle(.secondary)
         Spacer(minLength: 12)
@@ -268,7 +271,11 @@ struct LogPane: View {
   private static let tailAnchor = "activity-tail"
 
   private func line(_ entry: LogStore.Entry) -> String {
-    "\(Self.clock.string(from: entry.at))  \(entry.origin)  \(entry.level.rawValue)  \(entry.text)"
+    var out =
+      "\(Self.clock.string(from: entry.at))  \(entry.origin)  \(entry.level.rawValue)  \(entry.text)"
+    if let arguments = entry.arguments { out += "\n    args   \(arguments)" }
+    if let result = entry.result { out += "\n    result \(result)" }
+    return out
   }
 
   private static let clock: DateFormatter = {
@@ -280,22 +287,65 @@ struct LogPane: View {
 
 struct FeedRow: View {
   let entry: LogStore.Entry
+  @State private var expanded = false
+
+  /// How much of a payload shows before the row has been opened.
+  private static let preview = 160
 
   var body: some View {
+    VStack(alignment: .leading, spacing: 3) {
+      HStack(alignment: .firstTextBaseline, spacing: 8) {
+        Text(entry.at, format: .dateTime.hour().minute().second())
+          .font(.system(.caption, design: .monospaced))
+          .foregroundStyle(.tertiary)
+        Circle().fill(tint).frame(width: 6, height: 6)
+        Text(entry.origin)
+          .font(.system(.caption, design: .monospaced))
+          .foregroundStyle(.secondary)
+          .frame(width: 130, alignment: .leading)
+        Text(entry.text)
+          .font(.system(.caption, design: entry.level == .call ? .monospaced : .default))
+          .fixedSize(horizontal: false, vertical: true)
+          .frame(maxWidth: .infinity, alignment: .leading)
+        if entry.failed {
+          Image(systemName: "exclamationmark.triangle.fill")
+            .font(.caption2).foregroundStyle(.red)
+        }
+        Spacer(minLength: 0)
+      }
+      // No `fixedSize(horizontal:vertical:)` anywhere below, deliberately —
+      // see the comment on `disclaimer`. A payload is the longest text this
+      // window has ever held and it is exactly the shape that broke the split
+      // view's layout before.
+      if let arguments = entry.arguments {
+        payload("args", arguments, tint: .secondary)
+      }
+      if let result = entry.result {
+        payload("result", result, tint: entry.failed ? .red : .secondary)
+      }
+      if longest > Self.preview {
+        Button(expanded ? "Show less" : "Show all \(longest) characters") { expanded.toggle() }
+          .buttonStyle(.link).font(.caption2)
+          .padding(.leading, 152)
+      }
+    }
+  }
+
+  private var longest: Int {
+    max(entry.arguments?.count ?? 0, entry.result?.count ?? 0)
+  }
+
+  private func payload(_ label: String, _ text: String, tint: Color) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: 8) {
-      Text(entry.at, format: .dateTime.hour().minute().second())
-        .font(.system(.caption, design: .monospaced))
+      Text(label)
+        .font(.system(.caption2, design: .monospaced))
         .foregroundStyle(.tertiary)
-      Circle().fill(tint).frame(width: 6, height: 6)
-      Text(entry.origin)
-        .font(.system(.caption, design: .monospaced))
-        .foregroundStyle(.secondary)
-        .frame(width: 130, alignment: .leading)
-      Text(entry.text)
-        .font(.system(.caption, design: entry.level == .call ? .monospaced : .default))
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(width: 144, alignment: .trailing)
+      Text(expanded ? text : String(text.prefix(Self.preview)))
+        .font(.system(.caption2, design: .monospaced))
+        .foregroundStyle(tint)
+        .textSelection(.enabled)
         .frame(maxWidth: .infinity, alignment: .leading)
-      Spacer(minLength: 0)
     }
   }
 

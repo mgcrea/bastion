@@ -87,11 +87,12 @@ that at this layer — it is what sharing an identity means.
 
 ## What the audit log can and cannot see
 
-Bastion sees the JSON-RPC frames crossing the gateway: which tool, which
-arguments, which profile, how long, what came back. It does **not** see what a
-server then does over the network or on the filesystem. A server that reads a
-file it was never asked about does so out of Bastion's sight. The Activity
-window is a record of requests, not a sandbox.
+Bastion sees the JSON-RPC frames crossing the gateway: which profile, which
+tool, and the arguments it was called with — and what came back, for a profile
+that asks for it. A credential is never recorded, and none of it is written to
+disk. It does **not** see what a server then does over the network or on the
+filesystem. A server that reads a file it was never asked about does so out of
+Bastion's sight. The Activity window is a record of requests, not a sandbox.
 
 ## Two protocol eras
 

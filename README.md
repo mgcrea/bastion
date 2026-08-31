@@ -151,9 +151,23 @@ make builtin        # the write gate, the two self-refusals, and the secrets wal
 
 ## What the audit log sees, and what it does not
 
-Bastion sees the JSON-RPC frames crossing the gateway: which profile, which method, which tool, how
-long, and what came back. It records method names and the name of whatever a request reached for —
-never arguments, never results.
+Bastion sees the JSON-RPC frames crossing the gateway: which profile, which method, which tool, and
+the arguments it was called with. A profile can opt into recording what came back as well; that is
+off by default, because a result is the unbounded half.
+
+**A credential is never recorded.** `set_credential` takes a secret as an argument, so its arguments
+are dropped whatever the setting says, and any value under a key the server's manifest marks secret
+is blanked. That is a rule in one place — `CallCapture` — rather than a habit at three call sites,
+and `make builtin` plants a canary through `set_credential` and asserts it never comes back out.
+
+**Nothing recorded is written to disk.** The log is a bounded ring in memory, cleared when Bastion
+quits. This is not a matter of intent: every ordinary log line is mirrored to stderr, which for an
+app started by LaunchServices outlives the process, so payloads take a separate path that never
+reaches it. `make builtin` asserts that too, against the real bundle.
+
+An agent asking Bastion for recent activity is answered with **its own profile's lines** — which it
+already sent and received, so it learns nothing it did not have. Another profile's lines never carry
+arguments or results.
 
 It does **not** see what a server then does over the network or on the filesystem. A server that
 reads a file it was never asked about does so out of Bastion's sight. This is a record of requests,
@@ -226,14 +240,14 @@ Built and verified:
 | **OAuth 2.1**           | discovery, dynamic registration, PKCE and refresh — one consent, every client       |
 | **Bastion's server**    | Bastion as one of its own servers, so an agent can manage it — off by default       |
 | **Keychain**            | per-profile credentials, per-client tokens                                          |
-| **Activity window**     | what is running, who is attached, and every tool call, live                         |
+| **Activity window**     | what is running, who is attached, and every tool call with its arguments, live      |
 | **`bastion-bridge`**    | stdio hosts reach the gateway over HTTP; starts Bastion if it is not up             |
 | **Migration**           | four `.mcp.json` credential sets moved into the Keychain, configs repointed         |
 | **`make smoke`**        | four concurrent clients, colliding ids, exactly one child, `kill -9` recovery       |
 | **`make audit`**        | the five security rules, against the real bundle                                    |
 | **`make dialect`**      | 24 conformance checks across both eras                                              |
 | **`make builtin`**      | the write gate hides the write tools, and no tool returns a secret                  |
-| **`make unit`**         | the dialect translation and the HTTP parser, malformed input included — 65 checks   |
+| **`make unit`**         | dialect, HTTP parser and call capture, malformed input included — 100 checks        |
 | **`make remote-check`** | where a remote server may live, the SSE collapse, and the OAuth client — 79 checks  |
 
 Bastion is what the 2026-07-28 spec calls a **dual-era server**. A modern client declares its

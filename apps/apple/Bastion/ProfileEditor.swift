@@ -45,6 +45,10 @@ struct ProfileEditor: View {
   /// Secrets the user asked to delete outright, applied on save.
   @State private var cleared: Set<String>
   @State private var allowWrites: Bool
+  /// Empty string means "follow the app-wide default", which is what nil means
+  /// on the profile — `Picker` needs a concrete tag, so the absence is spelled
+  /// rather than optional here.
+  @State private var capture: String
   @State private var error: String?
   /// Authorization state, kept separately from `error` so a failed sign-in does
   /// not look like a failed save.
@@ -61,6 +65,7 @@ struct ProfileEditor: View {
     _secrets = State(initialValue: [:])
     _cleared = State(initialValue: [])
     _allowWrites = State(initialValue: profile?.allowWrites ?? false)
+    _capture = State(initialValue: profile?.captureMode?.rawValue ?? "")
   }
 
   private var isNew: Bool { subject.profile == nil }
@@ -153,6 +158,21 @@ struct ProfileEditor: View {
                 + "URL above must be set by hand and must match the upstream app registration.")
               .font(.caption).foregroundStyle(.secondary)
           }
+        }
+
+        Section {
+          Picker("Record", selection: $capture) {
+            Text("Default (\(CallCapture.globalDefault.label))").tag("")
+            ForEach(CallCapture.Mode.allCases, id: \.self) { mode in
+              Text(mode.label).tag(mode.rawValue)
+            }
+          }
+          Text(
+            "For this profile alone. Another profile of the same server can record more, or "
+              + "nothing. Credentials are never recorded, and nothing is written to disk.")
+            .font(.caption).foregroundStyle(.secondary)
+        } header: {
+          Text("Activity")
         }
 
         if server.hasWritePath {
@@ -313,7 +333,8 @@ struct ProfileEditor: View {
     authorizing = true
     authError = nil
     let profile = Profile(
-      name: name, serverID: server.id, values: [:], allowWrites: allowWrites)
+      name: name, serverID: server.id, values: [:], allowWrites: allowWrites,
+      captureMode: CallCapture.Mode(rawValue: capture))
     Task { @MainActor in
       defer { authorizing = false }
       do {
@@ -327,7 +348,8 @@ struct ProfileEditor: View {
 
   private func signOut() {
     let profile = Profile(
-      name: name, serverID: server.id, values: [:], allowWrites: allowWrites)
+      name: name, serverID: server.id, values: [:], allowWrites: allowWrites,
+      captureMode: CallCapture.Mode(rawValue: capture))
     authorizing = true
     authError = nil
     Task { @MainActor in
@@ -388,7 +410,8 @@ struct ProfileEditor: View {
 
       try ProfileStore.shared.upsert(
         Profile(
-          name: trimmed, serverID: server.id, values: keep, allowWrites: allowWrites))
+          name: trimmed, serverID: server.id, values: keep, allowWrites: allowWrites,
+          captureMode: CallCapture.Mode(rawValue: capture)))
       hostLog(
         "profiles", .info,
         "\(isNew ? "created" : "updated") profile '\(trimmed)/\(server.id)'")
