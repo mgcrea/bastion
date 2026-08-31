@@ -95,8 +95,15 @@ app: sparkle ## Build Bastion.app and the embedded bastion-bridge
 		$(VERSION_ARGS) $(XCARGS) build \
 		| { grep -E 'error:|warning:|BUILD (SUCCEEDED|FAILED)' || true; }
 
-run: app ## Build, then (re)launch the menu bar app
-	@pkill -f 'Bastion.app/Contents/MacOS/Bastion' 2>/dev/null || true
+# Quit BEFORE building, not after. `run: app` built first and killed second,
+# so xcodebuild overwrote the bundle under the still-running instance — and a
+# process whose on-disk code no longer validates cannot be identified by
+# securityd, which answers every Keychain access with errSecCSNoSuchCode
+# (-67065) and suppresses the prompt rather than showing it. The symptom is a
+# credential that reads as unset for no visible reason.
+run: ## Build, then (re)launch the menu bar app
+	@$(MAKE) --no-print-directory stop
+	@$(MAKE) --no-print-directory app
 	@sleep 1 && open "$(APP)"
 	@echo "Bastion running — look for the tray icon in the menu bar."
 
