@@ -390,8 +390,14 @@ enum ClientWiringMerge {
   /// Three properties this has to hold, because the file belongs to someone
   /// else: every unrelated key survives, the previous contents are
   /// recoverable, and a crash mid-write cannot leave a truncated config.
+  ///
+  /// Takes bytes rather than a root object, because the two config formats this
+  /// app writes disagree about everything except this. A JSON client's file is
+  /// serialised from a dictionary; Codex's is spliced from the text already on
+  /// disk. Backup, atomicity and mode are the same question either way, and
+  /// asking it twice is how the second one ends up subtly weaker.
   @discardableResult
-  static func write(_ root: [String: Any], to url: URL, backupSuffix: String) throws -> URL? {
+  static func write(_ data: Data, to url: URL, backupSuffix: String) throws -> URL? {
     let fm = FileManager.default
     var backup: URL?
 
@@ -403,9 +409,6 @@ enum ClientWiringMerge {
       try fm.createDirectory(
         at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
     }
-
-    let data = try JSONSerialization.data(
-      withJSONObject: root, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
 
     // Write beside the target, then swap: a config half-written because the
     // machine slept is worse than one not written at all.
@@ -421,8 +424,19 @@ enum ClientWiringMerge {
       throw error
     }
     // The file now carries a bearer token. It did not necessarily before.
+    // A no-op for Codex, whose `config.toml` and `auth.json` are both already
+    // `-rw-------`; nothing here loosened them.
     try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     return backup
+  }
+
+  /// The JSON half: serialise, then write the bytes.
+  @discardableResult
+  static func write(_ root: [String: Any], to url: URL, backupSuffix: String) throws -> URL? {
+    try write(
+      JSONSerialization.data(
+        withJSONObject: root, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]),
+      to: url, backupSuffix: backupSuffix)
   }
 
   /// The servers a Claude Code **project**-scope entry holds for one folder.
