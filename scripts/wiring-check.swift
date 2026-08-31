@@ -108,6 +108,9 @@ struct WiringCheck {
     nonObjectJSONRefused()
     backupAndNoLitter()
     projectScopeIsIsolated()
+    perEntryStateAgreesWithAudit()
+    foreignEntriesAreEverythingNotOurs()
+    removingTakesExactlyOneKey()
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 { exit(1) }
@@ -117,6 +120,13 @@ struct WiringCheck {
 
   /// Deep structural equality, so "unchanged" means unchanged rather than
   /// "still has a value under that key".
+  /// `target(of:)` flattened, for asking whether two entries reach the same
+  /// place under different names. `ClientWiringMerge` keeps its own private
+  /// copy of this; it is two lines and not worth widening that file's surface.
+  static func endpoint(_ entry: Any?) -> String? {
+    ClientWiringMerge.target(of: entry).map { "\($0.profile)/\($0.server)" }
+  }
+
   static func deepEqual(_ a: Any?, _ b: Any?) -> Bool {
     switch (a, b) {
     case (nil, nil): return true
@@ -140,8 +150,8 @@ struct WiringCheck {
     let originalServers = before[rootKey] as? [String: Any] ?? [:]
     let ours = Set(originalServers.filter { ClientWiringMerge.isOurs($0.value) }.keys)
 
-    let after = ClientWiringMerge.merged(
-      into: before, rootKey: rootKey, entries: entries { httpReach($0) })
+    let written = entries { httpReach($0) }
+    let after = ClientWiringMerge.merged(into: before, rootKey: rootKey, entries: written)
 
     // Every top-level key except the servers object comes back identical.
     var topLevelIntact = true
@@ -159,9 +169,24 @@ struct WiringCheck {
     }
     check("all \(examined) pre-existing `\(rootKey)` entries are unchanged", untouched)
     check("our entries were added", servers.allSatisfy { afterServers["bastion-\($0.id)"] != nil })
+    // What `merged` promises: add the keys that were not there, overwrite the
+    // ones that were, and remove exactly the entries of OURS that the new ones
+    // supersede — the same profile/server under an older key. It does NOT
+    // remove an entry of ours that nothing being written replaces, which is
+    // what the arithmetic here used to assume. On a Claude Desktop config wired
+    // for `prod/appstore-connect` and `prod/unifi-protect`, writing the three
+    // fixture servers supersedes neither, and the old formula read that correct
+    // outcome as three entries vanishing.
+    let writtenKeys = Set(written.keys)
+    let writtenTargets = Set(written.values.compactMap { endpoint($0) })
+    let added = writtenKeys.subtracting(originalServers.keys).count
+    let superseded = originalServers.filter { key, value in
+      !writtenKeys.contains(key) && ours.contains(key)
+        && endpoint(value).map { writtenTargets.contains($0) } == true
+    }.count
     check(
-      "nothing vanished",
-      afterServers.count == originalServers.count + servers.count - ours.count)
+      "nothing vanished; \(superseded) entr\(superseded == 1 ? "y was" : "ies were") superseded",
+      afterServers.count == originalServers.count + added - superseded)
 
     // The nested case, where value semantics bite.
     if let projects = before["projects"] as? [String: Any], let folder = projects.keys.sorted().first {
@@ -176,6 +201,50 @@ struct WiringCheck {
       check("the other \(projects.count - 1) project blocks are unchanged", othersIntact)
       let target = afterProjects[folder] as? [String: Any] ?? [:]
       check("the write landed in the target folder", (target["mcpServers"] as? [String: Any])?["bastion-shopify"] != nil)
+    }
+
+    // The other direction: taking one of THEIR entries out of the real file has
+    // to leave everything else exactly as it was.
+    if let victim = ClientWiringMerge.foreignEntries(in: originalServers).first?.key {
+      let pruned = ClientWiringMerge.removing(key: victim, from: before, rootKey: rootKey)
+      let prunedServers = pruned[rootKey] as? [String: Any] ?? [:]
+      check("removing '\(victim)' drops exactly one entry",
+        prunedServers.count == originalServers.count - 1 && prunedServers[victim] == nil)
+      var siblingsIntact = true
+      for (key, value) in originalServers where key != victim {
+        if !deepEqual(value, prunedServers[key]) { siblingsIntact = false }
+      }
+      check("the other \(originalServers.count - 1) entries survive the removal", siblingsIntact)
+      var topIntact = true
+      for (key, value) in before where key != rootKey {
+        if !deepEqual(value, pruned[key]) { topIntact = false }
+      }
+      check("every other top-level key survives the removal", topIntact)
+    }
+
+    // And the nested one, which is where most un-migrated servers actually live.
+    let projectGroups = ClientWiringMerge.foreignProjectEntries(in: before)
+    if let group = projectGroups.first, let victim = group.entries.first?.key {
+      check("\(projectGroups.count) project folders hold a server Bastion did not write", true)
+      let pruned = ClientWiringMerge.removing(
+        key: victim, inProject: group.folder, from: before)
+      let all = pruned["projects"] as? [String: Any] ?? [:]
+      let originalProjects = before["projects"] as? [String: Any] ?? [:]
+      var othersIntact = true
+      for (key, value) in originalProjects where key != group.folder {
+        if !deepEqual(value, all[key]) { othersIntact = false }
+      }
+      check("the other \(originalProjects.count - 1) project blocks survive a nested removal",
+        othersIntact)
+      let target = all[group.folder] as? [String: Any] ?? [:]
+      check("the nested removal landed",
+        (target["mcpServers"] as? [String: Any])?[victim] == nil)
+      let originalTarget = originalProjects[group.folder] as? [String: Any] ?? [:]
+      var targetKeysIntact = true
+      for (key, value) in originalTarget where key != "mcpServers" {
+        if !deepEqual(value, target[key]) { targetKeysIntact = false }
+      }
+      check("the target folder's other keys survive", targetKeysIntact)
     }
   }
 
@@ -568,5 +637,211 @@ struct WiringCheck {
         let all = fresh["projects"] as? [String: Any] ?? [:]
         return all.count == 4 && (all["/Users/x/new"] as? [String: Any]) != nil
       }())
+  }
+
+  // MARK: - Per-entry status
+
+  /// `audit` is `state` reduced. The pane draws a badge per entry from `state`
+  /// and a sentence in its header from `audit`, so the thing worth proving is
+  /// not either one alone but that they cannot disagree.
+  static func perEntryStateAgreesWithAudit() {
+    print("\nPer-entry state")
+
+    let reach = httpReach("shopify")
+    let mine = entry(reach)
+
+    check(
+      "an absent key is missing",
+      ClientWiringMerge.state(of: [:], key: "bastion-shopify", reach: reach) == .missing)
+    check(
+      "a key holding something that is not an object is missing",
+      ClientWiringMerge.state(
+        of: ["bastion-shopify": "nonsense"], key: "bastion-shopify", reach: reach) == .missing)
+    check(
+      "our entry pointing where it should matches",
+      ClientWiringMerge.state(
+        of: ["bastion-shopify": mine], key: "bastion-shopify", reach: reach) == .matches)
+    check(
+      "our entry on a previous port is stale, and says where it points",
+      ClientWiringMerge.state(
+        of: ["bastion-shopify": entry(httpReach("shopify", port: 8719))],
+        key: "bastion-shopify", reach: reach)
+        == .stale("http://127.0.0.1:8719/s/prod/shopify"))
+    check(
+      "the other transport is stale too, not a match",
+      ClientWiringMerge.state(
+        of: ["bastion-shopify": entry(bridgeReach("shopify"))],
+        key: "bastion-shopify", reach: reach) == .stale(bridge))
+    check(
+      "a bridge entry from a bundle that has moved is stale, not foreign",
+      ClientWiringMerge.state(
+        of: ["bastion-shopify": entry(bridgeReach("shopify", command: "/old" + ClientWiringMerge.bridgeSuffix))],
+        key: "bastion-shopify", reach: bridgeReach("shopify"))
+        == .stale("/old" + ClientWiringMerge.bridgeSuffix))
+    check(
+      "somebody else's server is foreign, and names what is there",
+      ClientWiringMerge.state(
+        of: ["bastion-shopify": ["command": "npx", "args": ["-y", "@shopify/mcp"]]],
+        key: "bastion-shopify", reach: reach) == .foreign("npx"))
+    check(
+      "an entry with neither command nor url is foreign with nothing to name",
+      ClientWiringMerge.state(
+        of: ["bastion-shopify": ["type": "http"]], key: "bastion-shopify", reach: reach)
+        == .foreign(nil))
+
+    // The reduction, over every shape the aggregate distinguishes.
+    let expect = expected { httpReach($0) }
+    func folded(_ servers: [String: Any]) -> ClientWiringMerge.Audit {
+      ClientWiringMerge.audit(
+        states: expect.map {
+          (key: $0.key, label: $0.label,
+           state: ClientWiringMerge.state(of: servers, key: $0.key, reach: $0.reach))
+        })
+    }
+    let cases: [(String, [String: Any])] = [
+      ("empty", [:]),
+      ("fully wired", entries { httpReach($0) }),
+      ("half wired", ["bastion-shopify": mine]),
+      ("one stale", entries { $0 == "stripe" ? httpReach($0, port: 8719) : httpReach($0) }),
+      ("one taken", {
+        var s = entries { httpReach($0) }
+        s["bastion-stripe"] = ["command": "npx"]
+        return s
+      }()),
+    ]
+    for (label, servers) in cases {
+      check(
+        "audit agrees with the folded states: \(label)",
+        ClientWiringMerge.audit(servers: servers, expected: expect) == folded(servers))
+    }
+  }
+
+  // MARK: - What Bastion did not write
+
+  /// The list the client pane shows under "other servers in this file". Getting
+  /// this wrong in the generous direction offers a Remove button for an entry
+  /// Bastion itself wrote; in the stingy direction it hides a server that is
+  /// still going around the gateway.
+  static func foreignEntriesAreEverythingNotOurs() {
+    print("\nForeign entries")
+
+    let servers: [String: Any] = [
+      "bastion-shopify": entry(httpReach("shopify")),
+      "bastion-keycloak": entry(bridgeReach("keycloak")),
+      "moved": entry(bridgeReach("stripe", command: "/old" + ClientWiringMerge.bridgeSuffix)),
+      "theirs": ["command": "npx", "args": ["-y", "@playwright/mcp"]],
+      "remote": ["type": "http", "url": "https://mcp.stripe.com"],
+      "their-local": ["type": "http", "url": "http://127.0.0.1:9000/mcp"],
+      "junk": ["type": "http"],
+    ]
+    let found = ClientWiringMerge.foreignEntries(in: servers)
+
+    check("sorted by key", found.map(\.key) == found.map(\.key).sorted())
+    check(
+      "only what is not ours, including a bridge from a bundle that has moved",
+      found.map(\.key) == ["junk", "remote", "their-local", "theirs"])
+    check(
+      "a command entry names its command",
+      found.first { $0.key == "theirs" }?.identity == "npx")
+    check(
+      "a url entry names its url",
+      found.first { $0.key == "remote" }?.identity == "https://mcp.stripe.com")
+    check(
+      "a loopback url that is not ours is still listed",
+      found.first { $0.key == "their-local" }?.identity == "http://127.0.0.1:9000/mcp")
+    check(
+      "an entry with neither has no identity to name",
+      found.first { $0.key == "junk" }?.identity == nil)
+    check("nothing at all is an empty list", ClientWiringMerge.foreignEntries(in: [:]).isEmpty)
+
+    let root: [String: Any] = [
+      "mcpServers": ["theirs": ["command": "npx"]],
+      "projects": [
+        "/Users/x/a": ["mcpServers": ["theirs": ["command": "npx"]]],
+        "/Users/x/b": ["mcpServers": ["bastion-shopify": entry(httpReach("shopify"))]],
+        "/Users/x/c": ["mcpServers": [:]],
+        "/Users/x/d": ["allowedTools": ["Bash"]],
+      ],
+    ]
+    let groups = ClientWiringMerge.foreignProjectEntries(in: root)
+    check(
+      "only folders holding something not ours are listed",
+      groups.map(\.folder) == ["/Users/x/a"])
+    check("and the entries in them are named", groups.first?.entries.map(\.key) == ["theirs"])
+    check(
+      "a file with no projects key has no project entries",
+      ClientWiringMerge.foreignProjectEntries(in: ["mcpServers": [:]]).isEmpty)
+  }
+
+  // MARK: - Taking one entry out
+
+  /// The destructive half, and the one place the app deletes something it did
+  /// not write. Every check here is a way it could take out more than it was
+  /// asked to.
+  static func removingTakesExactlyOneKey() {
+    print("\nRemoving one entry")
+
+    let root: [String: Any] = [
+      "numStartups": 42,
+      "mcpServers": [
+        "bastion-shopify": entry(httpReach("shopify")),
+        "theirs": ["command": "npx", "args": ["-y", "@playwright/mcp"]],
+        "other": ["command": "uvx", "env": ["A": "b"]],
+      ],
+      "projects": [
+        "/Users/x/a": [
+          "mcpServers": ["theirs": ["command": "npx"], "kept": ["command": "uvx"]],
+          "history": [1, 2, 3],
+        ],
+        "/Users/x/b": ["mcpServers": ["theirs": ["command": "npx"]]],
+      ],
+    ]
+
+    let out = ClientWiringMerge.removing(key: "theirs", from: root, rootKey: "mcpServers")
+    let servers = out["mcpServers"] as? [String: Any] ?? [:]
+    check("the named entry is gone", servers["theirs"] == nil)
+    check("exactly one entry went", servers.count == 2)
+    check(
+      "the siblings are byte-identical",
+      deepEqual(servers["other"], (root["mcpServers"] as? [String: Any])?["other"])
+        && deepEqual(servers["bastion-shopify"], entry(httpReach("shopify"))))
+    check("unrelated top-level keys survive", (out["numStartups"] as? Int) == 42)
+    check("the projects block is untouched", deepEqual(out["projects"], root["projects"]))
+
+    check(
+      "removing one of OURS is refused — that is what unwire is for",
+      deepEqual(
+        ClientWiringMerge.removing(key: "bastion-shopify", from: root, rootKey: "mcpServers"),
+        root))
+    check(
+      "removing a key that is not there changes nothing",
+      deepEqual(ClientWiringMerge.removing(key: "nope", from: root, rootKey: "mcpServers"), root))
+    check(
+      "removing under a root key the file does not have changes nothing",
+      deepEqual(ClientWiringMerge.removing(key: "theirs", from: root, rootKey: "servers"), root))
+    check(
+      "emptying the object leaves it empty rather than absent",
+      {
+        let one: [String: Any] = ["mcpServers": ["theirs": ["command": "npx"]]]
+        let empty = ClientWiringMerge.removing(key: "theirs", from: one, rootKey: "mcpServers")
+        return (empty["mcpServers"] as? [String: Any])?.isEmpty == true
+      }())
+
+    // The nested case, where dictionary value semantics defeat the obvious code.
+    let nested = ClientWiringMerge.removing(key: "theirs", inProject: "/Users/x/a", from: root)
+    let projects = nested["projects"] as? [String: Any] ?? [:]
+    let a = projects["/Users/x/a"] as? [String: Any] ?? [:]
+    let aServers = a["mcpServers"] as? [String: Any] ?? [:]
+    check("the nested removal actually landed", aServers["theirs"] == nil)
+    check("the other server in that folder survives", aServers["kept"] != nil)
+    check("the folder's other keys survive", (a["history"] as? [Int])?.count == 3)
+    check(
+      "the other folder is untouched",
+      deepEqual(projects["/Users/x/b"], (root["projects"] as? [String: Any])?["/Users/x/b"]))
+    check("user scope is untouched by a nested removal",
+      deepEqual(nested["mcpServers"], root["mcpServers"]))
+    check(
+      "a folder the file does not know changes nothing",
+      deepEqual(ClientWiringMerge.removing(key: "theirs", inProject: "/Users/x/zz", from: root), root))
   }
 }

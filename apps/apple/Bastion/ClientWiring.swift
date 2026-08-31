@@ -13,6 +13,37 @@ import Foundation
 /// — and they disagree about whether they can reach a URL at all. Claude
 /// Desktop cannot, so it gets the bridge; everything else gets an HTTP entry
 /// and no child process of its own.
+/// Bumped whenever Bastion writes a client config.
+///
+/// Every reader of a client's status goes to the file on every redraw and caches
+/// nothing, which is right — the file belongs to another application. It leaves
+/// one gap, though: nothing in SwiftUI's dependency graph changes when the file
+/// does, so a view showing that status has no reason to redraw when Bastion
+/// rewrites it. The detail pane got away with it by accident, because wiring
+/// sets its `result` string; the sidebar dot had no such trigger and went on
+/// showing the answer it computed at first render while the pane beside it
+/// showed the new one.
+///
+/// A revision rather than the status itself. What is observable here is "the
+/// file changed" — every reader still goes to the file for what it now says,
+/// which is the property that makes a stale answer impossible rather than
+/// merely unlikely.
+///
+/// It counts Bastion's own writes only. A config rewritten by the client that
+/// owns it does not bump this, and the dot beside that client stays on its last
+/// answer until something else redraws it — the same limit the sidebar has
+/// always had, and the reason this is a revision to bump rather than a status
+/// to store.
+@MainActor
+@Observable
+final class ClientConfigRevision {
+  static let shared = ClientConfigRevision()
+
+  private(set) var value = 0
+
+  func bump() { value += 1 }
+}
+
 @MainActor
 enum ClientWiring {
   enum Transport {
@@ -305,6 +336,7 @@ enum ClientWiring {
       into: root, rootKey: client.rootKey, entries: entries)
     let backup = try ClientWiringMerge.write(
       merged, to: client.configURL, backupSuffix: "bastion-backup")
+    ClientConfigRevision.shared.bump()
     hostLog(
       "wiring", .info,
       "\(client.displayName): wrote \(entries.count) entr\(entries.count == 1 ? "y" : "ies")"
@@ -319,7 +351,37 @@ enum ClientWiring {
     let stripped = ClientWiringMerge.unmerged(from: root, rootKey: client.rootKey)
     let backup = try ClientWiringMerge.write(
       stripped, to: client.configURL, backupSuffix: "bastion-backup")
+    ClientConfigRevision.shared.bump()
     hostLog("wiring", .info, "\(client.displayName): removed Bastion's entries")
+    return backup
+  }
+
+  /// Take out one entry Bastion did not write.
+  ///
+  /// The counterpart to `unwire`, and pointed the other way: that removes every
+  /// entry of ours, this removes exactly one of somebody else's — a server that
+  /// was configured by hand and has since been moved into Bastion. Which is why
+  /// `ClientWiringMerge.removing` refuses a key `isOurs` claims: the two paths
+  /// must not be able to do each other's job by accident.
+  ///
+  /// `folder` names a Claude Code project block. `nil` is the global scope.
+  @discardableResult
+  static func removeEntry(
+    _ key: String,
+    from client: Client,
+    inProject folder: String? = nil
+  ) throws -> URL? {
+    guard FileManager.default.fileExists(atPath: client.configURL.path) else { return nil }
+    let root = try ClientWiringMerge.readJSON(client.configURL)
+    let stripped =
+      folder.map { ClientWiringMerge.removing(key: key, inProject: $0, from: root) }
+      ?? ClientWiringMerge.removing(key: key, from: root, rootKey: client.rootKey)
+    let backup = try ClientWiringMerge.write(
+      stripped, to: client.configURL, backupSuffix: "bastion-backup")
+    ClientConfigRevision.shared.bump()
+    hostLog(
+      "wiring", .info,
+      "\(client.displayName): removed '\(key)'" + (folder.map { " from \($0)" } ?? ""))
     return backup
   }
 

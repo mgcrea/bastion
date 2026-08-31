@@ -379,10 +379,20 @@ private struct ServerBadge: View {
 /// `ClientDetail` does it: the file belongs to another application that may
 /// have rewritten it a second ago, so a remembered status is a claim about a
 /// file this app does not own and did not watch.
+///
+/// "On every redraw" is only worth anything if something makes it redraw. The
+/// profile list does — it is observable, so adding a profile moves this dot —
+/// but the config file does not, and Configure writes the config file. This row
+/// sat on "not configured" while the pane beside it, redrawn by its own result
+/// string, said "configured" about the same file.
 private struct ClientDot: View {
   let client: ClientWiring.Client
 
   var body: some View {
+    // Load-bearing, and not dead code: reading the revision is what subscribes
+    // this row to Bastion's writes. Without it there is nothing observable in
+    // this body that a Configure changes.
+    let _ = ClientConfigRevision.shared.value
     let status = ClientWiring.status(of: client, profiles: ProfileStore.shared.profiles)
     Circle()
       .fill(ClientWiring.tint(status))

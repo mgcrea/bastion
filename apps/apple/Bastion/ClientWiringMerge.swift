@@ -103,6 +103,49 @@ enum ClientWiringMerge {
     return (String(segments[1]), String(segments[2]))
   }
 
+  /// An entry in a client config that this app did not write.
+  ///
+  /// `identity` is `nil` for a shape carrying neither `command` nor `url` —
+  /// something hand-written and malformed, or a key holding a string. Listing it
+  /// anyway is deliberate: it is in the file, it is not ours, and a view that
+  /// silently skipped it would be lying about what the file holds.
+  struct ForeignEntry: Equatable {
+    let key: String
+    let identity: String?
+  }
+
+  /// Everything under a servers object that `isOurs` does not claim.
+  ///
+  /// The counterpart to `collisions`, which only looks at the keys Bastion is
+  /// about to write. This looks at all of them, because the interesting question
+  /// for somebody adopting Bastion is not "what is in my way" but "what is still
+  /// bypassing it".
+  static func foreignEntries(in servers: [String: Any]) -> [ForeignEntry] {
+    servers
+      .compactMap { key, entry in
+        isOurs(entry) ? nil : ForeignEntry(key: key, identity: identity(of: entry))
+      }
+      .sorted { $0.key < $1.key }
+  }
+
+  /// The same question asked of every **project** block.
+  ///
+  /// Claude Code keeps a servers object per folder as well as one global one,
+  /// and on a machine that has been using MCP for a while that is where most of
+  /// the un-migrated servers actually live — ninety-eight folders in the file
+  /// this was written against. Folders with nothing foreign in them are dropped
+  /// rather than listed empty.
+  static func foreignProjectEntries(
+    in root: [String: Any]
+  ) -> [(folder: String, entries: [ForeignEntry])] {
+    guard let projects = root["projects"] as? [String: Any] else { return [] }
+    return projects.keys.sorted().compactMap { folder in
+      guard let servers = projectScopeServers(in: root, folder: folder) else { return nil }
+      let entries = foreignEntries(in: servers)
+      return entries.isEmpty ? nil : (folder, entries)
+    }
+  }
+
   /// Of the keys we are about to write, the ones already taken by an entry this
   /// app did not write.
   ///
@@ -195,6 +238,45 @@ enum ClientWiringMerge {
     return root
   }
 
+  /// Remove one named entry, and nothing else.
+  ///
+  /// Deliberately refuses a key `isOurs` claims. Taking Bastion's own entries
+  /// out is `unmerged`, which knows about the whole set; this is the path for a
+  /// server somebody configured by hand and has since moved into Bastion, and
+  /// the two must not be reachable from each other. A key that is absent, or
+  /// that turns out to be ours because the file changed under the caller, is a
+  /// no-op rather than an error — there is nothing to undo and nothing to say.
+  static func removing(key: String, from root: [String: Any], rootKey: String) -> [String: Any] {
+    var root = root
+    guard var servers = root[rootKey] as? [String: Any] else { return root }
+    guard let entry = servers[key], !isOurs(entry) else { return root }
+    servers.removeValue(forKey: key)
+    // Assigned back even when this empties it: an absent `mcpServers` and an
+    // empty one are different statements, and `projectScopeServers` reads the
+    // difference.
+    root[rootKey] = servers
+    return root
+  }
+
+  /// The same, inside one project block, leaving the other ninety-seven alone.
+  ///
+  /// Written as an explicit read-modify-write for the reason `mergedIntoProject`
+  /// spells out: Swift dictionaries are value types, and the obvious nested
+  /// subscript chain edits copies and changes nothing.
+  static func removing(
+    key: String,
+    inProject folder: String,
+    from root: [String: Any]
+  ) -> [String: Any] {
+    var root = root
+    guard var projects = root["projects"] as? [String: Any],
+      let project = projects[folder] as? [String: Any]
+    else { return root }
+    projects[folder] = removing(key: key, from: project, rootKey: "mcpServers")
+    root["projects"] = projects
+    return root
+  }
+
   // MARK: - Auditing
 
   /// What a status check concludes from a servers object alone.
@@ -217,29 +299,76 @@ enum ClientWiringMerge {
     case collides([String])
   }
 
+  /// What is under **one** key, against what should be.
+  ///
+  /// `Audit` is this reduced over every expected entry, and a pane that shows a
+  /// row per entry needs the un-reduced form: a header reading "points elsewhere
+  /// — http://127.0.0.1:8719/s/prod/shopify" over four identical-looking rows
+  /// says nothing about which of the four it means.
+  ///
+  /// The two failure cases stay apart for the same reason they do in `Audit`.
+  /// `.stale` is an entry of ours that has drifted and the remedy is to write
+  /// over it; `.foreign` is somebody else's server and writing over it is the
+  /// damage.
+  enum EntryState: Equatable {
+    /// No entry under that key — or something there that is not an object at
+    /// all, which nothing downstream could read as a server anyway.
+    case missing
+    /// Ours, pointing where it should.
+    case matches
+    /// Ours, pointing somewhere else: a previous build, a different port, or
+    /// the other transport. Carries where it points now.
+    case stale(String)
+    /// Present and not ours. Carries where it points, or `nil` for a shape with
+    /// neither a `command` nor a `url`.
+    case foreign(String?)
+  }
+
+  static func state(of servers: [String: Any], key: String, reach: Reach) -> EntryState {
+    guard let entry = servers[key] as? [String: Any] else { return .missing }
+    guard isOurs(entry) else { return .foreign(identity(of: entry)) }
+    // `isOurs` has already established there is an identity to read, so the
+    // fallback is unreachable; it is here so this cannot return `.matches` for
+    // an entry it could not actually compare.
+    let here = identity(of: entry) ?? "unknown"
+    return here == reach.identity ? .matches : .stale(here)
+  }
+
   /// `expected` is the server key paired with where it should point and the
   /// human label to name in `.incomplete`, in the order the labels should read.
   static func audit(
     servers: [String: Any],
     expected: [(key: String, reach: Reach, label: String)]
   ) -> Audit {
+    audit(
+      states: expected.map {
+        (key: $0.key, label: $0.label, state: state(of: servers, key: $0.key, reach: $0.reach))
+      })
+  }
+
+  /// The same conclusion from states already computed.
+  ///
+  /// Split out so a view that draws a badge per entry and the sentence in its
+  /// header are two renderings of one computation rather than two
+  /// implementations of one rule — which is how they end up disagreeing about a
+  /// file neither of them owns.
+  static func audit(states: [(key: String, label: String, state: EntryState)]) -> Audit {
     var missing: [String] = []
     var collisions: [String] = []
     var stale: String?
-    for item in expected {
-      guard let entry = servers[item.key] as? [String: Any] else {
+    for item in states {
+      switch item.state {
+      case .missing:
         missing.append(item.label)
-        continue
-      }
       // Present, but not ours. Calling that `.stale` would describe somebody
       // else's server as a drifted copy of one of ours, and the remedy for
       // stale — write over it — is exactly the wrong move here.
-      guard isOurs(entry) else {
+      case .foreign:
         collisions.append(item.key)
-        continue
-      }
-      if stale == nil, identity(of: entry) != item.reach.identity {
-        stale = identity(of: entry) ?? "unknown"
+      case .stale(let where_):
+        if stale == nil { stale = where_ }
+      case .matches:
+        break
       }
     }
     // Outranks everything below: a config that would clobber an entry is worth
@@ -250,7 +379,7 @@ enum ClientWiringMerge {
     // matching entry as enough is what made a newly added server invisible to
     // everyone who had already configured the client — a green check beside a
     // config that would never gain it.
-    if missing.count == expected.count { return .notConfigured }
+    if missing.count == states.count { return .notConfigured }
     return missing.isEmpty ? .configured : .incomplete(missing)
   }
 

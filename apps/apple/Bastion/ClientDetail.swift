@@ -4,64 +4,132 @@ import SwiftUI
 ///
 /// This was a window listing all four clients at once. As a detail pane it can
 /// afford to say the thing the list could only summarise in one sentence:
-/// exactly which entries would be written, under which keys, and pointing
-/// where. The whole feature writes into files somebody else owns — `~/.claude.json`
-/// here holds nine global servers and ninety-eight project blocks — so the
-/// pane's job is as much reassurance as action.
+/// exactly which entries would be written, under which keys, pointing where, and
+/// what is under each of those keys right now. The whole feature writes into
+/// files somebody else owns — `~/.claude.json` here holds nine global servers and
+/// ninety-eight project blocks — so the pane's job is as much reassurance as
+/// action.
+///
+/// It also reports on the part of the file Bastion does **not** write. A config
+/// still holding hand-configured servers is one where those servers carry no
+/// token, no per-profile write gate and no line in the activity log, and this is
+/// the only screen in the app with the file open.
 struct ClientDetail: View {
   let client: ClientWiring.Client
 
   @State private var result: String?
   /// The keys a refused Configure named. Non-empty is the alert being up.
   @State private var collision: [String] = []
+  /// The foreign entry whose removal is waiting to be confirmed.
+  @State private var pending: Removal?
+  /// Narrows the project list. Claude Code has ninety-eight folders in it.
+  @State private var projectFilter = ""
 
   private var profiles: [Profile] { ProfileStore.shared.profiles }
 
-  /// Recomputed on every redraw rather than cached. The file belongs to another
-  /// application that may have rewritten it a second ago, so a remembered
-  /// status is a claim about a file this app does not own and did not watch.
-  private var status: ClientWiring.Status {
-    ClientWiring.status(of: client, profiles: profiles)
+  /// One entry Bastion would write, and what is under its key right now.
+  private struct Row {
+    let profile: Profile
+    let key: String
+    let state: ClientWiringMerge.EntryState
+    let reach: String
   }
 
-  /// Whether the config currently holds anything `isOurs` recognises —
-  /// including entries for a profile that no longer exists, which is exactly
-  /// the case worth being able to clean up.
-  private var hasOurEntries: Bool {
-    guard client.isInstalled,
-      let root = try? ClientWiringMerge.readJSON(client.configURL),
-      let servers = root[client.rootKey] as? [String: Any]
-    else { return false }
-    return servers.values.contains { ClientWiringMerge.isOurs($0) }
+  /// Which entry a Remove button names, and where it lives.
+  private struct Removal {
+    let key: String
+    /// A Claude Code project folder, or `nil` for the global scope.
+    let folder: String?
   }
 
-  /// Of the keys Bastion would write, the ones already taken by an entry it did
-  /// not write, mapped to what is there now.
+  /// Everything this pane knows about the config, from one read of it.
+  private struct Snapshot {
+    var status: ClientWiring.Status
+    var rows: [Row]
+    var others: [ClientWiringMerge.ForeignEntry]
+    var projects: [(folder: String, entries: [ClientWiringMerge.ForeignEntry])]
+    var hasOurEntries: Bool
+  }
+
+  /// Rebuilt on every redraw rather than cached. The file belongs to another
+  /// application that may have rewritten it a second ago, so a remembered status
+  /// is a claim about a file this app does not own and did not watch.
   ///
-  /// Shown before Configure is pressed rather than only in its refusal: the
-  /// pane's job is to say what would happen to this file, and "your own shopify
-  /// server is in the way" is the most important thing it can say.
-  private var foreign: [String: String] {
-    guard client.isInstalled,
-      let root = try? ClientWiringMerge.readJSON(client.configURL),
-      let servers = root[client.rootKey] as? [String: Any]
-    else { return [:] }
-    var out: [String: String] = [:]
-    for key in ClientWiring.keys(for: profiles).values {
-      guard let entry = servers[key], !ClientWiringMerge.isOurs(entry) else { continue }
-      out[key] = ClientWiringMerge.identity(of: entry) ?? "an entry Bastion did not write"
+  /// One read, though. The status, the per-entry states, the foreign entries and
+  /// "is there anything of ours to remove" used to be four independent computed
+  /// properties, each opening a large JSON file on every pass — and each free to
+  /// disagree with the others about what was in it.
+  private func read() -> Snapshot {
+    // As in `ClientDot`, and for the same reason: this subscribes the pane to
+    // Bastion's own writes rather than leaving it to redraw by luck. The result
+    // string happened to do it for Configure; nothing did it for a write made
+    // from anywhere else.
+    _ = ClientConfigRevision.shared.value
+    let profiles = profiles
+    let keys = ClientWiring.keys(for: profiles)
+    let ordered =
+      profiles
+      .compactMap { profile -> (profile: Profile, key: String)? in
+        keys[profile].map { (profile, $0) }
+      }
+      .sorted { $0.key < $1.key }
+
+    // What the rows say when there is no file to compare them against. Not an
+    // empty list: "here is what would be written" is the useful answer for a
+    // client that has never been configured.
+    func unread(_ status: ClientWiring.Status) -> Snapshot {
+      Snapshot(
+        status: status,
+        rows: ordered.map {
+          Row(profile: $0.profile, key: $0.key, state: .missing, reach: reachLine(for: $0.profile))
+        },
+        others: [], projects: [], hasOurEntries: false)
     }
-    return out
+
+    guard client.isInstalled else { return unread(.notInstalled) }
+    guard FileManager.default.fileExists(atPath: client.configURL.path) else {
+      return unread(.audited(.notConfigured))
+    }
+    let root: [String: Any]
+    do {
+      root = try ClientWiringMerge.readJSON(client.configURL)
+    } catch {
+      return unread(.unreadable(error.localizedDescription))
+    }
+
+    let servers = root[client.rootKey] as? [String: Any] ?? [:]
+    let rows = ordered.map { item in
+      Row(
+        profile: item.profile, key: item.key,
+        state: ClientWiringMerge.state(
+          of: servers, key: item.key,
+          reach: ClientWiring.reach(for: item.profile, transport: client.transport)),
+        reach: reachLine(for: item.profile))
+    }
+    return Snapshot(
+      // The same states the rows draw, reduced. The header sentence and the
+      // badges cannot disagree because there is only one computation.
+      status: .audited(
+        ClientWiringMerge.audit(
+          states: rows.map { (key: $0.key, label: $0.profile.serverID, state: $0.state) })),
+      rows: rows,
+      others: ClientWiringMerge.foreignEntries(in: servers),
+      projects: ClientWiringMerge.foreignProjectEntries(in: root),
+      // Including entries for a profile that no longer exists, which is exactly
+      // the case worth being able to clean up.
+      hasOurEntries: servers.values.contains { ClientWiringMerge.isOurs($0) })
   }
 
   var body: some View {
-    let status = status
+    let snapshot = read()
 
     ScrollView {
       VStack(alignment: .leading, spacing: 16) {
-        header(status)
+        header(snapshot)
         fileCard
-        entriesCard
+        entriesCard(snapshot)
+        if !snapshot.others.isEmpty { othersCard(snapshot) }
+        if !snapshot.projects.isEmpty { projectsCard(snapshot) }
         if let result {
           Text(result)
             .font(.caption).foregroundStyle(.secondary)
@@ -70,6 +138,15 @@ struct ClientDetail: View {
         }
       }
       .padding(16)
+    }
+    .alert(
+      removalTitle,
+      isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } })
+    ) {
+      Button("Cancel", role: .cancel) {}
+      Button("Remove", role: .destructive) { if let pending { remove(pending) } }
+    } message: {
+      Text(removalMessage)
     }
     .alert(
       collisionTitle,
@@ -97,22 +174,45 @@ struct ClientDetail: View {
     let names: String = collision.joined(separator: ", ")
     let verb: String = one ? "was" : "were"
     let those: String = one ? "that server" : "those servers"
-    let backup: String = "\(client.configURL.lastPathComponent).bastion-backup"
     return
       "\(names) \(verb) not written by Bastion. Overwriting replaces \(those) with Bastion's own. "
-      + "The previous file is kept as \(backup)."
+      + "The previous file is kept as \(backupName)."
+  }
+
+  // MARK: - The removal
+
+  private var removalTitle: String {
+    "Remove '\(pending?.key ?? "")' from \(client.configURL.lastPathComponent)?"
+  }
+
+  /// Names the one key, where it lives, and what survives. The same care the
+  /// collision alert takes, for the same reason: this writes somebody else's
+  /// file, and this time it takes something out of it.
+  private var removalMessage: String {
+    guard let pending else { return "" }
+    let scope: String =
+      pending.folder.map { "the project block for \(abbreviate($0))" }
+      ?? "the '\(client.rootKey)' key"
+    return
+      "'\(pending.key)' is taken out of \(scope) in \(client.configURL.path). Nothing else in "
+      + "the file changes, and the previous version is kept as \(backupName). Restart "
+      + "\(client.displayName) afterwards."
+  }
+
+  private var backupName: String {
+    "\(client.configURL.lastPathComponent).bastion-backup"
   }
 
   // MARK: - Header
 
-  private func header(_ status: ClientWiring.Status) -> some View {
+  private func header(_ snapshot: Snapshot) -> some View {
     VStack(alignment: .leading, spacing: 10) {
       Text(client.displayName)
         .font(.title2).bold()
 
       HStack(spacing: 8) {
-        Circle().fill(ClientWiring.tint(status)).frame(width: 8, height: 8)
-        Text(status.summary).font(.callout)
+        Circle().fill(ClientWiring.tint(snapshot.status)).frame(width: 8, height: 8)
+        Text(snapshot.status.summary).font(.callout)
         Spacer()
       }
 
@@ -128,11 +228,13 @@ struct ClientDetail: View {
       HStack(spacing: 8) {
         Button("Configure") { wire() }
           .disabled(profiles.isEmpty || !client.isInstalled)
-        // Offered only when there is something of ours to take out. A "Remove"
+        // Named, because it is no longer the only Remove on this screen: every
+        // foreign entry below carries one that takes out exactly that entry.
+        // Offered only when there is something of ours to take out — a "Remove"
         // that rewrites a config to make no change is a write to somebody
         // else's file for nothing.
-        Button("Remove") { unwire() }
-          .disabled(!hasOurEntries)
+        Button("Remove Bastion's entries") { unwire() }
+          .disabled(!snapshot.hasOurEntries)
         Button("Reveal in Finder") { ClientWiring.reveal(client) }
           .disabled(!client.isInstalled)
         Spacer()
@@ -160,7 +262,7 @@ struct ClientDetail: View {
         Text(
           "Bastion writes only the entries below, under the '\(client.rootKey)' key. Everything "
             + "else in the file is left byte-for-byte alone, and the previous version is saved "
-            + "beside it as \(client.configURL.lastPathComponent).bastion-backup first.")
+            + "beside it as \(backupName) first.")
           .font(.caption).foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       }
@@ -169,38 +271,16 @@ struct ClientDetail: View {
 
   // MARK: - What gets written
 
-  private var entriesCard: some View {
-    let keys = ClientWiring.keys(for: profiles)
-    let ordered =
-      profiles
-      .compactMap { profile in keys[profile].map { (profile: profile, key: $0) } }
-      .sorted { $0.key < $1.key }
-    let taken = foreign
-
-    return Card(title: "Entries") {
+  private func entriesCard(_ snapshot: Snapshot) -> some View {
+    Card(title: "Entries") {
       VStack(alignment: .leading, spacing: 10) {
-        if ordered.isEmpty {
+        if snapshot.rows.isEmpty {
           Text("Nothing to write.")
             .font(.callout).foregroundStyle(.secondary)
         } else {
-          ForEach(ordered, id: \.profile) { item in
-            VStack(alignment: .leading, spacing: 2) {
-              Text(item.key)
-                .font(.system(.caption, design: .monospaced)).bold()
-                .foregroundStyle(taken[item.key] == nil ? Color.primary : Color.red)
-                .textSelection(.enabled)
-              Text(reachLine(for: item.profile))
-                .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-              if let existing = taken[item.key] {
-                Text("Already taken by \(existing). Configure will refuse rather than replace it.")
-                  .font(.caption2).foregroundStyle(.red)
-                  .fixedSize(horizontal: false, vertical: true)
-              }
-            }
-            if item.profile != ordered.last?.profile { Divider() }
+          ForEach(snapshot.rows, id: \.profile) { row in
+            entryRow(row)
+            if row.profile != snapshot.rows.last?.profile { Divider() }
           }
 
           Divider()
@@ -217,11 +297,193 @@ struct ClientDetail: View {
     }
   }
 
+  private func entryRow(_ row: Row) -> some View {
+    VStack(alignment: .leading, spacing: 3) {
+      HStack(alignment: .firstTextBaseline, spacing: 8) {
+        Text(row.key)
+          .font(.system(.caption, design: .monospaced)).bold()
+          .textSelection(.enabled)
+        Spacer(minLength: 8)
+        stateBadge(row.state)
+      }
+      Text(row.reach)
+        .font(.system(.caption2, design: .monospaced))
+        .foregroundStyle(.secondary)
+        .textSelection(.enabled)
+        .fixedSize(horizontal: false, vertical: true)
+      // Only the states with something to add. "configured" and "not written"
+      // are fully said by the badge, and a sentence repeating a badge is noise
+      // on a pane that already has a lot to say.
+      switch row.state {
+      case .stale(let where_):
+        Text("Points at \(where_) right now. Configure rewrites it.")
+          .font(.caption2).foregroundStyle(.red)
+          .fixedSize(horizontal: false, vertical: true)
+      case .foreign(let what):
+        Text(
+          "Already taken by \(what ?? "an entry Bastion did not write"). Configure will refuse "
+            + "rather than replace it.")
+          .font(.caption2).foregroundStyle(.red)
+          .fixedSize(horizontal: false, vertical: true)
+      case .matches, .missing:
+        EmptyView()
+      }
+    }
+  }
+
+  /// The per-entry counterpart to the header dot, in the same colours, so a row
+  /// and the sidebar never describe the same file differently.
+  @ViewBuilder
+  private func stateBadge(_ state: ClientWiringMerge.EntryState) -> some View {
+    switch state {
+    case .matches: Badge("configured", tint: .green)
+    case .missing: Badge("not written", tint: .secondary)
+    case .stale: Badge("points elsewhere", tint: .red)
+    case .foreign: Badge("taken", tint: .red)
+    }
+  }
+
   private func reachLine(for profile: Profile) -> String {
     switch ClientWiring.reach(for: profile, transport: client.transport) {
     case .http(let url): url
     case .bridge(let command, let args): ([command] + args).joined(separator: " ")
     }
+  }
+
+  // MARK: - What Bastion did not write
+
+  /// The servers in this file that go around Bastion.
+  ///
+  /// The point of the app, stated against somebody's actual config: these are
+  /// the ones the client starts itself, and everything Bastion offers — one
+  /// token per client, a write gate per profile, one activity log — is exactly
+  /// what they do not have. Removing one is the last step of moving it over, so
+  /// the button is here rather than in a client's own settings screen.
+  private func othersCard(_ snapshot: Snapshot) -> some View {
+    let wanted = Set(ClientWiring.keys(for: profiles).values)
+    let count = snapshot.others.count
+
+    return Card(title: "Other servers in this file (\(count))") {
+      VStack(alignment: .leading, spacing: 10) {
+        Text(
+          "\(client.displayName) starts \(count == 1 ? "this one" : "these") itself. "
+            + "\(count == 1 ? "It carries" : "They carry") no Bastion token and no write gate, "
+            + "and nothing \(count == 1 ? "it does" : "they do") reaches the activity log. "
+            + "Remove one once the same server is running through Bastion.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+
+        ForEach(snapshot.others, id: \.key) { entry in
+          Divider()
+          foreignRow(entry, folder: nil, colliding: wanted.contains(entry.key))
+        }
+      }
+    }
+  }
+
+  /// The same question asked of Claude Code's per-folder blocks.
+  ///
+  /// Its own card rather than more rows in the one above, because these are a
+  /// different scope with a different remedy: a project server is wired for one
+  /// folder and invisible everywhere else, which is exactly why they accumulate.
+  /// Scrolling, and filterable, because there can be a hundred folders.
+  private func projectsCard(_ snapshot: Snapshot) -> some View {
+    let folders = snapshot.projects.count
+    let servers = snapshot.projects.reduce(0) { $0 + $1.entries.count }
+    let shown = filtered(snapshot.projects)
+
+    return Card(
+      title: "Project servers (\(servers) across \(folders) folder\(folders == 1 ? "" : "s"))"
+    ) {
+      VStack(alignment: .leading, spacing: 10) {
+        Text(
+          "\(client.displayName) also keeps servers per project folder. These go around Bastion "
+            + "the same way, and only apply inside the folder they are filed under.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+
+        // Only once there are enough folders for scrolling to be worse than
+        // typing. Below that the field is a control with nothing to do.
+        if folders > 6 {
+          TextField("Filter by folder or server", text: $projectFilter)
+            .textFieldStyle(.roundedBorder)
+            .controlSize(.small)
+        }
+
+        if shown.isEmpty {
+          Text("No folder matches '\(projectFilter)'.")
+            .font(.caption).foregroundStyle(.secondary)
+        } else {
+          // A nested scroller, with a ceiling. Ninety-eight folders inline
+          // would push the rest of the pane — including the result line these
+          // buttons write to — permanently off the bottom of the window.
+          ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+              ForEach(shown, id: \.folder) { group in
+                VStack(alignment: .leading, spacing: 6) {
+                  Text(abbreviate(group.folder))
+                    .font(.caption).bold()
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.head)
+                    .textSelection(.enabled)
+                  ForEach(group.entries, id: \.key) { entry in
+                    foreignRow(entry, folder: group.folder, colliding: false)
+                  }
+                }
+              }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+          }
+          .frame(maxHeight: 240)
+        }
+      }
+    }
+  }
+
+  private func filtered(
+    _ groups: [(folder: String, entries: [ClientWiringMerge.ForeignEntry])]
+  ) -> [(folder: String, entries: [ClientWiringMerge.ForeignEntry])] {
+    let needle = projectFilter.trimmingCharacters(in: .whitespaces)
+    guard !needle.isEmpty else { return groups }
+    return groups.filter { group in
+      group.folder.localizedCaseInsensitiveContains(needle)
+        || group.entries.contains { $0.key.localizedCaseInsensitiveContains(needle) }
+    }
+  }
+
+  private func foreignRow(
+    _ entry: ClientWiringMerge.ForeignEntry,
+    folder: String?,
+    colliding: Bool
+  ) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      VStack(alignment: .leading, spacing: 2) {
+        Text(entry.key)
+          .font(.system(.caption, design: .monospaced)).bold()
+          .textSelection(.enabled)
+        // Truncated in the middle: an `npx` line's useful half is the package
+        // at the end, and a URL's is the host at the start.
+        Text(entry.identity ?? "no command or url in this entry")
+          .font(.system(.caption2, design: .monospaced))
+          .foregroundStyle(.secondary)
+          .lineLimit(2).truncationMode(.middle)
+          .textSelection(.enabled)
+        if colliding {
+          Text("This is the entry standing in the way of Bastion's own '\(entry.key)'.")
+            .font(.caption2).foregroundStyle(.red)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+      Spacer(minLength: 8)
+      Button("Remove…") { pending = Removal(key: entry.key, folder: folder) }
+        .controlSize(.small)
+    }
+  }
+
+  /// `/Users/olivier/Projects/…` as `~/Projects/…`. These paths are long enough
+  /// that the home prefix is the least useful part of every one of them.
+  private func abbreviate(_ path: String) -> String {
+    (path as NSString).abbreviatingWithTildeInPath
   }
 
   // MARK: - Actions
@@ -253,6 +515,21 @@ struct ClientDetail: View {
     } catch {
       result = "Could not write \(client.configURL.path): \(error.localizedDescription)"
     }
+  }
+
+  private func remove(_ removal: Removal) {
+    do {
+      let backup = try ClientWiring.removeEntry(
+        removal.key, from: client, inProject: removal.folder)
+      let scope: String = removal.folder.map { " in \(abbreviate($0))" } ?? ""
+      result =
+        "Removed '\(removal.key)'\(scope) from \(client.configURL.path)."
+        + (backup.map { " Previous version saved as \($0.lastPathComponent)." } ?? "")
+        + " Restart \(client.displayName) to pick it up."
+    } catch {
+      result = "Could not write \(client.configURL.path): \(error.localizedDescription)"
+    }
+    pending = nil
   }
 }
 
