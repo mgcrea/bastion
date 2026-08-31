@@ -151,8 +151,9 @@ enum BuiltinTools {
 
     Declaration(
       "list_clients", title: "List clients",
-      "The MCP clients Bastion can configure — Claude Code, Claude Desktop, VS Code, Cursor — "
-        + "whether each is installed, and whether its config currently points at Bastion."),
+      "The MCP clients Bastion can configure — Claude Code, Claude Desktop, VS Code, Cursor, "
+        + "and ChatGPT & Codex, which share one file — whether each is installed, and whether "
+        + "its config currently points at Bastion."),
 
     Declaration(
       "status", title: "Bastion status",
@@ -551,6 +552,9 @@ enum BuiltinTools {
         "installed": client.isInstalled,
         "status": ClientWiring.status(of: client, profiles: profiles).summary,
         "transport": client.transport == .http ? "http" : "bridge",
+        // So a reader knows what it is about to open before it goes looking for
+        // JSON and finds TOML.
+        "format": client.format == .toml ? "toml" : "json",
       ]
       if let caveat = client.caveat { row["note"] = caveat }
       return row
