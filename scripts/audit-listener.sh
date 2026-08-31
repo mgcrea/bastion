@@ -54,6 +54,27 @@ else
   fail "Gateway.swift does not bind INADDR_LOOPBACK"
 fi
 
+# There are TWO listeners now. The OAuth callback binds a socket of its own --
+# on purpose, because a redirect arrives with no bearer token and routing it
+# through the gateway would mean a carve-out in front of the very check rules 2,
+# 3 and 4 exist to enforce. A second socket is the cheaper answer, but only if it
+# is held to rule 1 as well: an audit that vouches for one listener and ignores
+# the other is worse than no audit, because it reads as if it covered both.
+if grep -qn "INADDR_LOOPBACK" "$ROOT/apps/apple/Bastion/RemoteOAuthCallback.swift"; then
+  pass "the OAuth callback listener binds INADDR_LOOPBACK too"
+else
+  fail "RemoteOAuthCallback does not bind INADDR_LOOPBACK"
+fi
+
+# And that it is the only other one. A third listener added later must show up
+# here as a failure rather than pass unnoticed.
+listeners="$(grep -rlnE "(Darwin\.)?listen\([a-zA-Z]" "$ROOT/apps/apple/Bastion" | wc -l | tr -d ' ')"
+if [ "$listeners" = "2" ]; then
+  pass "exactly two listeners in the app source, both accounted for"
+else
+  fail "$listeners listeners in the app source — this audit knows about two"
+fi
+
 # ── Rule 5, statically. An entitlements file that is empty by construction is a
 # checkable claim; one arrived at by deletion is not.
 if grep -qn "CODE_SIGN_ENTITLEMENTS" "$ROOT/apps/apple/Bastion.xcodeproj/project.pbxproj"; then

@@ -76,6 +76,9 @@ Install from the catalog, or add any other MCP server by npm package name. Code 
 Bastion's own directory and run with the Node runtime in the app — the bundle carries node and npm
 and no servers at all.
 
+The transport, its rules, and everything measured rather than assumed about it are in
+[docs/remote-servers.md](docs/remote-servers.md).
+
 For a remote server there is a second way to authenticate, and it is the one worth having.
 **Bastion runs the OAuth dance once, per profile, and every client shares the result without ever
 seeing a token** — nothing is typed into a config file, and access is revoked from the provider's

@@ -63,6 +63,10 @@ runtime underneath: supervision, identity, and a record of what was called.
 
 ## What a remote server keeps, and what it gives up
 
+The transport itself — where a remote server may live, how OAuth works, and the
+traps that only a live credential exposes — is in
+[remote-servers.md](remote-servers.md).
+
 Bastion's headline claim is one process per server instead of one per editor.
 A remote server has no process, so that claim simply does not apply to it —
 and it is worth saying which of the reasons for a gateway survive:
