@@ -195,7 +195,7 @@
               }
             }
           },
-          "description": "Env vars naming a loopback OAuth callback URL. Bastion allocates one port per profile and builds the URL from `format`, so two profiles cannot race for one socket. Allocated once and kept, because the URL has to match an upstream app registration byte for byte."
+          "description": "Env vars naming a loopback OAuth callback URL. The first profile of a server is left alone so it keeps the default the server documents; a second profile gets an allocated port built from `format`, so two identities cannot race for one socket. Whatever is decided is kept, because the URL has to match an upstream app registration byte for byte."
         },
         "env": {
           "type": "array",

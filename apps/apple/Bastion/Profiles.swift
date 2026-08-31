@@ -325,39 +325,75 @@ nonisolated enum ProfileEnvironment {
 
   // MARK: - Loopback callback ports
 
-  /// The loopback port this profile's server catches its OAuth callback on.
+  /// The loopback port this profile's server catches its OAuth callback on,
+  /// or `nil` to leave the variable alone and let the server use its own.
   ///
-  /// Assigned once and then kept, which is the whole design constraint: Reddit
-  /// and X both compare `redirect_uri` byte for byte against what is registered
-  /// on the app, and only the user can change that registration. A port picked
-  /// fresh on each spawn would be correct exactly once.
+  /// **The first profile of a server gets `nil` on purpose.** Reddit and X both
+  /// compare `redirect_uri` byte for byte against a single URI registered on
+  /// the app, and each server documents a default port that its own setup
+  /// instructions tell people to register. Assigning a port to the only profile
+  /// on the machine would invalidate that registration to solve a collision
+  /// that does not exist yet — which is exactly what it did: a login that had
+  /// worked came back "invalid redirect_uri parameter" because Bastion had
+  /// quietly moved the port out from under a registration nobody had changed.
   ///
-  /// Per profile, for the same reason `stateEnv` is: two profiles on one
-  /// default port are two identities racing for one socket, and the loser is
-  /// whichever logged in second.
+  /// So the rule is first come, first served. One profile keeps the documented
+  /// default and needs no action. A second profile is a second identity, needs
+  /// its own socket, and needs its own upstream app registration anyway —
+  /// Reddit allows one redirect URI per app — so being handed a fresh port
+  /// costs it nothing it was not already going to pay.
   ///
-  /// `nil` rather than a throw or a fallback constant. The caller's response is
-  /// to leave the variable unset, which lets the server use its own documented
-  /// default — a working single-profile login. Inventing a number we could not
-  /// bind would produce the one outcome worth avoiding: a URL shown in the
-  /// editor, registered upstream by hand, that nothing is listening on.
+  /// Whatever is decided is written down and kept, because a port picked fresh
+  /// on each spawn would be correct exactly once.
+  ///
+  /// `nil` is also the failure answer, and deliberately the same answer: an
+  /// invented number we could not bind would produce the one outcome worth
+  /// avoiding, a URL shown in the editor and registered upstream by hand that
+  /// nothing is ever listening on.
   nonisolated static func callbackPort(profile: String, server: String) -> Int? {
     let file = directory(profile: profile, server: server)
       .appendingPathComponent("callback-port", isDirectory: false)
 
-    if let text = try? String(contentsOf: file, encoding: .utf8),
-      let port = Int(text.trimmingCharacters(in: .whitespacesAndNewlines)),
-      (1024...65535).contains(port)
-    {
-      return port
+    if let decided = try? String(contentsOf: file, encoding: .utf8) {
+      let text = decided.trimmingCharacters(in: .whitespacesAndNewlines)
+      if text == defaultMarker { return nil }
+      if let port = Int(text), (1024...65535).contains(port) { return port }
     }
 
-    guard let port = freePort() else { return nil }
+    // Undecided. Claim the server's own default if no other profile has, and
+    // allocate otherwise. Racy in principle — two profiles created in the same
+    // instant could both read "unclaimed" — and not worth a lock: the loser
+    // gets a URL that does not match its registration, which is a sentence the
+    // editor already shows and a value the user can override by typing one.
+    let decision = defaultIsClaimed(server: server) ? freePort().map(String.init) : defaultMarker
+    guard let decision else { return nil }
     try? FileManager.default.createDirectory(
       at: file.deletingLastPathComponent(), withIntermediateDirectories: true,
       attributes: [.posixPermissions: 0o700])
-    try? Data("\(port)\n".utf8).write(to: file, options: .atomic)
-    return port
+    try? Data("\(decision)\n".utf8).write(to: file, options: .atomic)
+    return decision == defaultMarker ? nil : Int(decision)
+  }
+
+  /// Written into `callback-port` for the profile using the server's own
+  /// default. A word rather than the number, because Bastion does not know the
+  /// number — the server does, and writing a guess would turn a value this code
+  /// never has to know into one it can be wrong about.
+  private nonisolated static let defaultMarker = "default"
+
+  /// Whether some profile of this server already holds the documented default.
+  private nonisolated static func defaultIsClaimed(server: String) -> Bool {
+    let root = AppSupport.directory
+      .appendingPathComponent("profiles", isDirectory: true)
+      .appendingPathComponent(server, isDirectory: true)
+    let profiles =
+      (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil))
+      ?? []
+    return profiles.contains { directory in
+      let text = try? String(
+        contentsOf: directory.appendingPathComponent("callback-port", isDirectory: false),
+        encoding: .utf8)
+      return text?.trimmingCharacters(in: .whitespacesAndNewlines) == defaultMarker
+    }
   }
 
   /// One free loopback port, borrowed from the kernel and handed straight back.

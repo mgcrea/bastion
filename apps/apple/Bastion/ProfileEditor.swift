@@ -329,16 +329,16 @@ struct ProfileEditor: View {
   @ViewBuilder private var callbackFooter: some View {
     VStack(alignment: .leading, spacing: 4) {
       Text(
-        "Bastion gives this profile its own callback port, so two profiles of "
-          + "\(server.displayName) are two logins rather than one race. Register the "
-          + "URL below with the upstream app — it is matched byte for byte — or set the "
-          + "variable above to one you have already registered, which wins.")
+        "The first profile keeps \(server.displayName)'s own default callback, so its setup "
+          + "instructions stay correct. A second profile is a second identity and gets its own "
+          + "port, which needs its own upstream app — the URL is matched byte for byte. "
+          + "Setting the variable above overrides whatever is shown.")
         .font(.caption).foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
       ForEach(server.callbackEnv) { callback in
         // Selectable, because the whole point is that it gets pasted
         // into somebody's app registration page.
-        Text(assignedCallback(callback) ?? "\(callback.name): assigned when saved")
+        Text(assignedCallback(callback))
           .font(.system(.caption2, design: .monospaced))
           .textSelection(.enabled)
           .foregroundStyle(.secondary)
@@ -418,11 +418,15 @@ struct ProfileEditor: View {
   /// it into `values` would freeze today's port into the profile, and the
   /// assignment is meant to be Bastion's to keep. A user who wants a specific
   /// URL types it into the variable above, which wins at spawn time.
-  private func assignedCallback(_ callback: BastionServer.CallbackVar) -> String? {
+  private func assignedCallback(_ callback: BastionServer.CallbackVar) -> String {
     let trimmed = name.trimmingCharacters(in: .whitespaces)
-    guard !trimmed.isEmpty,
-      let port = ProfileEnvironment.callbackPort(profile: trimmed, server: server.id)
-    else { return nil }
+    guard !trimmed.isEmpty else { return "\(callback.name): decided when the profile is saved" }
+    // No assignment is the *good* case for a first profile, so it must not read
+    // as something missing. What matters to the user is which URL to register,
+    // and for this profile it is the one the server's own setup text prints.
+    guard let port = ProfileEnvironment.callbackPort(profile: trimmed, server: server.id) else {
+      return "\(callback.name): \(server.displayName)'s own default — register that one"
+    }
     return "\(callback.name)=\(callback.url(port: port))"
   }
 

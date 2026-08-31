@@ -107,10 +107,11 @@ nonisolated struct BastionServer: Identifiable, Hashable {
   /// `mcp-reddit` sharing one token file are two identities sharing one login.
   /// Bastion redirects each of these into the profile's own directory.
   let stateEnv: [String]
-  /// Env vars naming a **loopback OAuth callback URL**. Two profiles collide
-  /// on the default port, so Bastion assigns one per profile and builds the
-  /// URL — and then has to say so, because the upstream app registration has to
-  /// match and only the user can change that.
+  /// Env vars naming a **loopback OAuth callback URL**. Two profiles would
+  /// collide on one default port, so the second one onwards is assigned a port
+  /// of its own — the first keeps the server's documented default, because the
+  /// upstream app registration has to match byte for byte and only the user can
+  /// change that. See `ProfileEnvironment.callbackPort`.
   ///
   /// Deliberately not the servers' own `*_HTTP_PORT` variables: those select a
   /// standalone HTTP transport Bastion never uses. Bastion *is* the HTTP front;
