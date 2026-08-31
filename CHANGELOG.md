@@ -4,8 +4,52 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged `app-v1.0.0`. GitHub release notes are generated from commits;
-this file is the curated summary.
+The signed macOS app is tagged per release, `app-v1.1.0` being the newest. GitHub release notes
+are taken from this file, which is the curated summary.
+
+## [1.1.0] - 2026-08-31
+
+### Added
+
+- **The menu bar icon says whether anything is running.** The curtain wall moves out of the app
+  icon and becomes the menu bar's own state: the wall stands off the fort while at least one
+  server is live, and the bare fort means nothing is. It is the one piece of status worth having
+  without opening anything, and it was previously a sentence you had to open the popover to read.
+
+### Changed
+
+- **The menu bar popover is a panel, not a list of menu items.** It carries the version beside
+  the name, the gateway's state as a glyph rather than a sentence, and a capped list of what is
+  running. A menu answers "what is happening right now" at a glance; it had grown rows that were
+  not a glance.
+
+- **Add Server and Check for Updates left the popover.** Adding a server is an action with a
+  window behind it, so it lives on the main window's own Add button (⌘N). Checking for updates is
+  a thing you do once, so it sits in Settings ▸ Updates beside the standing preference it belongs
+  with. Neither has a row in the menu any more.
+
+### Fixed
+
+- **The licence terms said the audit log records neither arguments nor results.** It records
+  arguments by default, and results for a profile that asks for them. The sentence was inherited
+  from a sibling project where it is true, and it was wrong here in the one document a buyer
+  agrees to at checkout. What replaces it is stronger than a blanket denial: a tool whose
+  argument _is_ the credential has its arguments withheld whatever the setting.
+
+- **A Release build can no longer answer the licence question from a preference.** The screenshot
+  pipeline reads `ScreenshotMode` from `UserDefaults`, which is deliberately not `#if DEBUG` —
+  the store plates are captured from a Release build. The licence check now consults that path
+  only under `#if DEBUG`, so what a shipped binary reports comes from a signature and nothing
+  else. Nothing set the flag, so no build ever granted a licence this way; the guard is there
+  because the line that would change that is one line, in a file nobody reads as
+  security-sensitive.
+
+### Internal
+
+- A tamper-evident hash chain for the audit log (`AuditChain.swift`) is present but not yet
+  wired to anything, and is deliberately not announced above.
+- An App Store screenshot pipeline with fixed, fixture-seeded state, and a golden set to
+  regression-check it against.
 
 ## [1.0.0] - 2026-08-31
 

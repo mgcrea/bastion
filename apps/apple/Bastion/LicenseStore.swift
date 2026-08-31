@@ -19,10 +19,10 @@ nonisolated enum LicenseStore {
   /// What `DemoSeed` wants this Mac to look like. Set before any view is built,
   /// read by everything below.
   ///
-  /// This is not a hole in the licence check. Bastion's source is public and the
-  /// gate is a dozen readable lines in `Gateway`; anyone minded to bypass it
-  /// would edit those rather than hunt for a flag that is false unless
-  /// `appshot capture` set it.
+  /// Debug-only in its effect. `check` and `raw` below consult it under
+  /// `#if DEBUG`, so a Release build cannot report a licence from this flag
+  /// however `ScreenshotMode` was set — and that default is user-writable,
+  /// because the plates are captured from a Release build.
   nonisolated(unsafe) static var demoLicensed = false
 
   /// A key of the right SHAPE and deliberately not of the right signature.
@@ -39,15 +39,32 @@ nonisolated enum LicenseStore {
     // `LicencePane.onAppear` puts this into a 92pt `TextEditor`, in every
     // entitlement state — so without the branch the developer's own 240-character
     // key is photographed at full size on the licence plate.
-    if DemoSeed.isEnabled { return demoLicensed ? demoKey : nil }
+    #if DEBUG
+      if DemoSeed.isEnabled { return demoLicensed ? demoKey : nil }
+    #else
+      if DemoSeed.isEnabled { return nil }
+    #endif
     return UserDefaults.standard.string(forKey: defaultsKey)
   }
 
   static var check: LicenseCheck {
     if DemoSeed.isEnabled {
-      return demoLicensed
-        ? .valid(DemoSeed.license)
-        : .refused("no licence key on this Mac")
+      // `.valid` is reachable only from a Debug build, and the guard is the
+      // point rather than a formality. `DemoSeed.isEnabled` reads a plain
+      // `UserDefaults` bool with no DEBUG guard of its own — deliberately, since
+      // the plates are captured from a Release build — so without this the
+      // shipped binary would answer the licence question from a flag any user
+      // can write rather than from a signature.
+      //
+      // Nothing sets `demoLicensed` today, so this changes no behaviour now.
+      // That is exactly when to put it in: the line that would make it a bypass
+      // is one line, and it would go in a 967-line file nobody reads as
+      // security-sensitive.
+      #if DEBUG
+        return demoLicensed ? .valid(DemoSeed.license) : .refused("no licence key on this Mac")
+      #else
+        return .refused("no licence key on this Mac")
+      #endif
     }
     return LicenseKey.check(raw)
   }
