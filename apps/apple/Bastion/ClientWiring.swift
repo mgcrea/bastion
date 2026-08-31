@@ -400,13 +400,20 @@ enum ClientWiring {
     let duplicates = Dictionary(grouping: keys.values, by: { $0 }).filter { $0.value.count > 1 }
     guard duplicates.isEmpty else { throw WireError.ambiguousKeys(duplicates.keys.sorted()) }
 
+    // One read, whichever format. For TOML the whole document is kept and not
+    // just its servers, because the splice quotes the original text back out of
+    // it; `root` is the synthetic wrapper that lets the merge below be the same
+    // merge every other client gets.
     let exists = FileManager.default.fileExists(atPath: client.configURL.path)
-    let document = client.format == .toml && exists ? try ClientWiringTOML.read(client.configURL)
-      : ClientWiringTOML.empty
-    let root: [String: Any] =
-      client.format == .toml
-      ? [client.rootKey: document.servers]
-      : (exists ? try ClientWiringMerge.readJSON(client.configURL) : [:])
+    var document = ClientWiringTOML.empty
+    var root: [String: Any] = [:]
+    switch client.format {
+    case .toml:
+      if exists { document = try ClientWiringTOML.read(client.configURL) }
+      root = [client.rootKey: document.servers]
+    case .json:
+      if exists { root = try ClientWiringMerge.readJSON(client.configURL) }
+    }
 
     // Before the token, so a refusal does not leave a Keychain item behind for a
     // client that was never configured.
@@ -428,12 +435,15 @@ enum ClientWiring {
 
     let merged = ClientWiringMerge.merged(
       into: root, rootKey: client.rootKey, entries: entries)
-    let backup =
-      client.format == .toml
-      ? try splice(
+    let backup: URL?
+    switch client.format {
+    case .toml:
+      backup = try splice(
         client, document, into: servers(merged, client.rootKey), upserting: entries)
-      : try ClientWiringMerge.write(
+    case .json:
+      backup = try ClientWiringMerge.write(
         merged, to: client.configURL, backupSuffix: "bastion-backup")
+    }
     ClientConfigRevision.shared.bump()
     hostLog(
       "wiring", .info,
@@ -445,19 +455,19 @@ enum ClientWiring {
   @discardableResult
   static func unwire(_ client: Client) throws -> URL? {
     guard FileManager.default.fileExists(atPath: client.configURL.path) else { return nil }
-    if client.format == .toml {
+    let backup: URL?
+    switch client.format {
+    case .toml:
       let document = try ClientWiringTOML.read(client.configURL)
       let stripped = ClientWiringMerge.unmerged(
         from: [client.rootKey: document.servers], rootKey: client.rootKey)
-      let backup = try splice(client, document, into: servers(stripped, client.rootKey))
-      ClientConfigRevision.shared.bump()
-      hostLog("wiring", .info, "\(client.displayName): removed Bastion's entries")
-      return backup
+      backup = try splice(client, document, into: servers(stripped, client.rootKey))
+    case .json:
+      let root = try ClientWiringMerge.readJSON(client.configURL)
+      let stripped = ClientWiringMerge.unmerged(from: root, rootKey: client.rootKey)
+      backup = try ClientWiringMerge.write(
+        stripped, to: client.configURL, backupSuffix: "bastion-backup")
     }
-    let root = try ClientWiringMerge.readJSON(client.configURL)
-    let stripped = ClientWiringMerge.unmerged(from: root, rootKey: client.rootKey)
-    let backup = try ClientWiringMerge.write(
-      stripped, to: client.configURL, backupSuffix: "bastion-backup")
     ClientConfigRevision.shared.bump()
     hostLog("wiring", .info, "\(client.displayName): removed Bastion's entries")
     return backup
@@ -480,15 +490,16 @@ enum ClientWiring {
   ) throws -> URL? {
     guard FileManager.default.fileExists(atPath: client.configURL.path) else { return nil }
     let backup: URL?
-    if client.format == .toml {
-      // Through `removing` rather than around it: its refusal of a key `isOurs`
-      // claims is the policy that keeps this door and `unwire`'s from doing each
-      // other's job, and it must have exactly one implementation.
+    switch client.format {
+    case .toml:
+      // Through `removing` rather than around it. Its refusal of a key `isOurs`
+      // claims is what keeps this door and `unwire`'s from doing each other's
+      // job, and that has to have exactly one implementation.
       let document = try ClientWiringTOML.read(client.configURL)
       let stripped = ClientWiringMerge.removing(
         key: key, from: [client.rootKey: document.servers], rootKey: client.rootKey)
       backup = try splice(client, document, into: servers(stripped, client.rootKey))
-    } else {
+    case .json:
       let root = try ClientWiringMerge.readJSON(client.configURL)
       let stripped =
         folder.map { ClientWiringMerge.removing(key: key, inProject: $0, from: root) }
