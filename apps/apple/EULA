@@ -1,0 +1,271 @@
+Bastion End User License Agreement
+Version 1.0, 2026
+
+Copyright (c) 2026 Olivier Louvignes <olivier@mgcrea.io>
+
+This agreement covers the signed, notarized builds of Bastion distributed by the
+copyright holder — the ones downloaded from bastion.mgcrea.io or from the GitHub
+releases page, and installed from `Bastion.zip`.
+
+It does NOT cover the source code. The source is in the same repository under its
+own terms; see Section 10.
+
+WHAT THIS IS
+
+You are buying a build, not access to the code. The code is readable by anyone,
+and is meant to be read: a program that holds every credential you own should be
+one you can audit. Reading it and compiling it are free. Running any build of it,
+yours or ours, asks for a license key. What that key pays for is the signed and
+notarized artifact, the work of keeping it working across macOS releases, and the
+commitments in Sections 7 through 9.
+
+1. THE LICENSE
+
+On payment, you are granted a perpetual, worldwide, non-exclusive license to
+install and use the covered builds, for any purpose, including commercially.
+
+The key is issued to a person or an organization, not to a machine. There is no
+activation limit and nothing counts your installs. Use it on every Mac you own or
+control. If you bought as an organization, one key covers one named user across
+their machines; a second person needs a second key.
+
+The key is not transferable to someone else, and it is not for publishing. It
+carries the purchaser's email address, and the app displays it.
+
+2. WHAT VERSIONS IT COVERS
+
+A key names a major version and covers every release within it. A key for 1.x
+unlocks 1.0, 1.4, 1.9 and anything else numbered 1 — for as long as you like,
+with no expiry and no renewal.
+
+Version 2.0 is a new purchase. There is no subscription, nothing lapses, and a
+build you are running today does not stop working because a newer major shipped.
+Upgrade pricing for existing licensees, if any, is offered at the time and is not
+promised here.
+
+3. WHAT IS GATED, AND WHAT IS NOT
+
+What is sold is the relay: the supervised, credential-holding, audited path from
+a client to a server you configured. Unlicensed, Bastion refuses to relay, and
+your assistant is told why.
+
+Three things are deliberately outside that gate, and this is the agreement saying
+so rather than leaving them to be discovered:
+
+  (a) Bastion's own MCP server — the one that installs servers, sets credentials
+      and wires clients — keeps answering. It relays nothing, spawns nothing and
+      holds no credential; it is the app's own configuration, and charging for
+      read access to your own setup would be charging for the window. It also
+      means an unlicensed user can have their assistant set Bastion up and reach
+      the licence question at the point they have something to lose by not
+      having one.
+
+  (b) The write gates are a safety feature, not a paid one. A profile with writes
+      off is served the read tools and nothing else, identically, however you
+      obtained the build and whether or not you have paid.
+
+  (c) Nothing is held back from a purchase and no capability is reserved. There
+      is no tier above the one you bought.
+
+4. EVALUATING IT BEFORE YOU BUY
+
+Two questions, and only one of them can honestly be answered after payment.
+
+Whether Bastion is worth the price is a judgment, and Section 6 makes it a safe
+one to get wrong: thirty days, a full refund, no reason required and no form to
+fill in. Whether it works at all — against your clients, your servers and your
+credentials, on the version of macOS you are actually running — is a fact about
+your machine, and you are entitled to that one before paying rather than after.
+
+  (a) The trial settles the second question and nothing else. Press the button in
+      Settings ▸ Licence or in the menu bar and every server relays, at full
+      function, for thirty minutes. Nothing is held back and nothing is crippled:
+      the write gates obey their own switches exactly as they will after you pay,
+      so what you learn in that half hour stays true afterwards.
+
+      It is a verification window, not a usage allowance. It is held in memory
+      and never written to disk, so quitting the app and opening it again starts
+      another one. We have not built the machinery to prevent that and do not
+      intend to. We would rather say so plainly than have you find out and wonder
+      what else went unsaid.
+
+      When the window closes, the supervised servers stop. That includes servers
+      your assistant is already connected to; its next call is refused. Because
+      every request is its own HTTP POST, the gate closes immediately rather than
+      lasting until you next quit your editor.
+
+      If you enter a key while the window is open, nothing stops. The trial has
+      already done its job by then.
+
+  (b) Compile it yourself and read what it does before running it. Section 1(c)
+      of the source license grants the compiling; running the result still asks
+      for a key.
+
+  (c) Buy it and change your mind. Section 6 refunds you in full within 30 days,
+      for any reason or none.
+
+5. VALIDATION IS OFFLINE, AND WHAT THAT COSTS
+
+The app verifies your key locally, using a signature it can check without asking
+anyone. It does not contact a licensing server, and it has no way to: the licence
+check makes no network call, and the app as a whole binds 127.0.0.1 and nothing
+else. That is checked on every build rather than asserted — see
+`scripts/audit-listener.sh` in the repository, which asserts the loopback bind,
+the Origin and Host validation, the per-client bearer token and the absence of
+any secret in a file a client can read. Run it against the copy you downloaded if
+you would rather not take our word.
+
+There is exactly one outbound connection the app makes on its own account, and it
+is the update check in Section 9. It is off until you turn it on, and a Bastion
+nobody has said yes to has never resolved a name.
+
+Two consequences follow, and they are stated here rather than discovered:
+
+  (a) There is no way to deactivate a key remotely. If a key is revoked under
+      Section 6 or Section 12, it stops being accepted by builds released after
+      the revocation. Builds you already have continue to accept it. This is a
+      deliberate trade and the alternative was a program that phones home.
+
+  (b) Nothing about your usage is measured, transmitted or retained. There are no
+      installation counts, no license check-ins, no analytics, and no crash
+      reporting. If you never write to us, we have no way to know you are running
+      it.
+
+6. REFUNDS
+
+Within 30 days of purchase, for any reason or none, ask and the purchase is
+refunded in full. Write to olivier@mgcrea.io from the address the key was issued
+to. The key is revoked on refund, with the effect described in Section 5(a).
+
+This is deliberately generous and deliberately load-bearing. It is the thing that
+makes buying first a reasonable request, so it is not administered grudgingly and
+there is no form to fill in.
+
+If you are a consumer in the European Union you also have a statutory right of
+withdrawal, which the 30-day policy above is intended to exceed rather than
+replace. Because the key is delivered immediately, checkout asks you to consent
+to that immediate delivery and to acknowledge that doing so ends the statutory
+withdrawal right once delivery is complete. The refund policy above applies
+regardless.
+
+7. WHAT THE SOFTWARE DOES WITH YOUR DATA
+
+Bastion is a gateway. It accepts JSON-RPC from clients on your own machine, and
+relays it to servers you configured, holding the credentials those servers need
+in your Keychain. Nothing leaves your Mac by way of Bastion itself.
+
+Three honest limits on that sentence:
+
+  (a) The servers Bastion supervises are other people's programs, and most of
+      them exist to talk to a network service. Bastion starts them, hands them
+      credentials and relays to them; what they then send, and to whom, is
+      between you and them. Bastion does not sandbox them and does not claim to.
+
+  (b) The MCP client you connect — Claude, an editor, whatever it is — is a
+      separate program with its own network behaviour and its own privacy terms.
+      Bastion hands it data. What that program then does is between you and it.
+
+  (c) The audit log records which profile, which method and which tool, with
+      timings. It never records arguments and never records results, which means
+      it is not a transcript and cannot be used as one. It stays on your Mac.
+
+8. WHAT IT ASKS OF YOUR SYSTEM
+
+Bastion ships with no entitlements file at all. Spawning child processes and
+binding loopback need none, and the audit asserts the setting is absent rather
+than merely empty.
+
+What it does ask for is access to your Keychain, where the credentials it holds
+on behalf of servers are stored, and permission to run the child processes it
+supervises. macOS may prompt you for both. You may refuse or withdraw either at
+any time; the app reports what it cannot reach rather than working around the
+refusal.
+
+9. UPDATES
+
+Updates within your major version are free.
+
+Unlike the rest of the app, the update check is a network call, and it is the
+only one. It is off on a fresh install and stays off until you answer the
+question. Turning it on is a standing preference in Settings ▸ General; "Check for
+Updates…" in the menu bar is a single check you asked for and leaves the standing
+preference alone. No identifier is sent with either.
+
+10. THE SOURCE IS SEPARATE
+
+This agreement grants you no rights in the source code, and the source license
+grants you no rights in these builds. The two are independent, and you may hold
+both at once.
+
+You may study, modify and compile the source under its own terms, and reading and
+compiling it cost nothing. Running the result is a separate matter: the license
+check is in the source, so a build you compile yourself asks for a key exactly as
+a build from us does. Section 1(c) of that license grants you the compiling, not
+a keyless run.
+
+Section 2(b) of that license asks you not to circumvent or strip the license
+validation, or to distribute anything designed to do so; that request applies to
+you under this agreement too. We have built no defences against your doing it
+anyway, and we do not intend to — the check is a dozen readable lines and
+obscuring them would only cost the audit the readability it exists for. What
+stands between the two is this sentence, not a technical measure.
+
+11. SUCCESSION
+
+The bundle identifier `io.mgcrea.bastion` is what your Keychain items are scoped
+to and what every client config you have written points at. If it changed hands
+quietly, a new owner would inherit, on an ordinary update and with no prompt, a
+program that already holds your credentials and that your assistant already
+trusts.
+
+So it will not change hands quietly. If this project is sold, transferred or
+abandoned:
+
+  (a) A change of the party controlling the signing identity or the bundle
+      identifier will be announced in the release notes of the first build made
+      under new control, and on bastion.mgcrea.io, before that build ships.
+
+  (b) If the project is abandoned, the source remains under its own license and
+      the last published build remains licensed to you under this agreement.
+      Section 12 does not terminate it.
+
+  (c) A successor is bound by this section as a condition of the transfer.
+
+12. TERMINATION
+
+This license ends if you breach it and do not cure the breach within 30 days of
+becoming aware of it — in practice, if you resell or publish your key. On
+termination the key is revoked, with the effect described in Section 5(a).
+
+Nothing else terminates it. It does not expire, it is not conditional on
+continued payment, and it is not withdrawn because the project stops.
+
+13. NO WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+This does not limit any warranty or remedy that applicable consumer law grants
+you and does not permit us to disclaim — in the European Union, the statutory
+conformity guarantee in particular.
+
+14. LIMITATION OF LIABILITY
+
+To the extent permitted by law, total liability arising out of or in connection
+with the Software is limited to the amount you paid for the license.
+
+Nothing here excludes liability for death or personal injury caused by
+negligence, for fraud, or for anything else that cannot lawfully be excluded.
+
+15. GOVERNING LAW
+
+French law governs this agreement. If you are a consumer, this does not deprive
+you of the protection of the mandatory rules of the country where you live, and
+you may bring proceedings in your own courts.
+
+16. CONTACT
+
+Olivier Louvignes
+olivier@mgcrea.io
+https://bastion.mgcrea.io

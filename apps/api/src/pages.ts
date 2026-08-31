@@ -44,7 +44,8 @@ export const thanksPage = (key: string, email: string): string =>
 <p>Your licence key, also sent to ${escapeHtml(email)}:</p>
 <code>${escapeHtml(key)}</code>
 <p>Open Bastion, choose <strong>Settings ▸ Licence</strong> from the menu bar icon, and paste
-it in. It covers every 1.x release, on every Mac you own, and does not expire.</p>`,
+it in. It covers every 1.x release, on every Mac you own, and does not expire.</p>
+<p>Thirty days, any reason: reply to the email and it is refunded in full.</p>`,
   );
 
 /**

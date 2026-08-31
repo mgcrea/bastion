@@ -11,7 +11,7 @@
       "database_name": "bastion-licenses",
       // From `wrangler d1 create bastion-licenses`. Only the remote binding
       // needs it; `--local` keys on the name, so miniflare ignores this value.
-      "database_id": "PENDING-run-wrangler-d1-create",
+      "database_id": "25d661c7-4963-4cc3-ac0f-8647ae120706",
       "migrations_dir": "./migrations"
     }
   ],

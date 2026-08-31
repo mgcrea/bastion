@@ -18,9 +18,9 @@
 // on a phone; the attachment is what they drop on the Licence pane without
 // selecting 240 characters of base64 by hand.
 //
-// No refund promise in this copy, deliberately. Cupertino's says thirty days
-// because cupertino has that policy; Bastion has no published terms at all yet,
-// and a sentence here would be the first place one was invented.
+// The refund sentence is here because apps/apple/EULA §6 says it. Copy that
+// promises something the terms do not is the expensive kind of wrong, so these
+// two move together or not at all.
 
 export type Sent = { ok: true } | { ok: false; reason: string };
 
@@ -35,6 +35,8 @@ const body = (key: string): string =>
     "",
     "It covers every 1.x release, on every Mac you own or control, and it does not",
     "expire. Keep this message: replying to it is how you get the key re-sent.",
+    "",
+    "Thirty days, for any reason or none: reply and it is refunded in full.",
     "",
     "— Olivier",
   ].join("\n");

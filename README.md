@@ -371,6 +371,20 @@ an install anyway, so dogfooding wants
 
 ## Licence
 
-Not settled. The intent mirrors cupertino — source-available for the app, so a program that holds
-every credential you own can be read and compiled by the people trusting it, with the notarized
-build sold. Nothing here is licensed yet, and that is a gap rather than a position.
+Source-available for the app, so a program that holds every credential you own can be read and
+compiled by the people trusting it; the notarized build is sold.
+
+|                                                   |                                                                                                                   |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| [`apps/apple/`](apps/apple/LICENSE)               | Source-available. Read it, modify it, compile it, run your own build. Binary redistribution is the reserved part. |
+| `apps/api/`, `apps/website/`, `scripts/`, `docs/` | [MIT](LICENSE). The audits in particular are more useful copied than reserved.                                    |
+| The signed build                                  | [EULA](apps/apple/EULA). €14.99, every 1.x release, every Mac you own. Thirty days, full refund.                  |
+
+The check is offline and cannot become anything else: `scripts/audit-listener.sh` asserts on every
+build that the app binds loopback and nothing else, and an activation call would be the second
+exception after `Updates.swift`. What that costs — a refunded key keeps working until the next
+release — is written down in the EULA rather than left to be discovered.
+
+[`docs/licensing.md`](docs/licensing.md) has the reasoning: what is gated and what is deliberately
+not, why there is a trial as well as a refund, and why hardening the check is refused by
+construction.
