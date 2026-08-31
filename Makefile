@@ -475,6 +475,7 @@ unit: ## Assert the translation, the parser, call capture and the audit chain, w
 		apps/apple/Bastion/CallCapture.swift \
 		apps/apple/Bastion/ToolReply.swift \
 		apps/apple/Bastion/AuditChain.swift \
+		apps/apple/Bastion/Log.swift \
 		scripts/unit-check.swift
 	@apps/apple/.build/unit-check
 

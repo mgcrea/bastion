@@ -120,10 +120,14 @@ struct LogPane: View {
   @State private var callsOnly = false
   @State private var following = true
   @State private var exported: String?
+  @State private var query = ""
 
   private var entries: [LogStore.Entry] {
     let all = LogStore.shared.entries
-    return callsOnly ? all.filter { $0.level == .call } : all
+    let byLevel = callsOnly ? all.filter { $0.level == .call } : all
+    let needle = query.trimmingCharacters(in: .whitespaces)
+    guard !needle.isEmpty else { return byLevel }
+    return byLevel.filter { $0.matches(needle) }
   }
 
   var body: some View {
@@ -132,15 +136,45 @@ struct LogPane: View {
     VStack(alignment: .leading, spacing: 0) {
       HStack(spacing: 12) {
         Text("Log").font(.title2).bold()
+
+        // Over the payloads too, not just the tool name — "which call touched
+        // order 992" is the question a log this size is opened for, and the
+        // answer is in the arguments.
+        HStack(spacing: 4) {
+          Image(systemName: "magnifyingglass")
+            .foregroundStyle(.tertiary)
+            .font(.caption)
+          TextField("Search", text: $query)
+            .textFieldStyle(.plain)
+            .frame(minWidth: 90, idealWidth: 150)
+          if !query.isEmpty {
+            Button {
+              query = ""
+            } label: {
+              Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
+            .help("Clear the search")
+          }
+        }
+        .padding(.horizontal, 6).padding(.vertical, 3)
+        .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: 6))
+        .frame(maxWidth: 220)
+
         Spacer()
         Toggle("Tool calls only", isOn: $callsOnly)
           .toggleStyle(.checkbox)
         Spacer()
+        if !query.trimmingCharacters(in: .whitespaces).isEmpty {
+          Text("\(shown.count) of \(LogStore.shared.entries.count)")
+            .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+        }
         Button("Copy") {
           NSPasteboard.general.clearContents()
           NSPasteboard.general.setString(shown.map(line).joined(separator: "\n"), forType: .string)
         }
         .disabled(shown.isEmpty)
+        .help("Copy what is shown — the search and the filter both narrow it.")
         Button("Clear") { LogStore.shared.clear() }
           .disabled(LogStore.shared.entries.isEmpty)
         // The same panel the settings pane opens, not a route to it: a button
@@ -172,7 +206,7 @@ struct LogPane: View {
       ScrollViewReader { proxy in
         List {
           ForEach(shown) { entry in
-            FeedRow(entry: entry)
+            FeedRow(entry: entry, highlight: query.trimmingCharacters(in: .whitespaces))
               .id(entry.id)
               .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
               .listRowSeparator(.hidden)
@@ -202,7 +236,7 @@ struct LogPane: View {
         }
         .overlay(alignment: .center) {
           if shown.isEmpty {
-            Text(LogStore.shared.entries.isEmpty ? "Nothing yet." : "Nothing matches this filter.")
+            Text(emptyReason)
               .foregroundStyle(.secondary)
           }
         }
@@ -291,6 +325,18 @@ struct LogPane: View {
     .background(.bar)
   }
 
+  /// Why the feed is empty, which is three different facts.
+  ///
+  /// "Nothing matches this filter" in front of a log that has never had a line
+  /// in it sends someone looking for a filter to clear.
+  private var emptyReason: String {
+    if LogStore.shared.entries.isEmpty { return "Nothing yet." }
+    if !query.trimmingCharacters(in: .whitespaces).isEmpty {
+      return "Nothing matches \u{201C}\(query)\u{201D}."
+    }
+    return "Nothing matches this filter."
+  }
+
   private static let tailAnchor = "activity-tail"
 
   private func line(_ entry: LogStore.Entry) -> String {
@@ -310,10 +356,19 @@ struct LogPane: View {
 
 struct FeedRow: View {
   let entry: LogStore.Entry
+  /// The active search, so a row can open itself when the reason it matched is
+  /// past the preview. Empty when nothing is being searched for.
+  var highlight: String = ""
   @State private var expanded = false
 
   /// How much of a payload shows before the row has been opened.
-  private static let preview = 160
+  static let preview = 160
+
+  /// Open either because the reader asked, or because the match is out of
+  /// sight and a row listed for no visible reason reads as a bug.
+  private var isOpen: Bool {
+    expanded || entry.matchIsHidden(highlight, preview: Self.preview)
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 3) {
@@ -347,7 +402,7 @@ struct FeedRow: View {
         payload("result", result, tint: entry.failed ? .red : .secondary)
       }
       if longest > Self.preview {
-        Button(expanded ? "Show less" : "Show all \(longest) characters") { expanded.toggle() }
+        Button(isOpen ? "Show less" : "Show all \(longest) characters") { expanded.toggle() }
           .buttonStyle(.link).font(.caption2)
           .padding(.leading, 152)
       }
@@ -364,7 +419,7 @@ struct FeedRow: View {
         .font(.system(.caption2, design: .monospaced))
         .foregroundStyle(.tertiary)
         .frame(width: 144, alignment: .trailing)
-      Text(expanded ? text : String(text.prefix(Self.preview)))
+      Text(isOpen ? text : String(text.prefix(Self.preview)))
         .font(.system(.caption2, design: .monospaced))
         .foregroundStyle(tint)
         .textSelection(.enabled)
