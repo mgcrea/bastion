@@ -127,3 +127,39 @@ describe("charge and dispute", () => {
     expect(charge.safeParse({ amount: 1499 }).success).toBe(false);
   });
 });
+
+describe("the price rides along on the session", () => {
+  // Without this the Worker needs a Stripe API key purely to read back a
+  // reporting field, on the one path where an extra network call is least
+  // welcome. The Payment Link copies its metadata onto every session it creates.
+  it("accepts a session carrying the link's metadata", () => {
+    const parsed = checkoutSession.safeParse({
+      id: "cs_test_1",
+      payment_status: "paid",
+      customer_details: { email: "buyer@example.com" },
+      metadata: { major: "1", rung: "launch", price_id: "price_123" },
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.metadata?.price_id).toBe("price_123");
+  });
+
+  it("accepts a session with no metadata at all", () => {
+    const parsed = checkoutSession.safeParse({
+      id: "cs_test_2",
+      payment_status: "paid",
+      customer_details: { email: "buyer@example.com" },
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.metadata).toBeUndefined();
+  });
+
+  it("refuses metadata that is not a string map, rather than coercing it", () => {
+    const parsed = checkoutSession.safeParse({
+      id: "cs_test_3",
+      payment_status: "paid",
+      customer_details: { email: "buyer@example.com" },
+      metadata: { price_id: { nested: "no" } },
+    });
+    expect(parsed.success).toBe(false);
+  });
+});

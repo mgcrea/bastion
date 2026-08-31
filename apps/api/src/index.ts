@@ -85,7 +85,15 @@ const fulfil = async (object: unknown, env: Env, livemode: boolean): Promise<Res
   if (!row) {
     const major = Number(env.CURRENT_MAJOR) || 1;
     const minted = await mint({ email, major, privateKey: env.LICENSE_SIGNING_KEY });
-    const priceId = await priceIdFor(session.id, env.STRIPE_SECRET_KEY);
+    // The Payment Link copies its metadata onto every session it creates, so the
+    // price arrives inside the webhook that is already signed and already being
+    // parsed. Preferring it removes a network call from the one path that must
+    // not fail, and removes the only reason this Worker needs a Stripe API key
+    // at all. The call survives as a fallback for a session created some other
+    // way — a future Checkout Session integration, or a link made by hand.
+    const priceId =
+      session.metadata?.price_id ||
+      (env.STRIPE_SECRET_KEY ? await priceIdFor(session.id, env.STRIPE_SECRET_KEY) : "");
     await env.DB.prepare(
       `INSERT INTO licenses
          (id, email, major, key, stripe_session_id, payment_intent, price_id, amount_paid,

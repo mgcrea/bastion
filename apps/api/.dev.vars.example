@@ -10,6 +10,9 @@ LICENSE_SIGNING_KEY=
 # Used verbatim, `whsec_` prefix and all, as the HMAC key.
 STRIPE_WEBHOOK_SECRET=
 
-# Only used to read line items back, for the price paid. Fulfilment does not
-# depend on it: a failure there costs a reporting field, never a licence.
+# OPTIONAL, and normally unset. The price paid arrives as `price_id` in the
+# Payment Link's metadata, which Stripe copies onto every session it creates, so
+# the Worker reads it out of the webhook it is already verifying. This key is the
+# fallback for a session created some other way, and fulfilment never depends on
+# it either way.
 STRIPE_SECRET_KEY=

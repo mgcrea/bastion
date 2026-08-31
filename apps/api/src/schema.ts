@@ -39,6 +39,13 @@ export const checkoutSession = z.object({
   currency: z.string().nullish(),
   payment_status: z.string().nullish(),
   customer_details: z.object({ email: z.string().nullish() }).nullish(),
+  /**
+   * Copied onto the session from the Payment Link that created it, which is how
+   * `price_id` arrives without a second API call. Loose on purpose: metadata is
+   * free-form, a link created by hand may carry none, and a missing key is worth
+   * a blank column rather than a refused fulfilment.
+   */
+  metadata: z.record(z.string(), z.string()).nullish(),
 });
 
 /**

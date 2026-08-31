@@ -78,6 +78,11 @@ export const verifySignature = async (
 /**
  * Which price the customer actually paid, for the upgrade maths at 2.0.
  *
+ * The FALLBACK path. A session created by our Payment Link carries `price_id` in
+ * the metadata Stripe copies onto it, and `fulfil` prefers that — no API key, no
+ * second round trip on the one path that must not fail. This covers a session
+ * created some other way, and only when a key happens to be configured.
+ *
  * `checkout.session.completed` does not carry line items, so this is a second
  * call — and it is deliberately incapable of failing the fulfilment it belongs
  * to. A licence that reached a paying customer with an empty `price_id` is a
