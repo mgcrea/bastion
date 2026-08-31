@@ -114,8 +114,23 @@ export const SERVERS: Server[] = [
 ];
 // </generated:servers>
 
+/**
+ * Whether a profile's write toggle means anything for this server.
+ *
+ * Not `writeGate !== null`. A remote server has no environment to put a gate
+ * variable in, so it gates by tool name instead — and the names include
+ * whatever the server annotates as not read-only, which is not known until a
+ * handshake. "Read-only" is therefore not a claim that can be made about a
+ * remote server in advance, and this page was making it about Stripe.
+ *
+ * Mirrors `BastionServer.hasWritePath` in the app. Two copies of one rule, in
+ * two languages, which is the price of the site reading a generated list rather
+ * than asking the app.
+ */
+const hasWritePath = (s: Server) => s.writeGate !== null || s.transport === "remote";
+
 /** Servers with no mutating tool registered at all. */
-export const readOnly = SERVERS.filter((s) => s.writeGate === null);
+export const readOnly = SERVERS.filter((s) => !hasWritePath(s));
 
 /** Servers whose writes are off until a profile turns them on. */
-export const gated = SERVERS.filter((s) => s.writeGate !== null);
+export const gated = SERVERS.filter(hasWritePath);

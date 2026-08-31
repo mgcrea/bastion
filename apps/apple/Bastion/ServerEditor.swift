@@ -186,7 +186,7 @@ struct ServerEditor: View {
         VStack(alignment: .leading, spacing: 3) {
           HStack(spacing: 6) {
             Text(entry.displayName).bold()
-            if entry.writeGate == nil { Badge("read-only", tint: .green) }
+            if !entry.hasWritePath { Badge("read-only", tint: .green) }
             // Said here rather than discovered at install time. Four of the
             // nine are not published, and finding that out from a failed
             // install is finding it out one step too late.

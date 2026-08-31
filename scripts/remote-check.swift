@@ -339,6 +339,100 @@ struct RemoteCheck {
       check("the loopback listener works — \(error.localizedDescription)", false)
     }
 
+    print("\nThe write gate: what a client is allowed to see")
+    // The rule that decides whether `stripe_api_write` reaches a model. It had
+    // no test until a bug in which the gate itself was right and every consumer
+    // of "does this server write" was wrong.
+    func tool(_ name: String, readOnly: Bool? = nil, destructive: Bool? = nil) -> [String: Any] {
+      var out: [String: Any] = ["name": name]
+      var hints: [String: Any] = [:]
+      if let readOnly { hints["readOnlyHint"] = readOnly }
+      if let destructive { hints["destructiveHint"] = destructive }
+      if !hints.isEmpty { out["annotations"] = hints }
+      return out
+    }
+    func names(
+      _ tools: [[String: Any]], declared: [String] = [], annotated: Set<String> = [],
+      allowWrites: Bool
+    ) -> [String] {
+      WriteGate.visibleTools(
+        in: tools, declared: declared, annotated: annotated, allowWrites: allowWrites
+      ).compactMap { $0["name"] as? String }
+    }
+
+    let stripe = [tool("stripe_api_read"), tool("stripe_api_write"), tool("create_refund")]
+    let declared = ["stripe_api_write", "create_refund", "stripe_report"]
+
+    check(
+      "a declared write tool is hidden with writes off",
+      names(stripe, declared: declared, allowWrites: false) == ["stripe_api_read"])
+    check(
+      "and is offered with writes on",
+      names(stripe, declared: declared, allowWrites: true).count == 3)
+    check(
+      "a read tool survives either way",
+      names(stripe, declared: declared, allowWrites: false).contains("stripe_api_read"))
+    check(
+      "a declared name the server does not offer changes nothing",
+      names([tool("stripe_api_read")], declared: declared, allowWrites: false)
+        == ["stripe_api_read"])
+
+    // The half a denylist cannot do on its own: a mutating tool added after
+    // somebody wrote the manifest list.
+    let annotatedNew = [tool("stripe_api_read"), tool("brand_new_writer", readOnly: false)]
+    check(
+      "readOnlyHint:false is gated even though the manifest never named it",
+      names(
+        annotatedNew, declared: declared,
+        annotated: WriteGate.annotatedWriteTools(in: annotatedNew), allowWrites: false)
+        == ["stripe_api_read"])
+    check(
+      "destructiveHint:true is gated the same way",
+      WriteGate.annotatedWriteTools(in: [tool("wipe", destructive: true)]) == ["wipe"])
+    check(
+      "readOnlyHint:true is not gated",
+      WriteGate.annotatedWriteTools(in: [tool("look", readOnly: true)]).isEmpty)
+    check(
+      "a tool with no annotations at all is not gated by annotation",
+      WriteGate.annotatedWriteTools(in: [tool("plain")]).isEmpty)
+
+    print("\nThe write gate: learning, and the frames it must not touch")
+    // Annotations are recorded even from a list served with writes ON, so a
+    // profile that later turns them off gates what it learned.
+    let learnedWithWritesOn = WriteGate.filter(
+      ["result": ["tools": annotatedNew]], method: "tools/list", declared: [], annotated: [],
+      allowWrites: true)
+    check(
+      "annotations are learned from a list served with writes on",
+      learnedWithWritesOn.learned == ["brand_new_writer"])
+    check(
+      "and nothing is hidden from that same answer",
+      ((learnedWithWritesOn.response["result"] as? [String: Any])?["tools"] as? [[String: Any]])?
+        .count == 2)
+    check(
+      "what was learned then gates a later call",
+      WriteGate.isWriteTool(
+        "brand_new_writer", declared: [], annotated: learnedWithWritesOn.learned))
+
+    let call: [String: Any] = ["result": ["content": [["type": "text", "text": "hi"]]]]
+    check(
+      "a tools/call result is passed through untouched",
+      (WriteGate.filter(
+        call, method: "tools/call", declared: declared, annotated: [], allowWrites: false
+      ).response["result"] as? [String: Any])?["content"] != nil)
+    check(
+      "an error frame is passed through untouched",
+      WriteGate.filter(
+        ["error": ["code": -32601]], method: "tools/list", declared: declared, annotated: [],
+        allowWrites: false
+      ).response["error"] != nil)
+    check(
+      "a malformed tool with no name is kept rather than silently deleted",
+      names([["description": "nameless"]], declared: declared, allowWrites: false).isEmpty
+        && WriteGate.visibleTools(
+          in: [["description": "nameless"]], declared: declared, annotated: [], allowWrites: false
+        ).count == 1)
+
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 {
       print("\(failures) failed")

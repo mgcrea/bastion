@@ -312,48 +312,34 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
   // MARK: - The write gate
 
   private func isWriteTool(_ name: String) -> Bool {
-    if server.writeTools.contains(name) { return true }
-    return state.withLock { $0.annotatedWriteTools.contains(name) }
+    WriteGate.isWriteTool(
+      name, declared: server.writeTools,
+      annotated: state.withLock { $0.annotatedWriteTools })
   }
 
   /// Hide the gated tools from `tools/list`, and learn the server's own
   /// annotations while passing them.
   ///
-  /// Absent rather than offered-and-refused, which is what `BuiltinTools`
-  /// already does and for the reason stated there: a model never plans around a
-  /// tool it cannot use. The refusal in `handle` stays anyway, because a client
-  /// that cached an older list can still call one.
+  /// The rule itself lives in `WriteGate`, which is a pure function and has a
+  /// test. What stays here is the only part that is not: the per-profile state
+  /// the annotations accumulate into, and the log line.
   private func filteredForWriteGate(_ object: [String: Any], method: String) -> [String: Any] {
-    guard method == "tools/list",
-      var result = object["result"] as? [String: Any],
-      let tools = result["tools"] as? [[String: Any]]
-    else { return object }
+    let declared = server.writeTools
+    let annotated = state.withLock { $0.annotatedWriteTools }
+    let (response, learned) = WriteGate.filter(
+      object, method: method, declared: declared, annotated: annotated,
+      allowWrites: profile.allowWrites)
 
-    // The server's own answer, recorded whether or not writes are on: a
-    // profile with writes on still teaches the next gated profile nothing, but
-    // this instance is per profile and the annotation is per server.
-    let annotated = Set(
-      tools.compactMap { tool -> String? in
-        guard let name = tool["name"] as? String else { return nil }
-        let hints = tool["annotations"] as? [String: Any]
-        let readOnly = hints?["readOnlyHint"] as? Bool
-        let destructive = hints?["destructiveHint"] as? Bool
-        return readOnly == false || destructive == true ? name : nil
-      })
-    state.withLock { $0.annotatedWriteTools.formUnion(annotated) }
-
-    guard !profile.allowWrites else { return object }
-    let kept = tools.filter { tool in
-      guard let name = tool["name"] as? String else { return true }
-      return !(server.writeTools.contains(name) || annotated.contains(name))
+    if !learned.isEmpty {
+      state.withLock { $0.annotatedWriteTools.formUnion(learned) }
     }
-    if kept.count != tools.count {
-      hostLog(key, .info, "write gate hid \(tools.count - kept.count) tool(s) from tools/list")
+    if let before = (object["result"] as? [String: Any])?["tools"] as? [[String: Any]],
+      let after = (response["result"] as? [String: Any])?["tools"] as? [[String: Any]],
+      after.count != before.count
+    {
+      hostLog(key, .info, "write gate hid \(before.count - after.count) tool(s) from tools/list")
     }
-    result["tools"] = kept
-    var out = object
-    out["result"] = result
-    return out
+    return response
   }
 
   // MARK: - HTTP

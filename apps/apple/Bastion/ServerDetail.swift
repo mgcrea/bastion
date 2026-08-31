@@ -94,9 +94,14 @@ struct ServerDetail: View {
           }
         }
         Badge(server.dialect.rawValue, tint: .secondary)
-        if server.writeGate == nil {
+        if !server.hasWritePath {
           // Worth saying plainly. A server with no write path cannot be talked
           // into one by a profile, which makes it the safe thing to try first.
+          //
+          // A remote server never earns this badge, even with an empty
+          // `writeTools`: it gates by name, and the names include whatever the
+          // server annotates once a handshake has happened, so "read-only" is
+          // not something Bastion can promise about one in advance.
           Badge("read-only", tint: .green)
         }
         if let docs = server.docsURL {
@@ -579,6 +584,17 @@ struct ServerDetail: View {
         if let gate = server.writeGate {
           Divider()
           Text("Write gate: \(gate), set from each profile's own toggle.")
+            .font(.caption).foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        } else if server.transport.isRemote {
+          Divider()
+          Text(
+            server.writeTools.isEmpty
+              ? "Write gate: by tool name, set from each profile's own toggle. With writes off "
+                + "Bastion will not forward any tool this server marks as not read-only."
+              : "Write gate: by tool name, set from each profile's own toggle. With writes off "
+                + "Bastion will not forward \(server.writeTools.joined(separator: ", ")) — nor "
+                + "any tool this server marks as not read-only.")
             .font(.caption).foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         }

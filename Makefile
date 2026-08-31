@@ -454,11 +454,12 @@ unit: ## Assert the dialect translation and the HTTP parser, with no app and no 
 		scripts/unit-check.swift
 	@apps/apple/.build/unit-check
 
-remote-check: ## Assert where a remote server may live, the SSE collapse, and the OAuth client
+remote-check: ## Assert where a remote server may live, the SSE collapse, the write gate, and OAuth
 	@mkdir -p apps/apple/.build
 	@swiftc -O -o apps/apple/.build/remote-check \
 		apps/apple/Bastion/RemoteEndpoint.swift \
 		apps/apple/Bastion/ServerSentEvents.swift \
+		apps/apple/Bastion/WriteGate.swift \
 		apps/apple/Bastion/RemoteOAuth.swift \
 		apps/apple/Bastion/RemoteOAuthCallback.swift \
 		apps/apple/Bastion/Log.swift \

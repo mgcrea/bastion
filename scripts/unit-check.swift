@@ -316,6 +316,43 @@ struct UnitCheck {
       Dialect.unsupportedVersionError(requested: "1999-01-01")["code"] as? Int
         == Dialect.unsupportedVersion)
 
+    print("\nWhich servers have a write path")
+    // The rule six places used to spell out for themselves, each from
+    // `writeGate != nil`. A remote server has no gate variable, so all six
+    // decided Stripe was read-only: no toggle in the profile editor, a green
+    // "read-only" badge, and — the one that mattered — the chat pane offering
+    // a model every tool with no confirmation.
+    func server(
+      writeGate: String? = nil, writeTools: [String] = [],
+      transport: BastionServer.Transport = .child(
+        .init(npmName: "@a/b", binName: "b", distribution: .npm, localPath: "b"))
+    ) -> BastionServer {
+      BastionServer(
+        id: "x", displayName: "X", summary: "", transport: transport, docsURL: nil,
+        dialect: .v2025_11_25, writeGate: writeGate, writeTools: writeTools, gateBypass: [],
+        authModes: [], stateEnv: [], callbackEnv: [], env: [])
+    }
+    let remote = BastionServer.Transport.remote(endpoint: URL(string: "https://mcp.example.com")!)
+
+    check("a child with a gate has a write path", server(writeGate: "A_ALLOW_WRITES").hasWritePath)
+    check("a child with no gate does not", !server().hasWritePath)
+    check(
+      "a remote server has one even with no writeTools",
+      server(transport: remote).hasWritePath)
+    check(
+      "a remote server with writeTools has one",
+      server(writeTools: ["w"], transport: remote).hasWritePath)
+    check("Bastion's own server has one", server(writeGate: "BASTION_ALLOW_WRITES").hasWritePath)
+    // The regression, named: this is what the profile editor asks before it
+    // draws the toggle, and what the chat pane asks before it decides a tool
+    // needs no confirmation.
+    check(
+      "the catalog's stripe entry has a write path",
+      ServerCatalog.all.first { $0.id == "stripe" }?.hasWritePath == true)
+    check(
+      "and shopify, which really is read-only, does not",
+      ServerCatalog.all.first { $0.id == "shopify" }?.hasWritePath == false)
+
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 {
       print("\(failures) failed")

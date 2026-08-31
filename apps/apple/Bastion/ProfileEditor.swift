@@ -155,18 +155,43 @@ struct ProfileEditor: View {
           }
         }
 
-        if let gate = server.writeGate {
+        if server.hasWritePath {
           Section {
             Toggle("Allow writes", isOn: $allowWrites)
-            Text(
-              "Sets \(gate) for this profile alone. Another profile of the same server can have it "
-                + "off at the same time.")
-              .font(.caption).foregroundStyle(.secondary)
-            if !server.gateBypass.isEmpty {
+
+            if let gate = server.writeGate {
               Text(
-                "\(server.gateBypass.joined(separator: ", ")) is forced off either way, so this "
-                  + "toggle is the only switch on that wire.")
+                "Sets \(gate) for this profile alone. Another profile of the same server can have "
+                  + "it off at the same time.")
                 .font(.caption).foregroundStyle(.secondary)
+              if !server.gateBypass.isEmpty {
+                Text(
+                  "\(server.gateBypass.joined(separator: ", ")) is forced off either way, so this "
+                    + "toggle is the only switch on that wire.")
+                  .font(.caption).foregroundStyle(.secondary)
+              }
+            } else {
+              // A remote server has no environment, so there is no variable to
+              // name — the gate is a list of tools Bastion will not forward.
+              Text(
+                server.writeTools.isEmpty
+                  ? "For this profile alone. With writes off, Bastion does not forward any tool "
+                    + "this server marks as not read-only."
+                  : "For this profile alone. With writes off, Bastion does not forward "
+                    + "\(server.writeTools.joined(separator: ", ")) — nor any tool this server "
+                    + "marks as not read-only.")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+              // The limit, at the point somebody decides whether to trust the
+              // switch. Said here as well as on the server's own card, because
+              // this is the screen where the decision is actually made.
+              Text(
+                "This filters what Bastion forwards, not what the server accepts. Anything else "
+                  + "holding this credential can call the same API directly, so its own scopes "
+                  + "are the real limit.")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             }
           } header: {
             Text("Writes")

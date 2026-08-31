@@ -64,10 +64,16 @@ enum ToolProbe {
   }
 
   static func eligibility(server: BastionServer, profile: Profile) -> Eligibility {
-    // `writeGate == nil` is the catalog saying this server has no write path at
-    // all — shopify's entry spells it out: "No write gate because there is no
-    // write path: every tool is a read."
-    if server.writeGate == nil {
+    // The catalog saying this server has no write path at all — shopify's entry
+    // spells it out: "No write gate because there is no write path: every tool
+    // is a read."
+    //
+    // `hasWritePath` rather than `writeGate == nil`, and the difference is not
+    // cosmetic here: a remote server carries no gate variable, so the old test
+    // called Stripe read-only and handed the model every tool it could see
+    // WITHOUT confirmation — including, with writes on, `stripe_api_write` and
+    // `create_refund`. A remote server is never read-only by declaration.
+    if !server.hasWritePath {
       return .anyTool(because: "this server has no write path — every tool is a read")
     }
     // `ProfileEnvironment.build` writes the gate unconditionally in both
@@ -81,8 +87,17 @@ enum ToolProbe {
     // destructive tool; there is no such tool in the child's dispatch table for
     // it to name.
     if !profile.allowWrites {
+      // Both transports are safe here, for different mechanisms, so the reason
+      // has to say which one: a child never registers the tool, and a remote
+      // server's write tools are filtered out by `RemoteInstance` before the
+      // list ever reaches this process.
+      if let gate = server.writeGate {
+        return .anyTool(
+          because: "writes are off for this profile, so \(gate) is set to 0")
+      }
       return .anyTool(
-        because: "writes are off for this profile, so \(server.writeGate ?? "the gate") is set to 0")
+        because:
+          "writes are off for this profile, so Bastion is not forwarding this server's write tools")
     }
     return .readOnlyHintsOnly(
       because: "this profile has writes enabled, so only tools marked read-only are offered")

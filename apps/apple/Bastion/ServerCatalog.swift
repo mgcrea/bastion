@@ -144,6 +144,26 @@ nonisolated struct BastionServer: Identifiable, Hashable {
   /// Where a remote server lives, or `nil` for a child.
   var endpoint: URL? { transport.endpoint }
 
+  /// Whether a profile's write toggle means anything for this server.
+  ///
+  /// **Not `writeGate != nil`.** That was the whole answer while every server
+  /// was a child with an environment variable to set, and six places across the
+  /// app came to spell it out independently — the profile editor's toggle, the
+  /// chat pane's confirmation rule, two `read-only` badges, the line explaining
+  /// the gate, and the website's count. A remote server has no variable to
+  /// name, so every one of them quietly decided Stripe could not write.
+  ///
+  /// It gates by tool NAME instead, and the names are not only `writeTools`:
+  /// `RemoteInstance.isWriteTool` ORs that list with whatever the server
+  /// annotates as not read-only, which is not known until a handshake has
+  /// happened. So `!writeTools.isEmpty` would be the same bug one field along —
+  /// a remote entry with an empty list can still gate tools it has not met yet.
+  /// "Read-only" is not a claim that can be made about a remote server in
+  /// advance, and the honest default is that it has a write path.
+  var hasWritePath: Bool {
+    writeGate != nil || transport.isRemote
+  }
+
   /// Which list a definition was born in.
   ///
   /// Only the UI and `ServerStore`'s persistence care. Everything downstream —
