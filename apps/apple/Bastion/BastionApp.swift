@@ -261,16 +261,49 @@ private struct GatewayMenu: View {
       // they only ever selected a sidebar row, and a shortcut for that is one
       // the window never had.
       //
-      // Glass on the left, plain on the right. Nothing here is prominent — a
-      // tinted button is a recommendation, and none of these three is being
-      // recommended over the others.
+      // Glass on the left, plain on the right. Only "Open Bastion" is tinted,
+      // because a tinted button is a recommendation and it is the one being
+      // recommended; the two glyphs beside Quit are routes, not advice.
       HStack {
         Button("Open Bastion") { MainWindowController.show() }
           .buttonStyle(.glass)
           .keyboardShortcut("o")
+
         Spacer()
-        Button("Settings…") { SettingsWindowController.show() }
-          .keyboardShortcut(",")
+
+        // Logs is the one exception to the paragraph above, and it is worth
+        // naming rather than quietly re-adding a row that was deliberately
+        // removed.
+        //
+        // Add Server, MCP Clients and Chat were destinations you go to once you
+        // have decided to do something. The log is the destination this panel
+        // ARGUES FOR: every line above is a count of calls, and "what were
+        // those calls" is the only question the summary raises and cannot
+        // answer. It is also what people arrive with urgently — an agent just
+        // did something and they want to see what.
+        //
+        // Both are icons, and both sit right, which is the rule this row
+        // already had: what opens something sits left, what you GO TO sits
+        // right. A gear and a list are the two glyphs nobody needs taught, and
+        // spelling them cost the width cupertino measured a fourth text button
+        // truncating "Open Cupertino" at — same 320pt panel. The tooltips and
+        // the shortcuts carry the names.
+        Button {
+          MainWindowController.show(.log)
+        } label: {
+          Image(systemName: "list.bullet.rectangle")
+        }
+        .keyboardShortcut("l")
+        .help("Logs (⌘L) — what every client has called, live")
+
+        Button {
+          SettingsWindowController.show()
+        } label: {
+          Image(systemName: "gearshape")
+        }
+        .keyboardShortcut(",")
+        .help("Settings (⌘,)")
+
         Button("Quit") { NSApplication.shared.terminate(nil) }
           .keyboardShortcut("q")
       }
