@@ -9,27 +9,52 @@ import os
 /// answer. This is the same machinery with the lid off: you pick the tools, you
 /// ask the questions, and every call the model makes is shown as it happens.
 ///
-/// **The context window is the design.** `SystemLanguageModel.contextSize` is
-/// 4096 tokens, and that budget covers the instructions, every tool schema, the
-/// whole conversation and the reply. Measured against the real catalogue, one
-/// server does not fit: `appstore-connect` with writes off exposes 47 tools
-/// whose schemas come to roughly 12,300 tokens, three times the entire window;
-/// `x-api` needs 4,900. At about 260 tokens each, a workable set is seven or
-/// eight tools.
+/// **The context window is the design.** `SystemLanguageModel.contextSize`
+/// covers the instructions, every tool schema, the whole conversation and the
+/// reply. It reads 4096 on the model this pane was built against, and measured
+/// against the real catalogue one server does not fit at that size:
+/// `appstore-connect` with writes off exposes 47 tools whose schemas come to
+/// roughly 12,300 tokens, three times the entire window; `x-api` needs 4,900.
+/// At about 260 tokens each, a workable set is seven or eight tools.
 ///
-/// So "load all the tools" is not a thing that can be built — not a hard thing,
-/// an impossible one — and the honest response is to show the arithmetic rather
-/// than hide it. Hence a budget, a per-tool cost, and a list where the tools
-/// that did not fit stay visible with the reason.
+/// So at 4096 "load all the tools" is not a thing that can be built — not a
+/// hard thing, an impossible one — and the honest response is to show the
+/// arithmetic rather than hide it. Hence a budget, a per-tool cost, and a list
+/// where the tools that did not fit stay visible with the reason.
+///
+/// That number is no longer a constant, which is why nothing here hardcodes it
+/// any more: `contextSize` is a property of the model, and a later one reports
+/// a larger window. Everything below scales off whatever it reads, so the pane
+/// widens on its own rather than continuing to quote a figure that has stopped
+/// being true.
 @Observable
 final class ChatSession {
+
+  /// The whole window the model holds, in tokens.
+  ///
+  /// No `#available` guard: `contextSize` is declared `macOS 26.0` and carries
+  /// `@backDeployed(before: macOS 26.4)`, so the compiler emits a fallback that
+  /// runs on 26.0–26.3 and this is safe at the deployment target.
+  ///
+  /// Fixed under a capture, and that is the same argument
+  /// `ToolProbe.availability` makes for short-circuiting there: a screenshot
+  /// whose budget line is read off whichever Mac took it is machine-dependent,
+  /// and this one has to keep working on a runner with no Apple Intelligence at
+  /// all — where there is no model to ask.
+  static var contextSize: Int {
+    DemoSeed.isEnabled ? 4096 : SystemLanguageModel.default.contextSize
+  }
 
   /// Tokens of tool schema the conversation is allowed to carry.
   ///
   /// Deliberately well under `contextSize`: what is left has to hold the
   /// instructions, the questions, the answers, and one tool result, which is
   /// itself capped at 2000 characters by `ToolProbe.invoke`.
-  static let budget = 1800
+  ///
+  /// Written as the ratio the pane shipped with rather than a percentage, so it
+  /// is exactly 1800 at 4096 and scales from there — 3600 at 8192. A rounded
+  /// 44% would come to 1802 and quietly move which tools fit.
+  static var budget: Int { contextSize * 1800 / 4096 }
 
   enum Role: Sendable { case you, model }
 
@@ -273,9 +298,10 @@ final class ChatSession {
       }
     } catch let error as LanguageModelSession.GenerationError {
       // Overflow is the expected end of a long conversation here, not a fault:
-      // 1800 tokens of tools leaves around 2000 for everything else, and one
-      // fat tool result spends a good part of it. Drop the oldest turns and try
-      // once more; a second failure is a real one.
+      // the tool budget is a little under half the window, so what is left for
+      // everything else is about the same again, and one fat tool result spends
+      // a good part of it. Drop the oldest turns and try once more; a second
+      // failure is a real one.
       if case .exceededContextWindowSize = error, !retrying, trimTranscript() {
         await respond(to: prompt, at: index, retrying: true)
         return
@@ -347,7 +373,9 @@ final class ChatSession {
         }
 
         let total = chat.tools.count
-        print("\n\(argument) — \(total) eligible tool(s), budget \(ChatSession.budget) tokens")
+        print(
+          "\n\(argument) — \(total) eligible tool(s), "
+            + "budget \(ChatSession.budget) of \(ChatSession.contextSize) tokens")
         print("  loaded \(chat.selected.count), costing \(chat.used):")
         for tool in chat.tools where chat.selected.contains(tool.name) {
           print("    \(String(format: "%5d", cost(of: tool)))  \(tool.name)")

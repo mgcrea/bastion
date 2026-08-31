@@ -127,9 +127,9 @@ struct ChatPane: View {
         writesBanner(eligibility)
       } else if chat.trims > 0 {
         banner(
-          "The conversation outgrew the model's 4096-token window, so the earliest "
-            + "\(chat.trims == 1 ? "exchange was" : "\(chat.trims) exchanges were") dropped. "
-            + "Anything said there has been forgotten.",
+          "The conversation outgrew the model's \(ChatSession.contextSize)-token window, so the "
+            + "earliest \(chat.trims == 1 ? "exchange was" : "\(chat.trims) exchanges were") "
+            + "dropped. Anything said there has been forgotten.",
           tint: .orange, symbol: "scissors")
       }
 
@@ -180,9 +180,9 @@ struct ChatPane: View {
       ProgressView(value: Double(min(chat.used, ChatSession.budget)), total: Double(ChatSession.budget))
         .tint(chat.isOverBudget ? .orange : .accentColor)
       Text(
-        "The model holds 4096 tokens in total — instructions, tools, the conversation and its "
-          + "reply. Every tool spends part of that budget for the whole conversation, so this is "
-          + "a choice about what to make reachable, not a preference.")
+        "The model holds \(ChatSession.contextSize) tokens in total — instructions, tools, the "
+          + "conversation and its reply. Every tool spends part of that budget for the whole "
+          + "conversation, so this is a choice about what to make reachable, not a preference.")
         .font(.caption).foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
 
