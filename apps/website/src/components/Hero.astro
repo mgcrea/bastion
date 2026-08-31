@@ -7,15 +7,21 @@ import Logo from "./Logo.astro";
  * The before/after that the whole page argues for: four editors each holding
  * their own copy of one server, against one supervised child.
  *
- * The "before" rows are deliberately identical — same binary, same memory, four
- * times — because that repetition IS the problem. Varying them would make the
- * picture prettier and the argument weaker.
+ * The rows are deliberately the same binary four times, because that repetition
+ * IS the problem. Varying the process name would make the picture prettier and
+ * the argument weaker.
+ *
+ * Each row names the host that spawned it, though, and that is not decoration.
+ * Without it four identical lines read as duplicated data — a rendering fault —
+ * rather than as four editors each holding their own copy, which is what the
+ * sentence above the picture actually claims. The hosts are the same four
+ * `Problem.astro` fans in, because they are the same four.
  */
 const BEFORE = [
-  { proc: "mcp-shopify", mem: "58 MB" },
-  { proc: "mcp-shopify", mem: "61 MB" },
-  { proc: "mcp-shopify", mem: "57 MB" },
-  { proc: "mcp-shopify", mem: "60 MB" },
+  { proc: "mcp-shopify", host: "Claude Code", mem: "58 MB" },
+  { proc: "mcp-shopify", host: "Cursor", mem: "61 MB" },
+  { proc: "mcp-shopify", host: "VS Code", mem: "57 MB" },
+  { proc: "mcp-shopify", host: "Terminal", mem: "60 MB" },
 ] as const;
 
 /**
@@ -148,7 +154,9 @@ const CALLS = [
               BEFORE.map((row) => (
                 <div class="flex items-center gap-2.5 border-b border-white/6 px-3.5 py-2.5">
                   <span class="size-[18px] shrink-0 rounded bg-[#43454A]" aria-hidden="true" />
-                  <span class="flex-1 font-mono text-[11.5px]">{row.proc}</span>
+                  <span class="flex-1 truncate font-mono text-[11.5px]">
+                    {row.proc} <span class="text-fg/38">· {row.host}</span>
+                  </span>
                   <span class="shrink-0 font-mono text-[10.5px] text-danger-ink">{row.mem}</span>
                 </div>
               ))
@@ -170,7 +178,9 @@ const CALLS = [
             </div>
             <div class="flex items-center gap-2.5 px-3.5 py-2.5">
               <Logo size={18} />
-              <span class="flex-1 font-mono text-[11.5px]">mcp-shopify</span>
+              <span class="flex-1 truncate font-mono text-[11.5px]">
+                mcp-shopify <span class="text-fg/38">· all four</span>
+              </span>
               <span class="shrink-0 font-mono text-[10.5px] text-ok-ink">61 MB</span>
             </div>
             {/* The empty space is the point, so it is drawn rather than left out. */}

@@ -166,8 +166,11 @@ Three honest limits on that sentence:
       Bastion hands it data. What that program then does is between you and it.
 
   (c) The audit log records which profile, which method and which tool, with
-      timings. It never records arguments and never records results, which means
-      it is not a transcript and cannot be used as one. It stays on your Mac.
+      timings, and the arguments a tool was called with. A profile can be set to
+      record results too, or to record names only. Credentials are never
+      recorded whatever the setting: a tool whose argument IS the secret has its
+      arguments withheld, and that is not a preference. None of it is written to
+      disk, and none of it leaves your Mac.
 
 8. WHAT IT ASKS OF YOUR SYSTEM
 

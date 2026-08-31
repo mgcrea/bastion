@@ -58,9 +58,12 @@ First release.
   through the bundled `bastion-bridge`.
 
 - **Every call is recorded, and the record has limits.** The Activity window shows which
-  profile, which method, which tool and how long. Tool arguments are recorded behind a secrets
-  wall and a size cap. Results are never recorded, so the log is not a transcript and cannot
-  become one. It stays on your Mac.
+  profile, which method, which tool and how long, with the arguments a tool was called with.
+  A profile can record results too, or names only. Capture sits behind a secrets wall and a
+  size cap: a tool whose argument _is_ the credential — `set_credential` — has its arguments
+  withheld whatever the setting, because a naive capture would write a Keychain secret into a
+  feed the built-in server hands back to a model. Nothing is written to disk, and none of it
+  leaves your Mac.
 
 - **Bastion manages itself, through its own MCP server.** An agent can install servers, set
   credentials, wire clients and probe a profile. It ships disabled and takes three deliberate
