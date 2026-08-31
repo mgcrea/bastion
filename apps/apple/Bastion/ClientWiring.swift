@@ -53,6 +53,20 @@ enum ClientWiring {
     case bridge
   }
 
+  /// What the config file is written in.
+  ///
+  /// Only Codex is not JSON, and the difference is confined to opening and
+  /// writing the file: `ClientWiringMerge` decides what an entry MEANS and does
+  /// not read `type`, so a Codex entry flows through `isOurs`, `target`,
+  /// `audit`, `collisions` and `merged` without any of them learning the file
+  /// is TOML.
+  enum Format {
+    case json
+    /// `ClientWiringTOML`, which edits the `[mcp_servers]` blocks in place and
+    /// leaves every other byte of somebody's hand-written file alone.
+    case toml
+  }
+
   struct Client: Identifiable {
     let id: String
     let displayName: String
@@ -63,6 +77,22 @@ enum ClientWiring {
     let transport: Transport
     /// A note about this client worth showing next to it.
     let caveat: String?
+    let format: Format
+
+    /// Spelled out rather than memberwise, so that adding a format did not put
+    /// a line on every client that does not have one.
+    init(
+      id: String, displayName: String, configURL: URL, rootKey: String,
+      transport: Transport, caveat: String?, format: Format = .json
+    ) {
+      self.id = id
+      self.displayName = displayName
+      self.configURL = configURL
+      self.rootKey = rootKey
+      self.transport = transport
+      self.caveat = caveat
+      self.format = format
+    }
 
     /// Whether the client appears to be installed at all.
     ///
@@ -113,6 +143,22 @@ enum ClientWiring {
         rootKey: "mcpServers",
         transport: .http,
         caveat: nil),
+      Client(
+        id: "codex",
+        displayName: "ChatGPT & Codex",
+        // One client, not three. The ChatGPT desktop app, the Codex CLI and the
+        // Codex IDE extension read this same file, so three rows would mean
+        // three tokens overwriting each other's and an unwire of any one of
+        // them taking the other two out.
+        configURL: home.appendingPathComponent(".codex/config.toml"),
+        rootKey: ClientWiringTOML.rootKey,
+        // Codex reaches a URL, so no bridge: it runs on this machine, unlike
+        // Claude Desktop's connectors, which dial from Anthropic's cloud and
+        // cannot see loopback at all.
+        transport: .http,
+        caveat: "the ChatGPT app, the Codex CLI and the IDE extension all read this one file, "
+          + "and the ChatGPT app rewrites it on launch",
+        format: .toml),
     ]
   }
 
@@ -232,11 +278,21 @@ enum ClientWiring {
   /// 5, and it is the reason writing a client config is defensible at all —
   /// what leaks if this file leaks is a revocable loopback token, not a
   /// brokerage refresh token.
-  static func entry(for profile: Profile, transport: Transport, token: String) -> [String: Any] {
-    switch reach(for: profile, transport: transport) {
-    case .http(let url):
+  static func entry(
+    for profile: Profile, transport: Transport, token: String, format: Format = .json
+  ) -> [String: Any] {
+    switch (reach(for: profile, transport: transport), format) {
+    case (.http(let url), .json):
       return ["type": "http", "url": url, "headers": ["Authorization": "Bearer \(token)"]]
-    case .bridge(let command, let args):
+    // Codex has no `type`: a `url` is what makes an entry streamable HTTP. And
+    // `http_headers` takes a literal, which is the fact that makes wiring it
+    // possible at all -- its `bearer_token_env_var` names an environment
+    // variable, and Bastion has no way to put one in Codex's environment.
+    case (.http(let url), .toml):
+      return ["url": url, "http_headers": ["Authorization": "Bearer \(token)"]]
+    // Unused today, and right anyway: Codex spells a stdio server with the same
+    // three keys the JSON clients do.
+    case (.bridge(let command, let args), _):
       return ["command": command, "args": args, "env": ["BASTION_TOKEN": token]]
     }
   }
@@ -252,6 +308,39 @@ enum ClientWiring {
       return existing
     }
     return try GatewayToken.issue(to: client.id)
+  }
+
+  // MARK: - Opening the file
+
+  /// Everything a reader needs from a client's config, whichever format it is
+  /// in. The one place either format is opened.
+  ///
+  /// `servers` is the JSON-flavoured dictionary every function in
+  /// `ClientWiringMerge` already takes, which is the point of the shape: the
+  /// whole policy layer -- `isOurs`, `state`, `audit`, `collisions`,
+  /// `foreignEntries` -- never learns that one of these files is TOML.
+  struct Config {
+    let servers: [String: Any]
+    /// The whole document, for the one question only Claude Code's file can
+    /// answer. `nil` for TOML: Codex's project scope is a `.codex/config.toml`
+    /// inside each repository rather than a block in this file, so there is
+    /// nothing here to list and a project card that rendered would be lying.
+    let root: [String: Any]?
+    /// Names the client has switched off with `enabled = false`. Empty for
+    /// JSON, which has no such key.
+    let disabled: Set<String>
+  }
+
+  static func read(_ client: Client) throws -> Config {
+    switch client.format {
+    case .json:
+      let root = try ClientWiringMerge.readJSON(client.configURL)
+      return Config(
+        servers: root[client.rootKey] as? [String: Any] ?? [:], root: root, disabled: [])
+    case .toml:
+      let document = try ClientWiringTOML.read(client.configURL)
+      return Config(servers: document.servers, root: nil, disabled: document.disabled)
+    }
   }
 
   // MARK: - Status
@@ -281,13 +370,13 @@ enum ClientWiring {
     guard FileManager.default.fileExists(atPath: client.configURL.path) else {
       return .audited(.notConfigured)
     }
-    let root: [String: Any]
+    let config: Config
     do {
-      root = try ClientWiringMerge.readJSON(client.configURL)
+      config = try read(client)
     } catch {
       return .unreadable(error.localizedDescription)
     }
-    let servers = root[client.rootKey] as? [String: Any] ?? [:]
+    let servers = config.servers
     let keys = keys(for: profiles)
     let expected = profiles.compactMap {
       profile -> (key: String, reach: ClientWiringMerge.Reach, label: String)? in
@@ -311,9 +400,13 @@ enum ClientWiring {
     let duplicates = Dictionary(grouping: keys.values, by: { $0 }).filter { $0.value.count > 1 }
     guard duplicates.isEmpty else { throw WireError.ambiguousKeys(duplicates.keys.sorted()) }
 
+    let exists = FileManager.default.fileExists(atPath: client.configURL.path)
+    let document = client.format == .toml && exists ? try ClientWiringTOML.read(client.configURL)
+      : ClientWiringTOML.empty
     let root: [String: Any] =
-      FileManager.default.fileExists(atPath: client.configURL.path)
-      ? try ClientWiringMerge.readJSON(client.configURL) : [:]
+      client.format == .toml
+      ? [client.rootKey: document.servers]
+      : (exists ? try ClientWiringMerge.readJSON(client.configURL) : [:])
 
     // Before the token, so a refusal does not leave a Keychain item behind for a
     // client that was never configured.
@@ -329,13 +422,18 @@ enum ClientWiring {
     var entries: [String: [String: Any]] = [:]
     for profile in profiles {
       guard let key = keys[profile] else { continue }
-      entries[key] = entry(for: profile, transport: client.transport, token: token)
+      entries[key] = entry(
+        for: profile, transport: client.transport, token: token, format: client.format)
     }
 
     let merged = ClientWiringMerge.merged(
       into: root, rootKey: client.rootKey, entries: entries)
-    let backup = try ClientWiringMerge.write(
-      merged, to: client.configURL, backupSuffix: "bastion-backup")
+    let backup =
+      client.format == .toml
+      ? try splice(
+        client, document, into: servers(merged, client.rootKey), upserting: entries)
+      : try ClientWiringMerge.write(
+        merged, to: client.configURL, backupSuffix: "bastion-backup")
     ClientConfigRevision.shared.bump()
     hostLog(
       "wiring", .info,
@@ -347,6 +445,15 @@ enum ClientWiring {
   @discardableResult
   static func unwire(_ client: Client) throws -> URL? {
     guard FileManager.default.fileExists(atPath: client.configURL.path) else { return nil }
+    if client.format == .toml {
+      let document = try ClientWiringTOML.read(client.configURL)
+      let stripped = ClientWiringMerge.unmerged(
+        from: [client.rootKey: document.servers], rootKey: client.rootKey)
+      let backup = try splice(client, document, into: servers(stripped, client.rootKey))
+      ClientConfigRevision.shared.bump()
+      hostLog("wiring", .info, "\(client.displayName): removed Bastion's entries")
+      return backup
+    }
     let root = try ClientWiringMerge.readJSON(client.configURL)
     let stripped = ClientWiringMerge.unmerged(from: root, rootKey: client.rootKey)
     let backup = try ClientWiringMerge.write(
@@ -372,12 +479,23 @@ enum ClientWiring {
     inProject folder: String? = nil
   ) throws -> URL? {
     guard FileManager.default.fileExists(atPath: client.configURL.path) else { return nil }
-    let root = try ClientWiringMerge.readJSON(client.configURL)
-    let stripped =
-      folder.map { ClientWiringMerge.removing(key: key, inProject: $0, from: root) }
-      ?? ClientWiringMerge.removing(key: key, from: root, rootKey: client.rootKey)
-    let backup = try ClientWiringMerge.write(
-      stripped, to: client.configURL, backupSuffix: "bastion-backup")
+    let backup: URL?
+    if client.format == .toml {
+      // Through `removing` rather than around it: its refusal of a key `isOurs`
+      // claims is the policy that keeps this door and `unwire`'s from doing each
+      // other's job, and it must have exactly one implementation.
+      let document = try ClientWiringTOML.read(client.configURL)
+      let stripped = ClientWiringMerge.removing(
+        key: key, from: [client.rootKey: document.servers], rootKey: client.rootKey)
+      backup = try splice(client, document, into: servers(stripped, client.rootKey))
+    } else {
+      let root = try ClientWiringMerge.readJSON(client.configURL)
+      let stripped =
+        folder.map { ClientWiringMerge.removing(key: key, inProject: $0, from: root) }
+        ?? ClientWiringMerge.removing(key: key, from: root, rootKey: client.rootKey)
+      backup = try ClientWiringMerge.write(
+        stripped, to: client.configURL, backupSuffix: "bastion-backup")
+    }
     ClientConfigRevision.shared.bump()
     hostLog(
       "wiring", .info,
@@ -388,5 +506,35 @@ enum ClientWiring {
   /// Reveal the config in Finder, for someone who would rather look than trust.
   static func reveal(_ client: Client) {
     NSWorkspace.shared.activateFileViewerSelecting([client.configURL])
+  }
+
+  // MARK: - Writing TOML
+
+  /// The TOML half of a write, in one rule: run the same dictionary policy the
+  /// JSON clients run, diff what it did, and splice the difference.
+  ///
+  /// Deriving the change from `ClientWiringMerge`'s own output rather than
+  /// re-deciding it here is what keeps this from being a second implementation
+  /// of the rules that matter -- the rename cleanup, the refusal to sweep up
+  /// another profile's entry, the refusal to remove one of ours through the
+  /// wrong door. There is one implementation and this reads its answer.
+  private static func splice(
+    _ client: Client,
+    _ document: ClientWiringTOML.Document,
+    into after: [String: Any],
+    upserting entries: [String: [String: Any]] = [:]
+  ) throws -> URL? {
+    let removed = Set(document.tables.keys).subtracting(after.keys)
+    let text = ClientWiringTOML.spliced(document, removing: removed, upserting: entries)
+    // A write that changes nothing is still a write to somebody else's file:
+    // a new backup, a new mtime, and a client told to restart for no reason.
+    guard text != document.text else { return nil }
+    return try ClientWiringMerge.write(
+      Data(text.utf8), to: client.configURL, backupSuffix: "bastion-backup")
+  }
+
+  /// The servers dictionary a merge produced, unwrapped from its synthetic root.
+  private static func servers(_ root: [String: Any], _ key: String) -> [String: Any] {
+    root[key] as? [String: Any] ?? [:]
   }
 }

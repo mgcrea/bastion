@@ -90,14 +90,14 @@ struct ClientDetail: View {
     guard FileManager.default.fileExists(atPath: client.configURL.path) else {
       return unread(.audited(.notConfigured))
     }
-    let root: [String: Any]
+    let config: ClientWiring.Config
     do {
-      root = try ClientWiringMerge.readJSON(client.configURL)
+      config = try ClientWiring.read(client)
     } catch {
       return unread(.unreadable(error.localizedDescription))
     }
 
-    let servers = root[client.rootKey] as? [String: Any] ?? [:]
+    let servers = config.servers
     let rows = ordered.map { item in
       Row(
         profile: item.profile, key: item.key,
@@ -114,7 +114,11 @@ struct ClientDetail: View {
           states: rows.map { (key: $0.key, label: $0.profile.serverID, state: $0.state) })),
       rows: rows,
       others: ClientWiringMerge.foreignEntries(in: servers),
-      projects: ClientWiringMerge.foreignProjectEntries(in: root),
+      // Claude Code's alone. Codex keeps its project scope in a
+      // `.codex/config.toml` inside each repository rather than a block in this
+      // file, so there is nothing here to list -- and a card that rendered
+      // anyway would be describing servers this file does not hold.
+      projects: config.root.map(ClientWiringMerge.foreignProjectEntries) ?? [],
       // Including entries for a profile that no longer exists, which is exactly
       // the case worth being able to clean up.
       hasOurEntries: servers.values.contains { ClientWiringMerge.isOurs($0) })
