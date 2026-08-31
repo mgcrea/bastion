@@ -28,7 +28,7 @@ import SectionHeader from "./SectionHeader.astro";
 const INCLUDED = [
   {
     // Sentence case here, mid-sentence case in `Cta.astro`. `covers` is written
-    // as a fragment because that is how the closing line reads it — "€14.99 —
+    // as a fragment because that is how the closing line reads it — "$14.99 —
     // every 1.x release, on every Mac you own" — so the capital belongs at this
     // call site rather than in the constant.
     title: PRICE.covers.replace(/^./, (c) => c.toUpperCase()),
@@ -72,10 +72,20 @@ const INCLUDED = [
           <span
             class="font-display text-[clamp(38px,6vw,54px)] leading-none font-semibold tracking-[-0.04em]"
           >
-            {PRICE.amount}
+            {PRICE.price}
           </span>
-          <span class="text-[14px] text-fg-dim">once, VAT included</span>
+          <span class="text-[14px] text-fg-dim">once, not a subscription</span>
         </div>
+
+        {/*
+          Both figures, because neither is a conversion of the other: the dollar
+          price is quoted tax-exclusive and the euro one VAT-inclusive, as each
+          side is normally quoted. Showing only the first would leave an EU buyer
+          without the total they are actually charged.
+        */}
+        <p class="mt-2 mb-0 text-[13.5px] leading-[1.6] text-fg-dim">
+          {PRICE.eur.price} in the EU, VAT included.
+        </p>
 
         <ul class="m-0 mt-7 flex list-none flex-col gap-5 p-0">
           {

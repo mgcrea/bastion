@@ -3,16 +3,16 @@
  * The real app, photographed.
  *
  * Everything else on this page that looks like macOS is drawn in HTML —
- * `Hero.astro`'s menu bar and its two Activity Monitor panels, the `make audit`
+ * `Hero.astro`'s menu bar and its four-tabbed config panel, the `make audit`
  * transcript in `Rules.astro`, the fan-in diagram in `Problem.astro` — and each
  * of those is drawn on purpose: it shows something a capture cannot photograph
  * at all (a menu-bar popover is a high-layer panel, not an ordinary window), or
- * two states at once, or it has to reflow on a phone in a way an image cannot.
- * This section is the other half of that arrangement: the window as it actually
- * renders, so a reader can check the drawings against it.
+ * four editors agreeing on one file, or it has to reflow on a phone in a way an
+ * image cannot. This section is the other half of that arrangement: the window
+ * as it actually renders, so a reader can check the drawings against it.
  *
- * Five of the six captures. `running` is promoted out of this section into
- * `RunningPane.astro`, one scroll below the hero, because the drawing it
+ * Five of the six captures. `server` is promoted out of this section into
+ * `ServerPane.astro`, one scroll below the hero, because the drawing it
  * answers is up there — see that file's header.
  *
  * The images are NOT hand-placed. `make screenshots` from the repository root
@@ -33,7 +33,7 @@ import chatShot from "../assets/shots/chat.png";
 import clientShot from "../assets/shots/client.png";
 import licenceShot from "../assets/shots/licence.png";
 import logShot from "../assets/shots/log.png";
-import serverShot from "../assets/shots/server.png";
+import runningShot from "../assets/shots/running.png";
 import SectionHeader from "./SectionHeader.astro";
 
 /**
@@ -51,11 +51,11 @@ import SectionHeader from "./SectionHeader.astro";
  */
 const shots = [
   {
-    image: serverShot,
-    id: "server",
-    title: "Two profiles, one installed server",
-    body: "A profile is a named credential set, so the same server can serve two accounts without either knowing about the other. prod is running; staging says exactly which variable it is waiting for. The environment table underneath is the server's own, read from the manifest rather than typed here.",
-    alt: "Bastion's Shopify pane: the installed package at 1.4.2, a running prod profile and a staging profile reading “cannot start — missing SHOPIFY_CLIENT_SECRET”, above the server's environment variables with required and secret badges.",
+    image: runningShot,
+    id: "running",
+    title: "What is running, and who is attached",
+    body: "A row per profile that has started — four for five, because staging/shopify is still short a credential and has never had a process at all. Each row names its clients twice over: the identity its bearer token was issued to, and whatever the client calls itself, because the interesting case is when those disagree.",
+    alt: "Bastion's Running pane: prod/shopify up two hours with two clients attached, acme/keycloak up 47 minutes, home/unifi-network stopped, and lab/unifi-network with a writes badge and restarted twice.",
   },
   {
     image: logShot,
@@ -104,7 +104,7 @@ const shots = [
  */
 const COLUMN = 1160;
 /**
- * Still 2360 with `running` promoted away: four of the five remaining are the
+ * Still 2360 with `server` promoted away: four of the five remaining are the
  * same main window. If that ever stops being true — if the only 2360 capture
  * moved out — every plate here would silently rescale against whatever was
  * left, which is the one way this helper can be wrong without erroring.

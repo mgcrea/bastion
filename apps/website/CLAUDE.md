@@ -36,15 +36,19 @@ The figures' anchors are prefixed `shot-`. The bare `#screens`, `#servers`, `#st
 ## Three visual idioms, never mixed
 
 1. **Real captures** — `Screens.astro`, and only there.
-2. **Hand-drawn macOS chrome** — the menu bar and Activity Monitor panels in `Hero.astro`, the
+2. **Hand-drawn macOS chrome** — the menu bar and the four-tabbed config panel in `Hero.astro`, the
    `make audit` transcript in `Rules.astro`. Each is drawn because a capture cannot do that
-   particular job: a menu-bar popover is a high-layer panel `appshot` cannot photograph at all, a
-   before/after needs two states in one image, and both have to reflow on a phone.
+   particular job: a menu-bar popover is a high-layer panel `appshot` cannot photograph at all, four
+   editors holding one identical file is not a photograph of anything, and both have to reflow on a
+   phone.
 3. **Plain diagrams, no chrome** — the fan-in lanes in `Problem.astro`. Dressing a diagram in a
    title bar would promise a pane the app does not have.
 
 A drawing must never disagree with a photograph. `Hero.astro`'s `MENU` holds the same five profiles
-in the same states as `DemoSeed.profiles`, and nothing enforces that — change the two together.
+in the same states as `DemoSeed.profiles`, and nothing enforces that — change the two together. One
+capture is promoted out of `Screens.astro` into `ServerPane.astro`, one scroll below the hero,
+because it answers the drawing up there; if the hero's drawing changes, check that the promoted
+capture is still the one that answers it.
 
 ## Facts live in `src/config.ts`
 
@@ -53,3 +57,12 @@ Counts are derived, never typed: `src/data/servers.ts` is generated from the rep
 names something you can buy or download; a string outside a `SHIPPED` branch has to be true on its
 own. `pnpm icons` re-bakes `og-image.png` from `SOCIAL_CARD`, and nothing checks that you remembered
 to.
+
+## One generated mark has a reader outside this site
+
+`pnpm icons` renders every favicon, the touch icon, the OG card and
+`public/product-image.png` from `design/bastion-icon.svg`. That last one is the `images` entry on
+the live Stripe product, so it is what a buyer sees beside the line item on the checkout page.
+Stripe stores the URL and fetches it, which has two consequences: the checkout only picks up a new
+mark **once the site deploys**, and renaming or deleting the file breaks a page nothing in this
+repo builds.

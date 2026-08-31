@@ -4,25 +4,17 @@ import Button from "./Button.astro";
 import Logo from "./Logo.astro";
 
 /**
- * The before/after that the whole page argues for: four editors each holding
- * their own copy of one server, against one supervised child.
+ * The four hosts that open the same repository on this machine — the same four
+ * `Problem.astro` fans in, and the same four `make smoke` runs concurrently.
  *
- * The rows are deliberately the same binary four times, because that repetition
- * IS the problem. Varying the process name would make the picture prettier and
- * the argument weaker.
- *
- * Each row names the host that spawned it, though, and that is not decoration.
- * Without it four identical lines read as duplicated data — a rendering fault —
- * rather than as four editors each holding their own copy, which is what the
- * sentence above the picture actually claims. The hosts are the same four
- * `Problem.astro` fans in, because they are the same four.
+ * They are drawn as tabs over ONE config panel because that is the headline's
+ * second half: the file is byte-identical in all four, so the four have to be
+ * shown holding the same one. An earlier draft argued the first half instead —
+ * four identical `mcp-shopify` rows in an Activity Monitor — and four repeated
+ * mono strings read as unfilled placeholder data rather than as an argument.
+ * `Problem.astro` makes that half of the case properly, with lanes.
  */
-const BEFORE = [
-  { proc: "mcp-shopify", host: "Claude Code", mem: "58 MB" },
-  { proc: "mcp-shopify", host: "Cursor", mem: "61 MB" },
-  { proc: "mcp-shopify", host: "VS Code", mem: "57 MB" },
-  { proc: "mcp-shopify", host: "Terminal", mem: "60 MB" },
-] as const;
+const CLIENTS = ["Claude Code", "Cursor", "VS Code", "Terminal"] as const;
 
 /**
  * The menu, as the app draws it. Five profiles across four states — running,
@@ -144,65 +136,58 @@ const CALLS = [
 
       <span class="text-[12.5px] text-fg-muted">
         {REQUIRES} · loopback only ·{" "}
-        {SHIPPED ? `${TRIAL.minutes}-minute trial, then ${PRICE.amount}` : "not shipped yet"}
+        {SHIPPED ? `${TRIAL.minutes}-minute trial, then ${PRICE.price}` : "not shipped yet"}
       </span>
     </div>
 
-    <div class="reveal flex min-w-[min(420px,100%)] flex-1 basis-[480px] flex-col gap-3">
-      <div class="flex items-start gap-3.5">
-        <div class="flex flex-1 flex-col gap-2.5">
-          <div
-            class="overflow-hidden rounded-[11px] border border-white/11 bg-bg-3 shadow-[0_24px_60px_-34px_rgb(0_0_0/90%)]"
-          >
-            <div class="border-b border-white/8 bg-white/5 px-3.5 py-2.5 text-[11.5px] font-semibold">
-              Activity Monitor
-            </div>
-            {
-              BEFORE.map((row) => (
-                <div class="flex items-center gap-2.5 border-b border-white/6 px-3.5 py-2.5">
-                  <span class="size-[18px] shrink-0 rounded bg-[#43454A]" aria-hidden="true" />
-                  <span class="flex-1 truncate font-mono text-[11.5px]">
-                    {row.proc} <span class="text-fg-muted">· {row.host}</span>
-                  </span>
-                  <span class="shrink-0 font-mono text-[10.5px] text-danger-ink">{row.mem}</span>
-                </div>
-              ))
-            }
-          </div>
-          <span class="font-mono text-[11px] text-fg-muted">
-            {BEFORE.length} processes · {BEFORE.length} plaintext secrets · 0 logs
-          </span>
-        </div>
-
-        <span class="shrink-0 pt-14 text-[15px] text-fg/30" aria-hidden="true">→</span>
-
-        <div class="flex flex-1 flex-col gap-2.5">
-          <div
-            class="overflow-hidden rounded-[11px] border border-accent/28 bg-bg-3 shadow-[0_24px_60px_-34px_rgb(0_0_0/90%)]"
-          >
-            <div class="border-b border-white/8 bg-white/5 px-3.5 py-2.5 text-[11.5px] font-semibold">
-              Activity Monitor
-            </div>
-            <div class="flex items-center gap-2.5 px-3.5 py-2.5">
-              <Logo size={18} />
-              <span class="flex-1 truncate font-mono text-[11.5px]">
-                mcp-shopify <span class="text-fg-muted">· all four</span>
+    <div class="reveal flex min-w-[min(400px,100%)] flex-1 basis-[480px] flex-col gap-3">
+      <div
+        class="overflow-hidden rounded-[11px] border border-white/11 bg-bg-3 shadow-[0_24px_60px_-34px_rgb(0_0_0/90%)]"
+      >
+        {/* Four tabs, one file. The first is lit only so the stack reads as tabs
+            rather than as a row of chips; nothing behind them differs. */}
+        <div class="flex gap-1 border-b border-white/8 bg-white/5 px-1.5 pt-1.5">
+          {
+            CLIENTS.map((name, i) => (
+              <span
+                class:list={[
+                  "truncate rounded-t-[7px] px-2.5 py-2 text-[11.5px]",
+                  i === 0 ? "bg-bg-3 font-semibold text-fg" : "text-fg/45",
+                ]}
+              >
+                {name}
               </span>
-              <span class="shrink-0 font-mono text-[10.5px] text-ok-ink">61 MB</span>
-            </div>
-            {/* The empty space is the point, so it is drawn rather than left out. */}
-            <div
-              class="h-[114px] border-t border-white/6"
-              style="background:repeating-linear-gradient(135deg,rgb(255 255 255/2.8%) 0 6px,transparent 6px 12px)"
-              aria-hidden="true"
-            >
-            </div>
-          </div>
-          <span class="font-mono text-[11px] text-fg-muted">
-            1 process · Keychain · every call recorded
+            ))
+          }
+        </div>
+        <div class="flex flex-col gap-1 px-4 py-4 font-mono text-[12px] leading-[1.55]">
+          <span class="text-fg/40">{"{"}</span>
+          <span class="pl-3 text-fg/70">"mcpServers": {"{"}</span>
+          <span class="pl-6 text-fg/70">"shopify": {"{"}</span>
+          <span class="pl-9 break-all text-fg/70">
+            "url": <span class="text-accent-hi">"{GATEWAY.origin}/s/prod/shopify"</span>
           </span>
+          <span class="pl-6 text-fg/40">{"}"}</span>
+          <span class="pl-3 text-fg/40">{"}"}</span>
+          <span class="text-fg/40">{"}"}</span>
         </div>
       </div>
+      <span class="font-mono text-[11px] text-fg-muted">
+        The same file in all {CLIENTS.length} · no secret in it
+      </span>
+
+      <span class="self-center text-[15px] text-fg/30" aria-hidden="true">↓</span>
+
+      <div
+        class="flex items-center gap-2.5 rounded-[11px] border border-accent/28 bg-bg-3 px-3.5 py-3 shadow-[0_24px_60px_-34px_rgb(0_0_0/90%)]"
+      >
+        <Logo size={18} />
+        <span class="flex-1 truncate font-mono text-[11.5px]">
+          prod/shopify <span class="text-fg-muted">· one process, all {CLIENTS.length}</span>
+        </span>
+        <span class="shrink-0 font-mono text-[10.5px] text-ok-ink">running</span>
+      </div>
+      <span class="font-mono text-[11px] text-fg-muted">Keychain · every call recorded</span>
     </div>
   </div>
 
@@ -219,10 +204,11 @@ const CALLS = [
 
       It stays drawn because a capture cannot do this particular job. A menu bar
       popover is a high-layer panel rather than an ordinary window, so appshot
-      cannot photograph it at all; the two Activity Monitor panels above show
-      before and after at once, which one image cannot; and both have to reflow
-      on a phone. Those are the only three reasons anything on this page is
-      drawn, and each drawing should be able to name its own.
+      cannot photograph it at all, and it has to reflow on a phone. The config
+      panel above earns the same exemption: four editors each hold their own copy
+      of that file, and no one screenshot shows the four agreeing. Those are the
+      only reasons anything on this page is drawn, and each drawing should be
+      able to name its own.
 
       What it must NOT do is disagree with the photographs. `MENU` above holds
       the same five profiles in the same states as `DemoSeed.profiles`. */}
@@ -319,12 +305,10 @@ const CALLS = [
       <div
         class="box-border flex w-full flex-col gap-3.5 rounded-t-xl border border-b-0 border-white/9 bg-[rgb(19_20_23/94%)] px-5.5 py-5 lg:absolute lg:bottom-0 lg:left-6 lg:w-[560px] lg:max-w-[calc(100%-340px)]"
       >
-        <span class="font-mono text-[11px] text-fg-muted">.mcp.json</span>
-        <span class="font-mono text-[15px] leading-[1.5] break-all text-fg/90">
-          "url": "{GATEWAY.origin}<span class="text-fg-muted">/s/</span>prod<span class="text-fg-muted"
-            >/</span
-          >shopify"
-        </span>
+        {/* The URL is not repeated here: the config panel in the right column
+            already carries it, and one line printed twice in one hero reads as
+            two lines. What this panel adds is what the gateway then records. */}
+        <span class="font-mono text-[11px] text-fg-muted">Activity · prod/shopify</span>
         <div class="flex flex-col gap-[7px]">
           {
             CALLS.map((c) => (
@@ -347,6 +331,6 @@ const CALLS = [
   </div>
   <span class="sr-only">
     A drawing of the menu bar popover listing {COUNTS.servers} servers' worth of profiles, and the
-    one line a client's config carries.
+    calls the gateway has recorded.
   </span>
 </section>

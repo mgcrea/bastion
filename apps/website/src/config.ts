@@ -118,28 +118,43 @@ export const DIALECT = {
 export const SHIPPED = true;
 
 /**
- * The price, as charged.
+ * The price, as charged. Two currencies, both named explicitly on the Stripe
+ * price via `currency_options` — never one converted from the other.
  *
- * EUR because that is the currency the Stripe price object is denominated in and
- * the one this account settles in. Quoting a USD figure the checkout does not
- * charge is the kind of small lie that becomes a support thread, so the number
- * here and `unit_amount` on the price are the same number.
+ * This page quoted euro alone until the price carried a dollar figure, because
+ * quoting a currency the checkout does not charge is the kind of small lie that
+ * becomes a support thread. Both are now set on `price_1UAVXcFQJry8F0HM4eliIHoy`,
+ * so both can be quoted, and the number here is `unit_amount` in each case.
+ *
+ * USD leads because most of the audience is there. EUR is named rather than left
+ * to conversion for two reasons. Stripe's Adaptive Pricing only converts *out
+ * of* a settlement currency, and this account settles in EUR alone, so a
+ * USD-only price would put an FX conversion on this side of every sale; naming
+ * both keeps that cost in the presented rate. And EU consumer law wants a
+ * VAT-inclusive total shown up front, which a figure converted at checkout
+ * cannot promise in advance.
+ *
+ * So the two numbers are not equal and are not meant to be: the account's tax
+ * default is `inferred_by_currency`, which resolves USD tax-exclusive and EUR
+ * VAT-inclusive — the ordinary convention on each side. `Pricing.astro` has to
+ * show both rather than pick one.
  *
  * One price, one major version, every Mac. 2.0 is a new purchase; nothing here
  * promises an upgrade discount, because that decision has not been made and a
  * marketing page is a bad place to make it by accident.
  */
 export const PRICE = {
-  /** The display form, VAT included, as an EU buyer is quoted and charged. */
-  amount: "€14.99",
   /**
-   * The same number, split for structured data. Schema.org's `Offer` wants a
-   * bare decimal and a currency code, and a `€14.99` in `price` is a validation
-   * error rather than a formatting quirk — so it is split here rather than
-   * parsed back out of the display string at the call site.
+   * The display form. `amount` is the same number split for structured data:
+   * Schema.org's `Offer` wants a bare decimal and a currency code, and a
+   * `$14.99` in `price` is a validation error rather than a formatting quirk —
+   * so it is split here rather than parsed back out at the call site.
    */
-  numeric: "14.99",
-  currency: "EUR",
+  price: "$14.99",
+  amount: "14.99",
+  currency: "USD",
+  /** Shown alongside, VAT included, as an EU buyer is quoted and charged. */
+  eur: { price: "€14.99", amount: "14.99", currency: "EUR" },
   covers: "every 1.x release, on every Mac you own",
   refund: "Thirty days, full refund, no reason needed",
 } as const;

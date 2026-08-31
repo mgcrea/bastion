@@ -1,0 +1,81 @@
+---
+/**
+ * The real app, one scroll below the hero.
+ *
+ * This is one of the six captures written into src/assets/shots by
+ * `make screenshots`; the other five stay in `Screens.astro`. It is promoted
+ * out of that section for the reason the section itself argues for.
+ *
+ * `Screens.astro` says the hand-drawn macOS mocks exist "so a reader can check
+ * the drawings against it". Left at the sixth section, the thing to check them
+ * against arrived four sections AFTER the drawing that most needs it: the hero
+ * draws a popover naming `prod/shopify` running and `staging/shopify` short a
+ * credential, and a config file pointing at `/s/prod/shopify`. Both of those
+ * sentences are about a PROFILE, and this is the pane that shows what one is.
+ * It comes first now, so everything after it reads as a diagram of something
+ * already seen.
+ *
+ * `server` rather than any of the other five, and this is the second answer to
+ * that question — `running` held the slot first, back when the hero drew two
+ * Activity Monitor panels and this pane's job was to photograph the one process
+ * those panels argued for. The hero no longer draws that; it draws one file
+ * addressed to one profile. The pane that answers a URL with a profile in it is
+ * this one: same server, two credential sets, one of them stopped for a reason
+ * it names. `running` counts children, which is the argument `Problem.astro`
+ * makes further down, and it is back in `Screens.astro` beside it.
+ *
+ * The image is IMPORTED, not copied. It is the same file `Screens.astro` reads,
+ * and `make screenshots` deletes every .png in that directory on every run —
+ * parking a duplicate anywhere else would go stale on the next capture. To
+ * change what this shows, change the fixture in
+ * apps/apple/Bastion/DemoSeed.swift and re-run.
+ *
+ * `#shot-server` moved here with the figure, and `Screens.astro` no longer
+ * answers to it. The `shot-` prefix is what keeps these anchors from colliding
+ * with the bare section ids the nav uses.
+ */
+import { Picture } from "astro:assets";
+import serverShot from "../assets/shots/server.png";
+import SectionHeader from "./SectionHeader.astro";
+---
+
+<section class="wrap py-[96px]">
+  {/* Eyebrow and heading both stay clear of `Screens.astro` further down, which
+      owns "The app" over "A window, not a background process." This section is
+      the narrower thing — one pane — and saying so in prose here would state
+      that section's heading twice on one page. */}
+  <SectionHeader
+    eyebrow="The window"
+    heading="Two profiles, one installed server."
+    class="max-w-[640px]"
+  >
+    <p class="m-0 text-[15.5px] leading-[1.68] text-fg-dim text-pretty">
+      The panel above is drawn, and the line in it addresses a profile. This is what a profile is,
+      photographed: one installed server, two named credential sets, serving two accounts without
+      either knowing about the other.
+    </p>
+  </SectionHeader>
+
+  {/* No heading in the caption — `SectionHeader` above carries it, and stating
+      it twice on one screen reads as a mistake. */}
+  <figure id="shot-server" class="reveal m-0 mt-14 scroll-mt-24">
+    {/* The main window renders at the full column, and the other captures are
+        scaled against it by `plate()` in `Screens.astro`; there is nothing to
+        scale against here. */}
+    <Picture
+      src={serverShot}
+      alt="Bastion's Shopify pane: the installed package at 1.4.2, a running prod profile and a staging profile reading “cannot start — missing SHOPIFY_CLIENT_SECRET”, above the server's environment variables with required and secret badges."
+      widths={[754, 1160, 2320]}
+      sizes="(min-width: 1320px) 1160px, 100vw"
+      formats={["avif", "webp"]}
+      fallbackFormat="png"
+      class="block h-auto w-full rounded-[14px] border border-rule-2 shadow-[0_24px_60px_-34px_rgb(0_0_0/90%)]"
+    />
+    <figcaption class="mt-5 max-w-[76ch] text-[14.5px] leading-[1.65] text-fg-dim text-pretty">
+      prod is running; staging names the one variable it is waiting for and has therefore never
+      started — which is the state the popover above draws it in. The environment table underneath is
+      the server's own, read from its manifest rather than typed here, and the values behind the
+      secret badges are in the Keychain: this pane can set one and cannot show you one.
+    </figcaption>
+  </figure>
+</section>

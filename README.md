@@ -414,11 +414,11 @@ an install anyway, so dogfooding wants
 Source-available for the app, so a program that holds every credential you own can be read and
 compiled by the people trusting it; the notarized build is sold.
 
-|                                                   |                                                                                                                   |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| [`apps/apple/`](apps/apple/LICENSE)               | Source-available. Read it, modify it, compile it, run your own build. Binary redistribution is the reserved part. |
-| `apps/api/`, `apps/website/`, `scripts/`, `docs/` | [MIT](LICENSE). The audits in particular are more useful copied than reserved.                                    |
-| The signed build                                  | [EULA](apps/apple/EULA). €14.99, every 1.x release, every Mac you own. Thirty days, full refund.                  |
+|                                                   |                                                                                                                     |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| [`apps/apple/`](apps/apple/LICENSE)               | Source-available. Read it, modify it, compile it, run your own build. Binary redistribution is the reserved part.   |
+| `apps/api/`, `apps/website/`, `scripts/`, `docs/` | [MIT](LICENSE). The audits in particular are more useful copied than reserved.                                      |
+| The signed build                                  | [EULA](apps/apple/EULA). $14.99 (€14.99 in the EU), every 1.x release, every Mac you own. Thirty days, full refund. |
 
 The check is offline and cannot become anything else: `scripts/audit-listener.sh` asserts on every
 build that the app binds loopback and nothing else, and an activation call would be the second

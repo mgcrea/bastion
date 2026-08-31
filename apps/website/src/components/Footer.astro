@@ -17,7 +17,7 @@ const COLUMNS = [
     heading: "Get it",
     items: [
       { label: "Download", href: "/download" },
-      { label: `Buy — ${PRICE.amount}`, href: "/buy" },
+      { label: `Buy — ${PRICE.price}`, href: "/buy" },
       { label: "Release notes", href: "/releases" },
       { label: "Checksum", href: "/checksum" },
     ],
@@ -60,7 +60,7 @@ const LEGAL = [
           reads it on the way past. */}
       <span class="text-[11.5px] leading-[1.7] text-fg-muted">
         Requires {REQUIRES}. Signed and notarized.<br />
-        Source-available · {PRICE.amount} for the signed build
+        Source-available · {PRICE.price} for the signed build
       </span>
       <span class="flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-fg-muted">
         {
