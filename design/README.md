@@ -1,7 +1,12 @@
 # Bastion icon
 
-Direction `4a` — "dusk ridge", from `.idea/design/Bastion Logo v2.dc.html`. A curtain wall with a
-solid spur inside it, standing on cupertino's own hills.
+Direction `4a` — "dusk ridge", from `.idea/design/Bastion Logo v2.dc.html`. A fort standing on
+cupertino's own hills, with a curtain wall around it.
+
+The wall is not in the icon. It moved to the menu bar, where it is the glyph the app draws while a
+server is running — so the mark is the fort, and the wall is what the fort does when it is guarding
+something. That is also why the icon and an idle menu bar are now one silhouette instead of two
+drawings of the same idea.
 
 One source, four renderings, one command:
 
@@ -13,7 +18,8 @@ make icon
 | ------------------------------------ | -------------------------------------------------------------------------------- |
 | `bastion-mark.svg`                   | **the source.** Hills, wall and spur on a transparent sky, 1024×1024. Edit this. |
 | `colors.json`                        | palette and gradients                                                            |
-| `bastion-menubar.svg`                | **authored**, not composed — the menu bar template glyph. Edit this too.         |
+| `bastion-menubar.svg`                | **authored**, not composed — the menu bar glyph, idle. Edit this too.            |
+| `bastion-menubar-active.svg`         | **authored** — the same glyph with the wall, drawn while a server runs.          |
 | `bastion-icon.svg`                   | _generated_ — plated vector for the web/README/docs                              |
 | `bastion-lockup.svg`                 | _generated_ — the icon and the word, banner for the README                       |
 | `../apps/apple/Bastion/Bastion.icon` | _generated_ — the Icon Composer bundle Xcode compiles                            |
@@ -30,7 +36,7 @@ hill colours and the squircle are copied to the digit from `../../cupertino/desi
 not approximated — so the two sit beside each other in a Dock as siblings rather than as near
 misses, which is worse than either matching or differing.
 
-What is Bastion's own is the subject and the ink: `#FDEFDC`, the wall, at 78% over the sky.
+What is Bastion's own is the subject and the ink: `#FDEFDC`, the fort, at 90% over the sky.
 
 ## Why the sky is a flag and not artwork
 
@@ -73,19 +79,28 @@ coordinate in `bastion-mark.svg` is that geometry multiplied by 1024/232 = 4.413
 decimal — computed, not eyeballed. If the canvas changes, re-run the multiplication; a hand-copied
 coordinate is invisible until somebody measures.
 
-One number is **not** transcribed. The canvas carries three stroke weights for the wall — 8 units at
-its 232px render, 10 at 38px, 13 at 116px and below — because its author compensated optically at
-each size. The `.icon` format carries one artwork for every size, so there is exactly one weight to
-pick. It is **48.6** (11 on the canvas grid, between the two extremes), chosen by rendering 35.3,
-48.6 and 57.4 at 16, 32, 64 and 256px and looking at the counter between the wall and the spur: it
-closes at 57.4 by 32px and the wall reads thin at 35.3. Re-render at 32px after any change; that is
-where this fails first, and it is not visible at the size you will be looking at it.
+Two numbers are **not** transcribed, and they are the only two anybody chose. Dropping the wall left
+the fort spanning 34% of the canvas — an island in a large field, and exactly the diagnosis the
+usual glyph-ratio check exists to catch. So it is scaled to **580** wide, roughly the footprint the
+wall used to hold, and seated at **y850** rather than the wall's old 776.8.
+
+The seat is the composition. At 850 the front hill crosses the fort's feet and the back hill runs
+behind it, so it stands *on* the ridge; raise it and it floats above the hills with a visible strip
+of sky under it. Both numbers are pinned by `scripts/lib/lockup.test.mjs`, which holds the fort's
+path character for character.
+
+The canvas's three stroke weights for the wall — 8 units at its 232px render, 10 at 38px, 13 at 116
+and below, its author compensating optically at each size — no longer apply to anything here. The
+menu bar glyph carries the only stroke left in the family, and it is picked against cupertino's halo
+rather than against the canvas. See below.
 
 ## Small sizes
 
-The `.icon` format carries one artwork for every size. At 32px the wall, the spur and both hills
-still separate; at 16px the wall and spur merge into a single arch on a ridge, which is the intended
-degradation and is why there is no second geometry to keep in step.
+The `.icon` format carries one artwork for every size. This got easier when the wall left: the
+counter between wall and fort was the thing that closed first, and there is no longer one. At 32px
+the fort and both hills separate cleanly; at 16px the fort and the back hill merge into a single
+mass on a ridge, which is the intended degradation and is why there is no second geometry to keep in
+step.
 
 ## Palette
 
@@ -93,7 +108,7 @@ degradation and is why there is no second geometry to keep in step.
 | ------------ | --------- | ---------------------------------------- |
 | plate top    | `#FFD08A` | icon background, top                     |
 | plate bottom | `#F2895C` | icon background, bottom                  |
-| wall         | `#FDEFDC` | the mark's ink, light text on warm fills |
+| fort         | `#FDEFDC` | the mark's ink, light text on warm fills |
 | hill mid     | `#B0532F` | back hill (at 90% over the sky)          |
 | hill fore    | `#7A2F1C` | front hill                               |
 | ink          | `#151617` | wordmark, body text on light             |
@@ -121,58 +136,90 @@ icon and card from them, so the chain is one mark end to end:
 design/bastion-mark.svg --make icon--> design/bastion-icon.svg --pnpm icons--> apps/website/public/*
 ```
 
-## The menu bar glyph
+## The menu bar glyphs
 
-`bastion-menubar.svg` is direction **4a's own menu bar glyph**, transcribed from the 15px chip in
-`.idea/design/Bastion Logo v2.dc.html`: the curtain wall closed at the base, with the solid spur
-inside it. Same subject as the app icon, so the menu bar and the Dock read as one app.
+Two files, one mark, two states — the shape cupertino uses for the same job:
 
-It is **authored, not composed** — `make icon` copies it, and never derives it from the mark. Two
-details are easy to get wrong by taking the geometry from `bastion-mark.svg` or the site mock
-instead of from 4a itself, and both matter at 18pt:
+| file                         | state              | ink (measured at 18pt) |
+| ---------------------------- | ------------------ | ---------------------- |
+| `bastion-menubar.svg`        | idle               | 23.0 × 18.2 units      |
+| `bastion-menubar-active.svg` | a server is live   | 31.5 × 24.8 units      |
+| cupertino's, for scale       | idle / connected   | 34.0 × 16.8 / 34.0 × 20.8 |
 
-- **The wall is closed.** The icon leaves it open at the base so the outline runs into the hills.
-  There are no hills at 18pt, and an open wall leaves the silhouette with no floor — the two legs
-  and the spur merge into one mass at 1x. The closed base gives it a bottom edge to read against.
-- **The stroke is 6**, the canvas's own weight in its 64-unit box, which lands at 3.17 here
-  (1.58pt). Not the 5 the lockup beside it uses; the canvas thickens it for the small size.
+`MenuBarLabel` in `BastionApp.swift` swaps them on `Activity.shared.instances`, and reads that
+rather than `Supervisor.running` for the reason the popover's rows do: the supervisor's view is a
+lock-protected snapshot with nothing for SwiftUI to observe. Bastion's own built-in server never
+spawns a process and so never appears there, which is what makes the state mean something.
 
-The weight was checked rather than assumed. Rendered at 18pt against 2.8 and 2.5, the counter
-between the wall and the spur survives at all three, so the canvas weight costs nothing and there is
-nothing to tune. Re-render at **1x** after any change — that is where this fails first, and it is
-invisible at the 2x you will be looking at.
+They are still **authored, not composed** — `make icon` copies them and never derives them from the
+mark, because the sizing below is a menu bar problem the 1024 mark knows nothing about. What is no
+longer authored is the *shape*: the fort's five vertices are `bastion-mark.svg`'s own, scaled. The
+two used to differ by about 5% in aspect for no reason anybody had written down.
 
-It is a **template image**: pure black plus alpha, no colour, so AppKit tints it for light menu
-bars, dark menu bars and the highlighted state instead of us shipping three renderings. `Image(_:)`
-resolves by name **without** consulting `template-rendering-intent`, so `MenuBarLabel` in
-`BastionApp.swift` also says `.renderingMode(.template)`; without it the glyph ships black-on-black
-in a dark menu bar. The website hits the same wall from the other side — an `<img>` cannot recolour
-the file either, so `Hero.astro` filters it to white where its mock draws a dark bar.
+### The wall is open at the base, and that is the whole design
 
-Coordinates are cupertino's own 36-unit grid drawn at 18pt — 2 units = 1pt — so the two menu bar
-glyphs in this family are comparable without conversion. The 64-unit source is scaled so the ink
-spans 32.2 units vertically, cupertino's constraining dimension.
+Closed, it is a parallel outline of the fort at every point and reads as **tramlines** — one shape
+drawn twice. That is what the old glyph did with its two nested pentagons, and it is what a naive
+"halo around the fort" produces if you offset the silhouette and join it up. Open, the wall
+terminates level with the fort's own floor and reads as a wall arcing over a keep.
 
-|                   | ink              | canvas     | strokes |
-| ----------------- | ---------------- | ---------- | ------- |
-| cupertino's glyph | 16.10 × 14.15 pt | 18 × 18 pt | 1.10 pt |
-| this glyph        | 15.57 × 16.10 pt | 18 × 18 pt | 1.58 pt |
+Cupertino gets the same effect for free and it is worth seeing why, because it is not obvious from
+the file: its halo is a full `<circle>`, but it sits inside the clip that cuts the sun off at the
+horizon, so what anybody actually sees is an **arc**. There is no closed ring around that sun
+either.
 
-The two shapes carry two weights on purpose — one light (the stroked wall), one solid (the spur) —
-for the reason cupertino's three do: matched weights read as tramlines rather than as one form
-inside another.
+This is also the shape the icon used to carry — the old mark's wall was open at the base too, so the
+outline could run down into the hills. There are no hills at 18pt, and that used to be an argument
+for closing it: an open wall left the silhouette with no floor. It no longer is, because the fort
+below it is solid and has a floor of its own.
+
+### The numbers, and how they were picked
+
+- **Gap 2.8 units.** 2.4 separates cleanly but still reads as a tramline at 8×; 3.2 buys nothing and
+  costs the fort width it needs to carry the idle glyph alone. 2.8 is where the wall reads as a
+  second object and the fort keeps its mass.
+- **Stroke 1.6 units (0.8pt)** — cupertino's halo weight exactly, and half the 3.17 the old wall
+  carried. Matched weights read as tramlines; one light shape around one solid one reads as a form
+  inside another.
+- **Fort 22.67 units wide.** Not a drawing decision: it is the widest fort the active glyph can
+  carry while keeping a 2-unit margin, because the wall standing off it eats 8.8 units of the width
+  budget. The old glyph was 31.5 × 32.5 — nearly twice cupertino's mass, which is not what two icons
+  in one menu bar by one author should look like.
+- **Both files sit 1.18 units below centre.** The wall adds 5.6 units above the fort and 0.5 below,
+  so no one position centres both states. This splits the error exactly — idle 1.12 low, active 1.12
+  high — and it is the same compromise cupertino makes. Change it in both files or in neither: the
+  fort must not move when a server starts, or the swap reads as the icon twitching rather than as
+  something happening.
+
+Coordinates are cupertino's 36-unit grid at 18pt, so 2 units = 1pt and the menu bar glyphs in this
+family are comparable without conversion.
+
+### Verify by counting, not by looking
+
+At 18pt the active glyph is two connected components at 8× and 2×, and **one** at 1×, where the wall
+comes out as a grey outline rather than a black line. Cupertino's ring and sun merge at 1× too. That
+is acceptable degradation rather than a bug to chase — retina is the design target, and 1× still
+changes visibly, which is what a state needs to do. Re-measure with a component count after any
+edit; by eye at 2× you cannot see the failure.
+
+### Template images
+
+Pure black plus alpha, so AppKit tints them for light menu bars, dark ones and the highlighted state
+instead of us shipping six renderings. `Image(_:)` resolves by name **without** consulting
+`template-rendering-intent`, so `MenuBarLabel` also says `.renderingMode(.template)`; without it the
+glyph ships black-on-black in a dark menu bar. The website hits the same wall from the other side —
+an `<img>` cannot recolour the file either, so `Hero.astro` filters it to white where its mock draws
+a dark bar. That mock shows the **active** glyph, because it depicts a client mid-session.
+
+`actool` reads the SVGs directly and preserves the vector representation, so there are no PNG slots
+to keep in step. `make icon` copies each file into its own imageset — `MenuBarIcon.imageset` and
+`MenuBarIconActive.imageset` — which is why those copies are listed as generated above.
 
 There is a second, unused glyph in the design assets worth knowing about. The **v1** logo canvas
 draws a flat plan mark — a bastion from above — marks it "unchanged in all three" directions, and
 argues for it on the grounds that "the plan mark is symmetric, so it holds at menu-bar size where a
-single-spur silhouette would close up". That concern is real but it applies to the wall left _open_;
-closed, 4a holds its counter at 1x, which is why 4a's own glyph is the one that ships. (The v1 path
-is also not symmetric as drawn: `L40 16`, `L48 24` and `L40 48` want 44, 20 and 44. Fix those three
-first if it is ever revived.)
-
-`actool` reads the SVG directly and preserves the vector representation, so there are no PNG slots
-to keep in step. `make icon` copies the file into `MenuBarIcon.imageset`, which is why that copy is
-listed as generated above.
+single-spur silhouette would close up". (The v1 path is also not symmetric as drawn: `L40 16`,
+`L48 24` and `L40 48` want 44, 20 and 44. Fix those three first if it is ever revived.)
 
 ## The horizontal lockup
 
