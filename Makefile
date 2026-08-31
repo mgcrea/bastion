@@ -436,6 +436,24 @@ audit: app remote-check ## Assert the listener is loopback-only and refuses fore
 # No running app needed: the rules are a pure function of a URL, and the SSE
 # collapse is a pure function of a body. Compiling the two files with the checks
 # beside them is the same trade `wiring-check` makes.
+# The two files that had no checks and could have.
+#
+# `Dialect` is the dual-era translation and `HTTP` is a hand-written parser on a
+# listening socket. Both were covered only end to end, and end to end is where
+# they are hardest to cover: `make dialect` needs a running app AND an installed
+# catalog server, so it does not run at all on a machine that has installed
+# none, and `audit-listener.sh` only ever sends the parser well-formed requests.
+# Malformed input against a parser that runs BEFORE authentication is exactly
+# the case worth having, and it needs no app at all.
+unit: ## Assert the dialect translation and the HTTP parser, with no app and no network
+	@mkdir -p apps/apple/.build
+	@swiftc -O -o apps/apple/.build/unit-check \
+		apps/apple/Bastion/Dialect.swift \
+		apps/apple/Bastion/ServerCatalog.swift \
+		apps/apple/Bastion/HTTP.swift \
+		scripts/unit-check.swift
+	@apps/apple/.build/unit-check
+
 remote-check: ## Assert where a remote server may live, the SSE collapse, and the OAuth client
 	@mkdir -p apps/apple/.build
 	@swiftc -O -o apps/apple/.build/remote-check \
@@ -528,5 +546,5 @@ format-check: ## Fail on unformatted files
 .PHONY: help app run stop dev-config clean \
 	sparkle sparkle-keys appcast node bundle sign notarize build-release \
 	install install-release install-from uninstall \
-	smoke dialect wiring-check wiring-check-real remote-check remote-live-check license-check revocations audit migrate servers servers-check icon \
+	smoke dialect wiring-check wiring-check-real remote-check remote-live-check unit license-check revocations audit migrate servers servers-check icon \
 	lint format format-check

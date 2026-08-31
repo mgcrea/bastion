@@ -233,7 +233,8 @@ Built and verified:
 | **`make audit`**        | the five security rules, against the real bundle                                    |
 | **`make dialect`**      | 24 conformance checks across both eras                                              |
 | **`make builtin`**      | the write gate hides the write tools, and no tool returns a secret                  |
-| **`make remote-check`** | where a remote server may live, the SSE collapse, and the OAuth client — 74 checks  |
+| **`make unit`**         | the dialect translation and the HTTP parser, malformed input included — 65 checks   |
+| **`make remote-check`** | where a remote server may live, the SSE collapse, and the OAuth client — 79 checks  |
 
 Bastion is what the 2026-07-28 spec calls a **dual-era server**. A modern client declares its
 protocol version, identity and capabilities in each request's `_meta` and needs no handshake at
@@ -302,6 +303,7 @@ make stop           # quit it
 make audit          # assert the listener is loopback-only and refuses foreign Origin/Host
 make dialect        # assert both protocol eras against a running build
 make builtin        # assert Bastion's own server: the write gate, and the secrets wall
+make unit           # assert the dialect translation and the HTTP parser
 make remote-check   # assert the endpoint rules, the SSE collapse, and the OAuth client
 make remote-live-check  # assert the remote transport against Stripe's real server
 make install        # install the Debug build to /Applications

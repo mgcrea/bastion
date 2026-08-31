@@ -56,6 +56,20 @@ jobs:
         with:
           node-version: lts/*
           check-latest: true
+      # Before the build, because none of these need one. They compile a file or
+      # two with the checks beside them, so they are the fastest real signal in
+      # the repo and there is no reason to spend an Xcode build discovering that
+      # the dialect translation is broken.
+      #
+      # `make unit` covers the two files that had no checks and could have: the
+      # dual-era translation, and the hand-written HTTP parser that runs before
+      # any authentication. `make dialect` is deliberately NOT here — it needs a
+      # running app and an installed catalog server, which makes it a
+      # developer's check like `make smoke`, not CI's.
+      - name: Unit checks 🔍
+        run: make unit
+      - name: Client wiring 🔍
+        run: make wiring-check
       - name: Build 📦
         run: make app
       # The security claim, checked. This needs no credentials and no profile —
