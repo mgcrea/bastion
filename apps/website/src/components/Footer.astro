@@ -1,6 +1,7 @@
 ---
 import { DOCS, PRICE, REPO_URL, REQUIRES, SIBLING_APP } from "../config";
 import Logo from "./Logo.astro";
+import MagentaMark from "./MagentaMark.astro";
 
 const COLUMNS = [
   {
@@ -81,6 +82,17 @@ const LEGAL = [
           ))
         }
       </span>
+      {/* The publisher, in the one form every mgcrea site now uses: the mark, the
+          name, and a link out. This footer named no publisher at all until here —
+          the repo link at the top is the product's, not the studio's. */}
+      <a
+        href="https://mg-crea.com"
+        target="_blank"
+        rel="noopener"
+        class="inline-flex items-center gap-1.5 text-[11.5px] text-fg-muted transition-colors hover:text-accent-hi"
+      >
+        <MagentaMark size={13} uid="footer" />Magenta Creations
+      </a>
     </div>
 
     <div class="flex flex-wrap gap-x-13 gap-y-7 text-[12.5px] leading-[1.95] text-fg/50">
