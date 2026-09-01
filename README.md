@@ -356,9 +356,19 @@ The manifest and the JavaScript half:
 ```bash
 make servers        # regenerate every copy of the server list from servers.json
 make servers-check  # fail if any generated copy has drifted
+make catalog-check  # fail if servers.json disagrees with the servers themselves
 make lint
 make format
 ```
+
+`servers-check` and `catalog-check` point in opposite directions and neither substitutes for the
+other. The first asserts every generated copy matches the manifest; the second asserts the
+manifest matches the servers it describes — that a declared variable is one the server actually
+reads, that a write gate is read as a boolean, and that a variable typed as a switch states the
+same default its own schema does. Only the second can catch a rename upstream, and only it can
+catch a `boolean.default` of `false` on a setting the server defaults to `true`, which the
+profile editor would present as the safe choice. It reads the sibling checkout named by
+`MCP_ROOT` (default `~/Projects/mgcrea/mgcrea-ai`) and skips, passing, when there is none.
 
 A Debug build carries its own bundle identifier, `io.mgcrea.bastion.debug`. That is not cosmetic:
 Keychain items are scoped by app identity, so a shared identifier means a debug build reads,

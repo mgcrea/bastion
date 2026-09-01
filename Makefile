@@ -517,6 +517,13 @@ servers: ## Regenerate every copy of the server list from servers.json
 servers-check: ## Fail if any generated copy has drifted from servers.json
 	@node scripts/generate-servers.mjs --check
 
+# The other direction. `servers-check` asserts every generated copy matches the
+# manifest; this asserts the MANIFEST matches the servers it describes, which no
+# amount of regenerating can tell you. Needs the mgcrea-ai checkout and skips
+# cleanly without it, like `dialect` without an installed server.
+catalog-check: ## Fail if servers.json disagrees with the servers in MCP_ROOT
+	@MCP_ROOT="$(MCP_ROOT)" node scripts/catalog-check.mjs
+
 # ─── the icon ────────────────────────────────────────────────────────────────
 
 # The icon is generated, never hand-drawn: one mark, three renderings. The plate
