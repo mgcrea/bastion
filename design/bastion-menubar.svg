@@ -36,7 +36,7 @@
        feet sticking out sideways. In a one-colour template, "in front of" and
        "merged with" are the same picture.
 
-       So the fort's flat base rests exactly ON the sky line — y25.70, the clip's
+       So the fort's flat base rests exactly ON the sky line — y25.30, the clip's
        height at the centre — rather than below it. The fort is never actually
        cut; it keeps the closed base it needs for a floor, and the ridge sits
        under it with 1.05pt of sky between. Cutting it, cupertino-style, also
@@ -56,25 +56,44 @@
        every point, at any amplitude — the same figure cupertino's glyph holds.
        Resize the ridge or the fort freely; leave the 3 and the 1.8 alone.
 
-       SIZE AND SEAT. The fort is 20.39 units wide, fitted so the glyph's ink
-       comes to 22.4% of the 18x18 tile against cupertino's 22.5%, and the whole
-       thing is placed so its ink MASS — not its bounding box — lands on
-       cupertino's line (21.18 against 21.10 idle, 19.65 against 19.74 active).
-       Mass rather than box, because the fort is a solid shape above a 0.9pt
-       line and the eye follows the fort.
+       SIZE. The fort is 19.38 units wide and it was 20.39. The old width was
+       fitted on ink alone — 22.4% of the tile against cupertino's 22.5% — and
+       that fit is what the change cost: 20.7% now, 8% lighter than cupertino in
+       the same bar. It bought the ridge. At 20.39 the wall in the active file
+       came down within 0.35 units of the ridge's own ends, so the hill finished
+       where the wall finished and read as a ridge cut to fit the glyph rather
+       than as ground the fort stands on. At 19.38 the ridge runs 0.90 units past
+       the wall on each side, which is the same reading cupertino gets from 1.20.
+       Ink was the only thing that moved with the fort: the gap, both strokes,
+       the sky and the component counts all hold.
+
+       SEAT. What lands on cupertino's line is the ink MASS, not the bounding
+       box: 21.33 against 21.22 idle, 19.74 against 19.87 active. Mass rather
+       than box, because the fort is a solid shape above a 0.9pt line and the eye
+       follows the fort. Shrinking the fort alone would have dropped that mass by
+       0.4 — its base is pinned to the sky line, so only the fort moved — so the
+       ridge, the clip and the fort were all LIFTED 0.4 to put it back. That lift
+       is the only reason the coordinates here differ from the old ones by
+       anything but the scale, and being a pure translation it leaves the clip a
+       true normal offset of the ridge.
+
+       Those figures come from one measuring pass over real renders — geometry
+       off a 720px rasterisation, alpha thresholded at 32 — with cupertino's
+       glyphs measured in the same pass. That is why its numbers here sit a
+       little off the ones this file used to quote; nothing in cupertino moved.
 
        Re-measure with a connected-component count on a real render after any
        edit, never by eye. Idle is two components and active is three, holding
        at 16, 18 and 20pt. -->
   <defs>
     <clipPath id="sky">
-      <path d="M-4 -4 L40 -4 L40 28.03 L33.37 28.03 C23.22 24.95 12.78 24.95 2.63 28.03
-               L-4 28.03 Z" />
+      <path d="M-4 -4 L40 -4 L40 27.63 L33.37 27.63 C23.22 24.55 12.78 24.55 2.63 27.63
+               L-4 27.63 Z" />
     </clipPath>
   </defs>
   <g clip-path="url(#sky)">
-    <path d="M18 9.39 L26.67 16.53 L28.2 25.7 L7.8 25.7 L9.33 16.53 Z" fill="#000" />
+    <path d="M18 9.81 L26.24 16.59 L27.69 25.3 L8.31 25.3 L9.76 16.59 Z" fill="#000" />
   </g>
-  <path d="M3.5 30.9 Q18 26.5 32.5 30.9" fill="none" stroke="#000" stroke-width="1.8"
+  <path d="M3.5 30.5 Q18 26.1 32.5 30.5" fill="none" stroke="#000" stroke-width="1.8"
     stroke-linecap="round" />
 </svg>

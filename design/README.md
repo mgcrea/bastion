@@ -141,15 +141,22 @@ design/bastion-mark.svg --make icon--> design/bastion-icon.svg --pnpm icons--> a
 
 Two files, one mark, two states — the shape cupertino uses for the same job:
 
-| file                         | state            | ink at 18pt | ink % | mass cy |
-| ---------------------------- | ---------------- | ----------- | ----- | ------- |
-| `bastion-menubar.svg`        | idle             | 31.0 × 22.5 | 22.4  | 21.18   |
-| `bastion-menubar-active.svg` | a server is live | 31.0 × 28.2 | 29.5  | 19.66   |
-| cupertino's, for scale       | idle             | 31.0 × 19.8 | 22.5  | 21.10   |
-| cupertino's, for scale       | connected        | 31.0 × 23.8 | 28.6  | 19.74   |
+| file                         | state            | ink at 18pt | ink % | mass cy | ridge clears |
+| ---------------------------- | ---------------- | ----------- | ----- | ------- | ------------ |
+| `bastion-menubar.svg`        | idle             | 30.8 × 21.6 | 20.7  | 21.33   | —            |
+| `bastion-menubar-active.svg` | a server is live | 30.8 × 27.1 | 27.5  | 19.74   | 0.90         |
+| cupertino's, for scale       | idle             | 30.8 × 19.5 | 22.5  | 21.22   | —            |
+| cupertino's, for scale       | connected        | 30.8 × 23.5 | 28.6  | 19.87   | 1.20         |
 
 `ink %` is the rendered alpha as a fraction of the whole 18×18 tile — the number that says which of
-two glyphs looks heavier in a bar. The two apps are fitted to each other on it.
+two glyphs looks heavier in a bar. The two apps used to be fitted to each other on it, and are now
+within 8% of each other on it, because the fort gave up ink to buy the last column. `ridge clears`
+is how far the hill runs past the outermost ink of the wall or the halo on each side, which is the
+thing that ink bought — see the fort's own bullet below.
+
+All four rows come from one measuring pass over real renders — geometry off a 720px rasterisation,
+alpha thresholded at 32 — cupertino included, so the rows compare. That is why cupertino's figures
+differ slightly from earlier revisions of this table; nothing in cupertino moved.
 
 `MenuBarLabel` in `BastionApp.swift` swaps them on `Activity.shared.instances`, and reads that
 rather than `Supervisor.running` for the reason the popover's rows do: the supervisor's view is a
@@ -188,7 +195,7 @@ Drawn faithfully — the fort's flat base overlapping the ridge — the two weld
 component at every size**, and the ridge reads as feet sticking out sideways. That was measured, not
 argued: in a one-colour template, "in front of" and "merged with" are the same picture.
 
-So the fort's flat base rests exactly **on** the sky line (y25.70, the clip's height at the centre)
+So the fort's flat base rests exactly **on** the sky line (y25.30, the clip's height at the centre)
 rather than below it. The fort is never actually cut, keeps the closed base it needs for a floor,
 and the ridge sits under it with 1.05pt of sky. Cutting it cupertino-style also measures fine and
 was drawn; it was rejected because a fort that sets behind a hill is cupertino's idea, not this
@@ -231,15 +238,26 @@ The fort below it is solid and has a floor of its own, and there is now a ridge 
 - **Stroke 1.6 units (0.8pt)** — cupertino's halo weight exactly, and half the 3.17 the old wall
   carried. Matched weights read as tramlines; one light shape around one solid one reads as a form
   inside another.
-- **Fort 20.39 units wide.** Not a drawing decision: it is fitted so the glyph's ink comes to 22.4%
-  of the tile against cupertino's 22.5%. The original glyph was 31.5 × 32.5 at a far heavier ink —
-  nearly twice cupertino's mass, which is not what two icons in one menu bar by one author should
-  look like.
+- **Fort 19.38 units wide, and it was 20.39.** The old width was fitted on ink alone — 22.4% of the
+  tile against cupertino's 22.5%, itself a correction of an original glyph that ran 31.5 × 32.5 at
+  nearly twice cupertino's mass. What it missed is that the wall's feet are the widest the glyph
+  ever gets and they land right beside the ridge's ends, so the two are read against each other: at
+  20.39 the wall stopped 0.35 units inside the ridge, close enough to nothing that the hill looked
+  cut to fit the wall rather than run under it. 19.38 opens that to 0.90, against the 1.20 cupertino
+  gets, and costs the ink fit — 20.7% now, 8% lighter than cupertino in the same bar. That is the
+  whole trade, and it is the only number the shrink moved: the gap, both strokes, the sky, the seat
+  and the component counts all hold. Sizes between the two were drawn and measured; 0.35 → 0.65 at
+  19.79 is visible but only just, and 1.20 costs 13% of the ink.
 - **The seat is fitted to ink mass, not to the bounding box.** Both files are placed so the ink mass
-  lands on cupertino's line: 21.18 against 21.10 idle, 19.65 against 19.74 active. Mass rather than
+  lands on cupertino's line: 21.33 against 21.22 idle, 19.74 against 19.87 active. Mass rather than
   box because the fort is a solid shape above a 0.9pt line and the eye follows the fort. Change it
   in both files or in neither — the fort must not move when a server starts, or the swap reads as
   the icon twitching rather than as something happening.
+- **The whole glyph is lifted 0.4 units**, and that is bookkeeping for the line above rather than a
+  composition decision. The fort's base is pinned to the sky line, so narrowing the fort took mass
+  out of the top of the glyph and left the ridge where it was, dropping the seat 0.4 below
+  cupertino's line; lifting the ridge, the clip and the fort together puts it back. It is a pure
+  translation, so the clip stays a true normal offset and the 1.05pt of sky is untouched.
 - **The wall's feet stop on the sky line.** The path runs down to y34 and the clip trims it, which
   is how cupertino's halo terminates too, so in both apps every shape stops on one line. Those two
   end coordinates are outside the clip and carry no meaning; do not tune them.

@@ -19,6 +19,14 @@
        glyph stops on one line. Those two end coordinates are outside the clip
        and carry no meaning; do not tune them.
 
+       WHERE THE FEET STOP IS WHAT SIZED THE FORT. This is the widest the glyph
+       ever gets, and it lands right beside the ridge's own ends, so the two are
+       read against each other. The feet stop 0.90 units inside the ridge on each
+       side; at the fort's old width it was 0.35, close enough to nothing that
+       the hill looked cut to fit the wall. That clearance is why the fort is
+       19.38 rather than 20.39 — see the note in `bastion-menubar.svg`, and check
+       it there rather than nudging this path, which is derived and not drawn.
+
        Nothing here is new geometry: it is the fort's silhouette offset by 3.6
        units, so every face of the wall stands the same distance off the face
        behind it, and it is the shape the app icon carried before the icon
@@ -47,15 +55,15 @@
        components here, holding at 16, 18 and 20pt. -->
   <defs>
     <clipPath id="sky">
-      <path d="M-4 -4 L40 -4 L40 28.03 L33.37 28.03 C23.22 24.95 12.78 24.95 2.63 28.03
-               L-4 28.03 Z" />
+      <path d="M-4 -4 L40 -4 L40 27.63 L33.37 27.63 C23.22 24.55 12.78 24.55 2.63 27.63
+               L-4 27.63 Z" />
     </clipPath>
   </defs>
   <g clip-path="url(#sky)">
-    <path d="M18 9.39 L26.67 16.53 L28.2 25.7 L7.8 25.7 L9.33 16.53 Z" fill="#000" />
-    <path d="M2.77 34 L6.01 14.6 L18 4.73 L29.99 14.6 L33.23 34" fill="none" stroke="#000"
+    <path d="M18 9.81 L26.24 16.59 L27.69 25.3 L8.31 25.3 L9.76 16.59 Z" fill="#000" />
+    <path d="M3.21 34 L6.43 14.66 L18 5.14 L29.57 14.66 L32.79 34" fill="none" stroke="#000"
       stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" />
   </g>
-  <path d="M3.5 30.9 Q18 26.5 32.5 30.9" fill="none" stroke="#000" stroke-width="1.8"
+  <path d="M3.5 30.5 Q18 26.1 32.5 30.5" fill="none" stroke="#000" stroke-width="1.8"
     stroke-linecap="round" />
 </svg>
