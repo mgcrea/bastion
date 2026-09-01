@@ -154,8 +154,8 @@ asserts both eras against a running build.
 | [UniFi Network](https://github.com/mgcrea/mcp-unifi-network) | `unifi-network` | `unifi-network-mcp` | `@mgcrea/mcp-unifi-network` (npm) | `UNIFI_ALLOW_WRITES` | 2 |
 | [Stripe](https://docs.stripe.com/mcp) | `stripe` | — | `https://mcp.stripe.com` (remote) | `stripe_api_write`, `create_refund`, `stripe_report` (by name) | 1 |
 | [Shopify](https://github.com/mgcrea/mcp-shopify) | `shopify` | `shopify-mcp` | `@mgcrea/mcp-shopify` (npm) | read-only | 1 |
-| OVHcloud | `ovh-api` | `ovh-api-mcp` | `@mgcrea/mcp-ovh-api` (npm) | `OVH_ALLOW_WRITES` | 4 |
-| Keycloak | `keycloak` | `keycloak-mcp` | `@mgcrea/mcp-keycloak` (npm) | `KEYCLOAK_ALLOW_WRITES` | 2 |
+| [OVHcloud](https://github.com/mgcrea/mcp-ovh-api) | `ovh-api` | `ovh-api-mcp` | `@mgcrea/mcp-ovh-api` (npm) | `OVH_ALLOW_WRITES` | 4 |
+| [Keycloak](https://github.com/mgcrea/mcp-keycloak) | `keycloak` | `keycloak-mcp` | `@mgcrea/mcp-keycloak` (npm) | `KEYCLOAK_ALLOW_WRITES` | 2 |
 | npm | `npm` | `npm-mcp` | `mcp-npm` (local) | `NPM_ALLOW_WRITES` | 2 |
 
 ### App Store Connect

@@ -843,7 +843,7 @@
         "distribution": "npm",
         "localPath": "mcp-ovh-api"
       },
-      "docsUrl": null,
+      "docsUrl": "https://github.com/mgcrea/mcp-ovh-api",
       "dialect": "2025-11-25",
       "writeGate": "OVH_ALLOW_WRITES",
       "gateBypass": [],
@@ -945,7 +945,7 @@
         "distribution": "npm",
         "localPath": "mcp-keycloak"
       },
-      "docsUrl": null,
+      "docsUrl": "https://github.com/mgcrea/mcp-keycloak",
       "dialect": "2025-11-25",
       "writeGate": "KEYCLOAK_ALLOW_WRITES",
       "gateBypass": [],
