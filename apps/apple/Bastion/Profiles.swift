@@ -292,7 +292,9 @@ nonisolated enum ProfileEnvironment {
     // the upstream app and typed it into the profile must keep it, or this
     // "fix" silently breaks the logins that were working.
     for callback in server.callbackEnv {
-      if let port = callbackPort(profile: profile.name, server: server.id) {
+      // Spawn time is the only place a decision is made: there is certainly a
+      // profile here, and it is certainly being run.
+      if case .port(let port) = decideCallback(profile: profile.name, server: server.id) {
         env[callback.name] = callback.url(port: port)
       }
     }
@@ -325,53 +327,76 @@ nonisolated enum ProfileEnvironment {
 
   // MARK: - Loopback callback ports
 
-  /// The loopback port this profile's server catches its OAuth callback on,
-  /// or `nil` to leave the variable alone and let the server use its own.
+  /// What this profile's callback URL is built from, once something has
+  /// decided. `nil` means undecided — nothing has spawned this profile yet.
   ///
-  /// **The first profile of a server gets `nil` on purpose.** Reddit and X both
-  /// compare `redirect_uri` byte for byte against a single URI registered on
-  /// the app, and each server documents a default port that its own setup
-  /// instructions tell people to register. Assigning a port to the only profile
-  /// on the machine would invalidate that registration to solve a collision
-  /// that does not exist yet — which is exactly what it did: a login that had
-  /// worked came back "invalid redirect_uri parameter" because Bastion had
-  /// quietly moved the port out from under a registration nobody had changed.
-  ///
-  /// So the rule is first come, first served. One profile keeps the documented
-  /// default and needs no action. A second profile is a second identity, needs
-  /// its own socket, and needs its own upstream app registration anyway —
-  /// Reddit allows one redirect URI per app — so being handed a fresh port
-  /// costs it nothing it was not already going to pay.
-  ///
-  /// Whatever is decided is written down and kept, because a port picked fresh
-  /// on each spawn would be correct exactly once.
-  ///
-  /// `nil` is also the failure answer, and deliberately the same answer: an
-  /// invented number we could not bind would produce the one outcome worth
-  /// avoiding, a URL shown in the editor and registered upstream by hand that
-  /// nothing is ever listening on.
-  nonisolated static func callbackPort(profile: String, server: String) -> Int? {
+  /// **Pure.** Reads a file and writes nothing, which is what makes it safe to
+  /// call from a view body. Its absence was a real bug: the profile editor
+  /// called the deciding function below on every render, with whatever name was
+  /// in the text field, so typing "olouv" created a profile directory and
+  /// burned an allocated port for `o`, `ol`, `olo`, `olou` and `olouv` — and
+  /// the first keystroke claimed the server's default, so the profile the user
+  /// actually meant was pushed onto a port their Reddit app had never heard of.
+  nonisolated static func callbackAssignment(profile: String, server: String) -> CallbackAssignment?
+  {
     let file = directory(profile: profile, server: server)
       .appendingPathComponent("callback-port", isDirectory: false)
+    guard let decided = try? String(contentsOf: file, encoding: .utf8) else { return nil }
+    let text = decided.trimmingCharacters(in: .whitespacesAndNewlines)
+    if text == defaultMarker { return .serverDefault }
+    if let port = Int(text), (1024...65535).contains(port) { return .port(port) }
+    return nil
+  }
 
-    if let decided = try? String(contentsOf: file, encoding: .utf8) {
-      let text = decided.trimmingCharacters(in: .whitespacesAndNewlines)
-      if text == defaultMarker { return nil }
-      if let port = Int(text), (1024...65535).contains(port) { return port }
-    }
+  /// Decide, once, and write it down. **Only for a profile that is being run.**
+  ///
+  /// The first profile of a server is left on the server's own default, and
+  /// that is the whole point. Reddit and X compare `redirect_uri` byte for byte
+  /// against a single URI registered on the app, and each server documents a
+  /// default port its setup instructions tell people to register. Assigning a
+  /// port to the only profile on the machine invalidates that registration to
+  /// solve a collision that does not exist yet — which is exactly what it did,
+  /// and the symptom was `invalid redirect_uri parameter` on a login that had
+  /// worked the day before.
+  ///
+  /// So: first come, first served. A second profile is a second identity, needs
+  /// its own socket, and needs its own upstream app registration anyway —
+  /// Reddit allows one redirect URI per app — so a fresh port costs it nothing
+  /// it was not already going to pay.
+  ///
+  /// Kept once written, because a port picked afresh on every spawn would match
+  /// a registration exactly once.
+  nonisolated static func decideCallback(profile: String, server: String) -> CallbackAssignment {
+    if let already = callbackAssignment(profile: profile, server: server) { return already }
 
-    // Undecided. Claim the server's own default if no other profile has, and
-    // allocate otherwise. Racy in principle — two profiles created in the same
-    // instant could both read "unclaimed" — and not worth a lock: the loser
-    // gets a URL that does not match its registration, which is a sentence the
-    // editor already shows and a value the user can override by typing one.
-    let decision = defaultIsClaimed(server: server) ? freePort().map(String.init) : defaultMarker
-    guard let decision else { return nil }
+    // Racy in principle — two profiles first spawned in the same instant could
+    // both read "unclaimed" — and not worth a lock: the loser gets a URL that
+    // does not match its registration, which the editor shows and the user can
+    // override by typing one.
+    let claimed = defaultIsClaimed(server: server)
+    let decision: CallbackAssignment =
+      claimed ? (freePort().map(CallbackAssignment.port) ?? .serverDefault) : .serverDefault
+
+    let file = directory(profile: profile, server: server)
+      .appendingPathComponent("callback-port", isDirectory: false)
     try? FileManager.default.createDirectory(
       at: file.deletingLastPathComponent(), withIntermediateDirectories: true,
       attributes: [.posixPermissions: 0o700])
-    try? Data("\(decision)\n".utf8).write(to: file, options: .atomic)
-    return decision == defaultMarker ? nil : Int(decision)
+    let text: String
+    switch decision {
+    case .serverDefault: text = defaultMarker
+    case .port(let port): text = String(port)
+    }
+    try? Data("\(text)\n".utf8).write(to: file, options: .atomic)
+    return decision
+  }
+
+  /// What a profile's callback is built from.
+  enum CallbackAssignment: Hashable {
+    /// Leave the variable unset and let the server use the port it documents.
+    case serverDefault
+    /// A port of this profile's own, because another profile holds the default.
+    case port(Int)
   }
 
   /// Written into `callback-port` for the profile using the server's own

@@ -418,16 +418,29 @@ struct ProfileEditor: View {
   /// it into `values` would freeze today's port into the profile, and the
   /// assignment is meant to be Bastion's to keep. A user who wants a specific
   /// URL types it into the variable above, which wins at spawn time.
+  /// What to show for a callback variable. Reads; never decides.
+  ///
+  /// `ProfileEnvironment.decideCallback` writes to disk, so calling it from
+  /// here would run it once per keystroke against a half-typed profile name —
+  /// which is precisely what it did, leaving a directory and a burnt port for
+  /// every prefix of the name somebody typed. A view asks; the spawn decides.
   private func assignedCallback(_ callback: BastionServer.CallbackVar) -> String {
     let trimmed = name.trimmingCharacters(in: .whitespaces)
-    guard !trimmed.isEmpty else { return "\(callback.name): decided when the profile is saved" }
-    // No assignment is the *good* case for a first profile, so it must not read
-    // as something missing. What matters to the user is which URL to register,
-    // and for this profile it is the one the server's own setup text prints.
-    guard let port = ProfileEnvironment.callbackPort(profile: trimmed, server: server.id) else {
-      return "\(callback.name): \(server.displayName)'s own default — register that one"
+    guard !trimmed.isEmpty,
+      let assignment = ProfileEnvironment.callbackAssignment(
+        profile: trimmed, server: server.id)
+    else {
+      return "\(callback.name): decided the first time this profile runs"
     }
-    return "\(callback.name)=\(callback.url(port: port))"
+    switch assignment {
+    // Not an assignment at all, and it must not read as something missing: this
+    // is the good case, and the URL to register is the one the server's own
+    // setup text prints.
+    case .serverDefault:
+      return "\(callback.name): \(server.displayName)'s own default — register that one"
+    case .port(let port):
+      return "\(callback.name)=\(callback.url(port: port))"
+    }
   }
 
   /// Whether this profile is signed in, for whichever kind is on screen.
