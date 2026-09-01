@@ -569,6 +569,12 @@ final class ServerStore {
   /// `.claude.json` on a toggle is a much larger action than the toggle looks,
   /// and a disabled server's entry failing with Bastion's own sentence is a
   /// better outcome than an entry that silently vanished.
+  ///
+  /// Left alone is not the same as maintained, though, and it took a bug report
+  /// to tell the two apart: while an existing entry stays, nothing writes a new
+  /// one. `ProfileStore.onEnabledServers` is what Configure and `wire_client`
+  /// write from, so switching a server off and then wiring a client for a
+  /// different one no longer puts this one back.
   func setEnabled(_ enabled: Bool, for id: String) throws {
     guard let index = servers.firstIndex(where: { $0.id == id }) else {
       throw StoreError.notInList(id)

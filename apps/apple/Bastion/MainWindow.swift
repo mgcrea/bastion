@@ -414,7 +414,10 @@ private struct ClientDot: View {
     // this row to Bastion's writes. Without it there is nothing observable in
     // this body that a Configure changes.
     let _ = ClientConfigRevision.shared.value
-    let status = ClientWiring.status(of: client, profiles: ProfileStore.shared.profiles)
+    // Switched-off servers excluded, exactly as in the pane this dot summarises
+    // and in what Configure writes. A dot that went amber for a server nobody
+    // can reach is a dot with no move behind it.
+    let status = ClientWiring.status(of: client, profiles: ProfileStore.shared.onEnabledServers)
     Circle()
       .fill(ClientWiring.tint(status))
       .frame(width: 7, height: 7)

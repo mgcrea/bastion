@@ -102,6 +102,24 @@ final class ProfileStore {
     profiles.first { $0.name == name && $0.serverID == server }
   }
 
+  /// The profiles a client can usefully be wired to: those whose server is
+  /// switched on.
+  ///
+  /// One definition, because two panes and two tools ask this same question and
+  /// they used to answer it differently. `wire_client` filtered switched-off
+  /// servers out; the Clients pane and `list_clients` did not — so the pane
+  /// audited a client as half-written over an entry nothing would serve, and
+  /// Configuring for one server put every switched-off server back into
+  /// somebody's config.
+  ///
+  /// Reads `ServerStore.shared.servers` rather than the lock-free snapshot: the
+  /// callers are SwiftUI bodies, and only the observable array makes a pane
+  /// redraw when the switch moves.
+  var onEnabledServers: [Profile] {
+    let enabled = Set(ServerStore.shared.servers.filter(\.isEnabled).map(\.id))
+    return profiles.filter { enabled.contains($0.serverID) }
+  }
+
   // MARK: - Persistence
 
   private struct Stored: Codable {

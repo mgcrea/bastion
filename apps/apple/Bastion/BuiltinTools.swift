@@ -570,7 +570,10 @@ enum BuiltinTools {
   }
 
   private static func listClients() -> Any {
-    let profiles = ProfileStore.shared.profiles
+    // The same list `wire_client` writes from, so the status this reports is a
+    // status that Configure can actually reach. Reported against every profile,
+    // it named a switched-off server as missing and then refused to write it.
+    let profiles = ProfileStore.shared.onEnabledServers
     return ClientWiring.all.map { client -> [String: Any] in
       var row: [String: Any] = [
         "id": client.id,
@@ -1043,8 +1046,7 @@ enum BuiltinTools {
       throw ToolError.noSuchClient(id: id, known: ClientWiring.all.map(\.id))
     }
 
-    let enabled = Set(ServerStore.shared.servers.filter(\.isEnabled).map(\.id))
-    var profiles = ProfileStore.shared.profiles.filter { enabled.contains($0.serverID) }
+    var profiles = ProfileStore.shared.onEnabledServers
     if let wanted = arguments["profiles"] as? [String] {
       let set = Set(wanted)
       profiles = profiles.filter { set.contains($0.id) }

@@ -25,9 +25,17 @@ struct ClientDetail: View {
   /// Narrows the project list. Claude Code has ninety-eight folders in it.
   @State private var projectFilter = ""
 
+  /// Every profile, which is what the pane draws keys from — not what Configure
+  /// writes. A profile whose server is switched off keeps its key, because the
+  /// file may still hold an entry under it and this pane's job is to say what is
+  /// in the file.
   private var profiles: [Profile] { ProfileStore.shared.profiles }
 
-  /// One entry Bastion would write, and what is under its key right now.
+  /// The profiles Configure writes, and the only ones the audit is taken over.
+  private var writable: [Profile] { ProfileStore.shared.onEnabledServers }
+
+  /// One entry Bastion would write — or one it wrote and no longer would — and
+  /// what is under its key right now.
   private struct Row {
     let profile: Profile
     let key: String
@@ -39,6 +47,11 @@ struct ClientDetail: View {
     /// it to the audit would make four JSON clients carry a state describing
     /// something their files cannot say.
     var isDisabled = false
+    /// The other switch, and the other end of it: this row's *server* is off in
+    /// Bastion. The entry is in the file and still points at Bastion, so it
+    /// audits as configured, and every request under it is refused at the
+    /// gateway. Kept out of the audit and out of what Configure writes.
+    var serverIsOff = false
   }
 
   /// Which entry a Remove button names, and where it lives.
@@ -72,6 +85,12 @@ struct ClientDetail: View {
     // from anywhere else.
     _ = ClientConfigRevision.shared.value
     let profiles = profiles
+    let off = Set(profiles.map(\.serverID)).subtracting(writable.map(\.serverID))
+    // Keyed off the full list, and identical to `keys(for: writable)` for every
+    // profile in both: the `<profile>-<server>` disambiguation counts profiles
+    // per server, and the switch is per server, so a server's profiles are
+    // never split across the two lists. Written this way so a row for a
+    // switched-off server names the key its entry is actually filed under.
     let keys = ClientWiring.keys(for: profiles)
     let ordered =
       profiles
@@ -86,7 +105,10 @@ struct ClientDetail: View {
     func unread(_ status: ClientWiring.Status) -> Snapshot {
       Snapshot(
         status: status,
-        rows: ordered.map {
+        // Switched-off servers drop out entirely here. There is no file to hold
+        // an entry for one, so all that is left to say about it is that Bastion
+        // would not write it.
+        rows: ordered.filter { !off.contains($0.profile.serverID) }.map {
           Row(
             profile: $0.profile, key: $0.key, state: .missing,
             reach: reachLine(for: $0.profile))
@@ -104,21 +126,41 @@ struct ClientDetail: View {
     }
 
     let servers = config.servers
-    let rows = ordered.map { item in
-      Row(
-        profile: item.profile, key: item.key,
-        state: ClientWiringMerge.state(
-          of: servers, key: item.key,
-          reach: ClientWiring.reach(for: item.profile, transport: client.transport)),
+    let rows = ordered.compactMap { item -> Row? in
+      let state = ClientWiringMerge.state(
+        of: servers, key: item.key,
+        reach: ClientWiring.reach(for: item.profile, transport: client.transport))
+      let serverIsOff = off.contains(item.profile.serverID)
+      // A switched-off server earns a row only for an entry of ours that is
+      // really in this file — the one thing about it worth showing, since
+      // Bastion is refusing every request that entry produces. Not for
+      // `.missing`, which would be a row promising a write Configure will not
+      // make; and not for `.foreign`, which is somebody else's server and is
+      // already listed, with its own Remove, further down the pane.
+      if serverIsOff {
+        switch state {
+        case .missing, .foreign: return nil
+        case .matches, .stale: break
+        }
+      }
+      return Row(
+        profile: item.profile, key: item.key, state: state,
         reach: reachLine(for: item.profile),
-        isDisabled: config.disabled.contains(item.key))
+        isDisabled: config.disabled.contains(item.key),
+        serverIsOff: serverIsOff)
     }
     return Snapshot(
       // The same states the rows draw, reduced. The header sentence and the
       // badges cannot disagree because there is only one computation.
+      //
+      // Minus the switched-off servers: an entry Bastion refuses to serve and
+      // refuses to write is not a thing this client is missing, and counting it
+      // held a fully wired config at "not configured" until the server came
+      // back.
       status: .audited(
         ClientWiringMerge.audit(
-          states: rows.map { (key: $0.key, label: $0.profile.serverID, state: $0.state) })),
+          states: rows.filter { !$0.serverIsOff }
+            .map { (key: $0.key, label: $0.profile.serverID, state: $0.state) })),
       rows: rows,
       others: ClientWiringMerge.foreignEntries(in: servers),
       // Claude Code's alone. Codex keeps its project scope in a
@@ -242,7 +284,7 @@ struct ClientDetail: View {
 
       HStack(spacing: 8) {
         Button("Configure") { wire() }
-          .disabled(profiles.isEmpty || !client.isInstalled)
+          .disabled(writable.isEmpty || !client.isInstalled)
         // Named, because it is no longer the only Remove on this screen: every
         // foreign entry below carries one that takes out exactly that entry.
         // Offered only when there is something of ours to take out — a "Remove"
@@ -257,6 +299,9 @@ struct ClientDetail: View {
 
       if profiles.isEmpty {
         Text("No profiles yet. A client can only be wired to something that exists.")
+          .font(.caption).foregroundStyle(.secondary)
+      } else if writable.isEmpty {
+        Text("Every server with a profile is switched off. Nothing to write.")
           .font(.caption).foregroundStyle(.secondary)
       }
     }
@@ -319,7 +364,14 @@ struct ClientDetail: View {
           .font(.system(.caption, design: .monospaced)).bold()
           .textSelection(.enabled)
         Spacer(minLength: 8)
-        stateBadge(row.state)
+        // No badge for a switched-off server. Every one of them would be a
+        // claim about wiring, and the wiring is not what is wrong: the entry is
+        // exactly right and the door behind it is shut.
+        if row.serverIsOff {
+          Badge("server off", tint: .secondary)
+        } else {
+          stateBadge(row.state)
+        }
       }
       Text(row.reach)
         .font(.system(.caption2, design: .monospaced))
@@ -353,7 +405,21 @@ struct ClientDetail: View {
           .font(.caption2).foregroundStyle(.orange)
           .fixedSize(horizontal: false, vertical: true)
       }
+      // The row Bastion's own switch produces. Left in the list rather than
+      // hidden, because it is in the file whether this pane draws it or not,
+      // and this is the only screen that reads the file.
+      if row.serverIsOff {
+        Text(
+          "'\(row.profile.serverID)' is switched off in Bastion, so requests under this entry "
+            + "are refused. Configure leaves it alone; Remove Bastion's entries takes it out.")
+          .font(.caption2).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
     }
+    // Dimmed the same way the servers list dims a switched-off server, so the
+    // two screens say the same thing about it without either having to explain
+    // the other.
+    .opacity(row.serverIsOff ? 0.55 : 1)
   }
 
   /// The per-entry counterpart to the header dot, in the same colours, so a row
@@ -385,7 +451,9 @@ struct ClientDetail: View {
   /// what they do not have. Removing one is the last step of moving it over, so
   /// the button is here rather than in a client's own settings screen.
   private func othersCard(_ snapshot: Snapshot) -> some View {
-    let wanted = Set(ClientWiring.keys(for: profiles).values)
+    // What Configure would write, so a foreign entry is only flagged as
+    // colliding with a key something is actually going to claim.
+    let wanted = Set(ClientWiring.keys(for: writable).values)
     let count = snapshot.others.count
 
     return Card(title: "Other servers in this file (\(count))") {
@@ -515,6 +583,7 @@ struct ClientDetail: View {
 
   private func wire(force: Bool = false) {
     do {
+      let profiles = writable
       let backup = try ClientWiring.wire(client, profiles: profiles, force: force)
       collision = []
       result =
