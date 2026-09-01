@@ -305,6 +305,7 @@ others.
 | `not written`      | No entry under that key.                                     | _Configure_                      |
 | `points elsewhere` | Ours, but at a previous build, port, or the other transport. | _Configure_ rewrites it.         |
 | `taken`            | Present, and **not** ours.                                   | Change the prefix, or remove it. |
+| `server off`       | Ours, and its server is switched off in Bastion.             | Switch the server back on.       |
 
 The distinction between the last two is the whole point. `points elsewhere` is a
 drifted copy of ours and the remedy is to write over it; `taken` is somebody
@@ -316,6 +317,26 @@ The header sentence is the same per-entry states reduced, in this precedence:
 collides ▸ stale ▸ not configured (when _all_ are missing) ▸ incomplete ▸
 configured. Header and badges are two renderings of one computation, which is how
 they are kept from disagreeing about a file neither of them owns.
+
+### Servers that are switched off
+
+_Configure_ writes the profiles whose server is switched on, and only those. It
+is the same list `wire_client` writes from and the one `list_clients` and the
+sidebar dot report against, so a client is never wired to a server the gateway
+would refuse, and configuring a client for one server does not put every
+switched-off server back into its file.
+
+Switching a server off does **not** rewrite anyone's config: that is a much
+larger action than the toggle looks, and an entry that fails with Bastion's own
+sentence is a better outcome than one that silently vanished. An entry already in
+the file therefore stays, and this is the pane that says so. The row remains,
+dimmed and badged `server off`, and it is left out of the header sentence — an
+entry Bastion refuses to serve and refuses to write is not something the client
+is missing. _Remove Bastion's entries_ takes it out, and switching the server
+back on returns the row to the audit.
+
+A switched-off server with nothing in the file gets no row at all: `not written`
+would promise a write _Configure_ is not going to make.
 
 ### The servers Bastion did not write
 

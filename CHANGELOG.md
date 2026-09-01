@@ -7,6 +7,26 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.3.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Fixed
+
+- **A switched-off server is no longer written into client configs.** Switching a server off has
+  always left the entries already in a client's config alone, deliberately: rewriting somebody's
+  `.claude.json` on a toggle is a much larger action than the toggle looks, and an entry that fails
+  with Bastion's own sentence beats one that silently vanished. But _Configure_ wrote from every
+  profile regardless, so wiring a client for one server put every switched-off server back — and
+  the pane audited a client as half-written, down to an amber dot in the sidebar, over an entry the
+  gateway refuses to serve.
+
+  `wire_client` had filtered these out since it shipped and the pane had not, so the app disagreed
+  with its own tool about the same file. One rule now, used by both, plus `list_clients`: a client
+  is wired to the servers that are switched on.
+
+  An entry already in the file for a switched-off server keeps its row, dimmed and marked, because
+  it is in the file whether the pane draws it or not and this is the only screen that reads the
+  file. _Remove Bastion's entries_ still takes it out.
+
 ## [1.3.0] - 2026-09-01
 
 ### Added

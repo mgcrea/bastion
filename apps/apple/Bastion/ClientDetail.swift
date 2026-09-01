@@ -383,8 +383,15 @@ struct ClientDetail: View {
       // on a pane that already has a lot to say.
       switch row.state {
       case .stale(let where_):
-        Text("Points at \(where_) right now. Configure rewrites it.")
-          .font(.caption2).foregroundStyle(.red)
+        // The remedy has to name the switch when the switch is what is stopping
+        // it. Configure skips this row entirely while the server is off, so
+        // "Configure rewrites it" would be a promise the button does not keep.
+        Text(
+          row.serverIsOff
+            ? "Points at \(where_) right now. Switch the server back on and Configure rewrites it."
+            : "Points at \(where_) right now. Configure rewrites it.")
+          .font(.caption2)
+          .foregroundStyle(row.serverIsOff ? AnyShapeStyle(.secondary) : AnyShapeStyle(.red))
           .fixedSize(horizontal: false, vertical: true)
       case .foreign(let what):
         Text(
@@ -399,7 +406,7 @@ struct ClientDetail: View {
       // client has switched off still points where it should, so it audits as
       // configured while the client runs none of it -- but unlike a silently
       // dropped config, the fact is a key in the file.
-      if row.isDisabled {
+      if row.isDisabled, !row.serverIsOff {
         Text(
           "\(client.displayName) has this entry switched off. Configure turns it back on.")
           .font(.caption2).foregroundStyle(.orange)
