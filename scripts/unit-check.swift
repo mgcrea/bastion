@@ -402,7 +402,7 @@ struct UnitCheck {
     // This has to agree with the servers exactly, or the editor shows a switch
     // in one position while the server reads the other. Every repo that has a
     // `parseBool` spells it `["1", "true", "yes", "on"]` — appstore-connect,
-    // keycloak, ovh-api, reddit, unifi-network, unifi-protect and x-api — and
+    // keycloak, npm, ovh-api, reddit, unifi-network, unifi-protect and x-api — and
     // Cupertino's `packages/core` agrees.
     func parsed(_ raw: String) -> Bool? { BastionServer.EnvVar.parseBool(raw) }
 
@@ -428,17 +428,23 @@ struct UnitCheck {
     let booleans = ServerCatalog.all.flatMap { server in
       server.env.filter { $0.booleanDefault != nil }.map { (server.id, $0) }
     }
-    check("five of them are typed", booleans.count == 5)
-    // The one that is not false, and the reason the control has three
+    check("six of them are typed", booleans.count == 6)
+    // The ones that are not false, and the reason the control has three
     // positions: a two-way toggle would have to start somewhere, and starting
     // it off writes "0" over a default of true — silently ending certificate
-    // verification on a camera console.
+    // verification on a camera console, or stopping the browser an OTP flow
+    // has to open. Named rather than counted, so a new on-by-default switch
+    // fails here until somebody has looked at it and said so.
+    let onByDefault: Set<String> = ["UNIFI_PROTECT_VERIFY_TLS", "NPM_AUTO_OPEN_BROWSER"]
     check(
       "UNIFI_PROTECT_VERIFY_TLS defaults to on",
       booleans.first { $0.1.name == "UNIFI_PROTECT_VERIFY_TLS" }?.1.booleanDefault == true)
     check(
+      "NPM_AUTO_OPEN_BROWSER defaults to on",
+      booleans.first { $0.1.name == "NPM_AUTO_OPEN_BROWSER" }?.1.booleanDefault == true)
+    check(
       "and every other one defaults to off",
-      booleans.filter { $0.1.name != "UNIFI_PROTECT_VERIFY_TLS" }
+      booleans.filter { !onByDefault.contains($0.1.name) }
         .allSatisfy { $0.1.booleanDefault == false })
     // The combinations the generator refuses, asserted against what it wrote.
     check("none is secret", booleans.allSatisfy { !$0.1.isSecret })
@@ -452,7 +458,7 @@ struct UnitCheck {
     // A switch is still an ordinary variable a profile fills in — unlike the
     // gate, which the toggle owns. Nothing should have removed these.
     check(
-      "and all five are still offered in the editor",
+      "and every one is still offered in the editor",
       booleans.allSatisfy { pair in
         ServerCatalog.all.first { $0.id == pair.0 }?.editableEnv
           .contains { $0.name == pair.1.name } == true
