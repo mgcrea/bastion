@@ -7,6 +7,18 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.2.1` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Changed
+
+- **Updates is its own pane in Settings, instead of the fourth card down General.** General is
+  where the gateway port and the npm minimum release age live, and the update controls were below
+  all of it. Automatic checking is off until asked for, so Check Now is the only way an unopted
+  build ever looks at all — and it was the part hardest to find. The pane sits next to About, the
+  two answering halves of one question: which build is this, and is there a newer one. It repeats
+  the version in its first row and now says when the last check happened, which `UpdateController`
+  had always recorded and nothing had ever shown.
+
 ## [1.2.1] - 2026-09-01
 
 ### Fixed

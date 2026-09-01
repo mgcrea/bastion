@@ -11,13 +11,20 @@ enum SettingsPane: String, CaseIterable, Identifiable {
   case general
   case audit
   case about
+  case updates
   case licence
 
   var id: String { rawValue }
   static let defaultsKey = "settingsPane"
 
   /// What the app is and how it behaves…
-  static let application: [SettingsPane] = [.general, .audit, .about]
+  ///
+  /// Updates sits last, next to About, because the two answer halves of one
+  /// question: which build is this, and is there a newer one. It is a pane
+  /// rather than the Section in General it used to be — General is where the
+  /// gateway port and the npm minimum age live, and the only manual check the
+  /// app has was the fourth card down a page nobody scrolls to look for it.
+  static let application: [SettingsPane] = [.general, .audit, .about, .updates]
 
   /// …and what was bought, which is a different question and the only reason the
   /// sidebar is in two groups rather than one list of three. Somebody opens
@@ -30,6 +37,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     case .general: "General"
     case .audit: "Activity"
     case .about: "About"
+    case .updates: "Updates"
     case .licence: "Licence"
     }
   }
@@ -39,6 +47,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     case .general: "gearshape"
     case .audit: "list.bullet.rectangle"
     case .about: "info.circle"
+    case .updates: "arrow.down.circle"
     case .licence: "key"
     }
   }
@@ -124,6 +133,7 @@ struct SettingsView: View {
           case .general: GeneralPane()
           case .audit: AuditPane()
           case .about: AboutPane()
+          case .updates: UpdatesPane()
           case .licence: LicencePane()
           }
         }
@@ -142,7 +152,6 @@ private struct GeneralPane: View {
   @AppStorage(ServerInstaller.releaseAgeKey) private var releaseAge = -1
   /// Empty by default: the prefix is opt-in. See `ClientWiring.prefix`.
   @AppStorage(ClientWiring.prefixKey) private var keyPrefix = ""
-  @State private var automatic = UpdateController.shared.automatic
 
   /// What the current prefix does to the keys that would actually be written,
   /// rather than to an invented example — the profiles are right there.
@@ -248,41 +257,6 @@ private struct GeneralPane: View {
       } header: {
         Text("Installing servers")
       }
-
-      Section {
-        // Both questions live here now. The standing one always did; "check
-        // now" followed it out of the menu bar when that became a panel, where
-        // a row that is neither an entrance nor an exit had no weight it could
-        // be given that did not read as more drastic than Quit.
-        //
-        // It cannot simply be dropped: this is the only manual check there is,
-        // and the automatic one is off until asked for, so a build with the
-        // toggle off would otherwise have no way to look at all.
-        Toggle(
-          "Check for updates automatically",
-          isOn: Binding(
-            get: { automatic },
-            set: {
-              UpdateController.shared.setAutomatic($0)
-              automatic = $0
-            }))
-        Text("Off until you say otherwise. Bastion sends no identifier with the check.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-        // Not gated on the toggle. Asking once by hand is a different act from
-        // granting a standing licence to look, and refusing the first because
-        // you declined the second would be a checkbox that disables a button
-        // nobody consented away.
-        HStack {
-          Button(UpdateController.shared.isChecking ? "Checking…" : "Check for Updates…") {
-            UpdateController.shared.checkNow()
-          }
-          .disabled(UpdateController.shared.isChecking)
-          Spacer()
-        }
-      } header: {
-        Text("Updates")
-      }
     }
     .formStyle(.grouped)
   }
@@ -330,6 +304,73 @@ private struct AboutPane: View {
       }
     }
     .formStyle(.grouped)
+  }
+}
+
+// MARK: - Updates
+
+/// The update check, and the only outbound connection in the app.
+///
+/// Its own pane rather than a Section in General for the reason
+/// `SettingsPane.application` gives: it is the only manual check Bastion has,
+/// automatic checking is off until asked for, and a build with the toggle off
+/// had no way to look that anyone could find. The pane also has room to say
+/// what the check sends in plain terms, which is a claim the rest of the app's
+/// loopback-only story rests on — see `UpdateController`.
+private struct UpdatesPane: View {
+  /// Mirrored rather than read through the binding: `automatic` is computed
+  /// from an updater that does not exist until somebody says yes, so there is
+  /// nothing for `@Observable` to have tracked before the first write.
+  @State private var automatic = UpdateController.shared.automatic
+  private var updates = UpdateController.shared
+
+  var body: some View {
+    Form {
+      Section {
+        // The version is here as well as in About: the question this pane
+        // answers is "am I current", and half of that answer is which build
+        // this is. Same source, so the two cannot drift.
+        LabeledContent("Version", value: AppInfo.version)
+        // A sentence either way. Showing nothing before the first check reads
+        // as a missing value rather than as the answer.
+        LabeledContent {
+          // Not gated on the toggle. Asking once by hand is a different act
+          // from granting a standing licence to look, and refusing the first
+          // because you declined the second would be a checkbox that disables a
+          // button nobody consented away.
+          Button(updates.isChecking ? "Checking…" : "Check Now…") { updates.checkNow() }
+            .disabled(updates.isChecking)
+        } label: {
+          Text(lastCheck)
+        }
+      }
+
+      Section {
+        Toggle(
+          "Check for updates automatically",
+          isOn: Binding(
+            get: { automatic },
+            set: {
+              updates.setAutomatic($0)
+              automatic = $0
+            }))
+        // A caption inside the card rather than a section footer, which is what
+        // every other pane in this file does.
+        Text(
+          "Off until you say otherwise. This is the only network connection Bastion makes, and it "
+            + "makes none at all until you turn this on or press Check Now. It reads one file, the "
+            + "appcast at bastion.mgcrea.io/appcast.xml, which redirects to the GitHub release, "
+            + "and sends no identifier with it: not your licence key, not a machine id.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    .formStyle(.grouped)
+  }
+
+  private var lastCheck: String {
+    guard let last = updates.lastCheck else { return "Not checked yet" }
+    return "Last checked \(last.formatted(.relative(presentation: .named)))"
   }
 }
 
