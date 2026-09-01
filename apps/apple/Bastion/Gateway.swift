@@ -435,7 +435,7 @@ nonisolated final class Gateway: @unchecked Sendable {
         // strict client is entitled to reject.
         return HTTPResponse(status: 202, body: Data(), contentType: "application/json")
       }
-      return modernise(data, era: era)
+      return modernise(data, era: era, method: frame["method"] as? String)
     } catch {
       return rpcError(error, profile: profile, server: server, client: client, request: request)
     }
@@ -443,12 +443,18 @@ nonisolated final class Gateway: @unchecked Sendable {
 
   /// Shape a child's reply for the era the client is speaking.
   ///
-  /// Two things happen only for a modern client: every result gains
-  /// `resultType`, and an unknown method becomes `404`. That second one is not
-  /// cosmetic — the spec gives `404` + `-32601` a specific job, distinguishing
-  /// a modern server that does not implement a method from a legacy HTTP+SSE
-  /// server that does not host the endpoint at all.
-  private func modernise(_ data: Data, era: Dialect.Era) -> HTTPResponse {
+  /// Three things happen only for a modern client: every result gains
+  /// `resultType`, a list result gains its cache annotation, and an unknown
+  /// method becomes `404`. That last one is not cosmetic — the spec gives
+  /// `404` + `-32601` a specific job, distinguishing a modern server that does
+  /// not implement a method from a legacy HTTP+SSE server that does not host
+  /// the endpoint at all.
+  ///
+  /// `method` is the one the CLIENT asked for, read from the request rather
+  /// than the reply, because a JSON-RPC response does not carry it. Without it
+  /// there is no way to tell a `tools/list` result from a `tools/call` result,
+  /// and only the first takes an annotation.
+  private func modernise(_ data: Data, era: Dialect.Era, method: String?) -> HTTPResponse {
     guard case .modern = era,
       let frame = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
     else {
@@ -460,7 +466,9 @@ nonisolated final class Gateway: @unchecked Sendable {
     {
       return HTTPResponse(status: 404, json: frame)
     }
-    return HTTPResponse(status: 200, json: Dialect.modernise(result: frame))
+    var result = Dialect.modernise(result: frame)
+    if let method { result = Dialect.annotateList(result: result, method: method) }
+    return HTTPResponse(status: 200, json: result)
   }
 
   /// A JSON-RPC error frame. `id` is `null` when the request had none, which

@@ -102,6 +102,24 @@ console.log("Modern era");
     r?.capabilities && "tools" in r.capabilities,
     JSON.stringify(r?.capabilities),
   );
+  // Bastion must NOT pass a child's `listChanged: true` through. It drops child
+  // notifications on purpose — one instance serves several clients, so there is
+  // no single client a `list_changed` belongs to — and a client that believes
+  // the advertisement opens `subscriptions/listen`, gets -32601, and drops the
+  // whole connection rather than the one subscription. The symptom is a server
+  // that connects cleanly and then registers no tools at all.
+  check(
+    "  listChanged is not advertised on any capability",
+    ["tools", "prompts", "resources"].every(
+      (k) => !(k in (r?.capabilities ?? {})) || r.capabilities[k]?.listChanged === false,
+    ),
+    JSON.stringify(r?.capabilities),
+  );
+  check(
+    "  resources.subscribe is not advertised either",
+    r?.capabilities?.resources === undefined || !("subscribe" in r.capabilities.resources),
+    JSON.stringify(r?.capabilities?.resources),
+  );
   const info = r?._meta?.["io.modelcontextprotocol/serverInfo"];
   check(
     "  serverInfo names the child, not Bastion",
@@ -121,6 +139,20 @@ console.log("Modern era");
     '  the result carries resultType "complete"',
     json?.result?.resultType === "complete",
     json?.result?.resultType,
+  );
+  // A modern list result MUST say how long it may be cached and by whom. The
+  // client validates the whole result against that schema, so a missing field
+  // does not degrade caching — it throws the tool list away. Claude Code
+  // reports it as "Invalid result for tools/list: ttlMs expected number".
+  check(
+    "  it carries a numeric ttlMs",
+    typeof json?.result?.ttlMs === "number",
+    JSON.stringify(json?.result?.ttlMs),
+  );
+  check(
+    "  and a cacheScope of public or private",
+    ["public", "private"].includes(json?.result?.cacheScope),
+    JSON.stringify(json?.result?.cacheScope),
   );
 }
 
@@ -299,6 +331,14 @@ console.log("Legacy era, still served");
     "  and is not modernised either",
     list.json?.result?.resultType === undefined,
     list.json?.result?.resultType,
+  );
+  // The cache annotation is a modern field. A legacy client validates against
+  // the 2025-11-25 schema, and handing it fields from a later revision is the
+  // same category of mistake as omitting them from a modern one.
+  check(
+    "  and carries no cache annotation",
+    list.json?.result?.ttlMs === undefined && list.json?.result?.cacheScope === undefined,
+    JSON.stringify({ ttlMs: list.json?.result?.ttlMs, cacheScope: list.json?.result?.cacheScope }),
   );
 }
 

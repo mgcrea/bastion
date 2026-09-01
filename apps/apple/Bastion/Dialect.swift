@@ -68,6 +68,52 @@ nonisolated enum Dialect {
   /// `Method not found`. On the modern transport this is `404`, not `500`.
   static let methodNotFound = -32601
 
+  // MARK: - List cache annotation
+  //
+  // The modern revision has every list result say how long it may be cached and
+  // by whom, and a client that does not find both fields rejects the result
+  // outright — Claude Code 2.1.251 reports exactly this as "Invalid result for
+  // tools/list: ttlMs expected number, received undefined". So a list without
+  // them is not an under-annotated list, it is no list at all, and the server
+  // comes up with zero tools.
+
+  /// Methods whose results carry the annotation. `tools/call` is deliberately
+  /// not here: the spec puts the annotation on listings, and adding it to a call
+  /// result would be inventing a field.
+  static let listMethods: Set<String> = [
+    "tools/list", "prompts/list", "resources/list", "resources/templates/list",
+  ]
+
+  /// `private`, because a Bastion listing is per-PROFILE rather than per-server:
+  /// `allowWrites` decides which tools are returned, so two profiles on one
+  /// server legitimately see different lists. A shared cache would be free to
+  /// serve the read-only profile's answer to the writing one, or the reverse.
+  static let listCacheScope = "private"
+
+  /// Sixty seconds. This is a real interval and not a hint, because Bastion
+  /// cannot send `list_changed` — see `frontableCapabilities` — which makes the
+  /// TTL the only way a client ever notices a child that restarted with a
+  /// different tool set. Too long and a server upgraded under a running Bastion
+  /// stays invisible; too short and every call re-lists first.
+  static let listCacheTTLMs = 60_000
+
+  /// Attach the cache annotation to a modern list result.
+  ///
+  /// An annotation the child already supplied is left alone. That is not
+  /// defensiveness: a remote child proxied by `RemoteInstance` may be a genuine
+  /// modern server that answered with its own TTL, and overwriting it would
+  /// replace something true with something guessed.
+  static func annotateList(result frame: [String: Any], method: String) -> [String: Any] {
+    guard listMethods.contains(method), var result = frame["result"] as? [String: Any] else {
+      return frame
+    }
+    if result["ttlMs"] == nil { result["ttlMs"] = listCacheTTLMs }
+    if result["cacheScope"] == nil { result["cacheScope"] = listCacheScope }
+    var out = frame
+    out["result"] = result
+    return out
+  }
+
   // MARK: - Era detection
 
   /// Which era one client frame is written in.
@@ -194,7 +240,7 @@ nonisolated enum Dialect {
     var result: [String: Any] = [
       "resultType": "complete",
       "supportedVersions": supportedVersions.map(\.rawValue),
-      "capabilities": handshake["capabilities"] as? [String: Any] ?? [:],
+      "capabilities": frontableCapabilities(handshake["capabilities"] as? [String: Any] ?? [:]),
     ]
 
     if let instructions = handshake["instructions"] as? String, !instructions.isEmpty {
@@ -214,6 +260,33 @@ nonisolated enum Dialect {
     // in a dogfooding repo. Offering a TTL Bastion cannot honour would be
     // worse than offering none.
     return result
+  }
+
+  /// The child's capabilities, minus the ones Bastion cannot deliver on.
+  ///
+  /// A legacy child's handshake routinely advertises `listChanged: true`, and
+  /// passing that through is not a small inaccuracy. A modern client reads it,
+  /// opens `subscriptions/listen`, and gets `-32601` — whereupon it drops the
+  /// whole connection rather than just that one subscription, and the server
+  /// registers no tools at all. An honest `false` costs a notification nobody
+  /// was going to receive; a hopeful `true` costs every tool on the server.
+  ///
+  /// It could never have been honoured anyway. `Supervisor.received` drops a
+  /// child's notifications on purpose: one supervised instance serves several
+  /// clients, so there is no single client a `list_changed` belongs to.
+  /// `resources.subscribe` is dropped for the same reason.
+  ///
+  /// What stands in for it is the TTL on list results — see `listCacheTTLMs`.
+  /// The client re-lists on its own schedule instead of being told when to.
+  static func frontableCapabilities(_ capabilities: [String: Any]) -> [String: Any] {
+    var out = capabilities
+    for key in ["tools", "prompts", "resources"] {
+      guard var group = out[key] as? [String: Any] else { continue }
+      group["listChanged"] = false
+      if key == "resources" { group.removeValue(forKey: "subscribe") }
+      out[key] = group
+    }
+    return out
   }
 
   // MARK: - Header validation
