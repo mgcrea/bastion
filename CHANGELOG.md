@@ -4,8 +4,44 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.2.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.2.1` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
+
+## [1.2.1] - 2026-09-01
+
+### Fixed
+
+- **A modern client could handshake cleanly and then register no tools at all.** The 2026-07-28
+  revision has every list result declare how long it may be cached and by whom, and a client
+  validates the whole result against that schema — so an absent `ttlMs` is not weaker caching, it
+  is a discarded tool list. Claude Code 2.1.251 reports it as `Invalid result for tools/list:
+ttlMs expected number, received undefined`. Modern list results now carry both fields; legacy
+  ones still carry neither, because handing a 2025-11-25 client a field from a later revision is
+  the same mistake pointing the other way.
+
+  The scope is `private` rather than `public` because a Bastion listing is per _profile_, not per
+  server: `allowWrites` decides which tools come back, so a shared cache would be free to serve
+  the read-only profile's answer to the writing one.
+
+- **The same symptom from the other end: a child's `listChanged: true` was passed straight
+  through.** Bastion cannot honour it, and never could — one supervised instance serves several
+  clients, so there is no single client a `list_changed` belongs to, and `Supervisor.received`
+  drops those notifications on purpose. A modern client that believed the advertisement opened
+  `subscriptions/listen`, got `-32601`, and dropped the whole connection rather than that one
+  subscription. It is now advertised as `false`, and `resources.subscribe` is withdrawn for the
+  same reason. An honest `false` costs a notification nobody was going to receive; the hopeful
+  `true` cost every tool on the server.
+
+  The sixty-second TTL above is what stands in for it: the client re-lists on its own schedule
+  rather than being told when to.
+
+- **Typing a profile name allocated a callback port for every prefix of it.** `ProfileEditor`
+  called the function that _decides_ the port from its view body, once per keystroke, against a
+  half-typed name — so typing `olouv` left a profile directory and a burnt port behind for `o`,
+  `ol`, `olo` and `olou`. Worse, the first keystroke claimed the server's documented default,
+  which pushed the profile the user actually meant onto a port their upstream app had never heard
+  of, and OAuth logins came back `invalid redirect_uri parameter`. Reading and deciding are now
+  separate calls: a view asks, and only a spawn decides.
 
 ## [1.2.0] - 2026-08-31
 
