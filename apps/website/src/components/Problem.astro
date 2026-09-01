@@ -13,6 +13,48 @@ const CLIENTS = [
   { name: "VS Code", delay: ".3s" },
   { name: "Terminal", delay: ".45s" },
 ] as const;
+
+/**
+ * The receipts, and the reason they are on the page at all.
+ *
+ * "Every client spawns its own copy" is the one sentence here a reader is
+ * likeliest to take for a strawman — it describes something they cannot see,
+ * about tools they already trust, in a section that wants their money. Four
+ * public trackers with figures in them is a different kind of sentence.
+ *
+ * Every number is quoted from the issue, not recomputed: `figure` is what the
+ * reporter measured on their machine, and the point is that someone measured
+ * it rather than that the number generalises. None of these are Bastion's
+ * benchmarks and the page must never imply they are.
+ *
+ * The last two are why this is a product and not a patch. Both were filed
+ * upstream — one asking for Keychain references instead of plaintext env vars,
+ * one asking for a shared process — and both were closed `not planned`. That
+ * is the whole argument for a supervisor living outside the clients, and it is
+ * made better by their trackers than by anything this page could assert.
+ */
+const EVIDENCE = [
+  {
+    figure: "6 processes",
+    detail: "for three configured servers, Claude Desktop, on every restart",
+    href: "https://github.com/anthropics/claude-code/issues/36616",
+  },
+  {
+    figure: "~3.5 GB",
+    detail: "of MCP processes at idle, 82 children, one OpenCode launch",
+    href: "https://github.com/anomalyco/opencode/issues/26336",
+  },
+  {
+    figure: "5.7 GiB",
+    detail: "across 60 subprocesses — the request to share one, closed not planned",
+    href: "https://github.com/anthropics/claude-code/issues/63749",
+  },
+  {
+    figure: "Not planned",
+    detail: "the request to read credentials from the Keychain instead of a config file",
+    href: "https://github.com/anthropics/claude-code/issues/15961",
+  },
+] as const;
 ---
 
 <section
@@ -37,6 +79,47 @@ const CLIENTS = [
         One careless <code class="font-mono text-[13px]">git add</code> from being published. Nothing
         was auditable, and nothing was shared. Those four sets are in the Keychain now and their
         configs point here instead; the shape of the problem is why.
+      </p>
+
+      {/*
+        A list of links rather than a card: these are somebody else's numbers,
+        and dressing them up in the accent border used for Bastion's own claims
+        would read as though they were measured here. The figure is the only
+        emphasised thing in each row, because the figure is what makes the
+        paragraph above checkable.
+      */}
+      <ul class="m-0 mt-2 flex list-none flex-col gap-2.5 p-0">
+        {
+          EVIDENCE.map((e) => (
+            <li>
+              <a
+                href={e.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="group flex items-baseline gap-2.5 text-[13px] leading-[1.55] text-fg-muted transition-colors hover:text-fg-dim"
+              >
+                <span class="shrink-0 font-mono text-[12px] font-semibold text-accent-hi">
+                  {e.figure}
+                </span>
+                <span class="text-pretty">
+                  {e.detail}
+                  <span
+                    class="ml-1 inline-block text-fg/25 transition-colors group-hover:text-accent-hi"
+                    aria-hidden="true"
+                  >
+                    ↗
+                  </span>
+                </span>
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+
+      <p class="m-0 text-[13px] leading-[1.6] text-fg/45 text-pretty">
+        Four public trackers, none of them Bastion's. The duplication is not an oversight anybody
+        upstream is on their way to fixing — the two requests that would have fixed it were closed
+        <em class="not-italic text-fg/62">not planned</em>.
       </p>
     </SectionHeader>
 
