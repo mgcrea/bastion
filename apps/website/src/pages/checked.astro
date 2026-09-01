@@ -1,0 +1,346 @@
+---
+/**
+ * The claims, and the command that fails when one stops being true.
+ *
+ * This page exists because every tool in this category makes a version of the
+ * same promises — loopback only, secrets encrypted, logs sanitised — and the
+ * promises are indistinguishable from each other in prose. The only thing that
+ * separates them is whether anything breaks when one stops holding, so that is
+ * what this page lists: not the claim, but the assertion behind it and the
+ * `make` target that runs it.
+ *
+ * No competitor is named anywhere on it, and that is deliberate rather than
+ * squeamish. A comparison table would be an audit of somebody else's code that
+ * has not been done, published by the person selling the alternative; the
+ * argument is stronger and cheaper to defend if it is made entirely about what
+ * is checkable here. A reader who wants the comparison will make it themselves,
+ * which is the point.
+ *
+ * Every row must correspond to something a script actually asserts. If a check
+ * is deleted from `scripts/`, its row comes off this page in the same commit —
+ * a page about verifiable claims is the worst possible place for a stale one.
+ */
+import Footer from "../components/Footer.astro";
+import Nav from "../components/Nav.astro";
+import SectionHeader from "../components/SectionHeader.astro";
+import Button from "../components/Button.astro";
+import { DOCS, GATEWAY, REPO_URL, SITE_URL } from "../config";
+import Layout from "../layouts/Layout.astro";
+
+/**
+ * Grouped by the target that runs them, because the target is the unit a
+ * reader can actually run — a row promising something no single command
+ * proves would put this page in exactly the position it is arguing against.
+ *
+ * `what` is the property. `how` is the mechanism, written so that someone who
+ * distrusts the sentence can find the assertion in the script and read it.
+ */
+const SUITES = [
+  {
+    target: "make audit",
+    script: "scripts/audit-listener.sh",
+    href: DOCS.audit,
+    blurb:
+      "Launches the built bundle — the real one, signed and notarized, not a test harness standing in for it — and asserts the listener's behaviour from outside the process.",
+    checks: [
+      {
+        what: "It binds loopback, and only loopback",
+        how: `\`lsof\` against the running app, asserting ${GATEWAY.host} and nothing else. Never 0.0.0.0, and not configurable — there is no setting to get this wrong with.`,
+      },
+      {
+        what: "A foreign Origin is refused",
+        how: "A live request carrying somebody else's origin, asserted to be rejected. This is the rule whose absence made CVE-2025-49596 a code-execution bug in a tool that only ever listened on localhost.",
+      },
+      {
+        what: "A rebound Host is refused",
+        how: "A request whose Host header points at a name that resolved back to 127.0.0.1, asserted to be rejected. DNS rebinding is what makes “it is only localhost” false.",
+      },
+      {
+        what: "…and refused in that order",
+        how: "The rebinding attempt is asserted to fail with 403 whether or not it also carried a valid token. If the token check ran first, a 401 would tell an attacker their Host was accepted.",
+      },
+      {
+        what: "Unauthenticated and wrong-token requests are refused",
+        how: "Both asserted separately, against a gateway that is otherwise working — a check that passes because nothing is running proves nothing.",
+      },
+      {
+        what: "No secret is written to any config file",
+        how: "`profiles.json` is read back off disk and asserted to hold no value for any variable the server's manifest marks secret. What goes in a client config is a revocable loopback token; the credential stays in the Keychain.",
+      },
+      {
+        what: "There is no entitlements file",
+        how: "Asserted absent rather than empty. An empty permission set that is true by construction is checkable; one arrived at by deleting lines is not.",
+      },
+    ],
+  },
+  {
+    target: "make builtin",
+    script: "apps/apple/…/BuiltinServerTests",
+    href: DOCS.readme,
+    blurb:
+      "The server that can change everything is the one worth asserting hardest about. These run against the real bundle, not a mock of it.",
+    checks: [
+      {
+        what: "A credential never reaches the record",
+        how: "A canary value is planted through `set_credential` and asserted never to come back out of the audit log. The rule lives in one place — `CallCapture` — rather than as a habit at three call sites, which is what makes a single test sufficient.",
+      },
+      {
+        what: "Payloads never reach stderr",
+        how: "Every ordinary log line is mirrored to stderr, which for an app started by LaunchServices outlives the process. Arguments and results take a separate path, and that separation is asserted against the built app.",
+      },
+      {
+        what: "The write gate removes tools rather than refusing them",
+        how: "With writes off, the mutating tools are asserted absent from `tools/list` entirely — so a model never plans around a tool it will not be allowed to call.",
+      },
+      {
+        what: "It cannot switch itself off, and cannot delete itself",
+        how: "Two self-refusals, asserted separately. Either one would leave no way back to the control plane from the control plane.",
+      },
+    ],
+  },
+  {
+    target: "make remote-live-check",
+    script: "scripts/remote-check.swift",
+    href: `${REPO_URL}/blob/main/scripts/remote-check.swift`,
+    blurb:
+      "A URL in the installed list is the outward-facing analogue of a command line: `fetch(whatever_you_typed)` beside `spawn(whatever_you_typed)`. It gets the same treatment.",
+    checks: [
+      {
+        what: "A remote endpoint is https to a public host",
+        how: "45 checks, written as a pure function of a URL — no app, no network, no fixtures. Loopback, private ranges, link-local and the cloud metadata address are all asserted refused.",
+      },
+      {
+        what: "…including Bastion's own gateway",
+        how: "The sharp one. A “remote server” pointed back at the gateway would be a way to replay one client's bearer token against every other profile in the app, so that URL is refused by name.",
+      },
+      {
+        what: "The rule is re-checked on every request",
+        how: "Not once when the endpoint was added. A name that passed yesterday can resolve somewhere else today, and a cross-origin redirect is refused rather than followed with the credential attached.",
+      },
+      {
+        what: "The whole path works against a real server",
+        how: "Run against Stripe's live MCP endpoint, which needs no credential: an unauthenticated `initialize` is answered with a 401 that exercises every step but the last.",
+      },
+    ],
+  },
+] as const;
+
+const TOTAL = SUITES.reduce((n, s) => n + s.checks.length, 0);
+
+/**
+ * `how` is written as prose with code spans in backticks, because the strings
+ * above are the part of this page that has to be proofread against the scripts
+ * — and markup inlined into them would make that unreadable. Splitting on the
+ * delimiter wraps the odd segments; a markdown parser for one inline construct
+ * would be a dependency to keep current for no gain.
+ *
+ * An unbalanced backtick therefore renders as plain text rather than throwing,
+ * which is the right failure: a typo in a sentence should not take the page
+ * down.
+ */
+const spans = (s: string) => s.split("`");
+
+const description =
+  "Every security claim Bastion makes, and the command that fails when one stops being true — loopback binding, Origin and Host validation, the refusal order, the secrets wall, and the remote-endpoint rules.";
+
+/**
+ * A `TechArticle` rather than a `WebPage`: what is described is a document
+ * about how something is verified, and the audience Google should be matching
+ * it to is the one searching for MCP gateway security rather than for Bastion.
+ */
+const schema = {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  headline: "What Bastion checks, and what everyone else asserts",
+  description,
+  url: `${SITE_URL}/checked`,
+  isPartOf: { "@id": `${SITE_URL}/#website` },
+  publisher: { "@id": `${SITE_URL}/#organization` },
+  inLanguage: "en",
+};
+---
+
+<Layout title="What Bastion checks — verifiable security claims" description={description} schema={schema}>
+  <Nav />
+
+  <main>
+    <section class="wrap pt-20 pb-[72px]">
+      <div class="flex flex-wrap items-start gap-16">
+        <SectionHeader
+          as="h2"
+          eyebrow="The claims"
+          heading="What we check, and what everyone else asserts."
+        >
+          <p class="m-0 text-[16px] leading-[1.6] text-fg-dim text-pretty">
+            Every tool that fronts your MCP servers makes the same promises. Loopback only. Secrets
+            encrypted. Logs sanitised. Written down, they are indistinguishable from one another —
+            and a promise in a README is not load-bearing, because nothing happens when it stops
+            being true.
+          </p>
+          <p class="m-0 text-[14px] leading-[1.6] text-fg-muted text-pretty">
+            So this page does not list the promises. It lists the assertions behind them, grouped by
+            the command that runs them, with a link to the script for anyone who would rather read
+            it than take this page's word. {TOTAL} of them, on a machine that is not ours.
+          </p>
+        </SectionHeader>
+
+        <div class="flex min-w-[min(320px,100%)] flex-1 basis-[420px] flex-col gap-4">
+          <div class="rounded-[13px] border border-rule bg-bg-2 p-6">
+            <p class="m-0 text-[13.5px] leading-[1.65] text-fg-dim text-pretty">
+              None of these are checks we ran once and screenshotted. They run in CI on every commit,
+              against the built bundle, and a pull request that breaks one does not merge.
+            </p>
+            <div class="mt-5 flex flex-col gap-1.5 font-mono text-[12px] leading-[1.6]">
+              {
+                SUITES.map((s) => (
+                  <span class="text-fg/55">
+                    <span class="text-fg/30">$ </span>
+                    {s.target}
+                    <span class="ml-2 text-fg/25">· {s.checks.length} asserted</span>
+                  </span>
+                ))
+              }
+            </div>
+          </div>
+          <p class="m-0 text-[13px] leading-[1.6] text-fg/45 text-pretty">
+            No other product is named on this page. A comparison table would be an audit of somebody
+            else's code, published by the person selling the alternative — which is worth about what
+            you would expect. Make the comparison yourself; that is the whole argument.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    {
+      SUITES.map((suite) => (
+        <section class="border-t border-rule-2 py-[72px]">
+          <div class="wrap flex flex-wrap items-start gap-x-16 gap-y-8">
+            <div class="flex min-w-[min(300px,100%)] flex-1 basis-[340px] flex-col gap-3">
+              <span class="font-mono text-[13px] font-semibold text-accent-hi">$ {suite.target}</span>
+              <p class="m-0 text-[14px] leading-[1.6] text-fg-dim text-pretty">{suite.blurb}</p>
+              <a
+                href={suite.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="font-mono text-[12px] text-fg-muted underline decoration-fg/20 underline-offset-2 transition-colors hover:text-accent-hi"
+              >
+                {suite.script} ↗
+              </a>
+            </div>
+
+            <ul class="m-0 flex min-w-[min(340px,100%)] flex-1 basis-[520px] list-none flex-col gap-6 p-0">
+              {suite.checks.map((c) => (
+                <li class="flex gap-3.5">
+                  <span
+                    class="mt-[7px] size-1.5 shrink-0 rounded-full bg-ok"
+                    aria-hidden="true"
+                  />
+                  <span class="flex flex-col gap-1.5">
+                    <span class="text-[14.5px] leading-[1.4] font-medium text-fg">{c.what}</span>
+                    <span class="text-[13.5px] leading-[1.62] text-fg/50 text-pretty">
+                      {spans(c.how).map((part, i) =>
+                        i % 2 === 1 ? (
+                          <code class="font-mono text-[12.5px] text-fg/72">{part}</code>
+                        ) : (
+                          part
+                        ),
+                      )}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      ))
+    }
+
+    {/*
+      The limits, and they are not a disclaimer bolted on at the end. A page
+      arguing that checkable claims beat asserted ones has to say where its own
+      checks stop, or it is making the same move it is criticising — and each of
+      these is already stated in the README in these words.
+    */}
+    <section class="border-t border-rule-2 py-[88px]">
+      <div class="wrap flex flex-wrap items-start gap-16">
+        <SectionHeader eyebrow="The limits" heading="What none of this proves.">
+          <p class="m-0 text-[16px] leading-[1.6] text-fg-dim text-pretty">
+            A list of checks is a claim like any other, and the honest version says where it ends.
+          </p>
+        </SectionHeader>
+
+        <ul
+          class="m-0 flex min-w-[min(320px,100%)] flex-1 basis-[520px] list-none flex-col gap-6 p-0"
+        >
+          <li class="flex flex-col gap-1.5">
+            <span class="text-[14.5px] font-medium text-fg">This is a record, not a sandbox.</span>
+            <span class="text-[13.5px] leading-[1.62] text-fg/50 text-pretty">
+              Bastion sees the JSON-RPC frames crossing the gateway. It does not see what a server
+              then does over the network or on the filesystem — a server that reads a file it was
+              never asked about does so out of Bastion's sight. The child inherits your credentials
+              and runs unsandboxed.
+            </span>
+          </li>
+          <li class="flex flex-col gap-1.5">
+            <span class="text-[14.5px] font-medium text-fg">
+              The hash chain catches tampering, not an attacker.
+            </span>
+            <span class="text-[13.5px] leading-[1.62] text-fg/50 text-pretty">
+              Each audit record carries a hash of the one before it, so an edited field or a removed
+              record can be detected. It is not proof against anyone who can write the file, because
+              they can recompute it — and a chain cannot detect its own truncation, which is why an
+              export ships a manifest with the record count beside the digest.
+            </span>
+          </li>
+          <li class="flex flex-col gap-1.5">
+            <span class="text-[14.5px] font-medium text-fg">
+              A signature proves origin, not completeness.
+            </span>
+            <span class="text-[13.5px] leading-[1.62] text-fg/50 text-pretty">
+              It proves an export came from this Mac and was not altered afterwards. It does not
+              prove the log was not curated before it was signed, and it means nothing to a recipient
+              who has not been given the key some other way.
+            </span>
+          </li>
+          <li class="flex flex-col gap-1.5">
+            <span class="text-[14.5px] font-medium text-fg">
+              For a remote server, the write gate is a filter.
+            </span>
+            <span class="text-[13.5px] leading-[1.62] text-fg/50 text-pretty">
+              A local child gets an environment variable that switches its destructive tools off
+              inside the server. A remote server has no environment, so the gate becomes a list of
+              tool names Bastion refuses to forward — which filters Bastion, not the server. Anyone
+              holding the credential can call the same API directly; its own scopes are the real
+              boundary, which is why the Stripe entry says to use a restricted key.
+            </span>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="border-t border-rule-2 py-[88px]">
+      <div class="wrap flex flex-col items-start gap-6">
+        <h2
+          class="m-0 max-w-[24ch] font-display text-[clamp(28px,3.6vw,42px)] leading-[1.08] font-semibold tracking-[-0.038em] text-balance"
+        >
+          Don't take the page's word for it.
+        </h2>
+        <p class="m-0 max-w-[58ch] text-[15px] leading-[1.62] text-fg-dim text-pretty">
+          Clone it, build it, and run the three targets. They need no credential and no account —
+          the remote check runs against an endpoint that answers an unauthenticated request with the
+          401 that exercises it.
+        </p>
+        <div class="flex flex-wrap items-center gap-3">
+          <Button href={REPO_URL} size="lg" external>
+            Read the source ↗
+          </Button>
+          <Button href="/#pricing" variant="secondary" size="lg">
+            What it costs
+          </Button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <Footer />
+</Layout>
