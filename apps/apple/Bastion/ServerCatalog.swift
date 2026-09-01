@@ -596,7 +596,7 @@ nonisolated enum ServerCatalog {
         .init(
           npmName: "@mgcrea/mcp-x-api",
           binName: "x-api-mcp",
-          distribution: .local,
+          distribution: .npm,
           localPath: "mcp-x-api")),
       docsURL: URL(string: "https://github.com/mgcrea/mcp-x-api"),
       dialect: .v2025_11_25,
@@ -1258,7 +1258,7 @@ nonisolated enum ServerCatalog {
           binName: "npm-mcp",
           distribution: .local,
           localPath: "mcp-npm")),
-      docsURL: URL(string: "https://github.com/mgcrea/mcp-npm"),
+      docsURL: nil,
       dialect: .v2025_11_25,
       writeGate: "NPM_ALLOW_WRITES",
       writeTools: [],
