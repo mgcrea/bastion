@@ -1,5 +1,5 @@
 ---
-import { DOCS, PRICE, REPO_URL, REQUIRES } from "../config";
+import { DOCS, PRICE, REPO_URL, REQUIRES, SIBLING_APP } from "../config";
 import Logo from "./Logo.astro";
 
 const COLUMNS = [
@@ -31,12 +31,22 @@ const COLUMNS = [
       { label: "make dialect", href: null },
     ],
   },
+  /**
+   * The sibling. It is a column of one rather than a line tacked onto "Read",
+   * because the three headings above it all name parts of Bastion and this does
+   * not — and because the footer renders on every page here, which is the whole
+   * reason the cross-link lives down here as well as on the homepage.
+   */
+  {
+    heading: "More apps",
+    items: [{ label: `${SIBLING_APP.name} ↗`, href: SIBLING_APP.url }],
+  },
 ] as const;
 
 /**
  * Separate from `COLUMNS` because these are the two links a person goes looking
- * for rather than browses to, and burying them in a fourth heading is how a
- * privacy page ends up unfindable.
+ * for rather than browses to, and burying them under a heading of their own is
+ * how a privacy page ends up unfindable.
  */
 const LEGAL = [
   { label: "Licence terms", href: "/terms" },
@@ -73,7 +83,7 @@ const LEGAL = [
       </span>
     </div>
 
-    <div class="flex gap-13 text-[12.5px] leading-[1.95] text-fg/50">
+    <div class="flex flex-wrap gap-x-13 gap-y-7 text-[12.5px] leading-[1.95] text-fg/50">
       {
         COLUMNS.map((col) => (
           <div class="flex flex-col">

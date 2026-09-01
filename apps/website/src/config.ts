@@ -262,3 +262,42 @@ export const SOCIAL_CARD = {
   width: 1200,
   height: 630,
 } as const;
+
+/**
+ * The sibling app by the same studio, cross-linked from the homepage and the
+ * footer. One constant feeds both, so the name, the URL and the icon cannot
+ * drift between the two placements — which is the failure the r2/d1 pair has,
+ * where the same URL is typed into two files.
+ *
+ * There is no App Store URL and there is not going to be one: neither app is on
+ * the store. Both sell through `/buy` and ship the build from GitHub.
+ *
+ * The pitch deliberately carries no surface count. Cupertino derives that from
+ * its own `data/surfaces.ts`; a number typed out over here would be wrong the
+ * day the next surface lands, in the one sentence on this site that describes a
+ * product this site cannot see.
+ *
+ * It also does not claim the two interoperate. Cupertino's servers are wired to
+ * clients by Cupertino's own app, nothing in either repo documents running them
+ * under Bastion, and a cross-promo card is the worst possible place to invent an
+ * integration.
+ */
+export const SIBLING_APP = {
+  name: "Cupertino",
+  tagline: "Your Apple apps, as MCP servers.",
+  pitch:
+    "Bastion supervises the servers you bring it. Cupertino is a set of them — Mail, Notes, Calendar, Messages and the rest of the Apple apps already on your Mac — behind a single Full Disk Access grant, held by a signed menu-bar app you can watch.",
+  url: "https://cupertino.mgcrea.io",
+  repo: "https://github.com/mgcrea/cupertino",
+  /**
+   * Cupertino's own `public/app-icon.svg`, copied into this site's `public/apps/`.
+   *
+   * Copied rather than hotlinked because astro.config.mjs sets `img-src 'self'
+   * data:`, so a cross-origin image is blocked with nothing on screen and
+   * nothing in the build log. It sits under `public/apps/` rather than the
+   * public root to keep a hand-copied one-off visibly apart from the three
+   * outputs `pnpm icons` writes — and nothing keeps this copy fresh, because
+   * that script only ever generates Bastion's own mark.
+   */
+  icon: "/apps/cupertino.svg",
+} as const;

@@ -12,6 +12,7 @@ import ServerPane from "../components/ServerPane.astro";
 import Rules from "../components/Rules.astro";
 import Screens from "../components/Screens.astro";
 import Servers from "../components/Servers.astro";
+import SiblingApp from "../components/SiblingApp.astro";
 import Status from "../components/Status.astro";
 import {
   APP_NAME,
@@ -123,6 +124,11 @@ const schema = {
     {/* Last before the closing plate: the page has finished arguing by here, and
         the price is the only question left. */}
     <Pricing />
+    {/* Between the price and the closing plate, never after it. r2-explorer's
+        index carries the same note: its page used to end on the sibling card,
+        which put an outbound link to a different product below the one CTA this
+        page exists to reach. */}
+    <SiblingApp />
     <Cta />
   </main>
   <Footer />
