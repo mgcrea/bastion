@@ -46,6 +46,16 @@ const INCLUDED = [
     title: "The source stays public",
     body: "What is sold is the signed, notarized build. The code that holds your credentials is readable and compilable by the people trusting it.",
   },
+  // Last, and load-bearing against the free alternatives rather than against
+  // the price: the two things a reader would otherwise compare this to — Docker
+  // MCP Toolkit and ToolHive — are free because they are a container runtime
+  // you were already asked to run. That is a real cost and it is not a dollar
+  // one, so it belongs in the list of what the number buys. Stated as a fact
+  // about Bastion, with no competitor named; the comparison page does that job.
+  {
+    title: "Nothing else to install, and no account",
+    body: "No container runtime, no Docker Desktop, no sign-up. The bundle carries its own Node, binds loopback, and ships with no entitlements file at all — spawning children and binding loopback need none.",
+  },
 ] as const;
 ---
 
