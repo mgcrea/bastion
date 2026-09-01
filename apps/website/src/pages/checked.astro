@@ -75,8 +75,8 @@ const SUITES = [
   },
   {
     target: "make builtin",
-    script: "apps/apple/…/BuiltinServerTests",
-    href: DOCS.readme,
+    script: "scripts/builtin-check.sh",
+    href: `${REPO_URL}/blob/main/scripts/builtin-check.sh`,
     blurb:
       "The server that can change everything is the one worth asserting hardest about. These run against the real bundle, not a mock of it.",
     checks: [
@@ -185,10 +185,24 @@ const schema = {
         </SectionHeader>
 
         <div class="flex min-w-[min(320px,100%)] flex-1 basis-[420px] flex-col gap-4">
+          {/*
+            This card said "they run in CI on every commit, and a pull request
+            that breaks one does not merge" until the workflow was read rather
+            than remembered. Two of the three targets are not in CI at all, and
+            the one that is sits behind `make app` in a job that cannot pass on
+            a GitHub runner, because the build wants a Developer ID certificate
+            the runners do not have.
+
+            On a page whose entire argument is that a claim should fail when it
+            stops being true, an unchecked claim about the checks would have
+            been the only unrecoverable mistake available. So it says what is
+            true: these are scripts, in the repo, that you can run.
+          */}
           <div class="rounded-[13px] border border-rule bg-bg-2 p-6">
             <p class="m-0 text-[13.5px] leading-[1.65] text-fg-dim text-pretty">
-              None of these are checks we ran once and screenshotted. They run in CI on every commit,
-              against the built bundle, and a pull request that breaks one does not merge.
+              None of these are checks we ran once and screenshotted. They are three commands in the
+              repo, run against the built bundle before a release goes out — and they need no
+              credential, no account and no profile, so you can run them too.
             </p>
             <div class="mt-5 flex flex-col gap-1.5 font-mono text-[12px] leading-[1.6]">
               {
@@ -206,6 +220,12 @@ const schema = {
             No other product is named on this page. A comparison table would be an audit of somebody
             else's code, published by the person selling the alternative — which is worth about what
             you would expect. Make the comparison yourself; that is the whole argument.
+          </p>
+          <p class="m-0 text-[13px] leading-[1.6] text-fg/45 text-pretty">
+            And one thing this page will not claim: that CI enforces them. The listener audit is
+            wired into the workflow behind a build that wants a Developer ID certificate, which a
+            hosted runner does not have — so today it is the release that these are run against, on
+            the Mac that signs it, and not the pull request.
           </p>
         </div>
       </div>
