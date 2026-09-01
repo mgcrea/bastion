@@ -170,13 +170,15 @@ nonisolated enum BuiltinServer {
       ])
 
     case "tools/call":
-      let result = callTool(frame["params"] as? [String: Any] ?? [:], profile: profile, key: key)
+      let params = frame["params"] as? [String: Any] ?? [:]
+      let result = callTool(params, profile: profile, key: key)
       if let logID {
         let answer: [String: Any] = ["result": result]
         hostCallResult(
           logID,
           CallCapture.result(
-            answer, mode: profile.capture, secretKeys: Set(BuiltinTools.secretArgumentNames)),
+            answer, mode: profile.capture, secretKeys: Set(BuiltinTools.secretArgumentNames),
+            tool: params["name"] as? String),
           failed: CallCapture.isFailure(answer))
       }
       return try encode(["jsonrpc": "2.0", "id": clientID, "result": result])

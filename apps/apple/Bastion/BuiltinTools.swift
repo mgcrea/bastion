@@ -98,19 +98,23 @@ enum BuiltinTools {
     }
 
     var json: [String: Any] {
-      [
+      // Both omissions below are about what `tools/list` costs every client on
+      // every connect. They drop no information: an absent `required` means the
+      // same as an empty one, and `destructiveHint` is only meaningful when
+      // `readOnlyHint` is false — on a read tool it is a byte-for-byte
+      // restatement of the line above it.
+      var schema: [String: Any] = ["type": "object", "properties": properties]
+      if !required.isEmpty { schema["required"] = required }
+
+      var annotations: [String: Any] = ["readOnlyHint": !mutates]
+      if mutates { annotations["destructiveHint"] = true }
+
+      return [
         "name": name,
         "title": title,
         "description": description,
-        "inputSchema": [
-          "type": "object",
-          "properties": properties,
-          "required": required,
-        ],
-        "annotations": [
-          "readOnlyHint": !mutates,
-          "destructiveHint": mutates,
-        ],
+        "inputSchema": schema,
+        "annotations": annotations,
       ]
     }
   }
@@ -167,7 +171,10 @@ enum BuiltinTools {
         + "and their results if this profile records those. Credentials are never recorded. "
         + "Other profiles' lines never carry arguments or results.",
       properties: [
-        "limit": schema("integer", "How many entries, newest last. Default 50, max 500."),
+        "limit": schema(
+          "integer",
+          "How many entries, newest last. Default 20, max 500. A long reply is trimmed to a byte "
+            + "budget, oldest first, and says so."),
         "origin": schema("string", "Optional. Only lines from this '<profile>/<server>'."),
       ]),
 
@@ -227,8 +234,8 @@ enum BuiltinTools {
           "description":
             "REMOTE servers only, and the counterpart to write_gate: tool names Bastion will not "
             + "forward while the profile's write gate is off. A filter over what Bastion sends, "
-            + "never a promise about what the server will refuse — the credential's own scopes "
-            + "are the real limit.",
+            + "never a promise about what the server refuses — the credential's own scopes are "
+            + "the real limit.",
         ],
         "state_env": [
           "type": "array", "items": ["type": "string"],
@@ -250,15 +257,14 @@ enum BuiltinTools {
               "header": [
                 "type": "object",
                 "description":
-                  "REMOTE servers only, and required for each of their variables: the request "
-                  + "header this value becomes. A variable with no header would be collected, "
-                  + "stored and then never sent.",
+                  "REMOTE servers only, and required for every one of their variables: the header "
+                  + "this value becomes. Without one it would be stored and never sent.",
                 "properties": [
                   "name": schema("string", "Header name, e.g. 'Authorization'."),
                   "format": schema(
                     "string",
                     "Template containing {value}, e.g. 'Bearer {value}', so the profile holds the "
-                      + "credential rather than the scheme."),
+                      + "credential and not the scheme."),
                 ],
                 "required": ["name", "format"],
               ],
@@ -616,6 +622,31 @@ enum BuiltinTools {
     ]
   }
 
+  /// How much of one stored payload a row will echo back.
+  ///
+  /// `CallCapture.byteCap` (4096) bounds what is STORED, which is the audit
+  /// question. This bounds what is REPLAYED to a model, which is a different
+  /// one: a caller reading twenty rows does not need four kilobytes of each,
+  /// and it already sent those arguments itself.
+  private static let payloadEcho = 1024
+
+  /// The ceiling on one `recent_activity` response, before JSON escaping.
+  ///
+  /// There was none, and the log store's own 4 MB budget does not stand in for
+  /// one: that bounds what is KEPT IN MEMORY, while this bounds what is handed
+  /// to a model in a single reply. Measured at 96 KB — roughly 24k tokens, more
+  /// than this server's entire `tools/list` — for one default call on a profile
+  /// recording results.
+  private static let activityBudget = 16 * 1024
+
+  /// Roughly what a row costs once serialized, for the budget above. The
+  /// constant per key covers the quotes, colon and comma.
+  private static func weigh(_ row: [String: Any]) -> Int {
+    row.reduce(0) { total, pair in
+      total + pair.key.utf8.count + ((pair.value as? String)?.utf8.count ?? 8) + 6
+    }
+  }
+
   /// The recent log, scoped to the profile that asked.
   ///
   /// `caller` is the `<profile>/<server>` the request arrived on. Scoping to it
@@ -635,12 +666,12 @@ enum BuiltinTools {
   /// scope, so one can read the other's calls. Narrowing to per-client is
   /// possible; profile is the boundary everything else in Bastion uses.
   private static func recentActivity(_ arguments: [String: Any], caller: String?) -> Any {
-    let limit = min(max(arguments["limit"] as? Int ?? 50, 1), 500)
+    let limit = min(max(arguments["limit"] as? Int ?? 20, 1), 500)
     let requested = arguments["origin"] as? String
     let widened = CallCapture.reportsAllProfiles
     let formatter = ISO8601DateFormatter()
 
-    return LogStore.shared.entries
+    let matching = LogStore.shared.entries
       .filter { entry in
         // Exactly the caller's own lines, and nothing else.
         //
@@ -655,17 +686,51 @@ enum BuiltinTools {
         return requested == nil || entry.origin == requested
       }
       .suffix(limit)
-      .map { entry -> [String: Any] in
-        var row: [String: Any] = [
-          "at": formatter.string(from: entry.at), "origin": entry.origin,
-          "level": entry.level.rawValue, "text": entry.text,
-        ]
-        guard entry.origin == caller else { return row }
-        if let arguments = entry.arguments { row["arguments"] = arguments }
-        if let result = entry.result { row["result"] = result }
+
+    var rows: [[String: Any]] = []
+    var spent = 0
+    var omitted = 0
+
+    // Filled newest-first so the budget is spent on the recent end — which is
+    // what anybody asking for "recent activity" meant — then reversed at the
+    // end to restore the documented "newest last".
+    for entry in matching.reversed() {
+      var row: [String: Any] = [
+        "at": formatter.string(from: entry.at), "origin": entry.origin,
+        "level": entry.level.rawValue, "text": entry.text,
+      ]
+      if entry.origin == caller {
+        if let arguments = entry.arguments {
+          row["arguments"] = CallCapture.truncate(arguments, to: payloadEcho)
+        }
+        if let result = entry.result {
+          row["result"] = CallCapture.truncate(result, to: payloadEcho)
+        }
         if entry.failed { row["failed"] = true }
-        return row
       }
+
+      // One row always comes back. A single oversized entry is still the answer
+      // to "what just happened", and an empty list would read as "nothing
+      // happened" rather than "too much did".
+      let weight = weigh(row)
+      if !rows.isEmpty, spent + weight > activityBudget {
+        omitted = matching.count - rows.count
+        break
+      }
+      spent += weight
+      rows.append(row)
+    }
+
+    var out: [String: Any] = ["entries": Array(rows.reversed())]
+    // Said rather than silently dropped: a truncated log that does not admit it
+    // is a misleading answer to an audit question.
+    if omitted > 0 {
+      out["omitted"] = omitted
+      out["note"] =
+        "\(omitted) older entries were left out — this reply reached its "
+        + "\(activityBudget / 1024) KB budget. Ask for a smaller limit, or narrow with origin."
+    }
+    return out
   }
 
   /// Argument names on Bastion's OWN tools that carry a credential.

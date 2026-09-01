@@ -98,6 +98,16 @@ nonisolated enum CallCapture {
   /// make that sentence false in the one place a model can read back.
   static let neverCapture: Set<String> = ["set_credential"]
 
+  /// Tools whose *results* are never captured, whatever any setting says.
+  ///
+  /// `recent_activity`'s result IS the log. Capturing it stores a copy of the
+  /// log inside the log, so every call permanently inflates every later one —
+  /// three consecutive calls measured 106 KB, 110 KB, 115 KB and climbing
+  /// toward the per-row cap times the row count. The row is still recorded;
+  /// only its payload is dropped, which is the half that was a duplicate of
+  /// what the caller already received.
+  static let neverCaptureResults: Set<String> = ["recent_activity"]
+
   /// Argument keys that are always redacted, whichever server declared them.
   ///
   /// A backstop under the manifest, not a replacement for it. Bastion knows
@@ -132,8 +142,11 @@ nonisolated enum CallCapture {
   /// An `error` frame and an `isError: true` result are both kept: a failure is
   /// the case someone is most likely to be reading the log to understand, and
   /// neither is visible today even as a failure.
-  static func result(_ frame: [String: Any]?, mode: Mode, secretKeys: Set<String> = []) -> String? {
+  static func result(
+    _ frame: [String: Any]?, mode: Mode, secretKeys: Set<String> = [], tool: String? = nil
+  ) -> String? {
     guard mode >= .argumentsAndResults, let frame else { return nil }
+    if let tool, neverCaptureResults.contains(tool) { return nil }
     if let error = frame["error"] {
       return encode(redact(error, secretKeys: secretKeys))
     }
