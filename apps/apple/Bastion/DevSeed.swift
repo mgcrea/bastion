@@ -91,6 +91,13 @@
             hostLog("import", .error, "\(row.server): ignoring unknown variable \(key)")
             continue
           }
+          // The row carries `allowWrites` of its own, so a gate variable here is
+          // a second spelling of the same choice — and the losing one, since
+          // the toggle is what `ProfileEnvironment.build` reads.
+          guard key != server.writeGate else {
+            hostLog("import", .info, "\(row.server): \(key) is set from allowWrites, ignoring")
+            continue
+          }
           if secretNames.contains(key) {
             try? CredentialStore.write(
               .profile,

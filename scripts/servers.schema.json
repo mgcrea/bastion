@@ -220,6 +220,18 @@
                 "type": "string",
                 "minLength": 1
               },
+              "boolean": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["default"],
+                "description": "Marks the variable a boolean, so the profile editor offers a choice rather than a text field. Every server that reads one parses it identically: 1/true/yes/on is true, any other non-empty value is false, and unset is NEITHER \u2014 it falls through to the server's own config file and then to the default below.",
+                "properties": {
+                  "default": {
+                    "type": "boolean",
+                    "description": "What the server does when this variable is unset. Not a value Bastion ever writes: it is the third state, and it is why a two-way toggle is the wrong control. It must match the server's own schema default \u2014 UNIFI_PROTECT_VERIFY_TLS defaults to TRUE, so an editor that assumed false and wrote \"0\" would silently stop verifying a console's certificate."
+                  }
+                }
+              },
               "header": {
                 "type": "object",
                 "additionalProperties": false,

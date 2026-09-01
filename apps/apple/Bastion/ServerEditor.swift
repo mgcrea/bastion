@@ -108,6 +108,13 @@ struct ServerEditor: View {
       /// the placeholder says so.
       var headerName = ""
       var headerFormat = "{value}"
+      /// A switch rather than free text, and what the server does without it.
+      ///
+      /// Two fields because the draft is what a form binds to and a form needs
+      /// somewhere to put the default while the box is unticked. They collapse
+      /// back to one optional on the way out.
+      var isBoolean = false
+      var booleanDefault = false
     }
   }
 
@@ -343,13 +350,38 @@ struct ServerEditor: View {
         }
         HStack(spacing: 12) {
           Toggle("Required", isOn: $variable.isRequired)
+            .disabled(variable.isBoolean)
           Toggle("Secret", isOn: $variable.isSecret)
+            .disabled(variable.isBoolean)
           // A remote server has no filesystem here to redirect.
           if !isRemote { Toggle("Per-profile file", isOn: $variable.isState) }
+          // A header carries a credential, not a switch, so this is the one
+          // control the remote shape has no use for.
+          if !isRemote { Toggle("Switch", isOn: $variable.isBoolean) }
           Spacer()
         }
         .font(.caption)
         .toggleStyle(.checkbox)
+        if variable.isBoolean {
+          // The one thing the box cannot be left to guess. `required` and
+          // `secret` are turned off with it rather than merely disabled, so a
+          // variable ticked as a switch after being marked secret does not
+          // save a combination the manifest rules refuse.
+          Picker("Unset means", selection: $variable.booleanDefault) {
+            Text("off").tag(false)
+            Text("on").tag(true)
+          }
+          .pickerStyle(.segmented)
+          .fixedSize()
+          .font(.caption)
+          Text(
+            "Offered as Default / On / Off rather than a checkbox, because unset is its own "
+              + "state: the server falls through to its own config file and then to whichever "
+              + "of these you pick. Match the server's documented default — getting it wrong "
+              + "is how a profile that looks untouched turns a safety check off.")
+            .font(.caption2).foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
         if variable.isSecret {
           Text("Held in the Keychain. Never written to a client config, a log line or the Activity window.")
             .font(.caption2).foregroundStyle(.secondary)
@@ -358,6 +390,15 @@ struct ServerEditor: View {
           Text("Points at a file or directory the server writes. Bastion redirects it into each profile's own directory, so two profiles are never one login.")
             .font(.caption2).foregroundStyle(.secondary)
         }
+      }
+      .onChange(of: variable.isBoolean) { _, isBoolean in
+        // A switch is neither a credential nor something that can go missing —
+        // it always has an answer. Cleared as the box is ticked rather than
+        // only refused by `ServerStore.upsert`, so the form never shows a
+        // combination it is going to reject on Save.
+        guard isBoolean else { return }
+        variable.isSecret = false
+        variable.isRequired = false
       }
     }
   }
@@ -438,7 +479,13 @@ struct ServerEditor: View {
           // Round-tripped, or editing a remote server would silently rewrite
           // every variable's header to the Authorization default.
           headerName: $0.header?.name ?? "",
-          headerFormat: $0.header?.format ?? "{value}")
+          headerFormat: $0.header?.format ?? "{value}",
+          // Round-tripped for the same reason as the header: editing an
+          // unrelated field would otherwise turn a typed switch back into a
+          // text box, and the profiles holding "1" would keep working while
+          // looking like something nobody had chosen.
+          isBoolean: $0.booleanDefault != nil,
+          booleanDefault: $0.booleanDefault ?? false)
       })
   }
 
@@ -493,7 +540,11 @@ struct ServerEditor: View {
                 ? "Authorization" : variable.headerName.trimmed,
               format: variable.headerFormat.contains("{value}")
                 ? variable.headerFormat.trimmed : "{value}")
-            : nil)
+            : nil,
+          // Never on a remote variable: its sink is a header, and a header
+          // carries a credential. Same rule the manifest generator applies.
+          boolean: !isRemote && variable.isBoolean
+            ? .init(default: variable.booleanDefault) : nil)
       })
 
     // A gate the server never reads gates nothing, and it would read as off in

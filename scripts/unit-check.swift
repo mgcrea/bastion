@@ -353,6 +353,111 @@ struct UnitCheck {
       "and shopify, which really is read-only, does not",
       ServerCatalog.all.first { $0.id == "shopify" }?.hasWritePath == false)
 
+    print("\nWhich variables a profile fills in")
+    // The gate is required to be in `env` — the manifest generator refuses a
+    // `writeGate` that is not one of the declared variables, because a gate the
+    // server never reads gates nothing. The profile editor drew that list
+    // unfiltered, so every gated server offered a text field for the variable
+    // its own toggle owns: typing in it was accepted, saved to profiles.json,
+    // and then overwritten at spawn by `ProfileEnvironment.build`.
+    func gated(_ gate: String?, _ names: [String]) -> BastionServer {
+      BastionServer(
+        id: "x", displayName: "X", summary: "",
+        transport: .child(
+          .init(npmName: "@a/b", binName: "b", distribution: .npm, localPath: "b")),
+        docsURL: nil, dialect: .v2025_11_25, writeGate: gate, writeTools: [], gateBypass: [],
+        authModes: [], stateEnv: [], callbackEnv: [],
+        env: names.map { .init(name: $0, isRequired: false, isSecret: false, summary: "") })
+    }
+
+    check(
+      "the write gate is not one of them",
+      gated("A_ALLOW_WRITES", ["A_HOST", "A_ALLOW_WRITES"]).editableEnv.map(\.name)
+        == ["A_HOST"])
+    check(
+      "a server with no gate keeps every variable",
+      gated(nil, ["A_HOST", "A_USER"]).editableEnv.count == 2)
+    check(
+      "a gate that is not in env removes nothing",
+      gated("A_ALLOW_WRITES", ["A_HOST"]).editableEnv.map(\.name) == ["A_HOST"])
+    // Remote servers have no environment at all, so there is nothing for the
+    // filter to be wrong about — but `hasWritePath` is true for them, and the
+    // two properties are read side by side in the editor.
+    check(
+      "a remote server, which has a write path but no gate, keeps its variables",
+      ServerCatalog.all.first { $0.id == "stripe" }.map { $0.editableEnv.count == $0.env.count }
+        == true)
+    // The catalog itself, so a new entry that spells its gate differently in
+    // `writeGate` and in `env` is caught here rather than in the UI.
+    for entry in ServerCatalog.all where entry.writeGate != nil {
+      check(
+        "\(entry.id) does not offer \(entry.writeGate!) as a field",
+        !entry.editableEnv.contains { $0.name == entry.writeGate })
+      check(
+        "\(entry.id) drops exactly one variable",
+        entry.editableEnv.count == entry.env.count - 1)
+    }
+
+    print("\nHow a boolean variable's stored value is read")
+    // This has to agree with the servers exactly, or the editor shows a switch
+    // in one position while the server reads the other. Every repo that has a
+    // `parseBool` spells it `["1", "true", "yes", "on"]` — appstore-connect,
+    // keycloak, ovh-api, reddit, unifi-network, unifi-protect and x-api — and
+    // Cupertino's `packages/core` agrees.
+    func parsed(_ raw: String) -> Bool? { BastionServer.EnvVar.parseBool(raw) }
+
+    check("1 is true", parsed("1") == true)
+    check("true is true", parsed("true") == true)
+    check("yes is true", parsed("yes") == true)
+    check("on is true", parsed("on") == true)
+    check("case is ignored", parsed("TRUE") == true && parsed("On") == true)
+    check("surrounding space is ignored", parsed("  1  ") == true)
+    // The half that makes free text a trap, and the reason these are typed at
+    // all: none of these is in the allowlist, so every one reads as FALSE.
+    check("0 is false", parsed("0") == false)
+    check("false is false", parsed("false") == false)
+    check("y is false, not true", parsed("y") == false)
+    check("enable is false, not true", parsed("enable") == false)
+    check("yeah is false, not true", parsed("yeah") == false)
+    // The third state. Not false — the server falls through to its own config
+    // file and then to the manifest's stated default.
+    check("unset is neither", parsed("") == nil)
+    check("whitespace alone is unset", parsed("   ") == nil)
+
+    print("\nWhich catalog variables are switches")
+    let booleans = ServerCatalog.all.flatMap { server in
+      server.env.filter { $0.booleanDefault != nil }.map { (server.id, $0) }
+    }
+    check("five of them are typed", booleans.count == 5)
+    // The one that is not false, and the reason the control has three
+    // positions: a two-way toggle would have to start somewhere, and starting
+    // it off writes "0" over a default of true — silently ending certificate
+    // verification on a camera console.
+    check(
+      "UNIFI_PROTECT_VERIFY_TLS defaults to on",
+      booleans.first { $0.1.name == "UNIFI_PROTECT_VERIFY_TLS" }?.1.booleanDefault == true)
+    check(
+      "and every other one defaults to off",
+      booleans.filter { $0.1.name != "UNIFI_PROTECT_VERIFY_TLS" }
+        .allSatisfy { $0.1.booleanDefault == false })
+    // The combinations the generator refuses, asserted against what it wrote.
+    check("none is secret", booleans.allSatisfy { !$0.1.isSecret })
+    check("none is required", booleans.allSatisfy { !$0.1.isRequired })
+    check("none is a header sink", booleans.allSatisfy { $0.1.header == nil })
+    check(
+      "and none is a write gate",
+      booleans.allSatisfy { pair in
+        ServerCatalog.all.first { $0.id == pair.0 }?.writeGate != pair.1.name
+      })
+    // A switch is still an ordinary variable a profile fills in — unlike the
+    // gate, which the toggle owns. Nothing should have removed these.
+    check(
+      "and all five are still offered in the editor",
+      booleans.allSatisfy { pair in
+        ServerCatalog.all.first { $0.id == pair.0 }?.editableEnv
+          .contains { $0.name == pair.1.name } == true
+      })
+
     // MARK: - Call capture
     //
     // The two things this file exists to stop, both of which are silent when

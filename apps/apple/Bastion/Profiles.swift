@@ -147,14 +147,26 @@ final class ProfileStore {
         hostLog("profiles", .error, "ignoring profile with unusable name '\(row.name)'")
         return nil
       }
-      guard ServerStore.lookup(row.server) != nil else {
+      guard let server = ServerStore.lookup(row.server) else {
         hostLog(
           "profiles", .info,
           "'\(row.name)/\(row.server)' is set aside — \(row.server) is not installed")
         return nil
       }
+      // A gate value written by a build that still offered it as a field. The
+      // toggle is the record, so this is dropped and NEVER promoted into
+      // `allowWrites`: `build` has been forcing the variable to "0" for a
+      // profile whose toggle is off since before this line existed, so dropping
+      // changes nothing about what runs, while reading the "1" as consent would
+      // silently turn writes on for a profile whose owner had turned them off.
+      var values = row.values
+      if let gate = server.writeGate, values.removeValue(forKey: gate) != nil {
+        hostLog(
+          "profiles", .info,
+          "'\(row.name)/\(row.server)' dropped a stored \(gate) — the toggle owns it")
+      }
       return Profile(
-        name: row.name, serverID: row.server, values: row.values, allowWrites: row.allowWrites,
+        name: row.name, serverID: row.server, values: values, allowWrites: row.allowWrites,
         captureMode: row.captureMode)
     }
     refreshSnapshot()
@@ -472,7 +484,14 @@ nonisolated enum ProfileEnvironment {
     -> [String: String]
   {
     var out: [String: String] = [:]
-    let known = Set(server.env.map(\.name))
+    // `editableEnv` rather than `env`: the gate is not a variable a profile
+    // fills in. Nothing depends on this today — `build` overwrites the gate
+    // unconditionally two steps later and so already wins, and `headers(for:)`,
+    // the other caller, only ever sees a remote server, which has no gate to
+    // begin with. It is here because this is where the rule is *stated*, and a
+    // rule stated in one place and relied on in another is how the profile
+    // editor came to disagree with the thing that actually sets the variables.
+    let known = Set(server.editableEnv.map(\.name))
     for (key, value) in profile.values where known.contains(key) && !value.isEmpty {
       out[key] = value
     }

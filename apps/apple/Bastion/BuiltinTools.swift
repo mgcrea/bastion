@@ -865,6 +865,16 @@ enum BuiltinTools {
             expected: "set with set_credential — '\(key)' is a secret and would otherwise be "
               + "written to disk in plaintext")
         }
+        // The write gate is a profile property, not a variable — `allow_writes`
+        // below is the only thing that sets it. Refused rather than ignored:
+        // an agent that believes it enabled writes and did not will read the
+        // profile back, see the variable it just set missing, and try again.
+        guard key != server.writeGate else {
+          throw ToolError.badArgument(
+            name: "values.\(key)",
+            expected: "set with the allow_writes flag — '\(key)' is this server's write gate, "
+              + "and a value here would be overwritten when the server is started")
+        }
         guard known.contains(key) else {
           ignored.append(key)
           continue
@@ -932,6 +942,17 @@ enum BuiltinTools {
     // — a silent no-op the caller would believe had worked.
     guard server.env.contains(where: { $0.name == variable }) else {
       throw ToolError.unknownVariable(variable: variable, server: serverID)
+    }
+    // The same no-op one door along. The gate is in `env` and is not a secret,
+    // so without this the write succeeds, the Keychain holds the value, and
+    // nothing ever reads it: `values(for:)` fetches Keychain entries only for
+    // variables the manifest marks secret, and the gate is set from the toggle
+    // at spawn either way.
+    guard variable != server.writeGate else {
+      throw ToolError.badArgument(
+        name: "variable",
+        expected: "set with upsert_profile's allow_writes flag — '\(variable)' is this "
+          + "server's write gate, not a credential")
     }
 
     let account = CredentialStore.account(

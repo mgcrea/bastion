@@ -225,8 +225,8 @@ on this API a read has a price, so an unbounded profile is a bill.
 | `X_API_CONFIG` | — | — | Config file path. Bastion points this at the profile's own directory. |
 | `X_API_MONTHLY_BUDGET_USD` | — | — | Spend ceiling. X bills per read, so this is a real safety control, not a preference. |
 | `X_API_ALLOW_WRITES` | — | — | Enables posting through the API rather than returning an intent URL. |
-| `X_ADS_ENABLED` | — | — | Registers the Ads API tools. Needs a user context. |
-| `X_ADS_ALLOW_WRITES` | — | — | Enables campaign mutations. No effect without X_ADS_ENABLED. |
+| `X_ADS_ENABLED` | — | — | Registers the Ads API tools. Needs a user context. Boolean — unset means off. |
+| `X_ADS_ALLOW_WRITES` | — | — | Enables campaign mutations. No effect without X_ADS_ENABLED. Boolean — unset means off. |
 
 Satisfy exactly one of: **App-only bearer token** (`X_API_BEARER_TOKEN`), **OAuth2 user context** (`X_API_CLIENT_ID`)
 
@@ -257,7 +257,7 @@ profiles is the leak this app exists to prevent.
 | `UNIFI_PROTECT_CONSOLE_ID` | — | — | Console id from api.ui.com/v1/hosts. Cloud mode only. |
 | `UNIFI_PROTECT_MODE` | — | — | cloud or local. Inferred as cloud when a key and a console id are both set. |
 | `UNIFI_PROTECT_TOTP` | — | yes | 2FA code. Expires in ~30s, so prefer the server's own login tool. |
-| `UNIFI_PROTECT_VERIFY_TLS` | — | — | Verify the console certificate. Needs a hostname, not an IP. |
+| `UNIFI_PROTECT_VERIFY_TLS` | — | — | Verify the console certificate. Needs a hostname, not an IP. Boolean — unset means on. |
 | `UNIFI_PROTECT_SESSION_FILE` | — | — | Cached session, mode 600. Per-profile, or two identities share one session. |
 | `UNIFI_PROTECT_SNAPSHOT_DIR` | — | — | Where snapshots and exports are written. Per-profile, or one profile reads another's footage. |
 | `UNIFI_PROTECT_CONFIG` | — | — | Config file path. Bastion points this at the profile's own directory. |
@@ -287,8 +287,8 @@ questions, one gated for changes - is the shape this is built for.
 | `UNIFI_SITE` | — | — | Default site: UUID, legacy name or display name. |
 | `UNIFI_USERNAME` | — | — | Legacy tier fallback only. A local admin, not an SSO account. |
 | `UNIFI_PASSWORD` | — | yes | That admin's password. |
-| `UNIFI_INSECURE_TLS` | — | — | Disable certificate verification, for this server only. |
-| `UNIFI_ENABLE_LEGACY` | — | — | Registers the unifi_legacy_* tools. |
+| `UNIFI_INSECURE_TLS` | — | — | Disable certificate verification, for this server only. Boolean — unset means off. |
+| `UNIFI_ENABLE_LEGACY` | — | — | Registers the unifi_legacy_* tools. Boolean — unset means off. |
 | `UNIFI_APP_VERSION` | — | — | Pin the controller version instead of probing it at startup. |
 | `UNIFI_PAGE_LIMIT` | — | — | Page size. Defaults to 50. |
 | `UNIFI_MAX_PAGES` | — | — | Pagination ceiling. Defaults to 20. |

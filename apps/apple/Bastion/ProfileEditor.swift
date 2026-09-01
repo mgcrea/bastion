@@ -119,7 +119,9 @@ struct ProfileEditor: View {
         authorizationSection
 
         Section {
-          ForEach(server.env) { variable in
+          // `editableEnv`, not `env`: the write gate is in the manifest's
+          // variable list but is owned by the Writes toggle below.
+          ForEach(server.editableEnv) { variable in
             VariableField(
               variable: variable,
               isStored: stored.contains(variable.name) && !cleared.contains(variable.name),
@@ -356,8 +358,8 @@ struct ProfileEditor: View {
 
       if let gate = server.writeGate {
         Text(
-          "Sets \(gate) for this profile alone. Another profile of the same server can have "
-            + "it off at the same time.")
+          "The only thing that sets \(gate), and for this profile alone. Another profile of "
+            + "the same server can have it off at the same time.")
           .font(.caption).foregroundStyle(.secondary)
         if !server.gateBypass.isEmpty {
           Text(
@@ -631,7 +633,12 @@ struct ProfileEditor: View {
     // Only what the manifest names, and only what is not blank. An unknown key
     // would be dropped at spawn anyway; dropping it here keeps `profiles.json`
     // an honest record of what the profile actually sets.
-    let known = Set(server.env.filter { !$0.isSecret }.map(\.name))
+    //
+    // `editableEnv` excludes the write gate for the same reason, and this line
+    // rather than the ForEach above is what keeps it out of the file: a value
+    // typed by an older build is still sitting in `values`, and rendering no
+    // field for it would otherwise persist it untouched forever.
+    let known = Set(server.editableEnv.filter { !$0.isSecret }.map(\.name))
     var keep: [String: String] = [:]
     for (key, value) in values where known.contains(key) {
       let value = value.trimmingCharacters(in: .whitespaces)
@@ -708,6 +715,23 @@ private struct VariableField: View {
           prompt: Text(isStored ? "Stored — type to replace" : "Not set"))
           .labelsHidden()
           .textFieldStyle(.roundedBorder)
+      } else if let fallback = variable.booleanDefault {
+        // Three choices, not a toggle. These variables are read as
+        // `parseBool(env.X) ?? file.X`, so leaving one alone is not the same as
+        // turning it off: unset falls through to the server's own config file
+        // and then to its default. A two-way switch has nowhere to put that
+        // state, so it would have to pick — and picking "off" writes "0" over
+        // UNIFI_PROTECT_VERIFY_TLS, whose default is on. The control that
+        // cannot express the third state is the control that silently stops
+        // verifying a console's certificate.
+        Picker(variable.name, selection: booleanChoice) {
+          Text("Default (\(fallback ? "on" : "off"))").tag("")
+          Text("On").tag("1")
+          Text("Off").tag("0")
+        }
+        .labelsHidden()
+        .pickerStyle(.segmented)
+        .fixedSize()
       } else {
         TextField(variable.name, text: $plain, prompt: Text("Not set"))
           .labelsHidden()
@@ -719,5 +743,25 @@ private struct VariableField: View {
         .fixedSize(horizontal: false, vertical: true)
     }
     .padding(.vertical, 4)
+  }
+
+  /// The stored string as one of the picker's three tags.
+  ///
+  /// Normalised on the way out rather than matched literally, because what is
+  /// already in `profiles.json` was typed into a text field: an existing file
+  /// can hold `"false"` for one switch and `"1"` for another, both valid and
+  /// neither a tag. A `Picker` whose selection matches no tag renders empty, so
+  /// without this a stored `"false"` would show as nothing at all and read as
+  /// if the variable were unset — the one state it is not.
+  ///
+  /// The write side is left alone: the picker only ever sets "", "1" or "0",
+  /// and "" is dropped by `save()`, which is how "Default" writes nothing.
+  private var booleanChoice: Binding<String> {
+    Binding(
+      get: {
+        guard let parsed = BastionServer.EnvVar.parseBool(plain) else { return "" }
+        return parsed ? "1" : "0"
+      },
+      set: { plain = $0 })
   }
 }

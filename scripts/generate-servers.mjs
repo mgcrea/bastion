@@ -156,6 +156,36 @@ const validate = (servers) => {
         problems.push(`${eat}: description is required`);
       }
 
+      // A variable's SHAPE. Only booleans are typed, because they are the only
+      // ones where free text is a trap: every server parses them with the same
+      // four-word allowlist, so `y`, `enable` and `yeah` all read as FALSE
+      // without complaint. On UNIFI_PROTECT_VERIFY_TLS that is the insecure
+      // direction, which is the whole reason this field exists.
+      if (e.boolean !== undefined) {
+        if (typeof e.boolean !== "object" || e.boolean === null) {
+          problems.push(`${eat}: boolean must be an object with a default`);
+        } else if (typeof e.boolean.default !== "boolean") {
+          // Not defaulted to false. The default is what the SERVER does with
+          // the variable unset, and guessing it wrong is exactly the bug —
+          // so it has to be read off the server's schema and written down.
+          problems.push(`${eat}: boolean.default must be stated, and must be a boolean`);
+        }
+        // A boolean is a setting, not a credential. Marking one secret would
+        // hide "on" or "off" in the Keychain, where the profile editor cannot
+        // read it back to show which way the switch is set.
+        if (e.secret) problems.push(`${eat}: a boolean cannot be secret`);
+        // Required means "will not start without it". A boolean always has an
+        // answer — the default below — so it can never be missing, and the
+        // editor would show a blocking warning that nothing can clear.
+        if (e.required) problems.push(`${eat}: a boolean cannot be required — it has a default`);
+        // The gate is not a variable a profile sets; it is set from the
+        // profile's own toggle, and `editableEnv` keeps it out of the editor.
+        // Typing it would offer a control for a control.
+        if (e.name === s.writeGate) {
+          problems.push(`${eat}: the write gate is set from the profile toggle, not typed here`);
+        }
+      }
+
       // A variable's SINK. On a child it is an environment variable and there
       // is nothing to say; on a remote server there is no environment, so a
       // variable with no header is a variable that goes nowhere - collected
@@ -167,6 +197,9 @@ const validate = (servers) => {
         problems.push(
           `${eat}: header is remote-only — a child's variables are environment variables`,
         );
+      }
+      if (e.header && e.boolean) {
+        problems.push(`${eat}: a header carries a credential, not a switch`);
       }
       if (e.header) {
         if (!/^[A-Za-z][A-Za-z0-9-]*$/.test(e.header.name ?? "")) {
@@ -360,17 +393,26 @@ const swiftCallbackVar = (c) =>
 const swiftCallbackList = (cs) =>
   cs.length === 0 ? "[]" : `[${cs.map(swiftCallbackVar).join(", ")}]`;
 
-const swiftEnvVar = (e) =>
-  [
+const swiftEnvVar = (e) => {
+  // `summary` is last among the required fields, so whichever optional follows
+  // it decides where the closing paren goes. Only one of the two can be
+  // present — the validator refuses a variable that is both — so this is a
+  // three-way choice and not a combination.
+  const tail = e.header
+    ? `          summary: ${swiftString(e.description)},\n` +
+      `          header: .init(name: ${swiftString(e.header.name)}, format: ${swiftString(e.header.format)})),`
+    : e.boolean
+      ? `          summary: ${swiftString(e.description)},\n` +
+        `          booleanDefault: ${e.boolean.default}),`
+      : `          summary: ${swiftString(e.description)}),`;
+  return [
     `        .init(`,
     `          name: ${swiftString(e.name)},`,
     `          isRequired: ${e.required},`,
     `          isSecret: ${e.secret},`,
-    e.header
-      ? `          summary: ${swiftString(e.description)},\n` +
-        `          header: .init(name: ${swiftString(e.header.name)}, format: ${swiftString(e.header.format)})),`
-      : `          summary: ${swiftString(e.description)}),`,
+    tail,
   ].join("\n");
+};
 
 /** The transport, as the enum payload that makes the other shape unrepresentable. */
 const swiftTransport = (t) =>
@@ -460,12 +502,18 @@ const mdDetail = (s) => {
     remote ? "| --- | --- | --- | --- | --- |" : "| --- | --- | --- | --- |",
   );
   for (const e of s.env) {
+    // Appended rather than given a column: only three servers have any, and a
+    // column that is a dash on seventy-five rows earns nothing. The sentence
+    // says what unset does, which is the state a reader cannot infer.
+    const meaning = e.boolean
+      ? `${mdEscape(e.description)} Boolean — unset means ${e.boolean.default ? "on" : "off"}.`
+      : mdEscape(e.description);
     const cells = [
       mdCode(e.name),
       e.required ? "yes" : "—",
       e.secret ? "yes" : "—",
       ...(remote ? [mdCode(`${e.header.name}: ${e.header.format}`)] : []),
-      mdEscape(e.description),
+      meaning,
     ];
     out.push(`| ${cells.join(" | ")} |`);
   }

@@ -396,12 +396,14 @@
           "name": "X_ADS_ENABLED",
           "required": false,
           "secret": false,
+          "boolean": { "default": false },
           "description": "Registers the Ads API tools. Needs a user context."
         },
         {
           "name": "X_ADS_ALLOW_WRITES",
           "required": false,
           "secret": false,
+          "boolean": { "default": false },
           "description": "Enables campaign mutations. No effect without X_ADS_ENABLED."
         }
       ],
@@ -495,6 +497,7 @@
           "name": "UNIFI_PROTECT_VERIFY_TLS",
           "required": false,
           "secret": false,
+          "boolean": { "default": true },
           "description": "Verify the console certificate. Needs a hostname, not an IP."
         },
         {
@@ -633,12 +636,14 @@
           "name": "UNIFI_INSECURE_TLS",
           "required": false,
           "secret": false,
+          "boolean": { "default": false },
           "description": "Disable certificate verification, for this server only."
         },
         {
           "name": "UNIFI_ENABLE_LEGACY",
           "required": false,
           "secret": false,
+          "boolean": { "default": false },
           "description": "Registers the unifi_legacy_* tools."
         },
         {

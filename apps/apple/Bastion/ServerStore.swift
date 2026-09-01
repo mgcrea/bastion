@@ -130,10 +130,24 @@ final class ServerStore {
       /// Where the value lands on a remote request. Absent for a child, whose
       /// variables are environment variables.
       var header: Header?
+      /// Present when the variable is a switch rather than free text. Optional
+      /// so a file written before typed booleans existed decodes unchanged,
+      /// with absent meaning "free text" — the additive rule `enabled` and
+      /// `captureMode` already follow.
+      var boolean: BooleanShape?
 
       struct Header: Codable, Hashable {
         var name: String
         var format: String
+      }
+
+      /// Named the same as the manifest's key, and carrying the same single
+      /// field, so `servers.json` and a hand-edited custom row read alike.
+      struct BooleanShape: Codable, Hashable {
+        /// What the server does with the variable unset. See
+        /// `BastionServer.EnvVar.booleanDefault` for why this is a default and
+        /// not simply the value.
+        var `default`: Bool
       }
     }
 
@@ -276,7 +290,8 @@ final class ServerStore {
       env: definition.env.map {
         .init(
           name: $0.name, isRequired: $0.required, isSecret: $0.secret, summary: $0.description,
-          header: $0.header.map { .init(name: $0.name, format: $0.format) })
+          header: $0.header.map { .init(name: $0.name, format: $0.format) },
+          booleanDefault: $0.boolean?.default)
       },
       origin: .custom)
   }
@@ -321,7 +336,8 @@ final class ServerStore {
       env: server.env.map {
         .init(
           name: $0.name, required: $0.isRequired, secret: $0.isSecret, description: $0.summary,
-          header: $0.header.map { .init(name: $0.name, format: $0.format) })
+          header: $0.header.map { .init(name: $0.name, format: $0.format) },
+          boolean: $0.booleanDefault.map { .init(default: $0) })
       })
   }
 
@@ -334,6 +350,7 @@ final class ServerStore {
     case unusablePackage(String)
     case unusableEndpoint(String)
     case unusableVariable(String)
+    case contradictoryVariable(name: String, detail: String)
     case noVariables
     case renameWouldStrand(from: String, to: String, profiles: Int)
     case cannotRemoveBuiltin
@@ -354,6 +371,8 @@ final class ServerStore {
         return detail
       case .unusableVariable(let name):
         return "'\(name)' is not a usable environment variable name"
+      case .contradictoryVariable(let name, let detail):
+        return "'\(name)' \(detail)"
       case .noVariables:
         return "a server needs at least one environment variable"
       case .cannotRemoveBuiltin:
@@ -441,6 +460,32 @@ final class ServerStore {
     for variable in definition.env where !Self.isValidVariable(variable.name) {
       throw StoreError.unusableVariable(variable.name)
     }
+    // The three combinations a switch cannot be in. The editor clears these as
+    // they are typed, so reaching here means a hand-edited file in Application
+    // Support — where a contradiction would not crash anything, it would just
+    // quietly render the wrong control: a boolean also marked secret is drawn
+    // as a SecureField, so the switch never appears and its value goes into the
+    // Keychain where the editor cannot read it back to show which way it is
+    // set. Same rules the manifest generator applies, for the same reasons.
+    for variable in definition.env where variable.boolean != nil {
+      if variable.secret {
+        throw StoreError.contradictoryVariable(
+          name: variable.name, detail: "is a switch, so it cannot also be a secret")
+      }
+      if variable.required {
+        throw StoreError.contradictoryVariable(
+          name: variable.name, detail: "is a switch, so it always has an answer and cannot be required")
+      }
+      if variable.header != nil {
+        throw StoreError.contradictoryVariable(
+          name: variable.name, detail: "is a switch, and a header carries a credential")
+      }
+      if variable.name == definition.writeGate {
+        throw StoreError.contradictoryVariable(
+          name: variable.name, detail: "is the write gate, which is set from each profile's toggle")
+      }
+    }
+
     // A remote variable with no sink is collected, stored in the Keychain and
     // then never sent. The generator refuses that in the manifest; this is the
     // same rule for an entry somebody typed.

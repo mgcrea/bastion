@@ -165,6 +165,24 @@ nonisolated struct BastionServer: Identifiable, Hashable {
     writeGate != nil || transport.isRemote
   }
 
+  /// The variables a profile actually fills in, which is **not** `env`.
+  ///
+  /// The gate is in `env` because the manifest generator requires it there — a
+  /// gate the server never reads gates nothing, so the name is checked against
+  /// the declared variables. But the gate is owned by the profile's toggle and
+  /// written last by `ProfileEnvironment.build`, unconditionally and in both
+  /// directions. Offering it as a text field as well gives one wire two
+  /// switches, and the text one does nothing: whatever is typed there is
+  /// accepted, saved to `profiles.json`, and then overwritten at spawn.
+  ///
+  /// That is not only a dead control. A profile that stored `"1"` here and
+  /// whose toggle is later turned off keeps the `"1"` on disk, so the file
+  /// reads as if writes were on while the child is spawned with `"0"`.
+  var editableEnv: [EnvVar] {
+    guard let gate = writeGate else { return env }
+    return env.filter { $0.name != gate }
+  }
+
   /// Which list a definition was born in.
   ///
   /// Only the UI and `ServerStore`'s persistence care. Everything downstream —
@@ -371,6 +389,35 @@ nonisolated struct BastionServer: Identifiable, Hashable {
     /// `nil` for every child variable, and the generator refuses the
     /// mismatch either way.
     var header: HeaderSink?
+    /// What the server does when this variable is **unset** — or `nil` when it
+    /// is not a boolean and its value is free text.
+    ///
+    /// Booleans are the one shape where a text field is a trap. Every server
+    /// that reads one parses it with the same four-word allowlist, so `y`,
+    /// `enable` and `yeah` are all silently false; on `UNIFI_PROTECT_VERIFY_TLS`
+    /// that is the direction that stops checking a console's certificate.
+    ///
+    /// It is a default rather than a `Bool` because these are three-state, not
+    /// two. Each server reads them as `parseBool(env.X) ?? file.X`, so unset is
+    /// not off: it falls through to the server's own config file and then to
+    /// this value. A profile that says nothing must therefore write nothing —
+    /// which is only safe to offer once the third state is visible, and that is
+    /// what this field makes possible.
+    var booleanDefault: Bool?
+
+    /// How every one of these servers reads a boolean, so the editor can show
+    /// which way an existing value is actually being read.
+    ///
+    /// Not a guess: `parseBool` is copied verbatim in each repo that has one —
+    /// appstore-connect, keycloak, ovh-api, reddit, unifi-network,
+    /// unifi-protect and x-api all spell it `["1", "true", "yes", "on"]`, and
+    /// Cupertino's `packages/core` agrees. `nil` for unset, which is the state
+    /// that is neither.
+    static func parseBool(_ raw: String) -> Bool? {
+      let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+      if t.isEmpty { return nil }
+      return ["1", "true", "yes", "on"].contains(t.lowercased())
+    }
   }
 
   /// A variable's landing place on a remote request.
@@ -621,12 +668,14 @@ nonisolated enum ServerCatalog {
           name: "X_ADS_ENABLED",
           isRequired: false,
           isSecret: false,
-          summary: "Registers the Ads API tools. Needs a user context."),
+          summary: "Registers the Ads API tools. Needs a user context.",
+          booleanDefault: false),
         .init(
           name: "X_ADS_ALLOW_WRITES",
           isRequired: false,
           isSecret: false,
-          summary: "Enables campaign mutations. No effect without X_ADS_ENABLED."),
+          summary: "Enables campaign mutations. No effect without X_ADS_ENABLED.",
+          booleanDefault: false),
       ]),
     // Two auth shapes that are not interchangeable, which is why they are auth
     // modes rather than a pile of optional variables. A console API key is
@@ -712,7 +761,8 @@ nonisolated enum ServerCatalog {
           name: "UNIFI_PROTECT_VERIFY_TLS",
           isRequired: false,
           isSecret: false,
-          summary: "Verify the console certificate. Needs a hostname, not an IP."),
+          summary: "Verify the console certificate. Needs a hostname, not an IP.",
+          booleanDefault: true),
         .init(
           name: "UNIFI_PROTECT_SESSION_FILE",
           isRequired: false,
@@ -835,12 +885,14 @@ nonisolated enum ServerCatalog {
           name: "UNIFI_INSECURE_TLS",
           isRequired: false,
           isSecret: false,
-          summary: "Disable certificate verification, for this server only."),
+          summary: "Disable certificate verification, for this server only.",
+          booleanDefault: false),
         .init(
           name: "UNIFI_ENABLE_LEGACY",
           isRequired: false,
           isSecret: false,
-          summary: "Registers the unifi_legacy_* tools."),
+          summary: "Registers the unifi_legacy_* tools.",
+          booleanDefault: false),
         .init(
           name: "UNIFI_APP_VERSION",
           isRequired: false,
