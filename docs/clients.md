@@ -345,7 +345,7 @@ Emptying a servers object leaves it `{}` rather than deleting the key.
 
 ## Writing into somebody else's file
 
-Three properties, because the file is not Bastion's:
+Four properties, because the file is not Bastion's:
 
 1. **Every unrelated key survives.** `~/.claude.json` on the machine this was
    written against holds nine global MCP servers, ninety-eight project blocks and
@@ -358,6 +358,21 @@ Three properties, because the file is not Bastion's:
    beside the target, then swapped. The result is `chmod 0600`, because it now
    carries a bearer token and did not necessarily before. (A no-op for Codex,
    whose `config.toml` and `auth.json` are both already `-rw-------`.)
+4. **A merge is never landed on bytes it was not computed from.** Every write is
+   conditional on the file's size and modification date at the moment it was
+   read; if either moved, the write is refused and the whole operation runs
+   again against the file as it now is — collision check included, since the
+   entry that arrived in the window is exactly the one that has to be noticed.
+
+The fourth is a narrower window rather than a closed one, and it is worth being
+precise about which failure it removes. A process holding its own copy of the
+whole file — Claude Code for the length of a session, the ChatGPT app on launch —
+still wins by writing last, and nothing short of a lock neither side takes would
+change that. What it removes is Bastion silently dropping a change that landed
+while it was reading. The stakes are higher here than for a config full of plain
+commands: these entries carry a bearer token, so a lost write does not leave a
+server missing, it leaves a client that reaches the endpoint and fails to
+authenticate.
 
 The writer takes **bytes**, and the JSON path serialises into it, because the two
 formats disagree about everything except this. Asking the backup-and-atomicity

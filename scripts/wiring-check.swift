@@ -120,6 +120,7 @@ struct WiringCheck {
     perEntryStateAgreesWithAudit()
     foreignEntriesAreEverythingNotOurs()
     removingTakesExactlyOneKey()
+    staleWriteIsRefused()
 
     tomlScannerFindsEveryServer()
     tomlScannerIsNotFooledByProse()
@@ -134,6 +135,7 @@ struct WiringCheck {
     tomlNeverRewritesAHandWrittenEntry()
     tomlDuplicateKeyIsImpossible()
     tomlBackupAtomicityAndMode()
+    tomlStaleWriteIsRefused()
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 { exit(1) }
@@ -1560,5 +1562,132 @@ struct WiringCheck {
     check(
       "and read back as ours",
       written.keys.allSatisfy { ClientWiringMerge.isOurs(rescanned?.tables[$0]?.value) })
+  }
+
+  /// A merge computed from bytes that have since changed is refused.
+  ///
+  /// The property `ClientWiring.retryingIfChanged` rests on. It does not close
+  /// the race — a process holding its own copy of the whole file still wins —
+  /// but it does mean a merge is never landed on top of a change that arrived
+  /// while the file was being read. Which matters more here than it would for a
+  /// config full of commands: these entries carry a bearer token, so a lost
+  /// write leaves a client that reaches the endpoint and fails to authenticate.
+  static func staleWriteIsRefused() {
+    print("\nRefusing a stale write")
+    let fm = FileManager.default
+    let directory = fm.temporaryDirectory
+      .appendingPathComponent("bastion-stale-\(UUID().uuidString)")
+    try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: directory) }
+
+    let config = directory.appendingPathComponent("mcp.json")
+    try? "{\"theme\":\"dark\"}".write(to: config, atomically: true, encoding: .utf8)
+
+    let before = ClientWiringMerge.stamp(of: config)
+    let root = (try? ClientWiringMerge.readJSON(config)) ?? [:]
+    let merged = ClientWiringMerge.merged(
+      into: root, rootKey: "mcpServers", entries: entries { httpReach($0) })
+
+    // Somebody else writes between the read and the swap.
+    try? "{\"theme\":\"light\",\"numStartups\":9}".write(
+      to: config, atomically: true, encoding: .utf8)
+
+    var refused = false
+    do {
+      _ = try ClientWiringMerge.write(
+        merged, to: config, backupSuffix: "bastion-backup", expecting: before)
+    } catch ClientWiringMerge.WriteError.changedUnderneath(_) {
+      refused = true
+    } catch {
+    }
+    check("a changed file is refused", refused)
+    let after = (try? ClientWiringMerge.readJSON(config)) ?? [:]
+    check("their write survived", after["numStartups"] as? Int == 9)
+    check("nothing of ours was written", after["mcpServers"] == nil)
+    check(
+      "and no backup claims otherwise",
+      !fm.fileExists(atPath: config.appendingPathExtension("bastion-backup").path))
+
+    // What the second attempt does: stamp the file as it is now, and land.
+    let fresh = ClientWiringMerge.stamp(of: config)
+    let second = try? ClientWiringMerge.write(
+      ClientWiringMerge.merged(
+        into: (try? ClientWiringMerge.readJSON(config)) ?? [:], rootKey: "mcpServers",
+        entries: entries { httpReach($0) }),
+      to: config, backupSuffix: "bastion-backup", expecting: fresh)
+    check("a current stamp writes", second != nil)
+    let final = (try? ClientWiringMerge.readJSON(config)) ?? [:]
+    check("their key is still there", final["numStartups"] as? Int == 9)
+    check(
+      "and ours arrived",
+      (final["mcpServers"] as? [String: Any])?["bastion-shopify"] != nil)
+
+    // A config that does not exist yet is a precondition of its own — the
+    // first-run case, where a client writing one in the window is exactly what
+    // must not be flattened.
+    let unborn = directory.appendingPathComponent("nothing-here.json")
+    let absent = ClientWiringMerge.stamp(of: unborn)
+    check("a missing file stamps as absent", absent == .absent)
+    try? "{\"mcpServers\":{\"theirs\":{\"command\":\"npx\"}}}".write(
+      to: unborn, atomically: true, encoding: .utf8)
+    var caught = false
+    do {
+      _ = try ClientWiringMerge.write(
+        ["mcpServers": [:]], to: unborn, backupSuffix: "bastion-backup", expecting: absent)
+    } catch ClientWiringMerge.WriteError.changedUnderneath(_) {
+      caught = true
+    } catch {
+    }
+    check("a file created in the window is refused", caught)
+    check(
+      "and the file it created is untouched",
+      ((try? ClientWiringMerge.readJSON(unborn))?["mcpServers"] as? [String: Any])?["theirs"]
+        != nil)
+  }
+
+  /// The same refusal on the byte overload, which is the path a Codex write
+  /// takes.
+  ///
+  /// Not a duplicate of the JSON check: this is the client whose own row says
+  /// the ChatGPT app rewrites `config.toml` on launch, so it is the one where
+  /// the window is known to be entered rather than merely possible.
+  static func tomlStaleWriteIsRefused() {
+    print("\nRefusing a stale TOML write")
+    let fm = FileManager.default
+    let directory = fm.temporaryDirectory
+      .appendingPathComponent("bastion-toml-stale-\(UUID().uuidString)")
+    try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: directory) }
+
+    let config = directory.appendingPathComponent("config.toml")
+    try? codexConfig.write(to: config, atomically: true, encoding: .utf8)
+
+    let before = ClientWiringMerge.stamp(of: config)
+    guard let document = try? ClientWiringTOML.read(config) else {
+      return check("the fixture reads back", false)
+    }
+    let text = ClientWiringTOML.spliced(document, removing: [], upserting: tomlEntries())
+
+    // The ChatGPT app rewrites the file while the splice is being computed.
+    let theirs = codexConfig + "\n[mcp_servers.something_new]\ncommand = \"npx\"\n"
+    try? theirs.write(to: config, atomically: true, encoding: .utf8)
+
+    var refused = false
+    do {
+      _ = try ClientWiringMerge.write(
+        Data(text.utf8), to: config, backupSuffix: "bastion-backup", expecting: before)
+    } catch ClientWiringMerge.WriteError.changedUnderneath(_) {
+      refused = true
+    } catch {
+    }
+    check("a changed config.toml is refused", refused)
+    check(
+      "their table survived, to the byte",
+      (try? String(contentsOf: config, encoding: .utf8)) == theirs)
+    check(
+      "and the splice that would have dropped it never landed",
+      names(try? ClientWiringTOML.read(config)) == [
+        "computer-use", "node_repl", "something_new",
+      ])
   }
 }

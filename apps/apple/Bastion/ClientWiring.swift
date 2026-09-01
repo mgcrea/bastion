@@ -412,11 +412,40 @@ enum ClientWiring {
 
   // MARK: - Writing
 
+  /// Run a read-modify-write again if the file changed underneath it.
+  ///
+  /// Wrapping the whole operation and not just the write is what makes the
+  /// retry correct rather than merely repeated: the second pass re-reads, and
+  /// so re-runs the collision check against the entries that arrived in the
+  /// window. A retry that only re-serialised the first pass's merge would write
+  /// over exactly the entry it was supposed to notice.
+  ///
+  /// Twice, not until it succeeds: a file being rewritten faster than this can
+  /// read it is not a race to keep entering, and every caller already has
+  /// somewhere to put the sentence.
+  private static func retryingIfChanged<T>(_ url: URL, _ body: () throws -> T) throws -> T {
+    let attempts = 2
+    for attempt in 1...attempts {
+      do { return try body() } catch ClientWiringMerge.WriteError.changedUnderneath(_)
+        where attempt < attempts
+      {
+        continue
+      }
+    }
+    throw ClientWiringMerge.WriteError.changedUnderneath(url)
+  }
+
   /// `force` overwrites entries Bastion did not write. Off by default, and the
   /// caller has to say so twice — once in the UI, once here — because the thing
   /// being overwritten is a server somebody configured by hand.
   @discardableResult
   static func wire(_ client: Client, profiles: [Profile], force: Bool = false) throws -> URL? {
+    try retryingIfChanged(client.configURL) {
+      try wireOnce(client, profiles: profiles, force: force)
+    }
+  }
+
+  private static func wireOnce(_ client: Client, profiles: [Profile], force: Bool) throws -> URL? {
     let keys = keys(for: profiles)
     // Unreachable while the prefix was a constant; reachable the moment it is
     // typed by hand. Refusing beats writing one of the two entries and leaving
@@ -428,7 +457,11 @@ enum ClientWiring {
     // just its servers, because the splice quotes the original text back out of
     // it; `root` is the synthetic wrapper that lets the merge below be the same
     // merge every other client gets.
-    let exists = FileManager.default.fileExists(atPath: client.configURL.path)
+    //
+    // The stamp is taken first, before either read, so it describes the bytes
+    // this merge is computed from. Every write below is conditional on it.
+    let stamp = ClientWiringMerge.stamp(of: client.configURL)
+    let exists = stamp != .absent
     var document = ClientWiringTOML.empty
     var root: [String: Any] = [:]
     switch client.format {
@@ -463,10 +496,11 @@ enum ClientWiring {
     switch client.format {
     case .toml:
       backup = try splice(
-        client, document, into: servers(merged, client.rootKey), upserting: entries)
+        client, document, into: servers(merged, client.rootKey), upserting: entries,
+        expecting: stamp)
     case .json:
       backup = try ClientWiringMerge.write(
-        merged, to: client.configURL, backupSuffix: "bastion-backup")
+        merged, to: client.configURL, backupSuffix: "bastion-backup", expecting: stamp)
     }
     ClientConfigRevision.shared.bump()
     hostLog(
@@ -478,19 +512,25 @@ enum ClientWiring {
 
   @discardableResult
   static func unwire(_ client: Client) throws -> URL? {
-    guard FileManager.default.fileExists(atPath: client.configURL.path) else { return nil }
+    try retryingIfChanged(client.configURL) { try unwireOnce(client) }
+  }
+
+  private static func unwireOnce(_ client: Client) throws -> URL? {
+    let stamp = ClientWiringMerge.stamp(of: client.configURL)
+    guard stamp != .absent else { return nil }
     let backup: URL?
     switch client.format {
     case .toml:
       let document = try ClientWiringTOML.read(client.configURL)
       let stripped = ClientWiringMerge.unmerged(
         from: [client.rootKey: document.servers], rootKey: client.rootKey)
-      backup = try splice(client, document, into: servers(stripped, client.rootKey))
+      backup = try splice(
+        client, document, into: servers(stripped, client.rootKey), expecting: stamp)
     case .json:
       let root = try ClientWiringMerge.readJSON(client.configURL)
       let stripped = ClientWiringMerge.unmerged(from: root, rootKey: client.rootKey)
       backup = try ClientWiringMerge.write(
-        stripped, to: client.configURL, backupSuffix: "bastion-backup")
+        stripped, to: client.configURL, backupSuffix: "bastion-backup", expecting: stamp)
     }
     ClientConfigRevision.shared.bump()
     hostLog("wiring", .info, "\(client.displayName): removed Bastion's entries")
@@ -512,7 +552,18 @@ enum ClientWiring {
     from client: Client,
     inProject folder: String? = nil
   ) throws -> URL? {
-    guard FileManager.default.fileExists(atPath: client.configURL.path) else { return nil }
+    try retryingIfChanged(client.configURL) {
+      try removeEntryOnce(key, from: client, inProject: folder)
+    }
+  }
+
+  private static func removeEntryOnce(
+    _ key: String,
+    from client: Client,
+    inProject folder: String?
+  ) throws -> URL? {
+    let stamp = ClientWiringMerge.stamp(of: client.configURL)
+    guard stamp != .absent else { return nil }
     let backup: URL?
     switch client.format {
     case .toml:
@@ -522,14 +573,15 @@ enum ClientWiring {
       let document = try ClientWiringTOML.read(client.configURL)
       let stripped = ClientWiringMerge.removing(
         key: key, from: [client.rootKey: document.servers], rootKey: client.rootKey)
-      backup = try splice(client, document, into: servers(stripped, client.rootKey))
+      backup = try splice(
+        client, document, into: servers(stripped, client.rootKey), expecting: stamp)
     case .json:
       let root = try ClientWiringMerge.readJSON(client.configURL)
       let stripped =
         folder.map { ClientWiringMerge.removing(key: key, inProject: $0, from: root) }
         ?? ClientWiringMerge.removing(key: key, from: root, rootKey: client.rootKey)
       backup = try ClientWiringMerge.write(
-        stripped, to: client.configURL, backupSuffix: "bastion-backup")
+        stripped, to: client.configURL, backupSuffix: "bastion-backup", expecting: stamp)
     }
     ClientConfigRevision.shared.bump()
     hostLog(
@@ -557,7 +609,8 @@ enum ClientWiring {
     _ client: Client,
     _ document: ClientWiringTOML.Document,
     into after: [String: Any],
-    upserting entries: [String: [String: Any]] = [:]
+    upserting entries: [String: [String: Any]] = [:],
+    expecting: ClientWiringMerge.Stamp? = nil
   ) throws -> URL? {
     let removed = Set(document.tables.keys).subtracting(after.keys)
     let text = ClientWiringTOML.spliced(document, removing: removed, upserting: entries)
@@ -565,7 +618,7 @@ enum ClientWiring {
     // a new backup, a new mtime, and a client told to restart for no reason.
     guard text != document.text else { return nil }
     return try ClientWiringMerge.write(
-      Data(text.utf8), to: client.configURL, backupSuffix: "bastion-backup")
+      Data(text.utf8), to: client.configURL, backupSuffix: "bastion-backup", expecting: expecting)
   }
 
   /// The servers dictionary a merge produced, unwrapped from its synthetic root.

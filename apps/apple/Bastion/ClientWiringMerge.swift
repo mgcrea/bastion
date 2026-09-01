@@ -385,11 +385,65 @@ enum ClientWiringMerge {
 
   // MARK: - Writing
 
+  enum WriteError: LocalizedError {
+    /// The file moved on between the read and the swap, so the merge in hand
+    /// was computed from bytes that are no longer there.
+    case changedUnderneath(URL)
+
+    var errorDescription: String? {
+      switch self {
+      case .changedUnderneath(let url):
+        return "\(url.lastPathComponent) changed while it was being read; nothing was written"
+      }
+    }
+  }
+
+  /// What a config looked like when the caller read it, so a write can refuse to
+  /// land a merge computed from bytes somebody has since replaced.
+  ///
+  /// The stakes here are not the ones the backup covers. Bastion's entries carry
+  /// a bearer token, so a write that loses the race does not leave a server
+  /// merely missing — it leaves a client reaching the endpoint and failing to
+  /// authenticate, which reads as Bastion being broken. And one of the five
+  /// configs has a documented concurrent writer: the row for `~/.codex/config.toml`
+  /// says the ChatGPT app rewrites it on launch.
+  ///
+  /// Size and modification date rather than a hash of the contents: the question
+  /// is only "did anything touch it", which two `stat` fields answer for free.
+  ///
+  /// `absent` is a state and not an error. A file that does not exist yet is
+  /// exactly as legitimate a precondition as one that does — and a config
+  /// created in the window between the two is precisely what this is for.
+  enum Stamp: Equatable {
+    case absent
+    case present(size: Int, modified: Date)
+  }
+
+  /// `FileManager`, deliberately, and not `URL.resourceValues`: an `NSURL`
+  /// caches the values it has already been asked for, so two stamps taken from
+  /// the same `URL` around a write come back identical and the precondition this
+  /// exists for silently passes.
+  static func stamp(of url: URL) -> Stamp {
+    guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+      let size = attributes[.size] as? Int, let modified = attributes[.modificationDate] as? Date
+    else { return .absent }
+    return .present(size: size, modified: modified)
+  }
+
   /// Backup, atomic temp, swap. Returns the backup URL if one was made.
   ///
-  /// Three properties this has to hold, because the file belongs to someone
+  /// Four properties this has to hold, because the file belongs to someone
   /// else: every unrelated key survives, the previous contents are
-  /// recoverable, and a crash mid-write cannot leave a truncated config.
+  /// recoverable, a crash mid-write cannot leave a truncated config, and a
+  /// merge is never landed on bytes it was not computed from.
+  ///
+  /// The fourth is `expecting`, and it narrows a window rather than closing
+  /// one. A mismatch means the file changed since the caller read it, and the
+  /// merge in hand would drop that change; `ClientWiring.retryingIfChanged`
+  /// re-reads and runs the whole operation again. What no writer can promise is
+  /// the last word — a process holding its own copy of the file, Claude Code
+  /// for the length of a session or the ChatGPT app on launch, still wins by
+  /// writing after us.
   ///
   /// Takes bytes rather than a root object, because the two config formats this
   /// app writes disagree about everything except this. A JSON client's file is
@@ -397,9 +451,18 @@ enum ClientWiringMerge {
   /// disk. Backup, atomicity and mode are the same question either way, and
   /// asking it twice is how the second one ends up subtly weaker.
   @discardableResult
-  static func write(_ data: Data, to url: URL, backupSuffix: String) throws -> URL? {
+  static func write(
+    _ data: Data,
+    to url: URL,
+    backupSuffix: String,
+    expecting: Stamp? = nil
+  ) throws -> URL? {
     let fm = FileManager.default
     var backup: URL?
+
+    // Before the backup: a write that is not going to happen must not leave a
+    // new `.bastion-backup` behind claiming it did.
+    if let expecting, stamp(of: url) != expecting { throw WriteError.changedUnderneath(url) }
 
     if fm.fileExists(atPath: url.path) {
       backup = url.appendingPathExtension(backupSuffix)
@@ -432,11 +495,16 @@ enum ClientWiringMerge {
 
   /// The JSON half: serialise, then write the bytes.
   @discardableResult
-  static func write(_ root: [String: Any], to url: URL, backupSuffix: String) throws -> URL? {
+  static func write(
+    _ root: [String: Any],
+    to url: URL,
+    backupSuffix: String,
+    expecting: Stamp? = nil
+  ) throws -> URL? {
     try write(
       JSONSerialization.data(
         withJSONObject: root, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]),
-      to: url, backupSuffix: backupSuffix)
+      to: url, backupSuffix: backupSuffix, expecting: expecting)
   }
 
   /// The servers a Claude Code **project**-scope entry holds for one folder.
