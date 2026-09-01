@@ -7,7 +7,32 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.3.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.3.0] - 2026-09-01
+
+### Added
+
+- **npm joins the catalog.** Packages, versions, downloads, advisories, dist-tags, orgs, tokens and
+  trusted publishing. It is the one server here with no auth modes to choose between, and not
+  because it has a single credential: it starts with nothing configured and every packument, search
+  and advisory read is public. So the choice is not among named modes but between setting
+  `NPM_TOKEN` and letting it read the token `npm login` already wrote to `~/.npmrc`.
+
+  `NPM_CONFIG_USERCONFIG` is offered as state for that reason. A profile that names no token
+  quietly borrows the machine's own login, and two profiles are then one npm user wearing two
+  names — the audit line would say which profile called, not who published.
+
+  The writes are irreversible in npm's own terms, so the gate is not the only thing in front of
+  them: publish and unpublish each offer a dry run, everything irreversible also wants an explicit
+  `confirm: true`, and npm demands a fresh one-time password on every trusted-publisher call.
+
+- **A variable that is a switch is offered as one.** Servers that read a boolean environment
+  variable all parse it with the same four-word allowlist, so free text like `y` or `yeah` silently
+  read as false — and on `UNIFI_PROTECT_VERIFY_TLS` that direction quietly stops checking a
+  console's certificate. The catalog can now mark a variable boolean with a stated default, and the
+  profile editor renders it as a three-way picker rather than a text field.
+
+  Three ways rather than two because unset is a real state and not a synonym for off: it falls
+  through to the server's own configuration, and only then to the default the picker names.
 
 ### Changed
 
@@ -18,6 +43,51 @@ are taken from this file, which is the curated summary.
   two answering halves of one question: which build is this, and is there a newer one. It repeats
   the version in its first row and now says when the last check happened, which `UpdateController`
   had always recorded and nothing had ever shown.
+
+- **The write gate is no longer a text field in the profile editor.** It has to stay in a server's
+  variable list so the manifest generator can validate it, but it is owned by the profile's Writes
+  toggle — so offering it as an ordinary field was a dead control whose value is overwritten at
+  spawn, and one that could leave `profiles.json` reading as writes-on while the child actually ran
+  with writes off. It is now excluded from the editor, `set_credential` and `upsert_profile` refuse
+  to write it directly, and a value stored by an older build is dropped on load.
+
+- **`recent_activity` had no ceiling on what it handed back.** One default call on a profile that
+  records results measured 96 KB, roughly 24k tokens — more than this server's entire tool list. It
+  now spends a 16 KB budget filling rows newest-first, truncates each echoed argument and result to
+  1 KB, and says how many older entries it left out rather than silently cutting the reply. The
+  default limit drops from 50 to 20 to match.
+
+  Its own result is also no longer captured. The result _is_ the log, so recording it stored a copy
+  of the log inside the log, and each call inflated the next: three consecutive calls measured 106,
+  110 and 115 KB, climbing.
+
+- **Builtin replies are no longer pretty-printed.** The pretty printer writes `"key" : "value"`
+  with a space either side of the colon and spreads an empty array over three lines, measured at
+  roughly a fifth of every response this server sends. Key order stays sorted, so what a caller
+  reads is unchanged apart from the whitespace. The tool list itself is trimmed the same way: an
+  empty `required` array and a `destructiveHint` that only ever restated `readOnlyHint` are no
+  longer sent on every connect.
+
+- **The menu bar glyph's hill runs under the wall again.** The fort's feet stopped 0.35 units
+  inside the ridge, close enough to nothing that the hill read as cut to fit the wall rather than
+  passing behind it. Narrowing the fort opens that clearance to 0.90.
+
+### Fixed
+
+- **Wiring a client could quietly undo a change made while Bastion was writing.** Every write into
+  a client's configuration was a plain read-modify-write, free to land a merge computed from bytes
+  a concurrent writer had already replaced — and one of the five configurations has a documented
+  concurrent writer, since the ChatGPT app rewrites `~/.codex/config.toml` on launch. Because
+  Bastion's entries carry a bearer token, a lost write does not merely drop a server: it leaves the
+  client still pointing at the endpoint and failing to authenticate, which reads as Bastion being
+  broken. Each write now records the file's size and modification date before reading, refuses if
+  either moved, and re-reads and re-runs the whole operation — collision check included — rather
+  than landing a stale merge.
+
+- **OVHcloud and Keycloak had no documentation link.** Both are public repositories, but their
+  catalog entries carried none, so the servers table rendered their names as plain text while every
+  other server's linked. X API was also still marked unpublished after it went out to npm — an
+  entry in that state makes Bastion refuse the install without ever contacting the registry.
 
 ## [1.2.1] - 2026-09-01
 
