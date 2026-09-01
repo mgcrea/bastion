@@ -1225,10 +1225,6 @@ nonisolated enum ServerCatalog {
           isSecret: false,
           summary: "Enables creating and modifying realms, clients, users and roles."),
       ]),
-    // `local` until it is published. The entry is here now because the
-    // checkout is, and a stale `npm` distribution is the first of the two
-    // gates that silently turn a fresh publish into a failed install.
-    //
     // No auth modes, and not because there is only one credential. This
     // server starts with NOTHING configured — every packument, search and
     // advisory read is public — and a mode has to name at least one
@@ -1256,9 +1252,9 @@ nonisolated enum ServerCatalog {
         .init(
           npmName: "@mgcrea/mcp-npm",
           binName: "npm-mcp",
-          distribution: .local,
+          distribution: .npm,
           localPath: "mcp-npm")),
-      docsURL: nil,
+      docsURL: URL(string: "https://github.com/mgcrea/mcp-npm"),
       dialect: .v2025_11_25,
       writeGate: "NPM_ALLOW_WRITES",
       writeTools: [],

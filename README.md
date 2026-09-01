@@ -69,7 +69,7 @@ restricted key.
 
 ## Servers
 
-**Bastion ships with nothing installed.** It ships with a _catalog_ of nine, listed in
+**Bastion ships with nothing installed.** It ships with a _catalog_ of ten, listed in
 [`servers.json`](servers.json) and documented in [docs/servers.md](docs/servers.md); the list an
 install actually runs lives in Application Support, starts empty, and the user edits it. Install
 Install from the catalog, or add any other MCP server by npm package name. Code is fetched on demand into
@@ -255,7 +255,7 @@ Built and verified:
 | **Gateway**             | loopback HTTP, `Origin` / `Host` / bearer, hand-written so the checks are auditable |
 | **Supervisor**          | one child per profile, id remapping, backoff, circuit breaker, idle stop            |
 | **Dialect**             | dual-era: modern 2026-07-28 and legacy `initialize`, onto legacy children           |
-| **Catalog**             | nine seeded servers, a generator, and a CI drift check                              |
+| **Catalog**             | ten seeded servers, a generator, and a CI drift check                               |
 | **Server store**        | the user's own list, on-demand npm install, add, remove, and a per-server switch    |
 | **Remote servers**      | an https endpoint fronted like any other server — Stripe's, in the catalog          |
 | **OAuth 2.1**           | discovery, dynamic registration, PKCE and refresh — one consent, every client       |
@@ -278,7 +278,7 @@ all; a legacy client opens with `initialize` and is served that way. Both land o
 Bastion took with the child at spawn, and `server/discover` — mandatory in the modern revision, and
 implemented by none of these servers — is synthesised from it.
 
-None of the nine catalog servers are modern. Every one runs an SDK whose newest protocol is
+None of the ten catalog servers are modern. Every one runs an SDK whose newest protocol is
 `2025-11-25`, which is what they negotiate. The manifest said `2025-06-18` until a live handshake was
 actually run against one; that was Bastion's own pin masquerading as a fact about the servers. A
 server you add yourself is fronted the same way, and declares its own dialect when you add it.
@@ -408,9 +408,8 @@ be re-imported. Debug-only by design: a release build that imported credentials 
 could drop in its Application Support directory would be a way to add a profile to somebody else's
 gateway.
 
-One of the nine catalog servers is not published to npm, and in a Debug build a checkout wins over
-an install anyway, so dogfooding wants
-`~/Library/Application Support/io.mgcrea.bastion.debug/dev.json` pointing at them:
+In a Debug build a checkout wins over an install, so dogfooding wants
+`~/Library/Application Support/io.mgcrea.bastion.debug/dev.json` pointing at the checkout:
 
 ```json
 {

@@ -156,7 +156,7 @@ asserts both eras against a running build.
 | [Shopify](https://github.com/mgcrea/mcp-shopify) | `shopify` | `shopify-mcp` | `@mgcrea/mcp-shopify` (npm) | read-only | 1 |
 | [OVHcloud](https://github.com/mgcrea/mcp-ovh-api) | `ovh-api` | `ovh-api-mcp` | `@mgcrea/mcp-ovh-api` (npm) | `OVH_ALLOW_WRITES` | 4 |
 | [Keycloak](https://github.com/mgcrea/mcp-keycloak) | `keycloak` | `keycloak-mcp` | `@mgcrea/mcp-keycloak` (npm) | `KEYCLOAK_ALLOW_WRITES` | 2 |
-| npm | `npm` | `npm-mcp` | `mcp-npm` (local) | `NPM_ALLOW_WRITES` | 2 |
+| [npm](https://github.com/mgcrea/mcp-npm) | `npm` | `npm-mcp` | `@mgcrea/mcp-npm` (npm) | `NPM_ALLOW_WRITES` | 2 |
 
 ### App Store Connect
 
@@ -408,10 +408,6 @@ Satisfy exactly one of: **Client credentials** (`KEYCLOAK_CLIENT_SECRET`), **Use
 ### npm
 
 npm registry: packages, versions, downloads, advisories, dist-tags, orgs, tokens and trusted publishing.
-
-`local` until it is published. The entry is here now because the
-checkout is, and a stale `npm` distribution is the first of the two
-gates that silently turn a fresh publish into a failed install.
 
 No auth modes, and not because there is only one credential. This
 server starts with NOTHING configured — every packument, search and
