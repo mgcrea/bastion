@@ -1225,6 +1225,90 @@ nonisolated enum ServerCatalog {
           isSecret: false,
           summary: "Enables creating and modifying realms, clients, users and roles."),
       ]),
+    // `local` until it is published. The entry is here now because the
+    // checkout is, and a stale `npm` distribution is the first of the two
+    // gates that silently turn a fresh publish into a failed install.
+    //
+    // No auth modes, and not because there is only one credential. This
+    // server starts with NOTHING configured — every packument, search and
+    // advisory read is public — and a mode has to name at least one
+    // variable, which the zero-config path has not got. So the choice is
+    // not a mode: either NPM_TOKEN is set, or the server reads ~/.npmrc.
+    //
+    // Which is exactly why NPM_CONFIG_USERCONFIG is state. HOME is the real
+    // home, so a profile that names no token quietly borrows the machine's
+    // `npm login` — two profiles are then one npm user wearing two names,
+    // and the audit line says which profile called, not who published. A
+    // second identity points this at its own file, or sets NPM_TOKEN.
+    //
+    // The writes worth naming are irreversible in npm's own terms, and the
+    // gate is not the only thing standing in front of them: publish and
+    // unpublish both offer a dry run, and everything irreversible also
+    // wants an explicit `confirm: true`. npm demands a fresh one-time
+    // password on every trusted-publisher endpoint, the READ included, so
+    // unattended trust configuration is impossible by construction rather
+    // than by policy.
+    BastionServer(
+      id: "npm",
+      displayName: "npm",
+      summary: "npm registry: packages, versions, downloads, advisories, dist-tags, orgs, tokens and trusted publishing.",
+      transport: .child(
+        .init(
+          npmName: "@mgcrea/mcp-npm",
+          binName: "npm-mcp",
+          distribution: .local,
+          localPath: "mcp-npm")),
+      docsURL: URL(string: "https://github.com/mgcrea/mcp-npm"),
+      dialect: .v2025_11_25,
+      writeGate: "NPM_ALLOW_WRITES",
+      writeTools: [],
+      gateBypass: [],
+      authModes: [],
+      stateEnv: ["NPM_CONFIG_USERCONFIG", "NPM_MCP_CONFIG"],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "NPM_TOKEN",
+          isRequired: false,
+          isSecret: true,
+          summary: "npm access token. Optional: with none set the server falls back to the token `npm login` wrote to ~/.npmrc. A granular token with 'Bypass 2FA' enabled is refused by every trusted-publisher write."),
+        .init(
+          name: "NPM_REGISTRY",
+          isRequired: false,
+          isSecret: false,
+          summary: "Registry to talk to. Defaults to https://registry.npmjs.org, and the .npmrc token is looked up for whichever host this names, never sent to another."),
+        .init(
+          name: "NPM_CONFIG_USERCONFIG",
+          isRequired: false,
+          isSecret: false,
+          summary: "Which .npmrc the fallback token is read from. Unset means the machine's own ~/.npmrc, which every profile would then share."),
+        .init(
+          name: "NPM_MCP_CONFIG",
+          isRequired: false,
+          isSecret: false,
+          summary: "Config file path. Bastion already points the default at the profile's own directory; set this only to name a file elsewhere."),
+        .init(
+          name: "NPM_OTP_MODE",
+          isRequired: false,
+          isSecret: false,
+          summary: "How the one-time password npm demands on every trusted-publisher call is obtained: web opens npm's confirmation page and waits, static uses NPM_OTP, none refuses with instructions. Defaults to web."),
+        .init(
+          name: "NPM_OTP",
+          isRequired: false,
+          isSecret: true,
+          summary: "A one-time password, and the only thing NPM_OTP_MODE=static will start without complaining about. Rarely right: a code lasts about five minutes, so one set at spawn is dead before anything calls a tool."),
+        .init(
+          name: "NPM_AUTO_OPEN_BROWSER",
+          isRequired: false,
+          isSecret: false,
+          summary: "Whether the one-time-password flow launches a browser, or only prints the authorization URL.",
+          booleanDefault: true),
+        .init(
+          name: "NPM_ALLOW_WRITES",
+          isRequired: false,
+          isSecret: false,
+          summary: "Registers the write tools: publish and unpublish, dist-tags, deprecation, package access, org and team membership, tokens, and trusted-publisher changes."),
+      ]),
   ]
   // </generated:servers>
 

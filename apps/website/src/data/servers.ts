@@ -111,6 +111,14 @@ export const SERVERS: Server[] = [
     transport: "child",
     dialect: "2025-11-25",
   },
+  {
+    id: "npm",
+    displayName: "npm",
+    summary: "npm registry: packages, versions, downloads, advisories, dist-tags, orgs, tokens and trusted publishing.",
+    writeGate: "NPM_ALLOW_WRITES",
+    transport: "child",
+    dialect: "2025-11-25",
+  },
 ];
 // </generated:servers>
 
