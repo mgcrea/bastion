@@ -213,8 +213,15 @@ nonisolated enum BuiltinServer {
       if let string = value as? String {
         text = string
       } else {
+        // Compact, not pretty-printed. A model does not need the indentation,
+        // and Swift's pretty printer is unusually expensive: it writes
+        // `"key" : "value"` with a space on BOTH sides of the colon and renders
+        // an empty array over three lines. Measured at ~20% of every response
+        // this server sends. `sortedKeys` stays — deterministic key order keeps
+        // the payload stable for prompt caching and for builtin-check's
+        // substring assertions.
         let data = try JSONSerialization.data(
-          withJSONObject: value, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+          withJSONObject: value, options: [.sortedKeys, .withoutEscapingSlashes])
         text = String(decoding: data, as: UTF8.self)
       }
       return ["content": [["type": "text", "text": text]]]

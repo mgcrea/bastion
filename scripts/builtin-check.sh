@@ -128,8 +128,8 @@ mrpc() {
 }
 # `tool <profile> <name> <arguments-json>` — returns the tool's own text, not
 # the JSON-RPC envelope. Matching against the envelope means matching against
-# JSON escaped inside a JSON string, where `"name" : "one"` is spelled
-# `\"name\" : \"one\"` and every needle is unreadable.
+# JSON escaped inside a JSON string, where `"name":"one"` is spelled
+# `\"name\":\"one\"` and every needle is unreadable.
 toolraw() {
   rpc "$1" "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"$2\",\"arguments\":$3}}"
 }
@@ -331,7 +331,7 @@ absent "and drops out of /health" \
   "$(curl -s --max-time 10 -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT/health")" \
   'checkscratch'
 check "its profile survives being disabled" \
-  "$(tool checkrw list_profiles '{"server":"checkscratch"}')" '"name" : "one"'
+  "$(tool checkrw list_profiles '{"server":"checkscratch"}')" '"name":"one"'
 
 tool checkrw enable_server '{"id":"checkscratch"}' >/dev/null
 check "and it answers again once enabled" \
@@ -341,9 +341,9 @@ check "and it answers again once enabled" \
 echo
 echo "Cleanup"
 check "remove_server takes the profile with it" \
-  "$(tool checkrw remove_server '{"id":"checkscratch"}')" '"removed" : true'
+  "$(tool checkrw remove_server '{"id":"checkscratch"}')" '"removed":true'
 absent "and the profile is gone" \
-  "$(tool checkrw list_profiles '{"server":"checkscratch"}')" '"name" : "one"'
+  "$(tool checkrw list_profiles '{"server":"checkscratch"}')" '"name":"one"'
 
 echo
 if [ "$fail" -eq 0 ]; then
