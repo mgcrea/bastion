@@ -4,10 +4,10 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.3.1` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.3.2` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.3.2] - 2026-09-02
 
 ### Added
 
@@ -30,6 +30,20 @@ are taken from this file, which is the curated summary.
   This is not the number the Chat pane shows. That one measures what Bastion hands the on-device
   model after trimming each description, which is a smaller and different object; the card says so
   rather than leaving two token counts to be reconciled.
+
+### Changed
+
+- **`x-api` and `ovh-api` are now `x` and `ovh`.** Both upstream repos dropped the `-api` suffix
+  and the catalog follows, down to the package names and binaries. X's variables lose it too:
+  `X_API_BEARER_TOKEN` is `X_BEARER_TOKEN`, `X_API_CONFIG` is `X_CONFIG`, and so on through the
+  write gate. OVHcloud's were already `OVH_*` and are untouched.
+
+  Nothing migrates an existing install across the change, and the failure is quiet on both sides.
+  A profile created under the old id keeps its directory and its Keychain entries under that name,
+  with no catalog entry left to match it to; a client still pointing at `/s/<profile>/x-api` gets
+  the gateway's own refusal, `no server 'x-api'`, which reads like the server was never installed.
+  Install the server again under its new id, set its credentials, re-wire the clients, and then
+  delete the profile left behind.
 
 ## [1.3.1] - 2026-09-01
 

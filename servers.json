@@ -340,9 +340,7 @@
         }
       ],
       "stateEnv": ["X_CONFIG", "X_TOKEN_FILE"],
-      "callbackEnv": [
-        { "name": "X_REDIRECT_URI", "format": "http://127.0.0.1:{port}/callback" }
-      ],
+      "callbackEnv": [{ "name": "X_REDIRECT_URI", "format": "http://127.0.0.1:{port}/callback" }],
       "env": [
         {
           "name": "X_BEARER_TOKEN",
