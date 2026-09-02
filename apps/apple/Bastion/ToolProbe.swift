@@ -94,7 +94,7 @@ enum ToolProbe {
     //
     // And the servers do not merely refuse a write when that flag is off —
     // they never register the tool. `mcp-appstore-connect` guards twelve of its
-    // tool files with a bare `if (!allowWrites) return;`, and `mcp-x-api` says
+    // tool files with a bare `if (!allowWrites) return;`, and `mcp-x` says
     // it outright: "Registered only when both flags are on, so with the
     // defaults these tools do not exist at all." So the model is not declined a
     // destructive tool; there is no such tool in the child's dispatch table for

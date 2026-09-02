@@ -301,7 +301,7 @@ nonisolated enum ProfileEnvironment {
       "PATH": "/usr/bin:/bin",
       "HOME": NSHomeDirectory(),
       // Three of the ten servers resolve their state as
-      // `XDG_CONFIG_HOME ?? ~/.config` — appstore-connect, reddit and x-api.
+      // `XDG_CONFIG_HOME ?? ~/.config` — appstore-connect, reddit and x.
       // Pointing this at the profile directory redirects all three without
       // Bastion having to know which of their `stateEnv` variables wants a file
       // and which wants a directory. The rest are surfaced in the profile
@@ -338,7 +338,7 @@ nonisolated enum ProfileEnvironment {
     // on a profile whose toggle reads as off.
     //
     // Being unconditional also closes a second hole, in mcp-appstore-connect
-    // and mcp-x-api: both read `parseBool(env.X) ?? file.allowWrites`, so an
+    // and mcp-x: both read `parseBool(env.X) ?? file.allowWrites`, so an
     // UNSET variable falls through to a value in a config file on disk. An
     // explicit "0" never falls through.
     if let gate = server.writeGate {

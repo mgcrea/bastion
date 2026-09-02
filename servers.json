@@ -313,81 +313,81 @@
       ]
     },
     {
-      "id": "x-api",
+      "id": "x",
       "displayName": "X",
       "summary": "X (Twitter) API v2: posts, threads, timelines, search, bookmarks, and the Ads API.",
       "transport": {
         "kind": "child",
-        "npmName": "@mgcrea/mcp-x-api",
-        "binName": "x-api-mcp",
+        "npmName": "@mgcrea/mcp-x",
+        "binName": "x-mcp",
         "distribution": "npm",
-        "localPath": "mcp-x-api"
+        "localPath": "mcp-x"
       },
-      "docsUrl": "https://github.com/mgcrea/mcp-x-api",
+      "docsUrl": "https://github.com/mgcrea/mcp-x",
       "dialect": "2025-11-25",
-      "writeGate": "X_API_ALLOW_WRITES",
+      "writeGate": "X_ALLOW_WRITES",
       "gateBypass": [],
       "authModes": [
         {
           "id": "bearer",
           "displayName": "App-only bearer token",
-          "env": ["X_API_BEARER_TOKEN"]
+          "env": ["X_BEARER_TOKEN"]
         },
         {
           "id": "oauth2",
           "displayName": "OAuth2 user context",
-          "env": ["X_API_CLIENT_ID"]
+          "env": ["X_CLIENT_ID"]
         }
       ],
-      "stateEnv": ["X_API_CONFIG", "X_API_TOKEN_FILE"],
+      "stateEnv": ["X_CONFIG", "X_TOKEN_FILE"],
       "callbackEnv": [
-        { "name": "X_API_REDIRECT_URI", "format": "http://127.0.0.1:{port}/callback" }
+        { "name": "X_REDIRECT_URI", "format": "http://127.0.0.1:{port}/callback" }
       ],
       "env": [
         {
-          "name": "X_API_BEARER_TOKEN",
+          "name": "X_BEARER_TOKEN",
           "required": false,
           "secret": true,
           "description": "App-only bearer token. Reads only; the Ads API rejects it outright."
         },
         {
-          "name": "X_API_CLIENT_ID",
+          "name": "X_CLIENT_ID",
           "required": false,
           "secret": false,
           "description": "OAuth2 client id. Required for a user context, and therefore for writes and for Ads."
         },
         {
-          "name": "X_API_CLIENT_SECRET",
+          "name": "X_CLIENT_SECRET",
           "required": false,
           "secret": true,
           "description": "OAuth2 client secret, for a confidential client."
         },
         {
-          "name": "X_API_REDIRECT_URI",
+          "name": "X_REDIRECT_URI",
           "required": false,
           "secret": false,
           "description": "Loopback OAuth callback. Per-profile, or two profiles race for one port — and the URL must be registered with the X app."
         },
         {
-          "name": "X_API_TOKEN_FILE",
+          "name": "X_TOKEN_FILE",
           "required": false,
           "secret": false,
           "description": "Where the user token is stored. Per-profile, or two accounts share one login."
         },
         {
-          "name": "X_API_CONFIG",
+          "name": "X_CONFIG",
           "required": false,
           "secret": false,
           "description": "Config file path. Bastion points this at the profile's own directory."
         },
         {
-          "name": "X_API_MONTHLY_BUDGET_USD",
+          "name": "X_MONTHLY_BUDGET_USD",
           "required": false,
           "secret": false,
           "description": "Spend ceiling. X bills per read, so this is a real safety control, not a preference."
         },
         {
-          "name": "X_API_ALLOW_WRITES",
+          "name": "X_ALLOW_WRITES",
           "required": false,
           "secret": false,
           "description": "Enables posting through the API rather than returning an intent URL."
@@ -408,12 +408,12 @@
         }
       ],
       "notes": [
-        "Two write gates, not one: X_API_ALLOW_WRITES governs posting and",
+        "Two write gates, not one: X_ALLOW_WRITES governs posting and",
         "X_ADS_ALLOW_WRITES governs spending money. The manifest names the",
         "first as the gate because that is the one the Activity window badges;",
         "the second is an ordinary env entry that a profile sets deliberately.",
         "",
-        "X_API_MONTHLY_BUDGET_USD is here for the same reason a write gate is:",
+        "X_MONTHLY_BUDGET_USD is here for the same reason a write gate is:",
         "on this API a read has a price, so an unbounded profile is a bill."
       ]
     },
@@ -833,17 +833,17 @@
       ]
     },
     {
-      "id": "ovh-api",
+      "id": "ovh",
       "displayName": "OVHcloud",
       "summary": "OVHcloud API, focused on Object Storage: containers, objects, policies, regions.",
       "transport": {
         "kind": "child",
-        "npmName": "@mgcrea/mcp-ovh-api",
-        "binName": "ovh-api-mcp",
+        "npmName": "@mgcrea/mcp-ovh",
+        "binName": "ovh-mcp",
         "distribution": "npm",
-        "localPath": "mcp-ovh-api"
+        "localPath": "mcp-ovh"
       },
-      "docsUrl": "https://github.com/mgcrea/mcp-ovh-api",
+      "docsUrl": "https://github.com/mgcrea/mcp-ovh",
       "dialect": "2025-11-25",
       "writeGate": "OVH_ALLOW_WRITES",
       "gateBypass": [],

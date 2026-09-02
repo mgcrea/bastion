@@ -402,7 +402,7 @@ struct UnitCheck {
     // This has to agree with the servers exactly, or the editor shows a switch
     // in one position while the server reads the other. Every repo that has a
     // `parseBool` spells it `["1", "true", "yes", "on"]` — appstore-connect,
-    // keycloak, npm, ovh-api, reddit, unifi-network, unifi-protect and x-api — and
+    // keycloak, npm, ovh, reddit, unifi-network, unifi-protect and x — and
     // Cupertino's `packages/core` agrees.
     func parsed(_ raw: String) -> Bool? { BastionServer.EnvVar.parseBool(raw) }
 

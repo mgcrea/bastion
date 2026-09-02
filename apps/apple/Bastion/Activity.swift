@@ -5,7 +5,7 @@ import Observation
 ///
 /// This is the product. Bastion's claim is that one shared instance is *more*
 /// auditable than nine private ones, and this is where that is either true or
-/// marketing. Nine private copies of `mcp-x-api` — which is not hypothetical,
+/// marketing. Nine private copies of `mcp-x` — which is not hypothetical,
 /// there were ten on this machine while step 5 was being written — produce no
 /// record at all: no list of what is running, no count of what was called, and
 /// nothing that says which project asked.

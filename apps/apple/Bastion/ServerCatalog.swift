@@ -409,8 +409,8 @@ nonisolated struct BastionServer: Identifiable, Hashable {
     /// which way an existing value is actually being read.
     ///
     /// Not a guess: `parseBool` is copied verbatim in each repo that has one —
-    /// appstore-connect, keycloak, ovh-api, reddit, unifi-network,
-    /// unifi-protect and x-api all spell it `["1", "true", "yes", "on"]`, and
+    /// appstore-connect, keycloak, ovh, reddit, unifi-network,
+    /// unifi-protect and x all spell it `["1", "true", "yes", "on"]`, and
     /// Cupertino's `packages/core` agrees. `nil` for unset, which is the state
     /// that is neither.
     static func parseBool(_ raw: String) -> Bool? {
@@ -581,26 +581,26 @@ nonisolated enum ServerCatalog {
           isSecret: false,
           summary: "Enables posting, commenting and voting."),
       ]),
-    // Two write gates, not one: X_API_ALLOW_WRITES governs posting and
+    // Two write gates, not one: X_ALLOW_WRITES governs posting and
     // X_ADS_ALLOW_WRITES governs spending money. The manifest names the
     // first as the gate because that is the one the Activity window badges;
     // the second is an ordinary env entry that a profile sets deliberately.
     //
-    // X_API_MONTHLY_BUDGET_USD is here for the same reason a write gate is:
+    // X_MONTHLY_BUDGET_USD is here for the same reason a write gate is:
     // on this API a read has a price, so an unbounded profile is a bill.
     BastionServer(
-      id: "x-api",
+      id: "x",
       displayName: "X",
       summary: "X (Twitter) API v2: posts, threads, timelines, search, bookmarks, and the Ads API.",
       transport: .child(
         .init(
-          npmName: "@mgcrea/mcp-x-api",
-          binName: "x-api-mcp",
+          npmName: "@mgcrea/mcp-x",
+          binName: "x-mcp",
           distribution: .npm,
-          localPath: "mcp-x-api")),
-      docsURL: URL(string: "https://github.com/mgcrea/mcp-x-api"),
+          localPath: "mcp-x")),
+      docsURL: URL(string: "https://github.com/mgcrea/mcp-x"),
       dialect: .v2025_11_25,
-      writeGate: "X_API_ALLOW_WRITES",
+      writeGate: "X_ALLOW_WRITES",
       writeTools: [],
       gateBypass: [],
       authModes: [
@@ -608,7 +608,7 @@ nonisolated enum ServerCatalog {
           id: "bearer",
           displayName: "App-only bearer token",
           kind: .env,
-          env: ["X_API_BEARER_TOKEN"],
+          env: ["X_BEARER_TOKEN"],
           loginTool: nil,
           statusTool: nil,
           logoutTool: nil),
@@ -616,51 +616,51 @@ nonisolated enum ServerCatalog {
           id: "oauth2",
           displayName: "OAuth2 user context",
           kind: .env,
-          env: ["X_API_CLIENT_ID"],
+          env: ["X_CLIENT_ID"],
           loginTool: nil,
           statusTool: nil,
           logoutTool: nil),
       ],
-      stateEnv: ["X_API_CONFIG", "X_API_TOKEN_FILE"],
-      callbackEnv: [.init(name: "X_API_REDIRECT_URI", format: "http://127.0.0.1:{port}/callback")],
+      stateEnv: ["X_CONFIG", "X_TOKEN_FILE"],
+      callbackEnv: [.init(name: "X_REDIRECT_URI", format: "http://127.0.0.1:{port}/callback")],
       env: [
         .init(
-          name: "X_API_BEARER_TOKEN",
+          name: "X_BEARER_TOKEN",
           isRequired: false,
           isSecret: true,
           summary: "App-only bearer token. Reads only; the Ads API rejects it outright."),
         .init(
-          name: "X_API_CLIENT_ID",
+          name: "X_CLIENT_ID",
           isRequired: false,
           isSecret: false,
           summary: "OAuth2 client id. Required for a user context, and therefore for writes and for Ads."),
         .init(
-          name: "X_API_CLIENT_SECRET",
+          name: "X_CLIENT_SECRET",
           isRequired: false,
           isSecret: true,
           summary: "OAuth2 client secret, for a confidential client."),
         .init(
-          name: "X_API_REDIRECT_URI",
+          name: "X_REDIRECT_URI",
           isRequired: false,
           isSecret: false,
           summary: "Loopback OAuth callback. Per-profile, or two profiles race for one port — and the URL must be registered with the X app."),
         .init(
-          name: "X_API_TOKEN_FILE",
+          name: "X_TOKEN_FILE",
           isRequired: false,
           isSecret: false,
           summary: "Where the user token is stored. Per-profile, or two accounts share one login."),
         .init(
-          name: "X_API_CONFIG",
+          name: "X_CONFIG",
           isRequired: false,
           isSecret: false,
           summary: "Config file path. Bastion points this at the profile's own directory."),
         .init(
-          name: "X_API_MONTHLY_BUDGET_USD",
+          name: "X_MONTHLY_BUDGET_USD",
           isRequired: false,
           isSecret: false,
           summary: "Spend ceiling. X bills per read, so this is a real safety control, not a preference."),
         .init(
-          name: "X_API_ALLOW_WRITES",
+          name: "X_ALLOW_WRITES",
           isRequired: false,
           isSecret: false,
           summary: "Enables posting through the API rather than returning an intent URL."),
@@ -1051,16 +1051,16 @@ nonisolated enum ServerCatalog {
     // the only one of the three where every part is a secret, which is
     // exactly the sort of detail a hand-written profile form gets wrong.
     BastionServer(
-      id: "ovh-api",
+      id: "ovh",
       displayName: "OVHcloud",
       summary: "OVHcloud API, focused on Object Storage: containers, objects, policies, regions.",
       transport: .child(
         .init(
-          npmName: "@mgcrea/mcp-ovh-api",
-          binName: "ovh-api-mcp",
+          npmName: "@mgcrea/mcp-ovh",
+          binName: "ovh-mcp",
           distribution: .npm,
-          localPath: "mcp-ovh-api")),
-      docsURL: URL(string: "https://github.com/mgcrea/mcp-ovh-api"),
+          localPath: "mcp-ovh")),
+      docsURL: URL(string: "https://github.com/mgcrea/mcp-ovh"),
       dialect: .v2025_11_25,
       writeGate: "OVH_ALLOW_WRITES",
       writeTools: [],

@@ -60,8 +60,8 @@ const discover = () => {
     const servers = document.mcpServers ?? document.servers ?? {};
     for (const [key, entry] of Object.entries(servers)) {
       if (!entry.env || Object.keys(entry.env).length === 0) continue;
-      // The config key is not always the manifest id: mcp-x-api calls its
-      // entry `x-api-dev`. Longest matching id wins, so `x-api` is not
+      // The config key is not always the manifest id: mcp-x calls its
+      // entry `x-dev`. Longest matching id wins, so `x` is not
       // shadowed by a shorter one.
       const id = [...byId.keys()]
         .filter((candidate) => key === candidate || key.startsWith(`${candidate}-`))
@@ -143,7 +143,7 @@ const classify = ({ id, entry }) => {
 /**
  * Servers this migration deliberately leaves alone, and why.
  *
- * mcp-x-api keeps its client id and secret in the file named by `X_API_CONFIG`,
+ * mcp-x keeps its client id and secret in the file named by `X_CONFIG`,
  * not in `.mcp.json`, and that variable is `stateEnv` — Bastion points it at
  * the profile's own directory so two profiles cannot share one login. Moving
  * the entry without moving the file would migrate no secret at all AND leave
@@ -152,8 +152,8 @@ const classify = ({ id, entry }) => {
  * config file and its token file together, and re-authenticating.
  */
 const SKIP = {
-  "x-api":
-    "its credentials live in the file named by X_API_CONFIG, not in .mcp.json — migrating it " +
+  x:
+    "its credentials live in the file named by X_CONFIG, not in .mcp.json — migrating it " +
     "means moving that file and its OAuth token file together, and logging in again",
 };
 

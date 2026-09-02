@@ -14,7 +14,7 @@ import os
 /// reply. It reads 4096 on the model this pane was built against, and measured
 /// against the real catalogue one server does not fit at that size:
 /// `appstore-connect` with writes off exposes 47 tools whose schemas come to
-/// roughly 12,300 tokens, three times the entire window; `x-api` needs 4,900.
+/// roughly 12,300 tokens, three times the entire window; `x` needs 4,900.
 /// At about 260 tokens each, a workable set is seven or eight tools.
 ///
 /// So at 4096 "load all the tools" is not a thing that can be built — not a

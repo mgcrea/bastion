@@ -32,7 +32,7 @@ nonisolated final class Gateway: @unchecked Sendable {
   static let shared = Gateway()
 
   /// Default port. Deliberately not near the ones the servers themselves use
-  /// for their OAuth callbacks — reddit is on 8724 and x-api on 8723, and a
+  /// for their OAuth callbacks — reddit is on 8724 and x on 8723, and a
   /// gateway that collided with the thing it supervises would be a bad first
   /// impression.
   static let defaultPort: UInt16 = 8720

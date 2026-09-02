@@ -149,12 +149,12 @@ asserts both eras against a running build.
 | --- | --- | --- | --- | --- | --- |
 | [App Store Connect](https://github.com/mgcrea/mcp-appstore-connect) | `appstore-connect` | `appstore-connect-mcp` | `@mgcrea/mcp-appstore-connect` (npm) | `APP_STORE_CONNECT_ALLOW_WRITES` | 1 |
 | [Reddit](https://github.com/mgcrea/mcp-reddit) | `reddit` | `reddit-mcp` | `@mgcrea/mcp-reddit` (npm) | `REDDIT_ALLOW_WRITES` | 1 |
-| [X](https://github.com/mgcrea/mcp-x-api) | `x-api` | `x-api-mcp` | `@mgcrea/mcp-x-api` (npm) | `X_API_ALLOW_WRITES` | 2 |
+| [X](https://github.com/mgcrea/mcp-x) | `x` | `x-mcp` | `@mgcrea/mcp-x` (npm) | `X_ALLOW_WRITES` | 2 |
 | [UniFi Protect](https://github.com/mgcrea/mcp-unifi-protect) | `unifi-protect` | `unifi-protect-mcp` | `@mgcrea/mcp-unifi-protect` (npm) | `UNIFI_PROTECT_ALLOW_WRITES` | 3 |
 | [UniFi Network](https://github.com/mgcrea/mcp-unifi-network) | `unifi-network` | `unifi-network-mcp` | `@mgcrea/mcp-unifi-network` (npm) | `UNIFI_ALLOW_WRITES` | 2 |
 | [Stripe](https://docs.stripe.com/mcp) | `stripe` | — | `https://mcp.stripe.com` (remote) | `stripe_api_write`, `create_refund`, `stripe_report` (by name) | 1 |
 | [Shopify](https://github.com/mgcrea/mcp-shopify) | `shopify` | `shopify-mcp` | `@mgcrea/mcp-shopify` (npm) | read-only | 1 |
-| [OVHcloud](https://github.com/mgcrea/mcp-ovh-api) | `ovh-api` | `ovh-api-mcp` | `@mgcrea/mcp-ovh-api` (npm) | `OVH_ALLOW_WRITES` | 4 |
+| [OVHcloud](https://github.com/mgcrea/mcp-ovh) | `ovh` | `ovh-mcp` | `@mgcrea/mcp-ovh` (npm) | `OVH_ALLOW_WRITES` | 4 |
 | [Keycloak](https://github.com/mgcrea/mcp-keycloak) | `keycloak` | `keycloak-mcp` | `@mgcrea/mcp-keycloak` (npm) | `KEYCLOAK_ALLOW_WRITES` | 2 |
 | [npm](https://github.com/mgcrea/mcp-npm) | `npm` | `npm-mcp` | `@mgcrea/mcp-npm` (npm) | `NPM_ALLOW_WRITES` | 2 |
 
@@ -208,32 +208,32 @@ Per-profile OAuth callback: `REDDIT_REDIRECT_URI` as `http://127.0.0.1:{port}/ca
 
 X (Twitter) API v2: posts, threads, timelines, search, bookmarks, and the Ads API.
 
-Two write gates, not one: X_API_ALLOW_WRITES governs posting and
+Two write gates, not one: X_ALLOW_WRITES governs posting and
 X_ADS_ALLOW_WRITES governs spending money. The manifest names the
 first as the gate because that is the one the Activity window badges;
 the second is an ordinary env entry that a profile sets deliberately.
 
-X_API_MONTHLY_BUDGET_USD is here for the same reason a write gate is:
+X_MONTHLY_BUDGET_USD is here for the same reason a write gate is:
 on this API a read has a price, so an unbounded profile is a bill.
 
 | Variable | Required | Secret | Meaning |
 | --- | --- | --- | --- |
-| `X_API_BEARER_TOKEN` | — | yes | App-only bearer token. Reads only; the Ads API rejects it outright. |
-| `X_API_CLIENT_ID` | — | — | OAuth2 client id. Required for a user context, and therefore for writes and for Ads. |
-| `X_API_CLIENT_SECRET` | — | yes | OAuth2 client secret, for a confidential client. |
-| `X_API_REDIRECT_URI` | — | — | Loopback OAuth callback. Per-profile, or two profiles race for one port — and the URL must be registered with the X app. |
-| `X_API_TOKEN_FILE` | — | — | Where the user token is stored. Per-profile, or two accounts share one login. |
-| `X_API_CONFIG` | — | — | Config file path. Bastion points this at the profile's own directory. |
-| `X_API_MONTHLY_BUDGET_USD` | — | — | Spend ceiling. X bills per read, so this is a real safety control, not a preference. |
-| `X_API_ALLOW_WRITES` | — | — | Enables posting through the API rather than returning an intent URL. |
+| `X_BEARER_TOKEN` | — | yes | App-only bearer token. Reads only; the Ads API rejects it outright. |
+| `X_CLIENT_ID` | — | — | OAuth2 client id. Required for a user context, and therefore for writes and for Ads. |
+| `X_CLIENT_SECRET` | — | yes | OAuth2 client secret, for a confidential client. |
+| `X_REDIRECT_URI` | — | — | Loopback OAuth callback. Per-profile, or two profiles race for one port — and the URL must be registered with the X app. |
+| `X_TOKEN_FILE` | — | — | Where the user token is stored. Per-profile, or two accounts share one login. |
+| `X_CONFIG` | — | — | Config file path. Bastion points this at the profile's own directory. |
+| `X_MONTHLY_BUDGET_USD` | — | — | Spend ceiling. X bills per read, so this is a real safety control, not a preference. |
+| `X_ALLOW_WRITES` | — | — | Enables posting through the API rather than returning an intent URL. |
 | `X_ADS_ENABLED` | — | — | Registers the Ads API tools. Needs a user context. Boolean — unset means off. |
 | `X_ADS_ALLOW_WRITES` | — | — | Enables campaign mutations. No effect without X_ADS_ENABLED. Boolean — unset means off. |
 
-Satisfy exactly one of: **App-only bearer token** (`X_API_BEARER_TOKEN`), **OAuth2 user context** (`X_API_CLIENT_ID`)
+Satisfy exactly one of: **App-only bearer token** (`X_BEARER_TOKEN`), **OAuth2 user context** (`X_CLIENT_ID`)
 
-Per-profile state: `X_API_CONFIG`, `X_API_TOKEN_FILE`
+Per-profile state: `X_CONFIG`, `X_TOKEN_FILE`
 
-Per-profile OAuth callback: `X_API_REDIRECT_URI` as `http://127.0.0.1:{port}/callback`
+Per-profile OAuth callback: `X_REDIRECT_URI` as `http://127.0.0.1:{port}/callback`
 
 ### UniFi Protect
 

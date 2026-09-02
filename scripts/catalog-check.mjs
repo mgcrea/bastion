@@ -2,7 +2,7 @@
 // Assert that what `servers.json` claims about a server is true of the server.
 //
 // The catalog is a CURATED SUBSET, and deliberately so: Bastion declares 10 of
-// mcp-x-api's 26 variables and 7 of mcp-appstore-connect's 16, because a
+// mcp-x's 26 variables and 7 of mcp-appstore-connect's 16, because a
 // profile editor listing every `*_MAX_RETRIES` and `*_DEBUG` would be worse,
 // not better. That curation is Bastion's decision and belongs in this repo.
 //

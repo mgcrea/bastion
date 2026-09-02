@@ -56,10 +56,10 @@ export const SERVERS: Server[] = [
     dialect: "2025-11-25",
   },
   {
-    id: "x-api",
+    id: "x",
     displayName: "X",
     summary: "X (Twitter) API v2: posts, threads, timelines, search, bookmarks, and the Ads API.",
-    writeGate: "X_API_ALLOW_WRITES",
+    writeGate: "X_ALLOW_WRITES",
     transport: "child",
     dialect: "2025-11-25",
   },
@@ -96,7 +96,7 @@ export const SERVERS: Server[] = [
     dialect: "2025-11-25",
   },
   {
-    id: "ovh-api",
+    id: "ovh",
     displayName: "OVHcloud",
     summary: "OVHcloud API, focused on Object Storage: containers, objects, policies, regions.",
     writeGate: "OVH_ALLOW_WRITES",
