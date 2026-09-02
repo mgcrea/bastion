@@ -466,7 +466,7 @@ audit: app remote-check ## Assert the listener is loopback-only and refuses fore
 # none, and `audit-listener.sh` only ever sends the parser well-formed requests.
 # Malformed input against a parser that runs BEFORE authentication is exactly
 # the case worth having, and it needs no app at all.
-unit: ## Assert the translation, the parser, call capture and the audit chain, with no app and no network
+unit: ## Assert the translation, the parser, call capture, the audit chain and the tool-cost estimate, with no app and no network
 	@mkdir -p apps/apple/.build
 	@swiftc -O -o apps/apple/.build/unit-check \
 		apps/apple/Bastion/Dialect.swift \
@@ -476,6 +476,7 @@ unit: ## Assert the translation, the parser, call capture and the audit chain, w
 		apps/apple/Bastion/ToolReply.swift \
 		apps/apple/Bastion/AuditChain.swift \
 		apps/apple/Bastion/Log.swift \
+		apps/apple/Bastion/ToolCost.swift \
 		scripts/unit-check.swift
 	@apps/apple/.build/unit-check
 

@@ -901,6 +901,85 @@ struct UnitCheck {
     check("a row that does not match at all is not", !order.matchIsHidden("absent", preview: 160))
     check("an empty query flags nothing", !buried.matchIsHidden("", preview: 160))
 
+    print("\nTool cost: what one tools/list entry weighs")
+
+    // The entry a server actually sends, not the trimmed object Bastion keeps.
+    // These are the checks that pin that decision: every field a client is sent
+    // has to cost something, or the figure under-reports the thing it names.
+    let base: [String: Any] = ["name": "list_apps", "description": "List every app."]
+    check("an empty entry is two braces", ToolCost.bytes(of: [:]) == 2)
+    check("one pair is exactly its JSON", ToolCost.bytes(of: ["name": "a"]) == 12)
+    check(
+      "key order does not change the size",
+      ToolCost.bytes(of: ["a": "1", "b": "2"]) == ToolCost.bytes(of: ["b": "2", "a": "1"]))
+    check(
+      "non-ASCII is counted in UTF-8, not graphemes",
+      ToolCost.bytes(of: ["name": "\u{e9}"]) - ToolCost.bytes(of: ["name": "e"]) == 1)
+    check(
+      "outputSchema costs, though MCPTool drops it",
+      ToolCost.bytes(of: base.merging(["outputSchema": ["type": "object"]]) { a, _ in a })
+        > ToolCost.bytes(of: base))
+    check(
+      "annotations cost, though MCPTool keeps one flag of them",
+      ToolCost.bytes(of: base.merging(["annotations": ["readOnlyHint": true]]) { a, _ in a })
+        > ToolCost.bytes(of: base))
+    check(
+      "title costs, though MCPTool drops it",
+      ToolCost.bytes(of: base.merging(["title": "List apps"]) { a, _ in a })
+        > ToolCost.bytes(of: base))
+    check(
+      "a description is never truncated, unlike the chat estimate",
+      ToolCost.bytes(of: ["d": String(repeating: "x", count: 1000)])
+        - ToolCost.bytes(of: ["d": String(repeating: "x", count: 300)]) == 700)
+
+    print("\nTool cost: bytes to tokens, and tokens to a sentence")
+
+    check("a partial token is not billed", ToolCost.tokens(bytes: 3) == 0)
+    check("four bytes are one token", ToolCost.tokens(bytes: 4) == 1)
+    check("seven bytes are still one", ToolCost.tokens(bytes: 7) == 1)
+    // Why `MCPTool.wireBytes` is bytes: floored parts never oversum the whole,
+    // so a per-tool column cannot add up to more than the total beside it.
+    check(
+      "the parts never exceed the whole",
+      ToolCost.tokens(bytes: 7 + 7) >= ToolCost.tokens(bytes: 7) + ToolCost.tokens(bytes: 7))
+    check("and here it is strictly greater", ToolCost.tokens(bytes: 7 + 7) == 3)
+
+    check("under a thousand is exact", ToolCost.short(999) == "999")
+    check("a round thousand drops the decimal", ToolCost.short(1000) == "1k")
+    check("and rounds down to it", ToolCost.short(1049) == "1k")
+    check("and up off it", ToolCost.short(1050) == "1.1k")
+    check("a real figure reads as one", ToolCost.short(12_345) == "12.3k")
+    check("rounding is half-up", ToolCost.short(12_350) == "12.4k")
+
+    // One hedge, chosen in one place, so two call sites cannot disagree about
+    // whether the number is a floor.
+    check("a whole list is hedged with 'about'", ToolCost.phrase(bytes: 63_000).contains("about"))
+    check(
+      "a paginated one is hedged with 'at least'",
+      ToolCost.phrase(bytes: 63_000, partial: true).contains("at least"))
+    check(
+      "and never with both",
+      !ToolCost.phrase(bytes: 63_000, partial: true).contains("about"))
+
+    print("\nTool cost: whether a stored figure still describes the profile")
+
+    func isCurrent(_ mv: String?, _ mw: Bool, _ v: String?, _ w: Bool) -> Bool {
+      ToolCost.isCurrent(
+        measuredVersion: mv, measuredAllowWrites: mw, version: v, allowWrites: w)
+    }
+    check("an unchanged profile keeps its figure", isCurrent("1.2.0", false, "1.2.0", false))
+    check("an npm update drops it", !isCurrent("1.2.0", false, "1.3.0", false))
+    check("flipping the write gate drops it", !isCurrent("1.2.0", false, "1.2.0", true))
+    check("and flipping it back drops it too", !isCurrent("1.2.0", true, "1.2.0", false))
+    // A remote server has no package to compare, so nil matching nil has to be
+    // a match or its figure could never be shown at all.
+    check("a remote server ages out on the gate alone", isCurrent(nil, true, nil, true))
+    check("but still ages out on it", !isCurrent(nil, true, nil, false))
+    // An uninstalled package reads as nil. Treating that as "unchanged" would
+    // keep a figure alive across the one event that most surely invalidates it.
+    check("a package that went away drops it", !isCurrent("1.2.0", false, nil, false))
+    check("and one that appeared drops it", !isCurrent(nil, false, "1.2.0", false))
+
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 {
       print("\(failures) failed")

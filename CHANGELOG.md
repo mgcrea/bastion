@@ -7,6 +7,30 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.3.1` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Added
+
+- **What a server costs the editors that connect to it.** Every client wired to a profile is sent
+  every tool definition before it can call one, and holds them for the whole conversation. That is
+  the largest fixed charge a shared gateway imposes, and nothing reported it: _Test_ already asked
+  each server what it exposes and threw the size away. It now says. `prod/appstore-connect` is 85
+  tools and about 26.2k tokens per connect with writes on; `prod/reddit` is 14 and about 3.3k.
+
+  The step line and the profile row carry the total, and the check sheet gains a _Context cost_
+  card naming the five heaviest tools — because what a reader can act on is which few tools carry
+  the largest schemas, and a list of eighty-five buries that.
+
+  Counted from the entry as it arrived on the wire, at four bytes to the token, with the profile's
+  write gate already applied. Deliberately not compared against the ungated list: Bastion could
+  compute that for a remote server and not for a child without restarting it, and a figure that
+  appears on one transport and not the other is worse than one that appears on neither. A paginated
+  list says "at least" rather than "about", since the check reads one page of an unknown number.
+
+  This is not the number the Chat pane shows. That one measures what Bastion hands the on-device
+  model after trimming each description, which is a smaller and different object; the card says so
+  rather than leaving two token counts to be reconciled.
+
 ## [1.3.1] - 2026-09-01
 
 ### Fixed

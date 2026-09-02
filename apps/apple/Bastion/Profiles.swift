@@ -232,6 +232,8 @@ final class ProfileStore {
       profiles[index] = profile
       if previous.values != profile.values || previous.allowWrites != profile.allowWrites {
         Supervisor.shared.stop(profile: profile.name, server: profile.serverID)
+        ServerCheck.shared.forget(profile.id)
+        ToolCostStore.shared.forget(profile.id)
       }
     } else {
       profiles.append(profile)

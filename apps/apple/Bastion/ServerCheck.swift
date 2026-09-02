@@ -21,6 +21,12 @@ nonisolated struct MCPTool: Identifiable, Sendable {
   /// The absence is meaningful and is never read as "no": a server that
   /// declares nothing is treated as though every tool writes.
   let readOnlyHint: Bool?
+  /// What this entry costs the client it is sent to, in bytes, as it arrived.
+  ///
+  /// Bytes and not tokens because these are summed: a floored token count per
+  /// tool does not add up to the total the sheet reports. `ToolCost` says why it
+  /// is measured off the wire entry rather than off the fields kept above.
+  let wireBytes: Int
 
   var id: String { name }
 
@@ -36,6 +42,7 @@ nonisolated struct MCPTool: Identifiable, Sendable {
     let raw = json["inputSchema"] as? [String: Any] ?? [:]
     schema = (try? JSONSerialization.data(withJSONObject: raw)) ?? Data("{}".utf8)
     readOnlyHint = annotations?["readOnlyHint"] as? Bool
+    wireBytes = ToolCost.bytes(of: json)
   }
 }
 
@@ -115,6 +122,13 @@ final class ServerCheck {
     /// The live `tools/list`. Kept because the deep check needs it and because
     /// nothing else in the app caches one.
     var tools: [MCPTool] = []
+    /// Whether `tools/list` came back with a `nextCursor`.
+    ///
+    /// A field rather than something read back off the `.tools` step, which
+    /// would work today only because pagination is that step's one warning.
+    /// Everything said about the token figure has to hedge differently when the
+    /// list was partial, and the card has no other way to know.
+    var listIsPartial = false
     /// Whether the child was already up when the check began. The difference
     /// between "started in 1.9s" and "already running" is most of what the
     /// handshake timing means.
@@ -141,6 +155,18 @@ final class ServerCheck {
 
   func setProbe(_ probe: ToolProbe.Result?, for profileID: String) {
     probes[profileID] = probe
+  }
+
+  /// Drop what was measured for a profile.
+  ///
+  /// Called where `ProfileStore.upsert` stops the child, and for the same
+  /// reason given there: the measurement is of a process that is about to stop
+  /// existing. A tool count survived that badly enough; a token figure survives
+  /// it worse, because flipping the write gate moves it by thousands and
+  /// nothing on the row would say the number predates the change.
+  func forget(_ profileID: String) {
+    runs[profileID] = nil
+    probes[profileID] = nil
   }
 
   // MARK: - Driving a check
@@ -269,18 +295,45 @@ final class ServerCheck {
     }
     let tools = entries.compactMap(MCPTool.init(json:))
     let readable = tools.filter { $0.readOnlyHint == true }.count
+    let partial = listed["nextCursor"] != nil
     var summary = "\(tools.count) tool\(tools.count == 1 ? "" : "s")"
     if readable > 0 { summary += ", \(readable) marked read-only" }
-    Task { @MainActor in ServerCheck.shared.runs[id]?.tools = tools }
+
+    // What the list costs whoever it is sent to. Said here rather than only in
+    // the sheet because this line is what the profile row quotes, and a tool
+    // count on its own has never been the number that hurts.
+    if !tools.isEmpty {
+      let bytes = tools.reduce(0) { $0 + $1.wireBytes }
+      summary += " · " + ToolCost.phrase(bytes: bytes, partial: partial) + " per connect"
+
+      // Upsert, because a check is the one measurement a person asked for. It
+      // also covers the case neither other site does: a child already running
+      // took its handshake before this build, or before the last install, so
+      // nothing measured it and no spawn is coming.
+      let version = ServerInstaller.installedVersion(of: server)
+      let (profileID, allowWrites) = (profile.id, profile.allowWrites)
+      Task { @MainActor in
+        ToolCostStore.shared.record(
+          profileID: profileID, bytes: bytes, toolCount: tools.count, partial: partial,
+          version: version, allowWrites: allowWrites)
+      }
+    }
+
+    Task { @MainActor in
+      ServerCheck.shared.runs[id]?.tools = tools
+      ServerCheck.shared.runs[id]?.listIsPartial = partial
+    }
 
     // Said rather than silently under-reported: a paginated list means the
     // count above is a floor, and a count presented as a total would be wrong.
-    if listed["nextCursor"] != nil {
+    if partial {
       post(
         id, .tools,
         .warned(
           summary,
-          why: "the list is paginated and the check reads only the first page, so there are more."),
+          why:
+            "the list is paginated and the check reads only the first page, so there are more, "
+            + "and the token figure counts only this page."),
         seconds: listSeconds)
     } else {
       post(id, .tools, .passed(summary), seconds: listSeconds)
@@ -465,7 +518,18 @@ final class ServerCheck {
         for step in run.steps { print("  " + line(for: step)) }
         for tool in run.tools {
           let mark = tool.readOnlyHint == true ? "r/o" : (tool.readOnlyHint == false ? "rw " : "  ?")
-          print("    \(mark)  \(tool.name)")
+          let tokens = ToolCost.tokens(bytes: tool.wireBytes)
+          print("    \(mark)  \(String(format: "%6d", tokens))  \(tool.name)")
+        }
+        // The one place the figure becomes quotable. Everything else rounds it
+        // for a sentence; this prints what was actually counted.
+        if !run.tools.isEmpty {
+          let bytes = run.tools.reduce(0) { $0 + $1.wireBytes }
+          let count = run.tools.count
+          print(
+            "    \(count) tool\(count == 1 ? "" : "s"), "
+              + ToolCost.phrase(bytes: bytes, partial: run.listIsPartial) + " per connect"
+              + " (\(bytes) bytes)")
         }
 
         if probing, !run.tools.isEmpty {

@@ -821,6 +821,53 @@ nonisolated extension Supervisor {
       Task(priority: Activity.priority) { @MainActor in
         Activity.shared.negotiated(id: instanceKey, dialect: negotiated)
       }
+
+      measureToolCost()
+    }
+
+    /// Ask once, for the figure the detail pane shows without being asked.
+    ///
+    /// Fire-and-forget, and that is the whole design: `performHandshake` is
+    /// synchronous because nothing may be routed to a child before it answers,
+    /// and hanging a second blocking round trip off the end would put a
+    /// measurement in front of the first client request. This one is written
+    /// and forgotten. A child that never answers, or answers with an error,
+    /// leaves the stored figure exactly as it was.
+    ///
+    /// Once per process rather than per connect. The write gate is applied to a
+    /// child at spawn, so this list cannot change under a running one, and
+    /// `ProfileStore.upsert` and `ServerInstaller` both stop the child when
+    /// anything that would move it changes.
+    ///
+    /// Bastion's own request, like the handshake above, so it takes no log row
+    /// and no client id: this is not traffic anybody asked for, and the
+    /// Activity window must not imply somebody did.
+    private func measureToolCost() {
+      let id = state.withLock { current -> Int in
+        let next = current.nextID
+        current.nextID += 1
+        return next
+      }
+      let profileID = profile.id
+      let allowWrites = profile.allowWrites
+      let version = ServerInstaller.installedVersion(of: server)
+      let waiter = Waiter(
+        clientID: nil, deadline: Date().addingTimeInterval(30), logID: nil
+      ) { result in
+        guard let data = try? result.get(),
+          let frame = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let payload = frame["result"] as? [String: Any],
+          let entries = payload["tools"] as? [[String: Any]]
+        else { return }
+        let bytes = entries.reduce(0) { $0 + ToolCost.bytes(of: $1) }
+        Task { @MainActor in
+          ToolCostStore.shared.record(
+            profileID: profileID, bytes: bytes, toolCount: entries.count,
+            partial: payload["nextCursor"] != nil, version: version, allowWrites: allowWrites)
+        }
+      }
+      state.withLock { $0.pending[id] = waiter }
+      try? write(["jsonrpc": "2.0", "id": id, "method": "tools/list", "params": [:]])
     }
 
     // MARK: Wire

@@ -655,6 +655,7 @@ private struct ProfileRow: View {
         HStack(spacing: 8) {
           Text(profile.name).font(.system(.body, design: .monospaced)).bold()
           if profile.allowWrites { Badge("writes", tint: .orange) }
+          if let cost { Badge(cost.label, tint: .secondary).help(cost.help) }
         }
         // A clock drives the running case, for the same reason `InstanceRow`
         // needs one: nothing else redraws a row while a server is quietly up.
@@ -712,6 +713,35 @@ private struct ProfileRow: View {
         "Its credentials are deleted from the Keychain. Any client still pointing at this profile "
           + "will stop working.")
     }
+  }
+
+  /// What this profile's tool list costs a client, when something has measured
+  /// it and nothing has moved since.
+  ///
+  /// A badge beside the name rather than a clause in `subtitle`, which is where
+  /// it was first put and where it could not be seen: that line spends itself on
+  /// the live instance the moment a server is up, so the number vanished exactly
+  /// for the profiles being used. This is a standing property of the profile,
+  /// not an event, and it belongs with the other one.
+  ///
+  /// Absent rather than stale. `ToolCostStore` returns nothing once the package
+  /// version or the write gate has moved, so a badge that is here is a badge
+  /// that still describes what a client would be sent.
+  private var cost: (label: String, help: String)? {
+    guard let measured = ToolCostStore.shared.current(for: profile, server: server) else {
+      return nil
+    }
+    let tokens = ToolCost.short(ToolCost.tokens(bytes: measured.bytes))
+    let count = measured.toolCount
+    let when = measured.measuredAt.formatted(.relative(presentation: .numeric))
+    return (
+      // The "+" carries the paginated case into a label with no room for the
+      // sentence the check sheet gets to write.
+      "\(tokens)\(measured.partial ? "+" : "") tokens",
+      "\(count) tool\(count == 1 ? "" : "s"), "
+        + ToolCost.phrase(bytes: measured.bytes, partial: measured.partial)
+        + " of a client's context window on every connect. Measured \(when)."
+    )
   }
 
   private var dotTint: Color {

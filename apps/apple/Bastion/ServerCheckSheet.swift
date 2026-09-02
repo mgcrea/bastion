@@ -26,6 +26,7 @@ struct ServerCheckSheet: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 14) {
           stepsCard
+          if let run, !run.tools.isEmpty { costCard(run: run) }
           if let run, !run.tools.isEmpty { deepCard(run: run) }
         }
         .padding(14)
@@ -98,6 +99,80 @@ struct ServerCheckSheet: View {
           .font(.caption)
           .foregroundStyle(.secondary)
           .labelStyle(.titleAndIcon)
+        }
+      }
+    }
+  }
+
+  // MARK: - Context cost
+
+  /// What this profile's tool list costs every client that connects to it.
+  ///
+  /// The one number a supervisor is placed to report and an editor is not: the
+  /// list is fetched here once, for a profile, with its write gate already
+  /// applied, so this is what a client would have been sent.
+  ///
+  /// Five tools rather than the whole table. What a reader can act on is which
+  /// few tools carry the largest schemas — on `appstore-connect` the heaviest
+  /// costs twelve times the lightest — and a list of eighty-five buries that.
+  /// A full table would also be the Chat pane's tool picker with a different
+  /// number in the same column, which is the confusion the caption below exists
+  /// to prevent.
+  @ViewBuilder
+  private func costCard(run: ServerCheck.Run) -> some View {
+    let bytes = run.tools.reduce(0) { $0 + $1.wireBytes }
+    let count = run.tools.count
+    let heaviest = run.tools.sorted { $0.wireBytes > $1.wireBytes }.prefix(5)
+    let gate = profile.allowWrites ? "on" : "off"
+
+    Card(title: "Context cost") {
+      VStack(alignment: .leading, spacing: 10) {
+        Text(
+          "Every editor that connects to this profile receives all \(count) tool "
+            + "definition\(count == 1 ? "" : "s") before it can call one. That is "
+            + "\(ToolCost.phrase(bytes: bytes, partial: run.listIsPartial)) of its context "
+            + "window, held for the whole conversation.")
+          .font(.callout)
+          .fixedSize(horizontal: false, vertical: true)
+
+        Text(
+          "Counted from what this check received, with writes \(gate), at four bytes to the "
+            + "token. Editors reshape tool definitions into their own prompt "
+            + "format, so read it as an order of magnitude rather than a bill.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+
+        if run.listIsPartial {
+          Label(
+            "The list is paginated and this check read only the first page, so the real figure "
+              + "is higher.",
+            systemImage: "exclamationmark.triangle.fill")
+            .font(.caption).foregroundStyle(.orange)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+
+        Text(
+          "The Chat pane counts a smaller number for the same tools. It measures what Bastion "
+            + "hands the on-device model after trimming each description, not what the server "
+            + "puts on the wire.")
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+
+        if count > 5 {
+          Divider()
+          SectionLabel("Heaviest tools")
+          VStack(alignment: .leading, spacing: 2) {
+            ForEach(heaviest) { tool in
+              HStack(spacing: 6) {
+                Text(tool.name).font(.system(.caption, design: .monospaced))
+                Spacer(minLength: 8)
+                Text(ToolCost.short(ToolCost.tokens(bytes: tool.wireBytes)))
+                  .font(.system(.caption2, design: .monospaced)).foregroundStyle(.tertiary)
+              }
+            }
+            Text("and \(count - 5) more")
+              .font(.caption2).foregroundStyle(.tertiary)
+          }
         }
       }
     }

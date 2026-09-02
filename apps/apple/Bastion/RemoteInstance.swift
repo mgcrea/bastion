@@ -356,6 +356,25 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     {
       hostLog(key, .info, "write gate hid \(before.count - after.count) tool(s) from tools/list")
     }
+
+    // What this client is about to receive, recorded for the detail pane. A
+    // remote server has no spawn to hang a measurement off, so a reply on its
+    // way past is the only chance to take one. After the filter rather than
+    // before: the figure has to be the list this profile's gate produces, not
+    // the one upstream sent.
+    if method == "tools/list", let result = response["result"] as? [String: Any],
+      let entries = result["tools"] as? [[String: Any]]
+    {
+      let bytes = entries.reduce(0) { $0 + ToolCost.bytes(of: $1) }
+      let partial = result["nextCursor"] != nil
+      let profileID = profile.id
+      let allowWrites = profile.allowWrites
+      Task { @MainActor in
+        ToolCostStore.shared.record(
+          profileID: profileID, bytes: bytes, toolCount: entries.count, partial: partial,
+          version: nil, allowWrites: allowWrites)
+      }
+    }
     return response
   }
 
