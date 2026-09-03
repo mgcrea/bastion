@@ -46,7 +46,10 @@ FAILURES=0
   exit 2
 }
 
-LOG=/tmp/bastion-smoke.log
+# A private directory, gone on exit. The bodies below are real tool results
+# from a real profile, and they used to sit world-readable in /tmp for good.
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/bastion-smoke.XXXXXX")"
+LOG="$TMP/bastion-smoke.log"
 pkill -f "$BIN" 2>/dev/null || true
 sleep 1
 # `--trial` arms the same thirty-minute window the button does. The licence
@@ -54,7 +57,7 @@ sleep 1
 # path no user has.
 "$BIN" --trial >"$LOG" 2>&1 &
 APP=$!
-trap 'kill "$APP" 2>/dev/null || true' EXIT
+trap 'kill "$APP" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 
 for _ in $(seq 1 40); do nc -z 127.0.0.1 "$PORT" 2>/dev/null && break; sleep 0.25; done
 sleep 1
@@ -87,8 +90,8 @@ summarise() {
 
 echo ""
 echo "Handshake"
-post /tmp/smoke-list.json '{"jsonrpc":"2.0","id":42,"method":"tools/list"}'
-RESULT="$(summarise /tmp/smoke-list.json)"
+post "$TMP"/smoke-list.json '{"jsonrpc":"2.0","id":42,"method":"tools/list"}'
+RESULT="$(summarise "$TMP"/smoke-list.json)"
 case "$RESULT" in
   "id=42 tools="*) pass "tools/list → ${RESULT#id=42 }" ;;
   *) fail "tools/list returned: $RESULT" ;;
@@ -101,10 +104,10 @@ echo "Two clients, colliding ids"
 # and prompts/list, which this server does not implement — the relay was fine
 # and the test was measuring the server's "Method not found".
 CALL_TOOL="${CALL_TOOL:-shopify_get_shop}"
-post /tmp/smoke-a.json '{"jsonrpc":"2.0","id":7,"method":"tools/list"}' & A=$!
-post /tmp/smoke-b.json '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"'"$CALL_TOOL"'","arguments":{}}}' & B=$!
-post /tmp/smoke-c.json '{"jsonrpc":"2.0","id":8,"method":"tools/list"}' & C=$!
-post /tmp/smoke-d.json '{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"'"$CALL_TOOL"'","arguments":{}}}' & D=$!
+post "$TMP"/smoke-a.json '{"jsonrpc":"2.0","id":7,"method":"tools/list"}' & A=$!
+post "$TMP"/smoke-b.json '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"'"$CALL_TOOL"'","arguments":{}}}' & B=$!
+post "$TMP"/smoke-c.json '{"jsonrpc":"2.0","id":8,"method":"tools/list"}' & C=$!
+post "$TMP"/smoke-d.json '{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"'"$CALL_TOOL"'","arguments":{}}}' & D=$!
 wait $A $B $C $D
 
 # The id AND a non-error result. Matching the id alone passed vacuously the
@@ -112,7 +115,7 @@ wait $A $B $C $D
 # error dutifully carried the right id back.
 for pair in "smoke-a 7" "smoke-b 7" "smoke-c 8" "smoke-d 8"; do
   set -- $pair
-  GOT="$(summarise "/tmp/$1.json")"
+  GOT="$(summarise "$TMP/$1.json")"
   case "$GOT" in
     "id=$2 error"*) fail "$1: $GOT" ;;
     "id=$2 "*) pass "$1 kept its own id ($GOT)" ;;
@@ -142,8 +145,8 @@ if [ -z "$CHILD" ]; then
 else
   kill -9 "$CHILD"
   sleep 1
-  post /tmp/smoke-after.json '{"jsonrpc":"2.0","id":99,"method":"tools/list"}'
-  GOT="$(summarise /tmp/smoke-after.json)"
+  post "$TMP"/smoke-after.json '{"jsonrpc":"2.0","id":99,"method":"tools/list"}'
+  GOT="$(summarise "$TMP"/smoke-after.json)"
   case "$GOT" in
     "id=99 tools="*) pass "recovered after kill -9 ($GOT)" ;;
     *) fail "after kill -9: $GOT" ;;
@@ -190,13 +193,13 @@ else
       });
     ')"
 
-  HTTP_TOOLS="$(post /tmp/smoke-http.json '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'; node -e '
+  HTTP_TOOLS="$(post "$TMP"/smoke-http.json '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'; node -e '
     let d = "";
     process.stdin.on("data", (c) => (d += c)).on("end", () => {
       const j = JSON.parse(d);
       process.stdout.write((j.result?.tools ?? []).map((t) => t.name).sort().join(","));
     });
-  ' < /tmp/smoke-http.json)"
+  ' < "$TMP"/smoke-http.json)"
 
   if [ -z "$BRIDGE_TOOLS" ]; then
     fail "the bridge returned no tool list"

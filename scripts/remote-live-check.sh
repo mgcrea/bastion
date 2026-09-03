@@ -25,6 +25,7 @@
 #
 # Network-dependent by nature, so it is not in `make audit`. Run it deliberately.
 set -uo pipefail
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/bastion-remote.XXXXXX")"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="$ROOT/apps/apple/.build/Build/Products/Debug/Bastion.app/Contents/MacOS/Bastion"
 PORT="${BASTION_PORT:-8720}"
@@ -78,6 +79,7 @@ restore() {
       rm -f "$SUPPORT/$f"
     fi
   done
+  rm -rf "$TMP"
 }
 trap restore EXIT
 
@@ -107,7 +109,7 @@ profiles.append({"name": "remotecheckdocs", "server": "cloudflare-docs",
 json.dump(profiles, open(os.path.join(support, "profiles.json"), "w"), indent=2)
 PY
 
-"$BIN" --trial >/tmp/bastion-remote.log 2>&1 &
+"$BIN" --trial >"$TMP/bastion-remote.log" 2>&1 &
 APP=$!
 for _ in $(seq 1 40); do nc -z 127.0.0.1 "$PORT" 2>/dev/null && break; sleep 0.25; done
 sleep 1
@@ -162,7 +164,7 @@ cat > "$SUPPORT/import.json" <<JSON
 }
 JSON
 kill "$APP" 2>/dev/null; wait "$APP" 2>/dev/null
-"$BIN" --trial >>/tmp/bastion-remote.log 2>&1 &
+"$BIN" --trial >>"$TMP/bastion-remote.log" 2>&1 &
 APP=$!
 for _ in $(seq 1 40); do nc -z 127.0.0.1 "$PORT" 2>/dev/null && break; sleep 0.25; done
 sleep 2
@@ -183,7 +185,7 @@ check "/health still answers after a failed remote call" "$HEALTH" '"ok":true'
 echo
 echo "The credential stays out of everything on disk"
 absent "profiles.json holds no key" "$(cat "$SUPPORT/profiles.json")" "rk_test_notarealkey"
-absent "the log holds no key" "$(cat /tmp/bastion-remote.log)" "rk_test_notarealkey"
+absent "the log holds no key" "$(cat "$TMP/bastion-remote.log")" "rk_test_notarealkey"
 absent "import.json was consumed" "$(ls "$SUPPORT")" "import.json"
 
 echo
