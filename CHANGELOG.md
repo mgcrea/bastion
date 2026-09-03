@@ -4,10 +4,10 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.3.2` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.4.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.4.0] - 2026-09-03
 
 ### Added
 
@@ -52,6 +52,32 @@ are taken from this file, which is the curated summary.
   The `Host` allowlist also loses `[::1]` and `::1`. They never matched — the check split on the
   colon — and the listener is IPv4 only, so nothing could have arrived under them; the rule now
   lives in `HTTPRequest.isLoopbackHost` where `make unit` tables it.
+
+- **A spawned server's credentials are struck from its stderr.** stderr is relayed to the log
+  verbatim, so a server that echoes its configuration on startup, or an API error quoting the
+  token it was sent, would put a credential into the log pane — and, with auditing on, into the
+  audit file that the secrets wall exists to keep them out of. Every credential value the child
+  was spawned with is now redacted before the line reaches the log. Values shorter than eight
+  characters are left alone, since striking a single digit would mangle far more than it protects.
+
+- **Every embedded Node tarball is verified before it is extracted.** The build fetches a Node
+  runtime to embed; it now checks each tarball against `nodejs.org`'s `SHASUMS256.txt` first, the
+  same way the Sparkle zip is checked. A cached tarball that fails is deleted rather than kept, so
+  the next run re-fetches it instead of failing forever on the same bad bytes.
+
+### Changed
+
+- **The download is about 118 MB smaller.** The embedded Node dropped its `x86_64` slice. A
+  Release build of Bastion and `bastion-bridge` is arm64, so an Intel Mac could never launch the
+  process that would spawn `node` in the first place — the slice was shipped to nobody. macOS 26
+  is the last release supporting Intel and Bastion already requires 26.0, so the window this could
+  have mattered in was three Mac models wide before it closed.
+
+- **The update dialog shows formatted release notes instead of raw markdown.** Sparkle renders
+  the feed's description as HTML, and the appcast had been handed the CHANGELOG section as
+  markdown — so notes like these used to arrive carrying literal `**` and `- ` in
+  them. They are rendered now, and the feed is checked for well-formedness before it ships rather
+  than leaving each installed copy's updater to discover it was not.
 
 ### Fixed
 
