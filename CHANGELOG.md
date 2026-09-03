@@ -67,11 +67,12 @@ are taken from this file, which is the curated summary.
 
 ### Changed
 
-- **The download is about 118 MB smaller.** The embedded Node dropped its `x86_64` slice. A
-  Release build of Bastion and `bastion-bridge` is arm64, so an Intel Mac could never launch the
-  process that would spawn `node` in the first place — the slice was shipped to nobody. macOS 26
-  is the last release supporting Intel and Bastion already requires 26.0, so the window this could
-  have mattered in was three Mac models wide before it closed.
+- **The download is 57% smaller — 110 MB to 48 MB.** The embedded Node dropped its `x86_64`
+  slice, which was 118 MB before compression. A Release build of Bastion and `bastion-bridge` is
+  arm64, so an Intel Mac could never launch the process that would spawn `node` in the first
+  place — the slice was shipped to nobody. macOS 26 is the last release supporting Intel and
+  Bastion already requires 26.0, so the window this could have mattered in was three Mac models
+  wide before it closed.
 
 - **The update dialog shows formatted release notes instead of raw markdown.** Sparkle renders
   the feed's description as HTML, and the appcast had been handed the CHANGELOG section as
