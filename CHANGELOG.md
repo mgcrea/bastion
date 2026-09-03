@@ -4,8 +4,22 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.4.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.4.1` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
+
+## [1.4.1] - 2026-09-03
+
+### Fixed
+
+- **The sidebar is sorted alphabetically, with Bastion pinned to the top.** The list had followed
+  the order of `servers.json` for catalog entries and gone alphabetical only for the ones you add
+  yourself. That order is the catalog's rather than yours and nothing in the app ever shows it, so
+  a sidebar of five servers read as shuffled: a name had to be scanned for instead of jumped to,
+  and the more servers were installed the worse it got.
+
+  Bastion's own entry stays first whatever its name would sort as. It is the app rather than one
+  of the choices, and a control plane that moves down the list as servers are added and removed is
+  one nobody can find twice.
 
 ## [1.4.0] - 2026-09-03
 
