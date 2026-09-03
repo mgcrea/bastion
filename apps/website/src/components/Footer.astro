@@ -1,5 +1,5 @@
 ---
-import { DOCS, PRICE, REPO_URL, REQUIRES, SIBLING_APP } from "../config";
+import { DOCS, FOOTER_APPS, PRICE, REPO_URL, REQUIRES } from "../config";
 import Logo from "./Logo.astro";
 import MagentaMark from "./MagentaMark.astro";
 
@@ -33,14 +33,18 @@ const COLUMNS = [
     ],
   },
   /**
-   * The sibling. It is a column of one rather than a line tacked onto "Read",
-   * because the three headings above it all name parts of Bastion and this does
+   * The siblings. A column of their own rather than lines tacked onto "Read",
+   * because the three headings above it all name parts of Bastion and these do
    * not — and because the footer renders on every page here, which is the whole
-   * reason the cross-link lives down here as well as on the homepage.
+   * reason the cross-links live down here as well as on the homepage.
    */
   {
     heading: "More apps",
-    items: [{ label: `${SIBLING_APP.name} ↗`, href: SIBLING_APP.url }],
+    items: FOOTER_APPS.map((app) => ({
+      label: `${app.name} ↗`,
+      href: app.url,
+      title: app.blurb,
+    })),
   },
 ] as const;
 
@@ -108,6 +112,7 @@ const LEGAL = [
                 {item.href ? (
                   <a
                     href={item.href}
+                    title={"title" in item ? item.title : undefined}
                     target={item.href.startsWith("http") ? "_blank" : undefined}
                     rel={item.href.startsWith("http") ? "noopener" : undefined}
                     class="text-[13px] text-fg/50 transition-colors hover:text-accent-hi"
