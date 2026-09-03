@@ -78,6 +78,15 @@ A hand-written denylist would have missed three quarters of them. The annotation
 is not a belt-and-braces extra here; it is the half that works. The manifest list
 survives for servers that annotate nothing.
 
+Since the catalog grew to eleven remote entries, the annotation is the whole
+gate for most of them. Eight — Notion, Linear, Sentry, Atlassian, Figma and the
+three Cloudflare endpoints — carry **no `writeTools` list at all**, because every
+one answers `initialize` with 401 before it will enumerate a tool, so there was
+nothing to copy a name from. Only Stripe, GitHub and Vercel name their write
+tools, Vercel from a published table. For the other eight, a server that ships a
+mutating tool without `readOnlyHint: false` is a server the gate lets through,
+and the first real profile on each is what measures whether it annotates.
+
 ## OAuth
 
 A remote profile authenticates with a static credential in a header, or with
@@ -221,15 +230,44 @@ with no log line — which reads as a transport bug and is not one.
 Let the app write its own items. `scripts/remote-live-check.sh` seeds through
 `import.json` for exactly this reason.
 
+### Vercel reviews its clients, and Bastion is not on the list
+
+Vercel's documentation says its server "only supports AI clients that have been
+reviewed and approved by Vercel" and names twelve. Bastion is not among them, so
+dynamic registration may simply be refused — in which case the access-token mode
+is the way in, and the fix is an approach to Vercel rather than a workaround.
+Unmeasured: no profile has run the dance yet. The same entry spends real money
+(`buy_pro`, `buy_credits`, `buy_addon`, `buy_domain`) and changes what serves
+production (`deploy_to_vercel`, `use_vercel_cli`); all eleven are in
+`writeTools`. Vercel also announces `2026-07-28`, which would make it the first
+modern entry in the file; the manifest keeps it at the legacy revision until a
+handshake proves it, because proposing a version the server does not take fails
+the connection.
+
+### Figma's REST header is not its MCP header
+
+Figma's REST API authenticates with `X-Figma-Token`; its MCP endpoint's own 401
+challenge asks for `Bearer`. The entry sends `Bearer`, because that is what the
+endpoint asked for, and it is untested against a real token. If a token is
+refused, the fix is one header format in the entry, not a new entry.
+
+### Linear serves a read-only URL, and the entry does not use it
+
+`https://mcp.linear.app/mcp/readonly` is the same server with writes refused by
+the server itself — enforcement, where `writeTools` and the annotation can only
+filter. One URL per entry, so this is a fork: a second entry pointed at it, or
+telling people who want writes off to use a key scoped to read. Undecided, and
+written down so it is decided rather than inherited.
+
 ## What asserts what
 
-|                          |                                                                                                                                                                                                                                                                                                                |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `make unit`              | The dual-era dialect translation and the hand-written HTTP parser, including malformed input — the case `audit-listener.sh` never sends. No app, no network.                                                                                                                                                   |
-| `make remote-check`      | The endpoint rules, the SSE collapse, the OAuth client and the callback listener, as pure functions. No app, no network.                                                                                                                                                                                       |
-| `make remote-live-check` | The whole path against `mcp.stripe.com`. Needs no credential: an unauthenticated `initialize` is answered with 401, which exercises DNS pre-flight, https, the POST, the profile's headers, the status mapping and the sentence a client is left holding.                                                      |
-| `make audit`             | The five listener rules — for **both** listeners, since the callback added a second one — plus that the app still ships no entitlements file, which `URLSession` and the OAuth flow both turned out not to need. It also fails if a third listener ever appears, rather than vouching for two and ignoring it. |
-| `make builtin`           | That no tool returns a secret, tokens included.                                                                                                                                                                                                                                                                |
+|                          |                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `make unit`              | The dual-era dialect translation and the hand-written HTTP parser, including malformed input — the case `audit-listener.sh` never sends. No app, no network.                                                                                                                                                                                                                                                                                        |
+| `make remote-check`      | The endpoint rules, the SSE collapse, the OAuth client and the callback listener, as pure functions. No app, no network.                                                                                                                                                                                                                                                                                                                            |
+| `make remote-live-check` | The whole path against two real servers, and no credential for either. `mcp.stripe.com` answers an unauthenticated `initialize` with 401, which exercises DNS pre-flight, https, the POST, the profile's headers, the status mapping and the sentence a client is left holding. `docs.mcp.cloudflare.com` answers unauthenticated, so the same path is driven through to a real `tools/list` — the successful call the Stripe half can never prove. |
+| `make audit`             | The five listener rules — for **both** listeners, since the callback added a second one — plus that the app still ships no entitlements file, which `URLSession` and the OAuth flow both turned out not to need. It also fails if a third listener ever appears, rather than vouching for two and ignoring it.                                                                                                                                      |
+| `make builtin`           | That no tool returns a secret, tokens included.                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 A local fake server is deliberately **not** part of this. It would have to live
 on `127.0.0.1`, which `RemoteEndpoint` refuses by design and must go on

@@ -113,9 +113,13 @@ declares its protocol version, identity and capabilities in each request's
 shared server instance correct rather than a hack, and it is why Bastion fronts
 clients with it.
 
-None of the catalog entries below are modern. Every one runs an SDK whose newest
-protocol is `2025-11-25`, and `server/discover` against one returns `-32601` —
-the exact signal the spec names for recognising a legacy server. Bastion is
+None of the catalog entries below are modern. The nine children run an SDK
+whose newest protocol is `2025-11-25`, and `server/discover` against one returns
+`-32601` — the exact signal the spec names for recognising a legacy server. The
+eleven remote entries carry that revision as a seeded starting point; ten of them
+refuse `initialize` without a credential, so the first real handshake through a
+profile is what measures each one, and Cloudflare Docs, which answers
+unauthenticated, was measured at `2025-11-25`. Bastion is
 therefore what the spec calls a **dual-era server**: it answers modern requests
 statelessly and legacy `initialize` handshakes too, and translates either onto
 the one handshake it performed with the child at spawn.
@@ -131,13 +135,11 @@ asserts both eras against a running build.
   mutating tool at all.
 - **Secrets** — how many of the server's variables are credentials. Those live
   in the Keychain and are never written into a client config file.
-- **Source** — `npm` is published, so Bastion can install it on demand; `local`
-  is not published yet and resolves only against a checkout named by `dev.json`
-  in a Debug build. Adding a `local` entry works; installing it reports "not
-  published", which is the honest answer and better than a spawn that fails
-  later. `remote` is somebody else's server at an https URL: nothing is
-  installed, no process is started, and the Binary column is empty because there
-  is none.
+- **Source** — `npm` is published, so Bastion can install it on demand.
+  `remote` is somebody else's server at an https URL: nothing is installed, no
+  process is started, and the Binary column is empty because there is none. (The
+  manifest also allows `local`, a checkout named by `dev.json` in a Debug build,
+  for a server not published yet; no catalog entry uses it today.)
 - **Write gate** on a remote entry names **tools**, not a variable. A child gets
   an environment variable that switches its destructive tools off inside the
   server; a remote server has no environment, so the gate moves to the only
@@ -169,8 +171,8 @@ asserts both eras against a running build.
 | [Figma](https://developers.figma.com/docs/figma-mcp-server/) | `figma` | — | `https://mcp.figma.com/mcp` (remote) | read-only | 1 |
 | [Vercel](https://vercel.com/docs/agent-resources/vercel-mcp) | `vercel` | — | `https://mcp.vercel.com` (remote) | `deploy_to_vercel`, `use_vercel_cli`, `import-claude-design-from-url`, `buy_pro`, `buy_credits`, `buy_addon`, `buy_domain`, `change_toolbar_thread_resolve_status`, `reply_to_toolbar_thread`, `edit_toolbar_message`, `add_toolbar_reaction` (by name) | 1 |
 | [Cloudflare](https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/) | `cloudflare` | — | `https://mcp.cloudflare.com/mcp` (remote) | read-only | 1 |
-| [Cloudflare Docs](https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/) | `cloudflare-docs` | — | `https://docs.mcp.cloudflare.com/mcp` (remote) | read-only | 1 |
-| [Cloudflare Observability](https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/) | `cloudflare-observability` | — | `https://observability.mcp.cloudflare.com/mcp` (remote) | read-only | 1 |
+| [Cloudflare Docs](https://github.com/cloudflare/mcp-server-cloudflare/tree/main/apps/docs-ai-search) | `cloudflare-docs` | — | `https://docs.mcp.cloudflare.com/mcp` (remote) | read-only | 1 |
+| [Cloudflare Observability](https://github.com/cloudflare/mcp-server-cloudflare/tree/main/apps/workers-observability) | `cloudflare-observability` | — | `https://observability.mcp.cloudflare.com/mcp` (remote) | read-only | 1 |
 
 ### App Store Connect
 

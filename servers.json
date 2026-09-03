@@ -1663,7 +1663,7 @@
         "kind": "remote",
         "url": "https://docs.mcp.cloudflare.com/mcp"
       },
-      "docsUrl": "https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/",
+      "docsUrl": "https://github.com/cloudflare/mcp-server-cloudflare/tree/main/apps/docs-ai-search",
       "dialect": "2025-11-25",
       "writeGate": null,
       "gateBypass": [],
@@ -1712,7 +1712,7 @@
         "kind": "remote",
         "url": "https://observability.mcp.cloudflare.com/mcp"
       },
-      "docsUrl": "https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/",
+      "docsUrl": "https://github.com/cloudflare/mcp-server-cloudflare/tree/main/apps/workers-observability",
       "dialect": "2025-11-25",
       "writeGate": null,
       "gateBypass": [],

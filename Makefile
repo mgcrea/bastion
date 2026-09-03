@@ -370,6 +370,8 @@ appcast: ## Sign the release zip and write a one-item appcast
 		"    </item>" \
 		'  </channel>' \
 		'</rss>' > apps/apple/.build/appcast.xml
+	@xmllint --noout apps/apple/.build/appcast.xml \
+		|| { echo "  !! appcast.xml is not well-formed; not shipping it" >&2; rm -f apps/apple/.build/appcast.xml; exit 1; }
 	@echo "  wrote apps/apple/.build/appcast.xml"
 
 notarize: ## Submit the signed bundle to Apple and staple the ticket
