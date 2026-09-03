@@ -42,7 +42,16 @@ struct UnitCheck {
   /// interesting failures are. Written from another thread because a header
   /// block deliberately larger than the socket buffer would otherwise deadlock
   /// the writer against a reader that has not started.
-  static func parse(_ raw: String) -> HTTPRequest? {
+  ///
+  /// `holdOpen` keeps the writer's end open for that long after the bytes are
+  /// sent, which is how a stalled peer presents: not EOF, just silence.
+  /// `trickle` sends one byte at a time with that pause between them — the
+  /// slow-loris shape a per-read timeout never catches. `timeout` is passed
+  /// straight through to the parser.
+  static func parse(
+    _ raw: String, holdOpen: TimeInterval = 0, trickle: TimeInterval = 0,
+    timeout: TimeInterval? = nil
+  ) -> HTTPRequest? {
     var fds: [Int32] = [0, 0]
     guard socketpair(AF_UNIX, SOCK_STREAM, 0, &fds) == 0 else { return nil }
     let write = fds[1], read = fds[0]
@@ -51,18 +60,29 @@ struct UnitCheck {
       data.withUnsafeBytes { buffer in
         var sent = 0
         while sent < buffer.count {
-          let n = Darwin.write(write, buffer.baseAddress!.advanced(by: sent), buffer.count - sent)
+          let step = trickle > 0 ? 1 : buffer.count - sent
+          let n = Darwin.write(write, buffer.baseAddress!.advanced(by: sent), step)
           if n <= 0 { break }
           sent += n
+          if trickle > 0 { Thread.sleep(forTimeInterval: trickle) }
         }
       }
+      if holdOpen > 0 { Thread.sleep(forTimeInterval: holdOpen) }
       // EOF, so a read loop waiting on a declared length terminates instead of
       // hanging — which is also how a truncated request presents in the wild.
       close(write)
     }
     writer.start()
     defer { close(read) }
-    return HTTPRequest.read(from: read)
+    return HTTPRequest.read(from: read, timeout: timeout)
+  }
+
+  /// Seconds a call took, beside its result.
+  static func timed<T>(_ body: () -> T) -> (T, TimeInterval) {
+    let started = DispatchTime.now()
+    let value = body()
+    let elapsed = Double(DispatchTime.now().uptimeNanoseconds - started.uptimeNanoseconds) / 1e9
+    return (value, elapsed)
   }
 
   static func request(_ headers: [String: String], method: String = "tools/call") -> HTTPRequest {
@@ -70,6 +90,10 @@ struct UnitCheck {
   }
 
   static func main() {
+    // A writer whose reader gave up early gets EPIPE, which by default is a
+    // signal that kills the process. The gateway ignores it for the same reason.
+    _ = signal(SIGPIPE, SIG_IGN)
+
     print("\nHTTP: a well-formed request")
     let ok = parse(
       "POST /s/prod/stripe?x=1 HTTP/1.1\r\nHost: 127.0.0.1:8720\r\nORIGIN: http://a\r\n"
@@ -109,6 +133,81 @@ struct UnitCheck {
     check(
       "a non-numeric content-length reads as zero rather than throwing",
       parse("POST / HTTP/1.1\r\nContent-Length: abc\r\n\r\n")?.body.isEmpty == true)
+
+    print("\nHTTP: the request deadline")
+    // The parser used to block for as long as the peer stayed quiet, and it
+    // runs before authentication, so a peer that sent half a header parked a
+    // thread for free. A deadline on the whole request is the bound.
+    let (whole, wholeTook) = timed {
+      parse("GET / HTTP/1.1\r\nHost: x\r\n\r\n", timeout: 5)
+    }
+    check("a complete request is unaffected by a deadline", whole?.method == "GET")
+    check("and returns at once", wholeTook < 1)
+    let (halfHeader, halfTook) = timed {
+      parse("GET / HTTP/1.1\r\nHost: x\r\n", holdOpen: 2, timeout: 0.2)
+    }
+    check("a half-sent header block times out", halfHeader == nil)
+    check("in about the deadline, not the hold", halfTook < 1)
+    let (shortBody, shortTook) = timed {
+      parse("POST / HTTP/1.1\r\nContent-Length: 100\r\n\r\nshort", holdOpen: 2, timeout: 0.2)
+    }
+    check("a body that stops short of content-length times out", shortBody == nil)
+    check("in about the deadline", shortTook < 1)
+    // 28 bytes at 50 ms each is 1.4 s of traffic that never pauses for more
+    // than 50 ms — under any per-read timeout, over a total one.
+    let (trickled, trickleTook) = timed {
+      parse("GET / HTTP/1.1\r\nHost: x\r\n\r\n", trickle: 0.05, timeout: 0.3)
+    }
+    check("a byte-at-a-time trickle times out on the total", trickled == nil)
+    check("well before the bytes would have all arrived", trickleTook < 1)
+    check("and no deadline still waits for EOF", parse("GET / HTTP/1.1\r\nHost: x\r\n", holdOpen: 0.3) == nil)
+
+    print("\nHTTP: the connection budget")
+    let budget = ConnectionBudget(limit: 3)
+    check("three slots can be taken", budget.acquire() && budget.acquire() && budget.acquire())
+    check("the fourth is refused", !budget.acquire())
+    check("and the count says so", budget.inFlight == 3)
+    budget.release()
+    check("a release makes room", budget.acquire())
+    budget.release(); budget.release(); budget.release()
+    check("releases balance to zero", budget.inFlight == 0)
+    budget.release()
+    check("and never below it", budget.inFlight == 0)
+    let hammered = ConnectionBudget(limit: 8)
+    let group = DispatchGroup()
+    for _ in 0..<100 {
+      group.enter()
+      Thread {
+        for _ in 0..<50 {
+          if hammered.acquire() { hammered.release() }
+        }
+        group.leave()
+      }.start()
+    }
+    group.wait()
+    check("a hundred threads leave it balanced", hammered.inFlight == 0)
+
+    print("\nHTTP: the loopback Host rule")
+    check("127.0.0.1 with a port", HTTPRequest.isLoopbackHost("127.0.0.1:8720"))
+    check("127.0.0.1 alone", HTTPRequest.isLoopbackHost("127.0.0.1"))
+    check("localhost", HTTPRequest.isLoopbackHost("localhost"))
+    check("LOCALHOST with a port, case-insensitively", HTTPRequest.isLoopbackHost("LOCALHOST:1"))
+    // The listener is AF_INET; nothing can arrive over ::1, and a Host that
+    // says so on an IPv4 connection is not a client Bastion wired.
+    check("[::1] is refused", !HTTPRequest.isLoopbackHost("[::1]:8720"))
+    check("::1 is refused", !HTTPRequest.isLoopbackHost("::1"))
+    check("a foreign name is refused", !HTTPRequest.isLoopbackHost("evil.example"))
+    check("a loopback prefix on a foreign name is refused", !HTTPRequest.isLoopbackHost("127.0.0.1.evil.example"))
+    check("an empty Host is refused", !HTTPRequest.isLoopbackHost(""))
+
+    print("\nHTTP: the status lines a refusal needs")
+    func statusLine(_ response: HTTPResponse) -> String {
+      String(decoding: response.wireFormat, as: UTF8.self).components(separatedBy: "\r\n").first ?? ""
+    }
+    check("408 carries a reason", statusLine(HTTPResponse(status: 408, message: "x")) == "HTTP/1.1 408 Request Timeout")
+    check("503 carries a reason", statusLine(HTTPResponse(status: 503, message: "x")) == "HTTP/1.1 503 Service Unavailable")
+    let busy = String(decoding: HTTPResponse(status: 503, message: "x", headers: ["Retry-After": "1"]).wireFormat, as: UTF8.self)
+    check("a cap refusal can say when to retry", busy.contains("\r\nRetry-After: 1\r\n"))
 
     print("\nHTTP: the bearer token")
     func bearer(_ value: String) -> String? {

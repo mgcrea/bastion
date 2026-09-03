@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Just enough HTTP/1.1 to serve JSON-RPC over loopback.
 ///
@@ -59,13 +60,36 @@ nonisolated struct HTTPRequest {
     return frame["id"]
   }
 
-  static func read(from fd: Int32) -> HTTPRequest? {
+  /// Whether a `Host` header names this machine's loopback, with or without a
+  /// port.
+  ///
+  /// `127.0.0.1` and `localhost`, and nothing else. The listener is `AF_INET`,
+  /// so no request can arrive over `::1`; a `Host: [::1]` on an IPv4 connection
+  /// is a misconfigured client or a probe, and either deserves the refusal.
+  /// Bastion itself only ever writes `127.0.0.1` into a client config, so the
+  /// list is the list of names it hands out.
+  static func isLoopbackHost(_ host: String) -> Bool {
+    let name =
+      host.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false).first.map(
+        String.init) ?? host
+    return ["127.0.0.1", "localhost"].contains(name.lowercased())
+  }
+
+  /// Read one request, or give up after `timeout` seconds in total.
+  ///
+  /// The deadline covers the whole request — headers and body — and nothing
+  /// after it: the time spent waiting on a child is the operation, not a
+  /// stall, and it is bounded elsewhere. `nil` means wait forever, which is
+  /// what the unit checks want and what the gateway never passes.
+  static func read(from fd: Int32, timeout: TimeInterval? = nil) -> HTTPRequest? {
+    let deadline = timeout.map { DispatchTime.now() + $0 }
     var buffer = Data()
     var chunk = [UInt8](repeating: 0, count: 16 * 1024)
 
     // Headers first, up to the blank line.
     var headerEnd: Range<Data.Index>?
     while headerEnd == nil {
+      guard awaitReadable(fd, until: deadline) else { return nil }
       let n = chunk.withUnsafeMutableBufferPointer { Darwin.read(fd, $0.baseAddress, $0.count) }
       if n < 0 {
         if errno == EINTR { continue }
@@ -100,6 +124,7 @@ nonisolated struct HTTPRequest {
     let declared = Int(headers["content-length"] ?? "0") ?? 0
     guard declared <= maxBody else { return nil }
     while body.count < declared {
+      guard awaitReadable(fd, until: deadline) else { return nil }
       let n = chunk.withUnsafeMutableBufferPointer { Darwin.read(fd, $0.baseAddress, $0.count) }
       if n < 0 {
         if errno == EINTR { continue }
@@ -116,6 +141,63 @@ nonisolated struct HTTPRequest {
       method: requestLine[0].uppercased(), path: requestLine[1], headers: headers,
       body: body.prefix(declared))
   }
+
+  /// Block until `fd` has something to read, or the deadline passes.
+  ///
+  /// `poll` rather than `SO_RCVTIMEO`, and the difference is the whole point:
+  /// that option bounds one `read`, so a peer trickling a byte every few
+  /// seconds stays under it for as long as it likes. A deadline on the request
+  /// bounds time the way the 64 KB cap bounds size. `POLLHUP` and `POLLERR`
+  /// count as readable — the `read` that follows returns 0 or -1, which the
+  /// caller already handles.
+  private static func awaitReadable(_ fd: Int32, until deadline: DispatchTime?) -> Bool {
+    guard let deadline else { return true }
+    while true {
+      let now = DispatchTime.now().uptimeNanoseconds
+      let end = deadline.uptimeNanoseconds
+      guard end > now else { return false }
+      let remaining = Int32(min((end - now) / 1_000_000 + 1, UInt64(Int32.max)))
+      var descriptor = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+      let ready = poll(&descriptor, 1, remaining)
+      if ready > 0 { return true }
+      if ready == 0 { return false }
+      if errno == EINTR { continue }
+      return false
+    }
+  }
+}
+
+/// How many connections may be in flight at once, counted before any header
+/// is read.
+///
+/// Every connection costs a dedicated thread with its own stack, and the accept
+/// loop hands one out before it knows whether the peer will ever send a byte.
+/// Without a bound, a local process can hold as many as it can open, and needs
+/// no token to do it — the token is in the headers it never sends. The bound
+/// keeps Bastion's own footprint finite. It is not a defence against a same-uid
+/// attacker, who could as easily `kill -9` the process; it is what stops an
+/// honest client's bug, or a stray port scan, from costing a thread per attempt
+/// forever.
+nonisolated final class ConnectionBudget: Sendable {
+  let limit: Int
+  private let count = OSAllocatedUnfairLock(initialState: 0)
+
+  init(limit: Int) { self.limit = limit }
+
+  /// Take a slot. `false` means refuse, and do not serve.
+  func acquire() -> Bool {
+    count.withLock { taken in
+      guard taken < limit else { return false }
+      taken += 1
+      return true
+    }
+  }
+
+  func release() {
+    count.withLock { $0 = max(0, $0 - 1) }
+  }
+
+  var inFlight: Int { count.withLock { $0 } }
 }
 
 nonisolated struct HTTPResponse {
@@ -173,7 +255,9 @@ nonisolated struct HTTPResponse {
     case 403: return "Forbidden"
     case 404: return "Not Found"
     case 405: return "Method Not Allowed"
+    case 408: return "Request Timeout"
     case 500: return "Internal Server Error"
+    case 503: return "Service Unavailable"
     default: return "Status"
     }
   }

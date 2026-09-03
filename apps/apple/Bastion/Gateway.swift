@@ -23,12 +23,16 @@ import os
 /// 4. A per-client bearer token, minted at wiring time, kept in the Keychain.
 /// 5. Secrets never written to any config file. The token goes in the client
 ///    config; the credential stays in the Keychain.
+/// 6. Bounded cost before authentication. A connection costs a thread before
+///    any header is read, so there is a cap on how many are in flight and a
+///    deadline on how long a request may take to arrive. Neither needs a token
+///    to trip, which is exactly why both exist.
 ///
-/// `scripts/audit-listener.sh` asserts 1, 2 and 3 against the built bundle, in
+/// `scripts/audit-listener.sh` asserts 1, 2, 3 and 6 against the built bundle, in
 /// the same spirit as cupertino's `audit-network.sh`: a marketing claim CI can
 /// check. Opening a listening socket cost Bastion that script's original claim,
 /// so it had to be replaced by one of the same kind rather than dropped.
-nonisolated final class Gateway: @unchecked Sendable {
+nonisolated final class Gateway: Sendable {
   static let shared = Gateway()
 
   /// Default port. Deliberately not near the ones the servers themselves use
@@ -37,19 +41,54 @@ nonisolated final class Gateway: @unchecked Sendable {
   /// impression.
   static let defaultPort: UInt16 = 8720
 
-  private var listenFD: Int32 = -1
-  /// Held for the lifetime of the process. `flock` releases on close, and on
-  /// death — which is why it can replace a check-then-act probe. Two copies of
-  /// Bastion serving different profiles on one port is exactly the eviction
-  /// bug cupertino spent 3½ hours on, and the lesson transfers unchanged.
-  private var lockFD: Int32 = -1
-  private let queue = DispatchQueue(label: "io.mgcrea.bastion.gateway", qos: .userInitiated)
+  /// Rule 6's numbers.
+  ///
+  /// Every request is its own connection and closes on reply, so the cap counts
+  /// requests in flight, not clients wired. A busy person with three editors
+  /// each running a few parallel tool calls across several profiles peaks
+  /// around fifteen; the bridge and the built-in server add a couple. Sixty-four
+  /// is four times that, the same order as the listen backlog, and at 512 KB of
+  /// reserved stack each it bounds the worst case at 32 MB of mostly untouched
+  /// virtual memory.
+  ///
+  /// Ten seconds is a thousand times what a full 32 MB body costs on loopback;
+  /// there is no slow network on 127.0.0.1, so a request that has not arrived
+  /// in ten seconds is not arriving. The write side is the socket's own timeout,
+  /// since a response is one buffered write. Neither timer touches the wait on
+  /// a child, which sits between them and is bounded by the supervisor.
+  static let maxConnections = 64
+  static let requestDeadline: TimeInterval = 10
+  static let writeTimeout: TimeInterval = 10
 
-  private(set) var port: UInt16 = Gateway.defaultPort
-  /// Why the listener never came up, if it did not. Kept rather than only
-  /// logged: a gateway that failed to bind is the one state where nothing will
-  /// ever work, and stderr is invisible to someone who launched from Finder.
-  private(set) var startupError: String?
+  /// Everything the listener owns, under one lock.
+  ///
+  /// `start` writes on main; `stop` runs from wherever the app quits, including
+  /// Sparkle's relaunch delegate, which is not main; `acceptLoop` reads on the
+  /// gateway queue and `checkOrigin` on every connection thread. The same shape
+  /// `Supervisor.Instance` uses, for the same reason.
+  private struct State {
+    var listenFD: Int32 = -1
+    /// Held for the lifetime of the process. `flock` releases on close, and on
+    /// death — which is why it can replace a check-then-act probe. Two copies of
+    /// Bastion serving different profiles on one port is exactly the eviction
+    /// bug cupertino spent 3½ hours on, and the lesson transfers unchanged.
+    var lockFD: Int32 = -1
+    var port: UInt16 = Gateway.defaultPort
+    /// Why the listener never came up, if it did not. Kept rather than only
+    /// logged: a gateway that failed to bind is the one state where nothing
+    /// will ever work, and stderr is invisible to someone who launched from
+    /// Finder.
+    var startupError: String?
+    /// So a flood of refusals is one log line per half minute, not one per
+    /// attempt filling the ring.
+    var lastRefusalLogged: DispatchTime?
+  }
+  private let state = OSAllocatedUnfairLock(initialState: State())
+  private let queue = DispatchQueue(label: "io.mgcrea.bastion.gateway", qos: .userInitiated)
+  private let budget = ConnectionBudget(limit: Gateway.maxConnections)
+
+  var port: UInt16 { state.withLock { $0.port } }
+  var startupError: String? { state.withLock { $0.startupError } }
 
   enum GatewayError: LocalizedError {
     case socketFailed(String)
@@ -80,24 +119,32 @@ nonisolated final class Gateway: @unchecked Sendable {
     // and with a shared instance that is now every other client's session too.
     _ = signal(SIGPIPE, SIG_IGN)
 
-    port = UInt16(UserDefaults.standard.integer(forKey: "gatewayPort"))
-    if port == 0 { port = Self.defaultPort }
+    var chosen = UInt16(UserDefaults.standard.integer(forKey: "gatewayPort"))
+    if chosen == 0 { chosen = Self.defaultPort }
+    state.withLock { $0.port = chosen }
 
     do {
       try claimLock()
-      try openSocket()
-      startupError = nil
+      try openSocket(port: chosen)
+      state.withLock { $0.startupError = nil }
     } catch {
-      startupError = error.localizedDescription
+      state.withLock { $0.startupError = error.localizedDescription }
       throw error
     }
   }
 
   func stop() {
-    if listenFD >= 0 { close(listenFD); listenFD = -1 }
+    // Take both descriptors out under the lock, close them outside it.
+    let (listener, lock) = state.withLock { taken -> (Int32, Int32) in
+      let pair = (taken.listenFD, taken.lockFD)
+      taken.listenFD = -1
+      taken.lockFD = -1
+      return pair
+    }
+    if listener >= 0 { close(listener) }
     // Closing releases the flock. The file itself stays: unlinking a lock file
     // is how two processes end up locking two different inodes and both winning.
-    if lockFD >= 0 { close(lockFD); lockFD = -1 }
+    if lock >= 0 { close(lock) }
   }
 
   private var lockPath: String {
@@ -127,7 +174,7 @@ nonisolated final class Gateway: @unchecked Sendable {
     ftruncate(fd, 0)
     lseek(fd, 0, SEEK_SET)
     _ = writeAll(fd, Data("\(getpid())\t\(Bundle.main.bundlePath)\n".utf8))
-    lockFD = fd
+    state.withLock { $0.lockFD = fd }
   }
 
   private func lockHolder() -> String? {
@@ -145,7 +192,7 @@ nonisolated final class Gateway: @unchecked Sendable {
   /// not be: "bind address" as a preference is how `0.0.0.0` ends up in a
   /// support thread as a workaround for something else, and this process holds
   /// a brokerage refresh token.
-  private func openSocket() throws {
+  private func openSocket(port: UInt16) throws {
     let fd = socket(AF_INET, SOCK_STREAM, 0)
     guard fd >= 0 else { throw GatewayError.socketFailed(errnoText()) }
 
@@ -185,7 +232,7 @@ nonisolated final class Gateway: @unchecked Sendable {
     // connections would hang against a listener nobody is accepting on.
     closeOnExec(fd)
 
-    listenFD = fd
+    state.withLock { $0.listenFD = fd }
     hostLog("gateway", .info, "listening on http://127.0.0.1:\(port)")
     queue.async { [weak self] in self?.acceptLoop(fd) }
   }
@@ -201,7 +248,7 @@ nonisolated final class Gateway: @unchecked Sendable {
       let client = accept(fd, nil, nil)
       if client < 0 {
         let failure = errno
-        if listenFD < 0 { return }  // stopped deliberately
+        if state.withLock({ $0.listenFD }) < 0 { return }  // stopped deliberately
         switch failure {
         case EINTR, ECONNABORTED:
           continue
@@ -215,18 +262,77 @@ nonisolated final class Gateway: @unchecked Sendable {
         }
       }
       closeOnExec(client)
+      // Rule 6, the write half. The read half is the deadline in `serve`.
+      var sendTimeout = timeval(tv_sec: Int(Self.writeTimeout), tv_usec: 0)
+      setsockopt(
+        client, SOL_SOCKET, SO_SNDTIMEO, &sendTimeout, socklen_t(MemoryLayout<timeval>.size))
+      guard budget.acquire() else {
+        refuse(client)
+        continue
+      }
       onDedicatedThread("bastion.connection") { [weak self] in
         self?.serve(client)
       }
     }
   }
 
+  /// Rule 6, over the cap: answer and close, and spawn nothing.
+  ///
+  /// 503 rather than a bare close. An MCP client turns a closed connection into
+  /// "fetch failed" and a 503 into a sentence, and either way it retries on its
+  /// next request, since every request is its own connection. `Retry-After: 1`
+  /// is honest: a slot frees within the request deadline at worst. The body is
+  /// ~150 bytes into an empty send buffer on a socket just accepted, so this
+  /// cannot block the accept loop; `SO_SNDTIMEO` is the backstop anyway.
+  private func refuse(_ client: Int32) {
+    defer { close(client) }
+    respond(
+      client,
+      HTTPResponse(
+        status: 503,
+        message: "Bastion is serving \(Self.maxConnections) connections already; retry shortly",
+        headers: ["Retry-After": "1"]))
+    let now = DispatchTime.now()
+    let worthLogging = state.withLock { taken -> Bool in
+      if let last = taken.lastRefusalLogged,
+        now.uptimeNanoseconds - last.uptimeNanoseconds < 30_000_000_000
+      {
+        return false
+      }
+      taken.lastRefusalLogged = now
+      return true
+    }
+    if worthLogging {
+      hostLog(
+        "gateway", .error,
+        "refusing connections: \(Self.maxConnections) already in flight, which is the cap")
+    }
+  }
+
   // MARK: - One connection
 
+  /// The two timers bracket the child wait and neither applies to it: the
+  /// deadline covers the request arriving, `SO_SNDTIMEO` covers the reply
+  /// draining, and what happens in between is the supervisor's to bound. A
+  /// streaming response would have to revisit the send timeout; there is none
+  /// today, every reply being one buffered write.
   private func serve(_ client: Int32) {
-    defer { close(client) }
-    guard let request = HTTPRequest.read(from: client) else {
-      respond(client, HTTPResponse(status: 400, message: "malformed request"))
+    defer {
+      close(client)
+      budget.release()
+    }
+    let started = DispatchTime.now()
+    guard let request = HTTPRequest.read(from: client, timeout: Self.requestDeadline) else {
+      let waited = Double(DispatchTime.now().uptimeNanoseconds - started.uptimeNanoseconds) / 1e9
+      if waited >= Self.requestDeadline {
+        respond(
+          client,
+          HTTPResponse(
+            status: 408,
+            message: "the request did not arrive within \(Int(Self.requestDeadline))s"))
+      } else {
+        respond(client, HTTPResponse(status: 400, message: "malformed request"))
+      }
       return
     }
     respond(client, route(request))
@@ -341,9 +447,8 @@ nonisolated final class Gateway: @unchecked Sendable {
     guard let host = request.header("host") else {
       return HTTPResponse(status: 400, message: "no Host header")
     }
-    let name = host.split(separator: ":").first.map(String.init) ?? host
-    let allowed = ["127.0.0.1", "localhost", "[::1]", "::1"]
-    guard allowed.contains(name.lowercased()) else {
+    // The rule itself lives in `HTTPRequest` so `make unit` can table-test it.
+    guard HTTPRequest.isLoopbackHost(host) else {
       hostLog("gateway", .error, "refused a request with Host: \(host)")
       return HTTPResponse(status: 403, message: "forbidden host")
     }

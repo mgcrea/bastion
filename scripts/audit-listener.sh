@@ -14,6 +14,7 @@
 #   3. validate Host (anti-DNS-rebinding)
 #   4. per-client bearer token
 #   5. no secret in any file a client reads
+#   6. bounded cost before authentication: a connection cap and a request deadline
 #
 # Rules 2 and 3 are why this exists at all. CVE-2025-49596 was Anthropic's own
 # MCP Inspector: a listener, no CSRF protection, and a visited web page could
@@ -108,7 +109,11 @@ echo "Runtime"
 pkill -f "$BINARY" 2>/dev/null || true
 sleep 1
 
-"$BINARY" >/tmp/bastion-audit.log 2>&1 &
+# `-gatewayPort` goes in as a launch argument, so BASTION_PORT=8799 audits a
+# build beside a Bastion someone is working in on 8720 — without which the
+# build under test fails to bind, and every probe below quietly lands on the
+# other copy and audits its code instead of this one's.
+"$BINARY" -gatewayPort "$PORT" >/tmp/bastion-audit.log 2>&1 &
 PID=$!
 trap 'kill "$PID" 2>/dev/null || true' EXIT
 
@@ -181,6 +186,63 @@ if [ "$CODE" = "401" ]; then
   pass "a wrong token is refused (401)"
 else
   fail "a wrong token returned $CODE, expected 401"
+fi
+
+# ── Rule 6. A connection costs a thread before any header is read, so the
+# gateway caps how many are in flight and puts a deadline on a request arriving.
+# Asserted against the running build with no token — which is the point, since
+# the attack needed none either. bash's /dev/tcp gives a socket that sends
+# nothing, which is exactly the shape a stalled peer has. Numeric descriptors
+# through eval because /usr/bin/bash is still 3.2 and has no {fd} allocation.
+CAP="$(sed -n 's/.*static let maxConnections = \([0-9]*\).*/\1/p' "$ROOT/apps/apple/Bastion/Gateway.swift")"
+if [ -n "$CAP" ]; then
+  pass "the connection cap is $CAP in Gateway.swift"
+else
+  fail "Gateway.swift has no maxConnections"
+  CAP=64
+fi
+
+HELD=0
+for i in $(seq 1 "$CAP"); do
+  fd=$((20 + i))
+  eval "exec $fd<>/dev/tcp/127.0.0.1/$PORT" 2>/dev/null || break
+  HELD=$((HELD + 1))
+done
+sleep 0.5
+CODE="$(status "$URL")"
+if [ "$HELD" -ne "$CAP" ]; then
+  fail "could only hold $HELD of $CAP connections open"
+elif [ "$CODE" = "503" ]; then
+  pass "with $CAP idle connections held, the next is refused (503)"
+else
+  fail "with $CAP idle connections held, the next returned $CODE, expected 503"
+fi
+for i in $(seq 1 "$HELD"); do
+  fd=$((20 + i))
+  eval "exec $fd>&-"
+done
+sleep 1
+CODE="$(status "$URL")"
+if [ "$CODE" = "401" ]; then
+  pass "and served again once they are released (401) — the slots came back"
+else
+  fail "after releasing the held connections a request returned $CODE, expected 401"
+fi
+
+# Half a header, then silence. The parser used to wait for the rest forever.
+DEADLINE="$(sed -n 's/.*static let requestDeadline: TimeInterval = \([0-9]*\).*/\1/p' "$ROOT/apps/apple/Bastion/Gateway.swift")"
+DEADLINE="${DEADLINE:-10}"
+exec 19<>"/dev/tcp/127.0.0.1/$PORT"
+printf 'GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\n' >&19
+STARTED=$(date +%s)
+LINE=""
+IFS= read -r -t $((DEADLINE + 5)) -u 19 LINE || true
+TOOK=$(( $(date +%s) - STARTED ))
+exec 19>&-
+if printf '%s' "$LINE" | grep -q " 408 " && [ "$TOOK" -le $((DEADLINE + 2)) ]; then
+  pass "a half-sent request is closed with 408 after ${TOOK}s (deadline ${DEADLINE}s)"
+else
+  fail "a half-sent request got '$(printf '%s' "$LINE" | tr -d '\r')' after ${TOOK}s, expected 408 within ${DEADLINE}s"
 fi
 
 # ── Rule 5, at runtime. profiles.json is the file that replaces the plaintext
