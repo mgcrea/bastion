@@ -4,7 +4,7 @@
 > app that runs each server once, keeps its credentials in the Keychain, and fronts it over loopback
 > HTTP so several clients share one instance — with every tool call recorded.
 
-macOS 26 or later, and macOS only. Shipped at 1.0.0 (August 2026): signed, notarized, and sold
+macOS 26 or later, and macOS only. Shipping since 1.0.0 (August 2026): signed, notarized, and sold
 direct at $14.99 (€14.99 in the EU, VAT included) for every 1.x release on every Mac you own. The
 source is public and stays public; what is sold is the build. A 30-minute in-memory trial runs the
 whole app, not a crippled version.

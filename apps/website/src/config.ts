@@ -7,7 +7,7 @@
  * root README's Status table, the tree is right and this file is stale.
  */
 
-import { gated, readOnly, SERVERS } from "./data/servers.ts";
+import { children, gated, readOnly, remote, SERVERS } from "./data/servers.ts";
 
 export const SITE_DOMAIN = "bastion.mgcrea.io";
 export const SITE_URL = `https://${SITE_DOMAIN}`;
@@ -81,10 +81,14 @@ const title = (s: string) => `${s[0]?.toUpperCase() ?? ""}${s.slice(1)}`;
 /** "Ten", "Seven", "Three" — however many the manifest turns out to hold. */
 export const COUNTS = {
   servers: SERVERS.length,
+  children: children.length,
+  remote: remote.length,
   gated: gated.length,
   readOnly: readOnly.length,
   serversWord: spell(SERVERS.length),
   serversTitle: title(spell(SERVERS.length)),
+  childrenWord: spell(children.length),
+  remoteWord: spell(remote.length),
   gatedWord: spell(gated.length),
   readOnlyWord: spell(readOnly.length),
 } as const;

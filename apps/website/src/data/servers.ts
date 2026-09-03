@@ -222,3 +222,7 @@ export const readOnly = SERVERS.filter((s) => !hasWritePath(s));
 
 /** Servers whose writes are off until a profile turns them on. */
 export const gated = SERVERS.filter(hasWritePath);
+/** Packages Bastion runs, and endpoints somebody else operates. The page says
+ *  different things about each, so it needs to count them apart. */
+export const children = SERVERS.filter((s) => s.transport === "child");
+export const remote = SERVERS.filter((s) => s.transport === "remote");

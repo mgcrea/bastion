@@ -25,8 +25,11 @@ const gateIds = new Set(gated.map((s) => s.id));
     >
       <p class="m-0 text-[16px] leading-[1.6] text-fg-dim text-pretty">
         Bastion ships with nothing installed. The {COUNTS.serversWord} below are a catalog you
-        install from; anything else on npm you add by package name. Each one is fetched on demand
-        into Bastion's own directory and run with the Node runtime in the app.
+        install from; anything else on npm you add by package name. The {COUNTS.childrenWord}{" "}
+        packages are fetched on demand into Bastion's own directory and run with the Node runtime
+        in the app. The {COUNTS.remoteWord} endpoints are servers their own vendors operate:
+        nothing is installed and no process is started, and what Bastion adds is the credential in
+        the Keychain, one identity per profile, and the audit line.
       </p>
       <p class="m-0 text-[14px] leading-[1.6] text-fg-muted text-pretty">
         What stays closed is how a request picks one. A client names a profile and a server id —
@@ -100,11 +103,12 @@ const gateIds = new Set(gated.map((s) => s.id));
       </ul>
 
       <p class="m-0 text-[13px] leading-[1.6] text-fg-muted text-pretty">
-        None of the {COUNTS.serversWord} are modern — every one runs an SDK whose newest protocol is {
-          DIALECT.children
-        }, which is what they negotiate. The catalog said 2025-06-18 until a live handshake was run
-        against one; that was Bastion's own pin masquerading as a fact about the servers. A server
-        you add yourself is fronted the same way.{" "}
+        None of the {COUNTS.serversWord} are modern. The {COUNTS.childrenWord} children run an SDK
+        whose newest protocol is {DIALECT.children}, which is what they negotiate; the catalog said
+        2025-06-18 until a live handshake was run against one, and that was Bastion's own pin
+        masquerading as a fact about the servers. The remote entries carry the same revision as a
+        starting point, and the first real handshake through a profile is what measures each one.
+        A server you add yourself is fronted the same way.{" "}
         <a href={DOCS.manifest} rel="noopener" class="text-accent-hi hover:text-plate-top">
           The catalog
         </a> is one file, and <a href={DOCS.servers} rel="noopener" class="text-accent-hi hover:text-plate-top">
