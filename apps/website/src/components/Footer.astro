@@ -66,10 +66,13 @@ const LEGAL = [
       {/* This said "code-signed for development only" and "licence not settled"
           until 1.0.0, when both stopped being true in the same release. A
           footer is where that kind of line survives longest, because nobody
-          reads it on the way past. */}
-      <p class="m-0 text-[12.5px] leading-[1.6] text-fg-muted">
-        Requires {REQUIRES}. Signed and notarized.<br />
-        Source-available · {PRICE.price} for the signed build
+          reads it on the way past.
+
+          One flowing sentence rather than two facts stacked on a <br />: the
+          column is ~260px, so both halves wrapped and each left a one-word last
+          line. Every other site's brand column reads as prose here. */}
+      <p class="m-0 text-[12.5px] leading-[1.6] text-fg-muted text-pretty">
+        Source-available. The signed, notarized build is {PRICE.price} and requires {REQUIRES}.
       </p>
       <span class="flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-fg-muted">
         {
