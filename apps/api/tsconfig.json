@@ -1,17 +1,17 @@
 {
+  // The base, with the Worker's own resolution on top. `Bundler` because
+  // wrangler bundles; no `node` types because nothing here runs in Node —
+  // `@cloudflare/vitest-pool-workers` brings `cloudflare:test` for the handler
+  // tests, and worker-configuration.d.ts brings everything else.
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2023",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "lib": ["ES2023"],
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "skipLibCheck": true,
-    "isolatedModules": true,
-    "verbatimModuleSyntax": true,
+    "types": ["@cloudflare/vitest-pool-workers/types"],
     "noEmit": true,
-    "forceConsistentCasingInFileNames": true
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
   },
   "include": ["worker-configuration.d.ts", "src/**/*.ts", "test/**/*.ts"]
 }

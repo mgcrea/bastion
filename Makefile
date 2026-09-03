@@ -531,19 +531,21 @@ remote-check: ## Assert where a remote server may live, the SSE collapse, the wr
 		scripts/remote-check.swift
 	@apps/apple/.build/remote-check
 
-# The other half, against a REAL remote server and a running build.
+# The other half, against REAL remote servers and a running build.
 #
 # A local fake would have to live on 127.0.0.1, which `RemoteEndpoint` refuses
 # by design and must go on refusing -- so rather than add a bypass that would
-# delete the property under test, this points at mcp.stripe.com and uses the
-# one thing that needs no credential: an unauthenticated `initialize` is
-# answered with 401, which exercises DNS pre-flight, https, the POST, the
-# profile's headers, the status mapping and the sentence a client is left
-# holding. What it cannot prove is a successful call.
+# delete the property under test, this points at two real endpoints, neither
+# needing a credential. mcp.stripe.com answers an unauthenticated `initialize`
+# with 401, which exercises DNS pre-flight, https, the POST, the profile's
+# headers, the status mapping and the sentence a client is left holding.
+# docs.mcp.cloudflare.com answers unauthenticated, so the same path is driven
+# through to a real tools/list -- the successful call the Stripe half can
+# never prove.
 #
 # Not in `make audit`: it needs the network, and an audit that fails on a train
 # is an audit people learn to skip.
-remote-live-check: app ## Assert the remote transport end to end against mcp.stripe.com
+remote-live-check: app ## Assert the remote transport end to end against Stripe (401) and Cloudflare Docs (tools/list)
 	@scripts/remote-live-check.sh
 
 # ─── the manifest ────────────────────────────────────────────────────────────
@@ -778,11 +780,21 @@ format: ## oxfmt the repo
 format-check: ## Fail on unformatted files
 	@pnpm format:check
 
+# The JavaScript half's tests: the Worker's vitest suite and the script tests
+# under scripts/lib, which include the one asserting the Node minter and the
+# Worker produce byte-identical licence keys against the public key compiled
+# into the app. CI runs both; this is the same command.
+test: ## Run the Worker and script test suites
+	@pnpm test
+
+typecheck: ## tsc the Worker and astro check the website
+	@pnpm typecheck
+
 .PHONY: help app run stop dev-config clean \
 	sparkle sparkle-keys appcast node bundle sign notarize build-release \
 	install install-release install-from uninstall \
-	smoke dialect wiring-check wiring-check-real remote-check remote-live-check unit license-check revocations audit migrate servers servers-check icon \
+	smoke dialect builtin wiring-check wiring-check-real remote-check remote-live-check unit license-check revocations audit audit-check migrate servers servers-check catalog-check icon \
 	screenshots screenshots-capture screenshots-check screenshots-update \
 	screenshots-seal screenshots-selftest screenshots-appstore \
 	screenshots-website screenshots-compose screenshots-doctor screenshots-clean \
-	lint format format-check
+	lint format format-check test typecheck
