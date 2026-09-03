@@ -13,7 +13,16 @@ TEAM_ID := 75QE9PRT3V
 # a single self-contained binary, Homebrew's needs libnode.dylib beside it — and
 # the whole point of embedding one is that there is no "which node?" question
 # left to answer at spawn time.
-NODE_VERSION ?= 24.18.0
+#
+# THE NPM THAT COMES WITH IT IS THE REASON THIS MOVES. It is not pinned
+# separately — whatever npm the node tarball bundles is the npm every install
+# runs — so a node bump is an npm bump and the two cannot be reasoned about
+# apart. 24.18.0 carried npm 11.16.0, which predates `min-release-age-exclude`
+# and answered a perfectly good `~/.npmrc` with `Unknown user config`, applying
+# the bare age filter and failing a same-day publish as `ENOVERSIONS: No
+# versions available` — a sentence that reads as if the package does not exist.
+# 24.20.0 is the first v24 carrying npm 11.19.0, which honours it.
+NODE_VERSION ?= 24.20.0
 # `arch x64` for a release; `arm64` alone builds far faster while iterating.
 NODE_ARCHS   ?= arm64 x64
 STAGED       := apps/apple/.build/staged
