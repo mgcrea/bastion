@@ -334,6 +334,11 @@ sparkle-keys: sparkle ## Generate or reuse the EdDSA update-signing key
 # into every binary ever shipped, so it has to be a URL that outlives any decision
 # about where files live. It previously wrote into the site and pointed at
 # bastion.mgcrea.io/releases/Bastion-<version>.zip, a path nothing serves.
+# The notes are the top CHANGELOG section rendered to HTML by
+# scripts/changelog-notes.mjs, because Sparkle renders the description as HTML
+# and used to be handed raw markdown, asterisks and all. The renderer escapes
+# `]]>`, and xmllint refuses a feed that is not well-formed rather than letting
+# every user's updater discover it.
 # `stat` is called BSD-first, GNU-second: Homebrew's coreutils puts a GNU `stat`
 # ahead of /usr/bin on many machines, where `-f%z` fails with "invalid option"
 # and the enclosure came out as length="" — a malformed appcast whose only
@@ -346,7 +351,7 @@ appcast: ## Sign the release zip and write a one-item appcast
 		"$(RELEASE_APP)/Contents/Info.plist"); \
 	length=$$(stat -f%z apps/apple/.build/Bastion.zip 2>/dev/null || stat -c%s apps/apple/.build/Bastion.zip); \
 	signature=$$($(SPARKLE_TOOLS)/sign_update apps/apple/.build/Bastion.zip | sed 's/.*sparkle:edSignature="\([^"]*\)".*/\1/'); \
-	notes=$$(awk '/^## /{ if (n++) exit } n' CHANGELOG.md 2>/dev/null | tail -n +2); \
+	notes=$$(node scripts/changelog-notes.mjs CHANGELOG.md); \
 	printf '%s\n' \
 		'<?xml version="1.0" encoding="utf-8"?>' \
 		'<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">' \
