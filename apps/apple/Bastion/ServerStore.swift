@@ -175,6 +175,11 @@ final class ServerStore {
     // photograph whatever they happen to have installed.
     if DemoSeed.isEnabled {
       servers = DemoSeed.servers
+      // Sorted like any other list. The fixture names its servers in the order
+      // it finds readable, which is not an order the app can actually produce —
+      // and a marketing plate showing a sidebar the shipped build would never
+      // draw is worse than one that is merely arbitrary.
+      sort()
       refreshSnapshot()
       return
     }
