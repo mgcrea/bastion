@@ -342,8 +342,8 @@ export const FOOTER_APPS = [
     blurb: "A release radar for the repos you depend on, grouped by risk.",
   },
   {
-    name: "BloatBuster",
-    url: "https://bloat-buster.mgcrea.io",
-    blurb: "Reclaim gigabytes of regenerable build artifacts across your projects.",
+    name: "R2Explorer",
+    url: "https://r2-explorer.mgcrea.io",
+    blurb: "Browse and manage Cloudflare R2 and S3-compatible storage natively.",
   },
 ] as const;
