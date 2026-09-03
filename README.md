@@ -5,10 +5,12 @@
 A macOS menu bar app that supervises your MCP servers instead of letting each editor spawn its own:
 one process per server, credentials in the Keychain, and every tool call recorded.
 
-> **Early, and this file says so throughout.** Steps 1–3 of the build order are done and the gateway
-> serves a real server end to end. There is no profile editor, no Activity window, no bridge, and no
-> signed or notarized build — the app is code-signed for development only. [Status](#status) lists
-> exactly what runs today. Everything described below is built unless it is under "Not built yet".
+> **Shipping.** Signed, notarized, and sold direct at [bastion.mgcrea.io](https://bastion.mgcrea.io)
+> — [download](https://bastion.mgcrea.io/download) the current release, or
+> [buy a licence](https://bastion.mgcrea.io/buy) for $14.99 (€14.99 in the EU). A 30-minute
+> in-memory trial runs the whole app. The source is public and stays public; what is sold is the
+> build. [Status](#status) lists exactly what runs today, and [CHANGELOG.md](CHANGELOG.md) what each
+> release changed.
 
 ## The problem
 
@@ -72,7 +74,7 @@ restricted key.
 **Bastion ships with nothing installed.** It ships with a _catalog_ of twenty, listed in
 [`servers.json`](servers.json) and documented in [docs/servers.md](docs/servers.md); the list an
 install actually runs lives in Application Support, starts empty, and the user edits it. Install
-Install from the catalog, or add any other MCP server by npm package name. Code is fetched on demand into
+from the catalog, or add any other MCP server by npm package name. Code is fetched on demand into
 Bastion's own directory and run with the Node runtime in the app — the bundle carries node and npm
 and no servers at all.
 
@@ -301,9 +303,10 @@ gets. A live handshake negotiates `2025-03-26`, two revisions behind that defaul
 why the default is never left in place: the manifest would have claimed a version this server does
 not speak, and nothing would have looked wrong.
 
-Not built yet, in build order: the signed release path — Developer ID signing, notarization,
-Sparkle, the appcast and a Homebrew cask. And a login item, which is what would let an
-`type: http` client reach Bastion from cold the way a bridge-spawning one already can.
+Not built yet: a Homebrew cask, and a login item — which is what would let a `type: http` client
+reach Bastion from cold the way a bridge-spawning one already can. The signed release path itself
+(Developer ID signing, notarization, Sparkle and the appcast) has shipped since 1.0.0; see
+[Working on it](#working-on-it).
 
 Seven limitations worth knowing now:
 
@@ -352,7 +355,7 @@ make dialect        # assert both protocol eras against a running build
 make builtin        # assert Bastion's own server: the write gate, and the secrets wall
 make unit           # assert the dialect translation and the HTTP parser
 make remote-check   # assert the endpoint rules, the SSE collapse, and the OAuth client
-make remote-live-check  # assert the remote transport against Stripe's real server
+make remote-live-check  # assert the remote transport against two real servers: Stripe's 401, Cloudflare Docs' tools/list
 make install        # install the Debug build to /Applications
 
 make bundle         # build, stage node + npm, verify the install path, and sign a Release
@@ -389,10 +392,11 @@ overwrites and deletes the credentials the real app is holding.
 happened and what actually fixed them, and what adopting the data protection keychain would cost —
 including why the entitlement is worth having for iCloud sync and _not_ worth having to stop prompts.
 
-### Running a server before there is a profile editor
+### Seeding a Debug build from a file
 
-There is no UI for creating a profile yet. Until there is, a Debug build imports one from a file —
-see [`DevSeed.swift`](apps/apple/Bastion/DevSeed.swift). Drop this at
+The app has a profile editor; a Debug build can also import profiles from a file, which is faster
+when a checkout is rebuilt often — see [`DevSeed.swift`](apps/apple/Bastion/DevSeed.swift). Drop
+this at
 `~/Library/Application Support/io.mgcrea.bastion.debug/import.json`:
 
 ```json
