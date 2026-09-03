@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os
 
 /// The durable half of the activity log.
 ///
@@ -32,6 +33,20 @@ import Observation
 /// a chain that fails verification for no reason anyone can reproduce. Only the
 /// finished bytes go to a background queue, which is serial, so they land in
 /// the order they were sealed.
+///
+/// ## When a write fails
+///
+/// A record is sealed before its bytes land, so a failed write — disk full, a
+/// permission change, an immutable flag — is learned after the next record has
+/// already been sealed against a hash that is not on disk. Left alone, that is
+/// a gap the verifier reports as tampering, in the one artifact whose value is
+/// being handed to somebody else. One rule keeps the file honest: **the writer
+/// appends a record only if its `prev` is the hash on disk.** Everything sealed
+/// past a failure is dropped by that rule, the failure is logged, and the main
+/// actor is told to rewind to what landed and to seal one record from origin
+/// `audit` naming the range that did not. That record links, so it lands, and
+/// the chain on disk stays contiguous: an I/O failure reads as intact with a
+/// declared hole, and tampering still reads as broken.
 @MainActor
 @Observable
 final class AuditLog {
@@ -84,6 +99,20 @@ final class AuditLog {
   /// them; `.utility` because a log line is never what a user is waiting for.
   private let writer = DispatchQueue(label: "io.mgcrea.bastion.audit", qos: .utility)
 
+  /// What is actually on disk, as the writer knows it. See "When a write
+  /// fails" above. Seeded by `open`, reset by `clear`, advanced only by a
+  /// write that returned.
+  private struct Disk {
+    var seq = 0
+    var head = AuditChain.genesis
+    var failing = false
+    var lastReason = ""
+    /// The last time the main actor was told, so a disk that stays full is one
+    /// line per half minute rather than one per record.
+    var lastNotice: DispatchTime?
+  }
+  nonisolated private static let disk = OSAllocatedUnfairLock(initialState: Disk())
+
   /// Call ids that have a `seq` on file, so a result can name the call it
   /// answers. Bounded: a reply that never comes would otherwise keep its entry
   /// for the life of the process.
@@ -134,17 +163,20 @@ final class AuditLog {
     result: String? = nil, failed: Bool? = nil, ref: Int? = nil
   ) -> Int {
     seq += 1
+    let prev = head
     let sealed = AuditChain.seal(
       AuditChain.Record(
         seq: seq, at: Date(), origin: origin, kind: kind, text: text, args: args,
-        result: result, failed: failed, ref: ref, prev: head))
+        result: result, failed: failed, ref: ref, prev: prev))
     head = sealed.hash
 
     let line = AuditChain.line(sealed) + "\n"
     let bytes = Data(line.utf8)
     segmentSize += bytes.count
     let url = Self.url(for: segment)
-    writer.async { Self.write(bytes, to: url) }
+    let number = seq
+    let hash = sealed.hash
+    writer.async { Self.commit(seq: number, prev: prev, hash: hash, bytes: bytes, to: url) }
 
     // Rotate AFTER the write is queued, so the record that crossed the line is
     // the last one in the segment it was sealed against rather than the first
@@ -181,21 +213,105 @@ final class AuditLog {
     }
   }
 
-  /// Append, creating the file 0600 if it is not there.
+  /// Land one sealed record, if it links to what is on disk.
+  ///
+  /// On the writer queue. A record whose `prev` is not the disk head was sealed
+  /// against something that never landed; it is dropped, and the rewind that
+  /// makes the next one link is sent (or sent again, if the last notice was a
+  /// while ago). A write that fails is logged with its reason, once per half
+  /// minute, and the same rewind is sent.
+  nonisolated private static func commit(
+    seq: Int, prev: String, hash: String, bytes: Data, to url: URL
+  ) {
+    guard disk.withLock({ $0.head == prev }) else {
+      notifyIfDue(reason: nil)
+      return
+    }
+    if let reason = write(bytes, to: url) {
+      disk.withLock {
+        $0.failing = true
+        $0.lastReason = reason
+      }
+      notifyIfDue(reason: reason)
+      return
+    }
+    let resumed = disk.withLock { taken -> Bool in
+      taken.seq = seq
+      taken.head = hash
+      let was = taken.failing
+      taken.failing = false
+      return was
+    }
+    if resumed { hostLog("audit", .info, "audit writes resumed at record \(seq)") }
+  }
+
+  nonisolated private static func notifyIfDue(reason: String?) {
+    let now = DispatchTime.now()
+    let notice: (seq: Int, head: String, reason: String)? = disk.withLock { taken in
+      if let last = taken.lastNotice,
+        now.uptimeNanoseconds - last.uptimeNanoseconds < 30_000_000_000
+      {
+        return nil
+      }
+      taken.lastNotice = now
+      return (taken.seq, taken.head, reason ?? taken.lastReason)
+    }
+    guard let notice else { return }
+    hostLog(
+      "audit", .error,
+      "could not write the audit log past record \(notice.seq): \(notice.reason)")
+    Task { @MainActor in
+      shared.recover(afterSeq: notice.seq, head: notice.head, reason: notice.reason)
+    }
+  }
+
+  /// Rewind to what is on disk and declare the gap.
+  ///
+  /// The records sealed since the last one that landed are gone — dropped by
+  /// the writer as unlinked — so `seq` and `head` go back to it, a result that
+  /// would have answered one of them is forgotten, and one record from origin
+  /// `audit` names the range that was lost and why. If that record cannot be
+  /// written either, nothing on disk changes and the writer asks again in half
+  /// a minute; the log resumes on its own once it can.
+  private func recover(afterSeq landed: Int, head landedHead: String, reason: String) {
+    guard opened else { return }
+    let lost = seq - landed
+    guard lost > 0 else { return }
+    seq = landed
+    head = landedHead
+    segmentSize = Self.size(of: Self.url(for: segment))
+    pending = pending.filter { $0.value <= landed }
+    pendingOrder.removeAll { pending[$0] == nil }
+    append(
+      kind: .error, origin: "audit",
+      text:
+        "\(lost) record\(lost == 1 ? "" : "s") (\(landed + 1)–\(landed + lost)) could not be written: \(reason)",
+      failed: true)
+  }
+
+  /// Append, creating the file 0600 if it is not there. Returns why it could
+  /// not, or nil.
   ///
   /// `FileHandle` rather than the `.atomic` idiom the JSON stores use, and that
   /// is the point: `.atomic` replaces the file, which would rewrite history and
   /// silently reset the mode to 0644. An append-only log is appended to.
-  nonisolated private static func write(_ bytes: Data, to url: URL) {
+  nonisolated private static func write(_ bytes: Data, to url: URL) -> String? {
     let path = url.path
     if !FileManager.default.fileExists(atPath: path) {
-      FileManager.default.createFile(
-        atPath: path, contents: nil, attributes: [.posixPermissions: 0o600])
+      guard
+        FileManager.default.createFile(
+          atPath: path, contents: nil, attributes: [.posixPermissions: 0o600])
+      else { return "could not create \(url.lastPathComponent)" }
     }
-    guard let handle = try? FileHandle(forWritingTo: url) else { return }
-    defer { try? handle.close() }
-    _ = try? handle.seekToEnd()
-    try? handle.write(contentsOf: bytes)
+    do {
+      let handle = try FileHandle(forWritingTo: url)
+      defer { try? handle.close() }
+      try handle.seekToEnd()
+      try handle.write(contentsOf: bytes)
+      return nil
+    } catch {
+      return "\(url.lastPathComponent): \(error.localizedDescription)"
+    }
   }
 
   /// Pick up where the last run left off.
@@ -211,6 +327,7 @@ final class AuditLog {
       at: Self.directory, withIntermediateDirectories: true,
       attributes: [.posixPermissions: 0o700])
 
+    Self.disk.withLock { $0 = Disk() }
     guard let last = Self.segments().last,
       let text = try? String(contentsOf: last, encoding: .utf8)
     else { return }
@@ -231,6 +348,10 @@ final class AuditLog {
     }
     seq = lastSeq
     head = lastHash
+    Self.disk.withLock {
+      $0.seq = lastSeq
+      $0.head = lastHash
+    }
     if segmentSize >= Self.segmentBytes {
       segment += 1
       segmentSize = 0
@@ -385,5 +506,6 @@ final class AuditLog {
     opened = false
     pending.removeAll()
     pendingOrder.removeAll()
+    Self.disk.withLock { $0 = Disk() }
   }
 }
