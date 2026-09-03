@@ -7,6 +7,83 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.3.2` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Added
+
+- **Ten more remote servers in the catalog.** GitHub, Notion, Linear, Sentry, Atlassian, Figma,
+  Vercel, Cloudflare, Cloudflare Docs and Cloudflare Observability join Stripe as endpoints their
+  own vendors operate: an https URL, the vendor's OAuth or token, Bastion holding the credential
+  in the Keychain and writing the audit line. Nothing is installed and no process is started for
+  any of them. The catalog is now twenty entries, nine children and eleven remote.
+
+  Ten of the eleven carry a seeded dialect rather than a measured one. Every one of them refuses
+  `initialize` without a credential, so `2025-11-25` is a starting point and the first real
+  handshake through a profile is what measures it; Activity shows what was actually negotiated.
+  Cloudflare Docs is the exception: it answers unauthenticated, so `make remote-live-check` now
+  drives it through a real `tools/list`, the one call Stripe's 401 could never prove.
+
+### Security
+
+- **The gateway bounds what a connection costs before it presents a token.** A connection used
+  to cost a dedicated thread the moment it was accepted, and the parser then waited for the rest
+  of the request for as long as the peer cared to stay quiet. Nothing needed a token to do
+  either. There is now a cap of sixty-four connections in flight — a further one is answered
+  `503` with `Retry-After: 1` and spawns nothing — and a request that has not fully arrived in
+  ten seconds is closed with `408`. Neither timer touches the wait on a child, which is the
+  operation and is bounded by the supervisor. `make audit` holds sixty-four idle connections and
+  sends half a header to assert both against the built app; `make unit` drives the deadline
+  through the real parser on a socketpair, including the byte-at-a-time trickle a per-read
+  timeout never catches.
+
+- **The licence Worker's two public routes are rate-limited, and `/thanks` stops showing the key
+  after a week.** `/thanks?session_id=` handed the key to anyone holding a checkout session id,
+  forever — and that id lands in browser history, in the Referer of the link on the page, and in
+  support screenshots. It is now limited per address and, a week after issue, says where the key
+  was sent instead of what it is. `/license/resend` is limited per address too; it used to cost a
+  D1 query per request for any address at all, since its only cooldown was on a customer's row.
+  A limited request answers exactly as an unlimited one does, so nothing is learned from it.
+
+  The webhook is tightened at the same time: the body is bounded before it is buffered rather
+  than after, a signature timestamped more than a minute in the future is refused (Stripe's own
+  libraries take the absolute difference, which quietly doubled the replay window), and a session
+  that arrives without a `payment_status` is a shape error rather than a sale.
+
+  The `Host` allowlist also loses `[::1]` and `::1`. They never matched — the check split on the
+  colon — and the listener is IPv4 only, so nothing could have arrived under them; the rule now
+  lives in `HTTPRequest.isLoopbackHost` where `make unit` tables it.
+
+### Fixed
+
+- **An audit log that cannot be written no longer reads as tampered with.** A record is sealed
+  before its bytes land, so a disk that filled, a permission that changed or an immutable flag
+  left the next record chained to a hash that was never on disk — a gap the verifier reported as
+  a removed record, with nothing anywhere saying it was an I/O failure. The writer now appends a
+  record only if it links to what is on disk, logs the failure with its reason, and has the main
+  actor rewind and seal one record from origin `audit` naming the range that was lost. The file
+  stays a contiguous chain: an I/O failure reads as intact with a declared hole, and tampering
+  still reads as broken.
+- **`bastion-bridge` explains a profile or server name that does not form a URL** instead of
+  trapping on it. The gateway still resolves both against its closed table; this is only the
+  sentence for a name with a space in it.
+- **A persisted `ScreenshotMode` default can no longer put a release build into demo mode.**
+  The screenshot arguments are read from the launch arguments only, which apply to one launch —
+  a `defaults write` of the key used to enable demo mode on every launch, and the stage argument
+  that must then be present would trap on every launch after it.
+- **The Worker's handlers are tested, in workerd, against a real D1.** Every route — fulfilment,
+  redelivery, the unpaid and malformed sessions, the mail that fails and the retry that sends,
+  refunds partial and full, disputes created, lost and won, `/thanks` in every state and
+  `/license/resend` in every state — had no test at all, for want of a `Request`, an `Env` and a
+  database to hand them. `@cloudflare/vitest-pool-workers` supplies all three, the schema comes
+  from the same migrations production runs, and the suite is in CI beside the script tests that
+  assert the Node minter and the Worker produce byte-identical keys. Neither ran anywhere before.
+  Workers Logs are switched on for the Worker as well: a fulfilment that failed used to leave no
+  trace on this side at all.
+- **Fresh npm publishes install again.** The embedded Node moves from 24.18.0 to 24.20.0, which
+  carries npm 11.19.0 and its `min-release-age-exclude` setting. The npm that shipped before
+  ignored the exclusion, so a package published in the last day reported `ENOVERSIONS` and read as
+  if it did not exist.
+
 ## [1.3.2] - 2026-09-02
 
 ### Added
