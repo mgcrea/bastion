@@ -21,6 +21,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const [file] = process.argv.slice(2);
 if (!file) {
@@ -28,7 +29,7 @@ if (!file) {
   process.exit(2);
 }
 
-const API = join(dirname(new URL(import.meta.url).pathname), "..", "apps/api");
+const API = join(dirname(fileURLToPath(import.meta.url)), "..", "apps/api");
 const path = resolve(API, file);
 
 let entries;

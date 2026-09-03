@@ -22,8 +22,11 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = join(dirname(new URL(import.meta.url).pathname), "..");
+// `fileURLToPath`, not `.pathname`: the latter leaves a checkout under a path
+// with a space percent-encoded, and every path built from it then misses.
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const TARGET = join(ROOT, "apps/apple/Bastion/Revocations.swift");
 const API = join(ROOT, "apps/api");
 
