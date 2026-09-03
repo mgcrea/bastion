@@ -294,6 +294,9 @@ nonisolated extension Supervisor {
       var failures = 0
       var blockedUntil: Date?
       var lastActivity = Date()
+      /// The credential values this child was spawned with, so a line it
+      /// prints to stderr can have them struck before it reaches the log.
+      var secretValues: [String] = []
     }
 
     private struct Waiter {
@@ -360,6 +363,17 @@ nonisolated extension Supervisor {
       }
 
       let environment = ProfileEnvironment.build(for: profile, server: server)
+      // What the child must never be allowed to print back. stderr is relayed
+      // to the log verbatim, and a server that echoes its config on startup, or
+      // an API error that quotes the token it was sent, would otherwise put a
+      // credential into LogStore and, with auditing on, into the audit file.
+      // Short values are left alone: striking every "1" out of a log is worse.
+      let secrets = secretKeys
+      state.withLock { taken in
+        taken.secretValues = environment
+          .filter { secrets.contains($0.key) && $0.value.count >= 8 }
+          .map(\.value)
+      }
 
       let process = Process()
       process.executableURL = binaries.node
@@ -457,12 +471,15 @@ nonisolated extension Supervisor {
     /// stdout clear because stdout is the JSON-RPC channel.
     private func drainStderr(_ handle: FileHandle) {
       let origin = key
-      onDedicatedThread("bastion.stderr") {
+      onDedicatedThread("bastion.stderr") { [weak self] in
         while true {
           let data = handle.availableData
           if data.isEmpty { break }
-          let text = String(decoding: data, as: UTF8.self)
+          var text = String(decoding: data, as: UTF8.self)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+          for secret in self?.state.withLock({ $0.secretValues }) ?? [] {
+            text = text.replacingOccurrences(of: secret, with: "[redacted]")
+          }
           if !text.isEmpty { hostLog(origin, .info, text) }
         }
       }
