@@ -99,7 +99,8 @@ const schemaEntries = Array.isArray(schema) ? schema : schema ? [schema] : [];
       // Scroll-reveal. Everything else on this page is static by construction —
       // there is no theme toggle, because there is one theme.
       const reveals = document.querySelectorAll(".reveal");
-      if ("IntersectionObserver" in window && reveals.length) {
+      const stillPlease = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if ("IntersectionObserver" in window && reveals.length && !stillPlease) {
         const io = new IntersectionObserver(
           (entries) => {
             entries.forEach((e) => {

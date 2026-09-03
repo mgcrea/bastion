@@ -10,5 +10,7 @@
   "routes": [{ "pattern": "bastion.mgcrea.io", "custom_domain": true }],
   "send_metrics": false,
   "workers_dev": false,
-  "preview_urls": true
+  // Like the api Worker. A preview hostname is a live duplicate of the site on
+  // *.workers.dev that nobody watches, under a robots.txt that allows everything.
+  "preview_urls": false
 }
