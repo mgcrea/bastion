@@ -1305,6 +1305,567 @@ nonisolated enum ServerCatalog {
           isSecret: false,
           summary: "Registers the write tools: publish and unpublish, dist-tags, deprecation, package access, org and team membership, tokens, and trusted-publisher changes."),
       ]),
+    // REMOTE. GitHub operates this one; Bastion holds the credential and the
+    // audit line and forwards the call.
+    //
+    // DIALECT UNMEASURED. Seeded at 2025-11-25, which is what the one endpoint
+    // in this family that answers unauthenticated actually negotiates. Every
+    // other one 401s before it will say, so this number is a starting point and
+    // not a measurement - RemoteInstance logs `dialect drift` on the first real
+    // handshake and Activity shows what was negotiated. Correct this field from
+    // that line. Stripe is the reason the distinction is written down: it was
+    // carried at the default until a handshake proved it two revisions older.
+    //
+    // WRITE TOOLS TAKEN FROM THE PUBLISHED TOOL TABLE, not from a live
+    // tools/list - the endpoint 401s before it will enumerate. Thirty-three
+    // names, and delete_repository is the one worth reading twice. The list is
+    // belt and braces either way: Bastion also gates anything the server
+    // annotates readOnlyHint:false, which is the half that caught three
+    // quarters of Stripe's write surface.
+    //
+    // The token is the real boundary, not the gate. A classic PAT with repo
+    // scope reaches every repository the account can see, including private
+    // ones in other organisations. Prefer a fine-grained token.
+    BastionServer(
+      id: "github",
+      displayName: "GitHub",
+      summary: "GitHub's own remote MCP server: repositories, issues, pull requests, Actions, code scanning and Dependabot alerts.",
+      transport: .remote(endpoint: URL(string: "https://api.githubcopilot.com/mcp/")!),
+      docsURL: URL(string: "https://github.com/github/github-mcp-server"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: ["actions_run_trigger", "add_comment_to_pending_review", "add_issue_comment", "add_reply_to_pull_request_comment", "assign_copilot_to_issue", "assign_copilot_to_issue_with_intent", "create_branch", "create_gist", "create_or_update_file", "create_pull_request", "create_pull_request_with_copilot", "create_repository", "delete_file", "delete_repository", "discussion_comment_write", "dismiss_notification", "fork_repository", "issue_write", "label_write", "manage_notification_subscription", "manage_repository_notification_subscription", "mark_all_notifications_read", "merge_pull_request", "projects_write", "pull_request_review_write", "push_files", "request_copilot_review", "star_repository", "sub_issue_write", "unstar_repository", "update_gist", "update_pull_request", "update_pull_request_branch"],
+      gateBypass: [],
+      authModes: [
+        .init(
+          id: "oauth2",
+          displayName: "Sign in with GitHub",
+          kind: .oauth,
+          env: [],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+        .init(
+          id: "pat",
+          displayName: "Personal access token",
+          kind: .env,
+          env: ["GITHUB_TOKEN"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+      ],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "GITHUB_TOKEN",
+          isRequired: false,
+          isSecret: true,
+          summary: "Personal access token, sent as the bearer token. Scope it to the repositories you actually want reachable: the write gate filters what Bastion forwards, it cannot take back a permission the token already grants.",
+          header: .init(name: "Authorization", format: "Bearer {value}")),
+      ]),
+    // REMOTE. Its own discovery document calls it "Notion MCP (Beta)", so
+    // expect the tool surface to move.
+    //
+    // DIALECT UNMEASURED. Seeded at 2025-11-25, which is what the one endpoint
+    // in this family that answers unauthenticated actually negotiates. Every
+    // other one 401s before it will say, so this number is a starting point and
+    // not a measurement - RemoteInstance logs `dialect drift` on the first real
+    // handshake and Activity shows what was negotiated. Correct this field from
+    // that line. Stripe is the reason the distinction is written down: it was
+    // carried at the default until a handshake proved it two revisions older.
+    //
+    // NO writeTools LIST. The endpoint 401s before it will enumerate and
+    // Notion publishes no stable tool table, so naming tools here would be
+    // guesswork that silently matches nothing. Writes are gated by the
+    // server's own readOnlyHint:false annotations instead. Say that out loud
+    // in the UI rather than implying a hand-checked denylist exists.
+    BastionServer(
+      id: "notion",
+      displayName: "Notion",
+      summary: "Notion's own remote MCP server: search, read and update pages, databases and comments.",
+      transport: .remote(endpoint: URL(string: "https://mcp.notion.com/mcp")!),
+      docsURL: URL(string: "https://developers.notion.com/docs/mcp"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: [],
+      gateBypass: [],
+      authModes: [
+        .init(
+          id: "oauth2",
+          displayName: "Sign in with Notion",
+          kind: .oauth,
+          env: [],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+        .init(
+          id: "token",
+          displayName: "Integration token",
+          kind: .env,
+          env: ["NOTION_TOKEN"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+      ],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "NOTION_TOKEN",
+          isRequired: false,
+          isSecret: true,
+          summary: "Internal integration token, sent as the bearer token. A Notion integration reaches only the pages explicitly shared with it, so the sharing list is the real boundary here.",
+          header: .init(name: "Authorization", format: "Bearer {value}")),
+      ]),
+    // REMOTE. The cleanest OAuth story in this file: discovery advertises a
+    // registration_endpoint, PKCE, and scopes_supported [read, write], so
+    // Bastion's dynamic registration has everything it needs.
+    //
+    // DIALECT UNMEASURED. Seeded at 2025-11-25, which is what the one endpoint
+    // in this family that answers unauthenticated actually negotiates. Every
+    // other one 401s before it will say, so this number is a starting point and
+    // not a measurement - RemoteInstance logs `dialect drift` on the first real
+    // handshake and Activity shows what was negotiated. Correct this field from
+    // that line. Stripe is the reason the distinction is written down: it was
+    // carried at the default until a handshake proved it two revisions older.
+    //
+    // THERE IS A READ-ONLY URL and this entry does not use it. Linear also
+    // serves https://mcp.linear.app/mcp/readonly, where the SERVER enforces
+    // what writeTools can only filter. One url per entry, so this is a real
+    // fork in the road: point a second entry at it, or tell people who want
+    // writes off to use a key scoped to read. Worth deciding rather than
+    // leaving to whoever reads this next.
+    //
+    // NO writeTools LIST - 401 before enumeration, same as the others. The
+    // annotation gate carries it.
+    BastionServer(
+      id: "linear",
+      displayName: "Linear",
+      summary: "Linear's own remote MCP server: issues, projects, cycles, comments and documents.",
+      transport: .remote(endpoint: URL(string: "https://mcp.linear.app/mcp")!),
+      docsURL: URL(string: "https://linear.app/docs/mcp"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: [],
+      gateBypass: [],
+      authModes: [
+        .init(
+          id: "oauth2",
+          displayName: "Sign in with Linear",
+          kind: .oauth,
+          env: [],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+        .init(
+          id: "api-key",
+          displayName: "API key",
+          kind: .env,
+          env: ["LINEAR_API_KEY"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+      ],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "LINEAR_API_KEY",
+          isRequired: false,
+          isSecret: true,
+          summary: "Linear API key, sent as the bearer token. Linear issues read and write as separate OAuth scopes, so a key minted for reads is a stronger control than the write gate.",
+          header: .init(name: "Authorization", format: "Bearer {value}")),
+      ]),
+    // REMOTE. docs.sentry.io/product/sentry-mcp/ 301s to mcp.sentry.dev,
+    // which is both the server and its documentation, so docsUrl points
+    // there.
+    //
+    // DIALECT UNMEASURED. Seeded at 2025-11-25, which is what the one endpoint
+    // in this family that answers unauthenticated actually negotiates. Every
+    // other one 401s before it will say, so this number is a starting point and
+    // not a measurement - RemoteInstance logs `dialect drift` on the first real
+    // handshake and Activity shows what was negotiated. Correct this field from
+    // that line. Stripe is the reason the distinction is written down: it was
+    // carried at the default until a handshake proved it two revisions older.
+    //
+    // NO writeTools LIST. Sentry documents permission scopes rather than a
+    // tool table, so there is nothing to copy that would not be invented.
+    // The annotation gate is what is actually holding writes here.
+    BastionServer(
+      id: "sentry",
+      displayName: "Sentry",
+      summary: "Sentry's own remote MCP server: issues, events, releases and Seer analysis across your organisations.",
+      transport: .remote(endpoint: URL(string: "https://mcp.sentry.dev/mcp")!),
+      docsURL: URL(string: "https://mcp.sentry.dev/"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: [],
+      gateBypass: [],
+      authModes: [
+        .init(
+          id: "oauth2",
+          displayName: "Sign in with Sentry",
+          kind: .oauth,
+          env: [],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+        .init(
+          id: "token",
+          displayName: "User auth token",
+          kind: .env,
+          env: ["SENTRY_ACCESS_TOKEN"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+      ],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "SENTRY_ACCESS_TOKEN",
+          isRequired: false,
+          isSecret: true,
+          summary: "Sentry user auth token, sent as the bearer token. Its own scopes decide what is reachable; project:write and event:write are the ones to leave off unless something needs them.",
+          header: .init(name: "Authorization", format: "Bearer {value}")),
+      ]),
+    // REMOTE. v2 is the current path - anything still pointing at
+    // mcp.atlassian.com/v1/sse is on a version Atlassian has retired.
+    //
+    // DIALECT UNMEASURED. Seeded at 2025-11-25, which is what the one endpoint
+    // in this family that answers unauthenticated actually negotiates. Every
+    // other one 401s before it will say, so this number is a starting point and
+    // not a measurement - RemoteInstance logs `dialect drift` on the first real
+    // handshake and Activity shows what was negotiated. Correct this field from
+    // that line. Stripe is the reason the distinction is written down: it was
+    // carried at the default until a handshake proved it two revisions older.
+    //
+    // ONLY THE SERVICE ACCOUNT KEY IS OFFERED, and that is deliberate.
+    // Atlassian takes two token shapes: a service account API key as
+    // `Authorization: Bearer <key>`, which fits a header format cleanly, and
+    // a personal API token as `Authorization: Basic <base64(email:token)>`,
+    // which would make the user paste a base64 blob they had to build
+    // themselves. Personal-token users should sign in with OAuth instead.
+    //
+    // Permissions are grouped upstream (read_jira, write_jira, delete_jira
+    // and so on) and delete_jira and manage_jira are admin-enabled and off by
+    // default, so most accounts cannot reach the destructive half at all.
+    BastionServer(
+      id: "atlassian",
+      displayName: "Atlassian",
+      summary: "Atlassian's own Rovo MCP server: Jira, Confluence, Jira Service Management, Bitbucket and Compass.",
+      transport: .remote(endpoint: URL(string: "https://mcp.atlassian.com/v2/mcp")!),
+      docsURL: URL(string: "https://github.com/atlassian/atlassian-mcp-server"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: [],
+      gateBypass: [],
+      authModes: [
+        .init(
+          id: "oauth2",
+          displayName: "Sign in with Atlassian",
+          kind: .oauth,
+          env: [],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+        .init(
+          id: "api-key",
+          displayName: "Service account API key",
+          kind: .env,
+          env: ["ATLASSIAN_API_KEY"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+      ],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "ATLASSIAN_API_KEY",
+          isRequired: false,
+          isSecret: true,
+          summary: "Service account API key, sent as the bearer token. An organisation admin must enable API token authentication before any key works; if that is off, OAuth is the only way in.",
+          header: .init(name: "Authorization", format: "Bearer {value}")),
+      ]),
+    // REMOTE. Figma also ships a local server that talks to the desktop app;
+    // this entry is the hosted one, which is the one Figma recommends.
+    //
+    // DIALECT UNMEASURED. Seeded at 2025-11-25, which is what the one endpoint
+    // in this family that answers unauthenticated actually negotiates. Every
+    // other one 401s before it will say, so this number is a starting point and
+    // not a measurement - RemoteInstance logs `dialect drift` on the first real
+    // handshake and Activity shows what was negotiated. Correct this field from
+    // that line. Stripe is the reason the distinction is written down: it was
+    // carried at the default until a handshake proved it two revisions older.
+    //
+    // THE TOKEN HEADER IS THE UNCERTAIN PART. Figma's REST API authenticates
+    // with X-Figma-Token, not a bearer token, and the MCP endpoint's own
+    // challenge asks for Bearer. Bearer is what is written here because that
+    // is what the endpoint asked for, but it is untested against a real
+    // token. If it is refused, the fix is one header format, not an entry.
+    //
+    // NO writeTools LIST. Mostly a read surface, and 401 before enumeration.
+    BastionServer(
+      id: "figma",
+      displayName: "Figma",
+      summary: "Figma's own remote MCP server: design file context, components and variables for coding agents.",
+      transport: .remote(endpoint: URL(string: "https://mcp.figma.com/mcp")!),
+      docsURL: URL(string: "https://developers.figma.com/docs/figma-mcp-server/"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: [],
+      gateBypass: [],
+      authModes: [
+        .init(
+          id: "oauth2",
+          displayName: "Sign in with Figma",
+          kind: .oauth,
+          env: [],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+        .init(
+          id: "token",
+          displayName: "Personal access token",
+          kind: .env,
+          env: ["FIGMA_ACCESS_TOKEN"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+      ],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "FIGMA_ACCESS_TOKEN",
+          isRequired: false,
+          isSecret: true,
+          summary: "Figma personal access token, sent as the bearer token. Note that Figma's REST API takes its tokens in X-Figma-Token instead; if this path is refused, sign in with OAuth.",
+          header: .init(name: "Authorization", format: "Bearer {value}")),
+      ]),
+    // REMOTE. Its discovery document points authorization_servers at
+    // vercel.com rather than at itself, so the OAuth dance leaves the MCP
+    // host entirely.
+    //
+    // DIALECT UNMEASURED. Seeded at 2025-11-25, which is what the one endpoint
+    // in this family that answers unauthenticated actually negotiates. Every
+    // other one 401s before it will say, so this number is a starting point and
+    // not a measurement - RemoteInstance logs `dialect drift` on the first real
+    // handshake and Activity shows what was negotiated. Correct this field from
+    // that line. Stripe is the reason the distinction is written down: it was
+    // carried at the default until a handshake proved it two revisions older.
+    //
+    // VERCEL SAYS IT SUPPORTS 2026-07-28. Their changelog announces it, which
+    // would make this the first entry in the file that is modern rather than
+    // legacy. It is NOT written into dialect above, because a handshake that
+    // proposes a version the server does not take fails the connection, and
+    // nothing here has proved it. Measure it, then raise this field - that
+    // order round the wrong way is an outage.
+    //
+    // THIS ONE SPENDS MONEY. buy_pro, buy_credits, buy_addon and buy_domain
+    // are real tools on a real payment method, and deploy_to_vercel and
+    // use_vercel_cli change what is serving production. All eleven are named
+    // in writeTools, taken from Vercel's published tool table.
+    //
+    // VERCEL ALLOWLISTS CLIENTS. Their documentation says the server "only
+    // supports AI clients that have been reviewed and approved by Vercel" and
+    // names twelve; Bastion is not among them. Dynamic registration may
+    // simply be refused, in which case the access-token mode is the way in
+    // and this is worth an approach to Vercel rather than a workaround.
+    BastionServer(
+      id: "vercel",
+      displayName: "Vercel",
+      summary: "Vercel's own remote MCP server: projects, deployments, runtime logs, Web Analytics and documentation search.",
+      transport: .remote(endpoint: URL(string: "https://mcp.vercel.com")!),
+      docsURL: URL(string: "https://vercel.com/docs/agent-resources/vercel-mcp"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: ["deploy_to_vercel", "use_vercel_cli", "import-claude-design-from-url", "buy_pro", "buy_credits", "buy_addon", "buy_domain", "change_toolbar_thread_resolve_status", "reply_to_toolbar_thread", "edit_toolbar_message", "add_toolbar_reaction"],
+      gateBypass: [],
+      authModes: [
+        .init(
+          id: "oauth2",
+          displayName: "Sign in with Vercel",
+          kind: .oauth,
+          env: [],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+        .init(
+          id: "token",
+          displayName: "Access token",
+          kind: .env,
+          env: ["VERCEL_TOKEN"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+      ],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "VERCEL_TOKEN",
+          isRequired: false,
+          isSecret: true,
+          summary: "Vercel access token, sent as the bearer token. Scope it to one team if you can - this server can deploy code and spend money, and the token's own scopes are the only thing that stops it.",
+          header: .init(name: "Authorization", format: "Bearer {value}")),
+      ]),
+    // REMOTE. Cloudflare runs seventeen separate hosted endpoints rather than
+    // one; three of them are in this catalog - the API surface here, the
+    // documentation search, and observability. The other fourteen (Radar,
+    // Workers Bindings, Workers Builds, Browser Run, AI Gateway, Logpush,
+    // GraphQL, DNS Analytics, Audit Logs, Container, AI Search, DEX, CASB and
+    // the Agents SDK docs) are the same shape if anyone wants them.
+    //
+    // DIALECT UNMEASURED. Seeded at 2025-11-25, which is what the one endpoint
+    // in this family that answers unauthenticated actually negotiates. Every
+    // other one 401s before it will say, so this number is a starting point and
+    // not a measurement - RemoteInstance logs `dialect drift` on the first real
+    // handshake and Activity shows what was negotiated. Correct this field from
+    // that line. Stripe is the reason the distinction is written down: it was
+    // carried at the default until a handshake proved it two revisions older.
+    //
+    // THE BROADEST SURFACE IN THE FILE. Cloudflare advertises this one as
+    // 2,500+ API endpoints, which is most of an account behind a single
+    // credential. The token's permissions are the boundary; the gate is not.
+    //
+    // NO writeTools LIST - 401 before enumeration. The annotation gate holds
+    // writes, and on a surface this wide that is worth stating plainly to
+    // anyone about to turn the gate off.
+    BastionServer(
+      id: "cloudflare",
+      displayName: "Cloudflare",
+      summary: "Cloudflare's own remote MCP server: the API surface across zones, DNS, Workers, R2 and the rest of the account.",
+      transport: .remote(endpoint: URL(string: "https://mcp.cloudflare.com/mcp")!),
+      docsURL: URL(string: "https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: [],
+      gateBypass: [],
+      authModes: [
+        .init(
+          id: "oauth2",
+          displayName: "Sign in with Cloudflare",
+          kind: .oauth,
+          env: [],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+        .init(
+          id: "api-token",
+          displayName: "API token",
+          kind: .env,
+          env: ["CLOUDFLARE_API_TOKEN"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+      ],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "CLOUDFLARE_API_TOKEN",
+          isRequired: false,
+          isSecret: true,
+          summary: "Cloudflare API token, sent as the bearer token. Mint it against the specific zones and permissions you want reachable rather than reusing an account-wide token.",
+          header: .init(name: "Authorization", format: "Bearer {value}")),
+      ]),
+    // REMOTE, and the only entry in this file that needs no credential at
+    // all. A POST of `initialize` with no Authorization header returns 200.
+    // So authModes is empty, the way Shopify's is, and for the same reason:
+    // there is nothing to authenticate.
+    //
+    // DIALECT MEASURED 2026-09-02, and it is the only one in this batch that
+    // is. An unauthenticated handshake negotiates 2025-11-25 and serverInfo
+    // reports docs-ai-search 0.4.13. Every other endpoint added alongside it
+    // 401s before it will say, and carries a seeded value instead.
+    //
+    // TOOL LIST MEASURED 2026-09-02 as well, and it is read-only: exactly two
+    // tools, search_cloudflare_documentation and migrate_pages_to_workers_guide,
+    // both annotated readOnlyHint:true. There is no write surface to gate.
+    //
+    // Bastion still counts this entry as HAVING a write path, and that is not a
+    // bug - "read-only" is not a claim the app can make about a remote server in
+    // advance, so hasWritePath says yes for every remote entry. Over-reporting is
+    // the safe direction and this note is the only place the difference is
+    // written down.
+    BastionServer(
+      id: "cloudflare-docs",
+      displayName: "Cloudflare Docs",
+      summary: "Cloudflare's documentation search, as a remote MCP server. Needs no credential.",
+      transport: .remote(endpoint: URL(string: "https://docs.mcp.cloudflare.com/mcp")!),
+      docsURL: URL(string: "https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: [],
+      gateBypass: [],
+      authModes: [],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "CLOUDFLARE_DOCS_TOKEN",
+          isRequired: false,
+          isSecret: true,
+          summary: "Not needed. This server answers unauthenticated, and a remote entry has to declare at least one variable somewhere for a value to land; leave it empty.",
+          header: .init(name: "Authorization", format: "Bearer {value}")),
+      ]),
+    // REMOTE. A narrow read surface next to the full Cloudflare API entry:
+    // Workers logs, analytics and traces, which is what you want open during
+    // an incident without opening the account with it.
+    //
+    // DIALECT UNMEASURED. Seeded at 2025-11-25, which is what the one endpoint
+    // in this family that answers unauthenticated actually negotiates. Every
+    // other one 401s before it will say, so this number is a starting point and
+    // not a measurement - RemoteInstance logs `dialect drift` on the first real
+    // handshake and Activity shows what was negotiated. Correct this field from
+    // that line. Stripe is the reason the distinction is written down: it was
+    // carried at the default until a handshake proved it two revisions older.
+    //
+    // Its own variable rather than sharing CLOUDFLARE_API_TOKEN with the API
+    // entry, because these are separate profiles against separate servers and
+    // a token minted for reading logs should not have to be the token that
+    // can edit DNS.
+    BastionServer(
+      id: "cloudflare-observability",
+      displayName: "Cloudflare Observability",
+      summary: "Cloudflare Workers logs and analytics, as a remote MCP server: query invocations, errors and traces.",
+      transport: .remote(endpoint: URL(string: "https://observability.mcp.cloudflare.com/mcp")!),
+      docsURL: URL(string: "https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: [],
+      gateBypass: [],
+      authModes: [
+        .init(
+          id: "oauth2",
+          displayName: "Sign in with Cloudflare",
+          kind: .oauth,
+          env: [],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+        .init(
+          id: "api-token",
+          displayName: "API token",
+          kind: .env,
+          env: ["CLOUDFLARE_OBSERVABILITY_TOKEN"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+      ],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "CLOUDFLARE_OBSERVABILITY_TOKEN",
+          isRequired: false,
+          isSecret: true,
+          summary: "Cloudflare API token with Workers Observability read access, sent as the bearer token.",
+          header: .init(name: "Authorization", format: "Bearer {value}")),
+      ]),
   ]
   // </generated:servers>
 

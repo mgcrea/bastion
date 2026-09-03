@@ -58,6 +58,21 @@ export const SPELLED = [
   "thirteen",
   "fourteen",
   "fifteen",
+  "sixteen",
+  "seventeen",
+  "eighteen",
+  "nineteen",
+  "twenty",
+  "twenty-one",
+  "twenty-two",
+  "twenty-three",
+  "twenty-four",
+  "twenty-five",
+  "twenty-six",
+  "twenty-seven",
+  "twenty-eight",
+  "twenty-nine",
+  "thirty",
 ] as const;
 
 const spell = (n: number) => SPELLED[n] ?? String(n);

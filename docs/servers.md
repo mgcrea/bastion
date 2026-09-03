@@ -56,10 +56,14 @@ bearer token against every other profile. It is checked on every request rather
 than once when the entry is added, because a name that passed yesterday can
 resolve somewhere else today. `make remote-check` asserts all of it.
 
-What Bastion does not do is curate. That problem is solved and free elsewhere —
+Bastion curates lightly, and only to fill the first screen. The catalog seeds
+twenty entries — nine servers written here, and eleven endpoints their own
+vendors operate — because a catalog that opens with nothing recognisable in it
+teaches nobody what the app is for. It is still not trying to be a directory:
 Docker MCP Toolkit ships hundreds of curated servers, Anthropic ships MCPB
-double-click install and an official registry. The part worth building is the
-runtime underneath: supervision, identity, and a record of what was called.
+double-click install and an official registry, and anything not seeded here is
+one npm package name or one URL away. The part worth building is the runtime
+underneath: supervision, identity, and a record of what was called.
 
 ## What a remote server keeps, and what it gives up
 
@@ -157,6 +161,16 @@ asserts both eras against a running build.
 | [OVHcloud](https://github.com/mgcrea/mcp-ovh) | `ovh` | `ovh-mcp` | `@mgcrea/mcp-ovh` (npm) | `OVH_ALLOW_WRITES` | 4 |
 | [Keycloak](https://github.com/mgcrea/mcp-keycloak) | `keycloak` | `keycloak-mcp` | `@mgcrea/mcp-keycloak` (npm) | `KEYCLOAK_ALLOW_WRITES` | 2 |
 | [npm](https://github.com/mgcrea/mcp-npm) | `npm` | `npm-mcp` | `@mgcrea/mcp-npm` (npm) | `NPM_ALLOW_WRITES` | 2 |
+| [GitHub](https://github.com/github/github-mcp-server) | `github` | — | `https://api.githubcopilot.com/mcp/` (remote) | `actions_run_trigger`, `add_comment_to_pending_review`, `add_issue_comment`, `add_reply_to_pull_request_comment`, `assign_copilot_to_issue`, `assign_copilot_to_issue_with_intent`, `create_branch`, `create_gist`, `create_or_update_file`, `create_pull_request`, `create_pull_request_with_copilot`, `create_repository`, `delete_file`, `delete_repository`, `discussion_comment_write`, `dismiss_notification`, `fork_repository`, `issue_write`, `label_write`, `manage_notification_subscription`, `manage_repository_notification_subscription`, `mark_all_notifications_read`, `merge_pull_request`, `projects_write`, `pull_request_review_write`, `push_files`, `request_copilot_review`, `star_repository`, `sub_issue_write`, `unstar_repository`, `update_gist`, `update_pull_request`, `update_pull_request_branch` (by name) | 1 |
+| [Notion](https://developers.notion.com/docs/mcp) | `notion` | — | `https://mcp.notion.com/mcp` (remote) | read-only | 1 |
+| [Linear](https://linear.app/docs/mcp) | `linear` | — | `https://mcp.linear.app/mcp` (remote) | read-only | 1 |
+| [Sentry](https://mcp.sentry.dev/) | `sentry` | — | `https://mcp.sentry.dev/mcp` (remote) | read-only | 1 |
+| [Atlassian](https://github.com/atlassian/atlassian-mcp-server) | `atlassian` | — | `https://mcp.atlassian.com/v2/mcp` (remote) | read-only | 1 |
+| [Figma](https://developers.figma.com/docs/figma-mcp-server/) | `figma` | — | `https://mcp.figma.com/mcp` (remote) | read-only | 1 |
+| [Vercel](https://vercel.com/docs/agent-resources/vercel-mcp) | `vercel` | — | `https://mcp.vercel.com` (remote) | `deploy_to_vercel`, `use_vercel_cli`, `import-claude-design-from-url`, `buy_pro`, `buy_credits`, `buy_addon`, `buy_domain`, `change_toolbar_thread_resolve_status`, `reply_to_toolbar_thread`, `edit_toolbar_message`, `add_toolbar_reaction` (by name) | 1 |
+| [Cloudflare](https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/) | `cloudflare` | — | `https://mcp.cloudflare.com/mcp` (remote) | read-only | 1 |
+| [Cloudflare Docs](https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/) | `cloudflare-docs` | — | `https://docs.mcp.cloudflare.com/mcp` (remote) | read-only | 1 |
+| [Cloudflare Observability](https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/) | `cloudflare-observability` | — | `https://observability.mcp.cloudflare.com/mcp` (remote) | read-only | 1 |
 
 ### App Store Connect
 
@@ -441,4 +455,314 @@ than by policy.
 | `NPM_ALLOW_WRITES` | — | — | Registers the write tools: publish and unpublish, dist-tags, deprecation, package access, org and team membership, tokens, and trusted-publisher changes. |
 
 Per-profile state: `NPM_CONFIG_USERCONFIG`, `NPM_MCP_CONFIG`
+
+### GitHub
+
+GitHub's own remote MCP server: repositories, issues, pull requests, Actions, code scanning and Dependabot alerts.
+
+REMOTE. GitHub operates this one; Bastion holds the credential and the
+audit line and forwards the call.
+
+DIALECT UNMEASURED. Seeded at 2025-11-25, which is what the one endpoint
+in this family that answers unauthenticated actually negotiates. Every
+other one 401s before it will say, so this number is a starting point and
+not a measurement - RemoteInstance logs `dialect drift` on the first real
+handshake and Activity shows what was negotiated. Correct this field from
+that line. Stripe is the reason the distinction is written down: it was
+carried at the default until a handshake proved it two revisions older.
+
+WRITE TOOLS TAKEN FROM THE PUBLISHED TOOL TABLE, not from a live
+tools/list - the endpoint 401s before it will enumerate. Thirty-three
+names, and delete_repository is the one worth reading twice. The list is
+belt and braces either way: Bastion also gates anything the server
+annotates readOnlyHint:false, which is the half that caught three
+quarters of Stripe's write surface.
+
+The token is the real boundary, not the gate. A classic PAT with repo
+scope reaches every repository the account can see, including private
+ones in other organisations. Prefer a fine-grained token.
+
+| Variable | Required | Secret | Sent as | Meaning |
+| --- | --- | --- | --- | --- |
+| `GITHUB_TOKEN` | — | yes | `Authorization: Bearer {value}` | Personal access token, sent as the bearer token. Scope it to the repositories you actually want reachable: the write gate filters what Bastion forwards, it cannot take back a permission the token already grants. |
+
+Hidden with writes off: `actions_run_trigger`, `add_comment_to_pending_review`, `add_issue_comment`, `add_reply_to_pull_request_comment`, `assign_copilot_to_issue`, `assign_copilot_to_issue_with_intent`, `create_branch`, `create_gist`, `create_or_update_file`, `create_pull_request`, `create_pull_request_with_copilot`, `create_repository`, `delete_file`, `delete_repository`, `discussion_comment_write`, `dismiss_notification`, `fork_repository`, `issue_write`, `label_write`, `manage_notification_subscription`, `manage_repository_notification_subscription`, `mark_all_notifications_read`, `merge_pull_request`, `projects_write`, `pull_request_review_write`, `push_files`, `request_copilot_review`, `star_repository`, `sub_issue_write`, `unstar_repository`, `update_gist`, `update_pull_request`, `update_pull_request_branch` — and any tool the server annotates as not read-only. This filters what Bastion forwards; it does not bind the server, so the credential's own scopes remain the real boundary.
+
+Satisfy exactly one of: **Sign in with GitHub** (no variables — Bastion holds the token), **Personal access token** (`GITHUB_TOKEN`)
+
+### Notion
+
+Notion's own remote MCP server: search, read and update pages, databases and comments.
+
+REMOTE. Its own discovery document calls it "Notion MCP (Beta)", so
+expect the tool surface to move.
+
+DIALECT UNMEASURED. Seeded at 2025-11-25, which is what the one endpoint
+in this family that answers unauthenticated actually negotiates. Every
+other one 401s before it will say, so this number is a starting point and
+not a measurement - RemoteInstance logs `dialect drift` on the first real
+handshake and Activity shows what was negotiated. Correct this field from
+that line. Stripe is the reason the distinction is written down: it was
+carried at the default until a handshake proved it two revisions older.
+
+NO writeTools LIST. The endpoint 401s before it will enumerate and
+Notion publishes no stable tool table, so naming tools here would be
+guesswork that silently matches nothing. Writes are gated by the
+server's own readOnlyHint:false annotations instead. Say that out loud
+in the UI rather than implying a hand-checked denylist exists.
+
+| Variable | Required | Secret | Sent as | Meaning |
+| --- | --- | --- | --- | --- |
+| `NOTION_TOKEN` | — | yes | `Authorization: Bearer {value}` | Internal integration token, sent as the bearer token. A Notion integration reaches only the pages explicitly shared with it, so the sharing list is the real boundary here. |
+
+Satisfy exactly one of: **Sign in with Notion** (no variables — Bastion holds the token), **Integration token** (`NOTION_TOKEN`)
+
+### Linear
+
+Linear's own remote MCP server: issues, projects, cycles, comments and documents.
+
+REMOTE. The cleanest OAuth story in this file: discovery advertises a
+registration_endpoint, PKCE, and scopes_supported [read, write], so
+Bastion's dynamic registration has everything it needs.
+
+DIALECT UNMEASURED. Seeded at 2025-11-25, which is what the one endpoint
+in this family that answers unauthenticated actually negotiates. Every
+other one 401s before it will say, so this number is a starting point and
+not a measurement - RemoteInstance logs `dialect drift` on the first real
+handshake and Activity shows what was negotiated. Correct this field from
+that line. Stripe is the reason the distinction is written down: it was
+carried at the default until a handshake proved it two revisions older.
+
+THERE IS A READ-ONLY URL and this entry does not use it. Linear also
+serves https://mcp.linear.app/mcp/readonly, where the SERVER enforces
+what writeTools can only filter. One url per entry, so this is a real
+fork in the road: point a second entry at it, or tell people who want
+writes off to use a key scoped to read. Worth deciding rather than
+leaving to whoever reads this next.
+
+NO writeTools LIST - 401 before enumeration, same as the others. The
+annotation gate carries it.
+
+| Variable | Required | Secret | Sent as | Meaning |
+| --- | --- | --- | --- | --- |
+| `LINEAR_API_KEY` | — | yes | `Authorization: Bearer {value}` | Linear API key, sent as the bearer token. Linear issues read and write as separate OAuth scopes, so a key minted for reads is a stronger control than the write gate. |
+
+Satisfy exactly one of: **Sign in with Linear** (no variables — Bastion holds the token), **API key** (`LINEAR_API_KEY`)
+
+### Sentry
+
+Sentry's own remote MCP server: issues, events, releases and Seer analysis across your organisations.
+
+REMOTE. docs.sentry.io/product/sentry-mcp/ 301s to mcp.sentry.dev,
+which is both the server and its documentation, so docsUrl points
+there.
+
+DIALECT UNMEASURED. Seeded at 2025-11-25, which is what the one endpoint
+in this family that answers unauthenticated actually negotiates. Every
+other one 401s before it will say, so this number is a starting point and
+not a measurement - RemoteInstance logs `dialect drift` on the first real
+handshake and Activity shows what was negotiated. Correct this field from
+that line. Stripe is the reason the distinction is written down: it was
+carried at the default until a handshake proved it two revisions older.
+
+NO writeTools LIST. Sentry documents permission scopes rather than a
+tool table, so there is nothing to copy that would not be invented.
+The annotation gate is what is actually holding writes here.
+
+| Variable | Required | Secret | Sent as | Meaning |
+| --- | --- | --- | --- | --- |
+| `SENTRY_ACCESS_TOKEN` | — | yes | `Authorization: Bearer {value}` | Sentry user auth token, sent as the bearer token. Its own scopes decide what is reachable; project:write and event:write are the ones to leave off unless something needs them. |
+
+Satisfy exactly one of: **Sign in with Sentry** (no variables — Bastion holds the token), **User auth token** (`SENTRY_ACCESS_TOKEN`)
+
+### Atlassian
+
+Atlassian's own Rovo MCP server: Jira, Confluence, Jira Service Management, Bitbucket and Compass.
+
+REMOTE. v2 is the current path - anything still pointing at
+mcp.atlassian.com/v1/sse is on a version Atlassian has retired.
+
+DIALECT UNMEASURED. Seeded at 2025-11-25, which is what the one endpoint
+in this family that answers unauthenticated actually negotiates. Every
+other one 401s before it will say, so this number is a starting point and
+not a measurement - RemoteInstance logs `dialect drift` on the first real
+handshake and Activity shows what was negotiated. Correct this field from
+that line. Stripe is the reason the distinction is written down: it was
+carried at the default until a handshake proved it two revisions older.
+
+ONLY THE SERVICE ACCOUNT KEY IS OFFERED, and that is deliberate.
+Atlassian takes two token shapes: a service account API key as
+`Authorization: Bearer <key>`, which fits a header format cleanly, and
+a personal API token as `Authorization: Basic <base64(email:token)>`,
+which would make the user paste a base64 blob they had to build
+themselves. Personal-token users should sign in with OAuth instead.
+
+Permissions are grouped upstream (read_jira, write_jira, delete_jira
+and so on) and delete_jira and manage_jira are admin-enabled and off by
+default, so most accounts cannot reach the destructive half at all.
+
+| Variable | Required | Secret | Sent as | Meaning |
+| --- | --- | --- | --- | --- |
+| `ATLASSIAN_API_KEY` | — | yes | `Authorization: Bearer {value}` | Service account API key, sent as the bearer token. An organisation admin must enable API token authentication before any key works; if that is off, OAuth is the only way in. |
+
+Satisfy exactly one of: **Sign in with Atlassian** (no variables — Bastion holds the token), **Service account API key** (`ATLASSIAN_API_KEY`)
+
+### Figma
+
+Figma's own remote MCP server: design file context, components and variables for coding agents.
+
+REMOTE. Figma also ships a local server that talks to the desktop app;
+this entry is the hosted one, which is the one Figma recommends.
+
+DIALECT UNMEASURED. Seeded at 2025-11-25, which is what the one endpoint
+in this family that answers unauthenticated actually negotiates. Every
+other one 401s before it will say, so this number is a starting point and
+not a measurement - RemoteInstance logs `dialect drift` on the first real
+handshake and Activity shows what was negotiated. Correct this field from
+that line. Stripe is the reason the distinction is written down: it was
+carried at the default until a handshake proved it two revisions older.
+
+THE TOKEN HEADER IS THE UNCERTAIN PART. Figma's REST API authenticates
+with X-Figma-Token, not a bearer token, and the MCP endpoint's own
+challenge asks for Bearer. Bearer is what is written here because that
+is what the endpoint asked for, but it is untested against a real
+token. If it is refused, the fix is one header format, not an entry.
+
+NO writeTools LIST. Mostly a read surface, and 401 before enumeration.
+
+| Variable | Required | Secret | Sent as | Meaning |
+| --- | --- | --- | --- | --- |
+| `FIGMA_ACCESS_TOKEN` | — | yes | `Authorization: Bearer {value}` | Figma personal access token, sent as the bearer token. Note that Figma's REST API takes its tokens in X-Figma-Token instead; if this path is refused, sign in with OAuth. |
+
+Satisfy exactly one of: **Sign in with Figma** (no variables — Bastion holds the token), **Personal access token** (`FIGMA_ACCESS_TOKEN`)
+
+### Vercel
+
+Vercel's own remote MCP server: projects, deployments, runtime logs, Web Analytics and documentation search.
+
+REMOTE. Its discovery document points authorization_servers at
+vercel.com rather than at itself, so the OAuth dance leaves the MCP
+host entirely.
+
+DIALECT UNMEASURED. Seeded at 2025-11-25, which is what the one endpoint
+in this family that answers unauthenticated actually negotiates. Every
+other one 401s before it will say, so this number is a starting point and
+not a measurement - RemoteInstance logs `dialect drift` on the first real
+handshake and Activity shows what was negotiated. Correct this field from
+that line. Stripe is the reason the distinction is written down: it was
+carried at the default until a handshake proved it two revisions older.
+
+VERCEL SAYS IT SUPPORTS 2026-07-28. Their changelog announces it, which
+would make this the first entry in the file that is modern rather than
+legacy. It is NOT written into dialect above, because a handshake that
+proposes a version the server does not take fails the connection, and
+nothing here has proved it. Measure it, then raise this field - that
+order round the wrong way is an outage.
+
+THIS ONE SPENDS MONEY. buy_pro, buy_credits, buy_addon and buy_domain
+are real tools on a real payment method, and deploy_to_vercel and
+use_vercel_cli change what is serving production. All eleven are named
+in writeTools, taken from Vercel's published tool table.
+
+VERCEL ALLOWLISTS CLIENTS. Their documentation says the server "only
+supports AI clients that have been reviewed and approved by Vercel" and
+names twelve; Bastion is not among them. Dynamic registration may
+simply be refused, in which case the access-token mode is the way in
+and this is worth an approach to Vercel rather than a workaround.
+
+| Variable | Required | Secret | Sent as | Meaning |
+| --- | --- | --- | --- | --- |
+| `VERCEL_TOKEN` | — | yes | `Authorization: Bearer {value}` | Vercel access token, sent as the bearer token. Scope it to one team if you can - this server can deploy code and spend money, and the token's own scopes are the only thing that stops it. |
+
+Hidden with writes off: `deploy_to_vercel`, `use_vercel_cli`, `import-claude-design-from-url`, `buy_pro`, `buy_credits`, `buy_addon`, `buy_domain`, `change_toolbar_thread_resolve_status`, `reply_to_toolbar_thread`, `edit_toolbar_message`, `add_toolbar_reaction` — and any tool the server annotates as not read-only. This filters what Bastion forwards; it does not bind the server, so the credential's own scopes remain the real boundary.
+
+Satisfy exactly one of: **Sign in with Vercel** (no variables — Bastion holds the token), **Access token** (`VERCEL_TOKEN`)
+
+### Cloudflare
+
+Cloudflare's own remote MCP server: the API surface across zones, DNS, Workers, R2 and the rest of the account.
+
+REMOTE. Cloudflare runs seventeen separate hosted endpoints rather than
+one; three of them are in this catalog - the API surface here, the
+documentation search, and observability. The other fourteen (Radar,
+Workers Bindings, Workers Builds, Browser Run, AI Gateway, Logpush,
+GraphQL, DNS Analytics, Audit Logs, Container, AI Search, DEX, CASB and
+the Agents SDK docs) are the same shape if anyone wants them.
+
+DIALECT UNMEASURED. Seeded at 2025-11-25, which is what the one endpoint
+in this family that answers unauthenticated actually negotiates. Every
+other one 401s before it will say, so this number is a starting point and
+not a measurement - RemoteInstance logs `dialect drift` on the first real
+handshake and Activity shows what was negotiated. Correct this field from
+that line. Stripe is the reason the distinction is written down: it was
+carried at the default until a handshake proved it two revisions older.
+
+THE BROADEST SURFACE IN THE FILE. Cloudflare advertises this one as
+2,500+ API endpoints, which is most of an account behind a single
+credential. The token's permissions are the boundary; the gate is not.
+
+NO writeTools LIST - 401 before enumeration. The annotation gate holds
+writes, and on a surface this wide that is worth stating plainly to
+anyone about to turn the gate off.
+
+| Variable | Required | Secret | Sent as | Meaning |
+| --- | --- | --- | --- | --- |
+| `CLOUDFLARE_API_TOKEN` | — | yes | `Authorization: Bearer {value}` | Cloudflare API token, sent as the bearer token. Mint it against the specific zones and permissions you want reachable rather than reusing an account-wide token. |
+
+Satisfy exactly one of: **Sign in with Cloudflare** (no variables — Bastion holds the token), **API token** (`CLOUDFLARE_API_TOKEN`)
+
+### Cloudflare Docs
+
+Cloudflare's documentation search, as a remote MCP server. Needs no credential.
+
+REMOTE, and the only entry in this file that needs no credential at
+all. A POST of `initialize` with no Authorization header returns 200.
+So authModes is empty, the way Shopify's is, and for the same reason:
+there is nothing to authenticate.
+
+DIALECT MEASURED 2026-09-02, and it is the only one in this batch that
+is. An unauthenticated handshake negotiates 2025-11-25 and serverInfo
+reports docs-ai-search 0.4.13. Every other endpoint added alongside it
+401s before it will say, and carries a seeded value instead.
+
+TOOL LIST MEASURED 2026-09-02 as well, and it is read-only: exactly two
+tools, search_cloudflare_documentation and migrate_pages_to_workers_guide,
+both annotated readOnlyHint:true. There is no write surface to gate.
+
+Bastion still counts this entry as HAVING a write path, and that is not a
+bug - "read-only" is not a claim the app can make about a remote server in
+advance, so hasWritePath says yes for every remote entry. Over-reporting is
+the safe direction and this note is the only place the difference is
+written down.
+
+| Variable | Required | Secret | Sent as | Meaning |
+| --- | --- | --- | --- | --- |
+| `CLOUDFLARE_DOCS_TOKEN` | — | yes | `Authorization: Bearer {value}` | Not needed. This server answers unauthenticated, and a remote entry has to declare at least one variable somewhere for a value to land; leave it empty. |
+
+### Cloudflare Observability
+
+Cloudflare Workers logs and analytics, as a remote MCP server: query invocations, errors and traces.
+
+REMOTE. A narrow read surface next to the full Cloudflare API entry:
+Workers logs, analytics and traces, which is what you want open during
+an incident without opening the account with it.
+
+DIALECT UNMEASURED. Seeded at 2025-11-25, which is what the one endpoint
+in this family that answers unauthenticated actually negotiates. Every
+other one 401s before it will say, so this number is a starting point and
+not a measurement - RemoteInstance logs `dialect drift` on the first real
+handshake and Activity shows what was negotiated. Correct this field from
+that line. Stripe is the reason the distinction is written down: it was
+carried at the default until a handshake proved it two revisions older.
+
+Its own variable rather than sharing CLOUDFLARE_API_TOKEN with the API
+entry, because these are separate profiles against separate servers and
+a token minted for reading logs should not have to be the token that
+can edit DNS.
+
+| Variable | Required | Secret | Sent as | Meaning |
+| --- | --- | --- | --- | --- |
+| `CLOUDFLARE_OBSERVABILITY_TOKEN` | — | yes | `Authorization: Bearer {value}` | Cloudflare API token with Workers Observability read access, sent as the bearer token. |
+
+Satisfy exactly one of: **Sign in with Cloudflare** (no variables — Bastion holds the token), **API token** (`CLOUDFLARE_OBSERVABILITY_TOKEN`)
 <!-- </generated:servers> -->

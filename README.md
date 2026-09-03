@@ -69,7 +69,7 @@ restricted key.
 
 ## Servers
 
-**Bastion ships with nothing installed.** It ships with a _catalog_ of ten, listed in
+**Bastion ships with nothing installed.** It ships with a _catalog_ of twenty, listed in
 [`servers.json`](servers.json) and documented in [docs/servers.md](docs/servers.md); the list an
 install actually runs lives in Application Support, starts empty, and the user edits it. Install
 Install from the catalog, or add any other MCP server by npm package name. Code is fetched on demand into
@@ -103,9 +103,12 @@ the id resolves against the list the _user_ installed, or it 404s. Nothing arriv
 can name a package, a path or an argv, and a custom entry supplies a package and a bin name rather
 than a command line.
 
-What Bastion does not do is curate. That is solved and free elsewhere — Docker MCP Toolkit ships
-hundreds of curated servers, Anthropic ships MCPB double-click install and an official registry. The
-part worth building is the runtime underneath.
+Bastion curates lightly, and only to fill the first screen. The catalog seeds twenty entries — nine
+servers written here, and eleven endpoints their own vendors operate — because a catalog that opens
+with nothing recognisable in it teaches nobody what the app is for. It is still not trying to be a
+directory: Docker MCP Toolkit ships hundreds of curated servers, Anthropic ships MCPB double-click
+install and an official registry, and anything not seeded here is one npm package name or one URL
+away. The part worth building is the runtime underneath.
 
 Adding an entry to the _catalog_ is a manifest edit and `make servers`; every generated copy is
 checked in CI.
@@ -255,9 +258,9 @@ Built and verified:
 | **Gateway**             | loopback HTTP, `Origin` / `Host` / bearer, hand-written so the checks are auditable |
 | **Supervisor**          | one child per profile, id remapping, backoff, circuit breaker, idle stop            |
 | **Dialect**             | dual-era: modern 2026-07-28 and legacy `initialize`, onto legacy children           |
-| **Catalog**             | ten seeded servers, a generator, and a CI drift check                               |
+| **Catalog**             | twenty seeded servers, a generator, and a CI drift check                            |
 | **Server store**        | the user's own list, on-demand npm install, add, remove, and a per-server switch    |
-| **Remote servers**      | an https endpoint fronted like any other server — Stripe's, in the catalog          |
+| **Remote servers**      | an https endpoint fronted like any other server — eleven of them in the catalog     |
 | **OAuth 2.1**           | discovery, dynamic registration, PKCE and refresh — one consent, every client       |
 | **Bastion's server**    | Bastion as one of its own servers, so an agent can manage it — off by default       |
 | **Keychain**            | per-profile credentials, per-client tokens                                          |
@@ -278,10 +281,18 @@ all; a legacy client opens with `initialize` and is served that way. Both land o
 Bastion took with the child at spawn, and `server/discover` — mandatory in the modern revision, and
 implemented by none of these servers — is synthesised from it.
 
-None of the ten catalog servers are modern. Every one runs an SDK whose newest protocol is
+None of the twenty catalog servers are modern. The nine children run an SDK whose newest protocol is
 `2025-11-25`, which is what they negotiate. The manifest said `2025-06-18` until a live handshake was
 actually run against one; that was Bastion's own pin masquerading as a fact about the servers. A
 server you add yourself is fronted the same way, and declares its own dialect when you add it.
+
+**Ten of the eleven remote entries carry a seeded dialect, not a measured one.** They all refuse
+`initialize` without a credential, so `2025-11-25` is a starting point in the manifest and the first
+real handshake is what will measure them — `RemoteInstance` logs `dialect drift` and Activity shows
+what was actually negotiated. Cloudflare Docs is the exception: it answers unauthenticated, and was
+measured at `2025-11-25`. Vercel advertises `2026-07-28`, which would make it the first modern server
+in the file, but proposing a version a server does not take fails the connection, so that number
+goes in after somebody measures it and not before.
 
 **Stripe's is the oldest dialect in the file**, and it took a credential to find out.
 `mcp.stripe.com` refuses `initialize` without one — it answers 401 with a `WWW-Authenticate` naming

@@ -69,11 +69,14 @@ runs it.
 
 ## Servers
 
-Bastion ships with nothing installed. Ten entries are in the catalog you install from — App Store
-Connect, Reddit, X API, UniFi Protect, UniFi Network, Stripe, Shopify, OVH API, Keycloak and npm —
-and anything else on npm can be added by package name, or by URL for a remote server. Nine sit
-behind a write gate; Shopify is read-only. Code is fetched on demand into Bastion's own directory
-and run with the embedded Node runtime.
+Bastion ships with nothing installed. Twenty entries are in the catalog you install from. Nine are
+servers written here and run as child processes — App Store Connect, Reddit, X, UniFi Protect, UniFi
+Network, Shopify, OVHcloud, Keycloak and npm — and eleven are https endpoints their own vendors
+operate: Stripe, GitHub, Notion, Linear, Sentry, Atlassian, Figma, Vercel and three Cloudflare
+endpoints. Anything else on npm can be added by package name, or by URL for a remote server. Eight
+of the nine children sit behind a write gate and Shopify is read-only; a remote server has no
+environment to set, so its writes are gated by what Bastion forwards instead. Code is fetched on
+demand into Bastion's own directory and run with the embedded Node runtime.
 
 `servers.json` at the repository root is the single source of truth for the catalog; the website's
 table and the app's Swift catalog are both generated from it and CI fails on drift.
