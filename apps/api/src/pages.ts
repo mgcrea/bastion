@@ -49,6 +49,24 @@ it in. It covers every 1.x release, on every Mac you own, and does not expire.</
   );
 
 /**
+ * The same URL, a week later.
+ *
+ * A checkout session id lands in browser history, in the Referer of the link
+ * this page carries, and in support screenshots, and it never expires on
+ * Stripe's side. Showing the key against it forever turns each of those into a
+ * copy of the licence. After a week the buyer has long since read the mail, so
+ * the page says where the key went instead of what it is.
+ */
+export const sentPage = (email: string): string =>
+  shell(
+    "Your Bastion licence",
+    `<h1>Already sent.</h1>
+<p>Your licence key was emailed to ${escapeHtml(email)} when you bought it, and this page
+stopped showing it after a week.</p>
+<p>Cannot find the message? Reply to your Stripe receipt and it will be re-sent.</p>`,
+  );
+
+/**
  * Stripe redirects the moment payment succeeds, which can outrun the webhook.
  * This is that gap, and it says so rather than showing an error for a purchase
  * that went through perfectly.

@@ -44,7 +44,16 @@ describe("checkoutSession", () => {
   });
 
   it("accepts one with everything optional missing", () => {
-    expect(checkoutSession.safeParse({ id: "cs_test_2" }).success).toBe(true);
+    expect(checkoutSession.safeParse({ id: "cs_test_2", payment_status: "paid" }).success).toBe(
+      true,
+    );
+  });
+
+  it("names the field when the payment status is missing", () => {
+    // Everything else fails soft. This one would cost a licence if it did.
+    const result = checkoutSession.safeParse({ ...good, payment_status: undefined });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.path).toEqual(["payment_status"]);
   });
 
   it("names the field when the id is missing", () => {

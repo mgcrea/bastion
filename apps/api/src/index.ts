@@ -14,7 +14,7 @@
 import { sendLicense } from "./email";
 import type { LicenseRow } from "./env";
 import { mint } from "./license";
-import { notFoundPage, pendingPage, thanksPage } from "./pages";
+import { notFoundPage, pendingPage, sentPage, thanksPage } from "./pages";
 import {
   charge,
   checkoutSession,
@@ -30,6 +30,16 @@ const SEND_COOLDOWN_MS = 5 * 60 * 1000;
 
 /** A resend body is an address. Anything larger is not one. */
 const MAX_BODY_BYTES = 4096;
+
+/**
+ * A Stripe event is a few kilobytes; a checkout session with metadata is well
+ * under sixty-four. The HMAC has to run over the whole body, so the body is
+ * bounded before it is buffered rather than after.
+ */
+const MAX_WEBHOOK_BYTES = 256 * 1024;
+
+/** How long `/thanks` keeps showing the key against a session id. */
+const THANKS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Which field moved, in one line, for the log. */
 const explain = (error: { issues: { path: PropertyKey[]; message: string }[] }): string =>
@@ -47,6 +57,57 @@ const json = (body: unknown, status = 200): Response =>
 const sentWithin = (at: string | null, window: number, now: number): boolean =>
   at !== null && now - Date.parse(at) < window;
 
+/**
+ * Read a body, or give up once it exceeds `cap`. `null` means it did.
+ *
+ * Reading the stream rather than trusting `Content-Length`: the header is the
+ * sender's claim, and a chunked body carries none. Cancelling the reader is
+ * what stops the rest from being received at all.
+ */
+const readCapped = async (request: Request, cap: number): Promise<string | null> => {
+  if (Number(request.headers.get("content-length") ?? "0") > cap) return null;
+  const reader = request.body?.getReader();
+  if (!reader) return "";
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > cap) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const joined = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    joined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(joined);
+};
+
+/**
+ * Whether this address has had its share of a public route for the minute.
+ *
+ * Keyed on the connecting address, which Cloudflare sets and a client cannot.
+ * A missing binding — a wrangler that has not got one, a test that stubbed it
+ * out — means no limit rather than a crash: the routes were public without one
+ * for a month, and a fulfilment must never fail on a limiter.
+ */
+const overLimit = async (limiter: RateLimit | undefined, request: Request): Promise<boolean> => {
+  if (!limiter) return false;
+  const key = request.headers.get("cf-connecting-ip") ?? "unknown";
+  try {
+    const outcome = await limiter.limit({ key });
+    return !outcome.success;
+  } catch {
+    return false;
+  }
+};
+
 const markSent = async (env: Env, id: string): Promise<void> => {
   await env.DB.prepare("UPDATE licenses SET last_sent_at = ? WHERE id = ?")
     .bind(new Date().toISOString(), id)
@@ -54,7 +115,9 @@ const markSent = async (env: Env, id: string): Promise<void> => {
 };
 
 const findBySession = (env: Env, sessionId: string): Promise<LicenseRow | null> =>
-  env.DB.prepare("SELECT id, email, key, last_sent_at FROM licenses WHERE stripe_session_id = ?")
+  env.DB.prepare(
+    "SELECT id, email, key, issued_at, last_sent_at FROM licenses WHERE stripe_session_id = ?",
+  )
     .bind(sessionId)
     .first<LicenseRow>();
 
@@ -75,7 +138,7 @@ const fulfil = async (object: unknown, env: Env, livemode: boolean): Promise<Res
     return new Response(`session: ${explain(parsed.error)}`, { status: 400 });
   }
   const session = parsed.data;
-  if (session.payment_status && session.payment_status !== "paid") {
+  if (session.payment_status !== "paid") {
     return new Response("not paid yet", { status: 200 });
   }
   const email = session.customer_details?.email?.trim().toLowerCase();
@@ -120,13 +183,19 @@ const fulfil = async (object: unknown, env: Env, livemode: boolean): Promise<Res
     // than any duplicate.
     row = await findBySession(env, session.id);
   }
-  if (!row) return new Response("could not record the licence", { status: 500 });
+  if (!row) {
+    console.error(`fulfil: no row after insert for session ${session.id}`);
+    return new Response("could not record the licence", { status: 500 });
+  }
 
   if (sentWithin(row.last_sent_at, SEND_COOLDOWN_MS, Date.now())) {
     return new Response("already sent", { status: 200 });
   }
   const sent = await sendLicense(env, row.email, row.key);
-  if (!sent.ok) return new Response(`email: ${sent.reason}`, { status: 500 });
+  if (!sent.ok) {
+    console.error(`fulfil: email failed for licence ${row.id}: ${sent.reason}`);
+    return new Response(`email: ${sent.reason}`, { status: 500 });
+  }
   await markSent(env, row.id);
   return new Response("ok", { status: 200 });
 };
@@ -214,13 +283,17 @@ const disputeClosed = async (object: unknown, env: Env): Promise<Response> => {
  * same retry loop a malformed one belongs in.
  */
 const handleWebhook = async (request: Request, env: Env): Promise<Response> => {
-  const raw = await request.text();
+  const raw = await readCapped(request, MAX_WEBHOOK_BYTES);
+  if (raw === null) return new Response("body too large", { status: 413 });
   const verified = await verifySignature(
     raw,
     request.headers.get("stripe-signature"),
     env.STRIPE_WEBHOOK_SECRET,
   );
-  if (!verified.ok) return new Response(`signature: ${verified.reason}`, { status: 400 });
+  if (!verified.ok) {
+    console.error(`webhook: refused, ${verified.reason}`);
+    return new Response(`signature: ${verified.reason}`, { status: 400 });
+  }
 
   let envelope: ReturnType<typeof eventEnvelope.safeParse>;
   try {
@@ -245,12 +318,16 @@ const handleWebhook = async (request: Request, env: Env): Promise<Response> => {
   }
 };
 
-const handleThanks = async (url: URL, env: Env): Promise<Response> => {
+const handleThanks = async (request: Request, url: URL, env: Env): Promise<Response> => {
   const sessionId = url.searchParams.get("session_id");
   if (!sessionId) return html(notFoundPage(), 404);
+  // The pending page, not an error: to a browser that has just paid, a limit
+  // and a slow webhook look the same and deserve the same sentence.
+  if (await overLimit(env.THANKS_LIMIT, request)) return html(pendingPage(), 429);
   const row = await findBySession(env, sessionId);
   // The redirect can outrun the webhook. That is a wait, not an error.
   if (!row) return html(pendingPage(), 202);
+  if (Date.now() - Date.parse(row.issued_at) > THANKS_WINDOW_MS) return html(sentPage(row.email));
   return html(thanksPage(row.key, row.email));
 };
 
@@ -264,14 +341,17 @@ const handleThanks = async (url: URL, env: Env): Promise<Response> => {
 const handleResend = async (request: Request, env: Env): Promise<Response> => {
   const answer = json({ ok: true });
 
-  // Declared size first, so an oversized body is refused before it is buffered.
-  // This route is public and nothing legitimate on it exceeds a few hundred bytes.
-  if (Number(request.headers.get("content-length") ?? "0") > MAX_BODY_BYTES) return answer;
+  // The limiter first, before the body is even read, and the same answer when
+  // it bites: the per-licence cooldown below only ever protected a customer's
+  // row, so an address that is not a customer cost a D1 query per request.
+  if (await overLimit(env.RESEND_LIMIT, request)) return answer;
 
   let email: string;
   try {
-    const raw = await request.text();
-    if (raw.length > MAX_BODY_BYTES) return answer;
+    // Bounded before it is buffered. This route is public and nothing
+    // legitimate on it exceeds a few hundred bytes.
+    const raw = await readCapped(request, MAX_BODY_BYTES);
+    if (raw === null) return answer;
     const parsed = resendRequest.safeParse(JSON.parse(raw));
     if (!parsed.success) return answer;
     email = parsed.data.email;
@@ -301,7 +381,7 @@ export default {
       case "POST /stripe/webhook":
         return handleWebhook(request, env);
       case "GET /thanks":
-        return handleThanks(url, env);
+        return handleThanks(request, url, env);
       case "POST /license/resend":
         return handleResend(request, env);
       case "GET /health":

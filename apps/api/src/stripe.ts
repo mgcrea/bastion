@@ -14,8 +14,17 @@
 
 export type Verified = { ok: true } | { ok: false; reason: string };
 
-/** Stripe's tolerance, and the one everyone uses: five minutes either way. */
+/** Stripe's tolerance for age, and the one everyone uses: five minutes. */
 const TOLERANCE_SECONDS = 300;
+
+/**
+ * How far into the future a timestamp may sit. Stripe's own libraries take the
+ * absolute difference, which quietly doubles the replay window: a captured
+ * header stays valid for five minutes AFTER the clock Stripe stamped it with.
+ * A future timestamp is clock skew, not a delivery delay, and two hosts on NTP
+ * do not disagree by a minute.
+ */
+const FUTURE_SKEW_SECONDS = 60;
 
 const hmacHex = async (secret: string, message: string): Promise<string> => {
   const encoder = new TextEncoder();
@@ -63,9 +72,15 @@ export const verifySignature = async (
 
   const seconds = Number(timestamp);
   if (!Number.isFinite(seconds)) return { ok: false, reason: "timestamp is not a number" };
-  const age = Math.abs(now / 1000 - seconds);
+  const age = now / 1000 - seconds;
   if (age > TOLERANCE_SECONDS) {
-    return { ok: false, reason: `timestamp is ${Math.round(age)}s away, tolerance is 300s` };
+    return { ok: false, reason: `timestamp is ${Math.round(age)}s old, tolerance is 300s` };
+  }
+  if (age < -FUTURE_SKEW_SECONDS) {
+    return {
+      ok: false,
+      reason: `timestamp is ${Math.round(-age)}s in the future, tolerance is ${FUTURE_SKEW_SECONDS}s`,
+    };
   }
 
   const expected = await hmacHex(secret, `${timestamp}.${rawBody}`);

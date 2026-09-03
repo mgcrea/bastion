@@ -37,7 +37,14 @@ export const checkoutSession = z.object({
   payment_intent: z.string().nullish(),
   amount_total: z.number().int().nullish(),
   currency: z.string().nullish(),
-  payment_status: z.string().nullish(),
+  /**
+   * Required, unlike its neighbours. Everything else here fails soft because
+   * a missing currency should cost a default; a missing payment status would
+   * cost a licence, since the only safe reading of "unknown" is "not paid" and
+   * a session Stripe sends without one is not a shape this knows. 400 says
+   * which field moved, and stops the retries.
+   */
+  payment_status: z.string(),
   customer_details: z.object({ email: z.string().nullish() }).nullish(),
   /**
    * Copied onto the session from the Payment Link that created it, which is how

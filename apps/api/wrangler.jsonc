@@ -3,7 +3,7 @@
   "account_id": "0121e8859874c6fc0d674676e17d9f18",
   "name": "bastion-api",
   "main": "./src/index.ts",
-  "compatibility_date": "2026-03-31",
+  "compatibility_date": "2026-08-15",
   "routes": [{ "pattern": "api.bastion.mgcrea.io", "custom_domain": true }],
   "d1_databases": [
     {
@@ -19,11 +19,24 @@
   // Paid plan and a verified sender domain, or send() fails E_SENDER_NOT_VERIFIED.
   // mgcrea.io is already verified in this account for cupertino-api.
   "send_email": [{ "name": "EMAIL" }],
+  // Per-address limits on the two routes anyone can call. `namespace_id` is any
+  // integer unique within the account; the numbers mean nothing beyond that.
+  // The limiter is approximate and per-colo, which is the right tool here: it
+  // bounds what a stranger can cost in D1 queries and outbound mail, it never
+  // gates a customer doing the ordinary thing, and a limited request answers
+  // the same way an unlimited one does so nothing is learned from being limited.
+  "ratelimits": [
+    { "name": "RESEND_LIMIT", "namespace_id": "1001", "simple": { "limit": 5, "period": 60 } },
+    { "name": "THANKS_LIMIT", "namespace_id": "1002", "simple": { "limit": 20, "period": 60 } }
+  ],
   "vars": {
     "CURRENT_MAJOR": "1",
     "LICENSE_FROM_EMAIL": "licences@mgcrea.io",
     "SITE_URL": "https://bastion.mgcrea.io"
   },
+  // Workers Logs. Without it a fulfilment failure leaves no trace on this side
+  // at all, and the only forensics is Stripe's own event log.
+  "observability": { "enabled": true },
   "send_metrics": false,
   "workers_dev": false,
   "preview_urls": false

@@ -13,5 +13,6 @@ export interface LicenseRow {
   id: string;
   email: string;
   key: string;
+  issued_at: string;
   last_sent_at: string | null;
 }

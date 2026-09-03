@@ -78,6 +78,17 @@ describe("verifySignature", () => {
     });
   }
 
+  it("allows a timestamp a little ahead of the clock, and refuses one well ahead", async () => {
+    // Stripe's own libraries take the absolute difference, which lets a captured
+    // header stay valid for five minutes after the clock it was stamped with.
+    // A minute of skew is generous for two hosts on NTP; five is a replay.
+    const slightlyAhead = await sign(BODY, SECRET, NOW + 30_000);
+    expect((await verifySignature(BODY, slightlyAhead, SECRET, NOW)).ok).toBe(true);
+    const wellAhead = await sign(BODY, SECRET, NOW + 240_000);
+    const result = await verifySignature(BODY, wellAhead, SECRET, NOW);
+    expect(result.ok === false && result.reason).toMatch(/in the future/);
+  });
+
   it("refuses a replayed signature outside the tolerance", async () => {
     const result = await verifySignature(
       BODY,
