@@ -28,10 +28,13 @@ jobs:
         uses: actions/checkout@v5
       - name: Setup pnpm 🔧
         uses: pnpm/action-setup@v6
+      # `24`, not `lts/*`: the app embeds Node 24 (NODE_VERSION in the Makefile),
+      # and `lts/*` moves to the next major every October, which would put CI on
+      # a runtime no shipped build has ever run.
       - name: Setup node 🔧
         uses: actions/setup-node@v6
         with:
-          node-version: lts/*
+          node-version: 24
           check-latest: true
           cache: "pnpm"
       - name: Install 🪄
@@ -42,6 +45,15 @@ jobs:
         run: pnpm run format:check
       - name: Servers drift 🔍
         run: pnpm run servers:check
+      # The Worker decides whether a paying customer gets a key, and the script
+      # tests assert the Node minter and the Worker produce byte-identical
+      # licences against the public key compiled into the app. Both suites
+      # existed for a month before anything ran them outside a developer's
+      # shell.
+      - name: Types (api) 🔍
+        run: pnpm --filter @mgcrea/bastion-api typecheck
+      - name: Tests 🔍
+        run: pnpm test
 
   # The site build, and the only job that needs Git LFS.
   #
@@ -71,7 +83,7 @@ jobs:
       - name: Setup node 🔧
         uses: actions/setup-node@v6
         with:
-          node-version: lts/*
+          node-version: 24
           check-latest: true
           cache: "pnpm"
       - name: Install 🪄
@@ -80,6 +92,93 @@ jobs:
         run: pnpm --filter @mgcrea/bastion-website typecheck
       - name: Build 📦
         run: pnpm --filter @mgcrea/bastion-website build
+
+  # Deploys, on main only, once the checks above are green.
+  #
+  # Both jobs start, then stop at the first step unless CLOUDFLARE_API_TOKEN is
+  # set: `secrets` cannot gate a job directly, and a job that fails for want of
+  # a secret would keep CI red on every push until somebody added it. Without
+  # the secret they are a no-op and the site and the Worker stay hand-deployed
+  # with `pnpm deploy` in each app, exactly as before.
+  deploy-api:
+    name: Deploy api
+    needs: [manifest]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Token present? 🔑
+        id: token
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ]; then echo "present=true" >> "$GITHUB_OUTPUT"
+          else echo "No CLOUDFLARE_API_TOKEN secret; skipping the deploy."; fi
+      - name: Checkout 🛎️
+        if: steps.token.outputs.present == 'true'
+        uses: actions/checkout@v5
+      - name: Setup pnpm 🔧
+        if: steps.token.outputs.present == 'true'
+        uses: pnpm/action-setup@v6
+      - name: Setup node 🔧
+        if: steps.token.outputs.present == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: "pnpm"
+      - name: Install 🪄
+        if: steps.token.outputs.present == 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Deploy 🚀
+        if: steps.token.outputs.present == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: pnpm --filter @mgcrea/bastion-api deploy
+      # The one thing a green `wrangler deploy` does not prove is that the
+      # Worker answers.
+      - name: Health 🩺
+        if: steps.token.outputs.present == 'true'
+        run: curl -fsS --max-time 20 https://api.bastion.mgcrea.io/health
+
+  deploy-website:
+    name: Deploy website
+    needs: [manifest, website]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Token present? 🔑
+        id: token
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ]; then echo "present=true" >> "$GITHUB_OUTPUT"
+          else echo "No CLOUDFLARE_API_TOKEN secret; skipping the deploy."; fi
+      - name: Checkout 🛎️
+        if: steps.token.outputs.present == 'true'
+        uses: actions/checkout@v5
+        with:
+          lfs: true
+      - name: Setup pnpm 🔧
+        if: steps.token.outputs.present == 'true'
+        uses: pnpm/action-setup@v6
+      - name: Setup node 🔧
+        if: steps.token.outputs.present == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: "pnpm"
+      - name: Install 🪄
+        if: steps.token.outputs.present == 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Deploy 🚀
+        if: steps.token.outputs.present == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: pnpm --filter @mgcrea/bastion-website deploy
+      - name: Live 🩺
+        if: steps.token.outputs.present == 'true'
+        run: curl -fsS --max-time 20 -o /dev/null https://bastion.mgcrea.io/
 
   app:
     name: App
@@ -92,7 +191,7 @@ jobs:
       - name: Setup node 🔧
         uses: actions/setup-node@v6
         with:
-          node-version: lts/*
+          node-version: 24
           check-latest: true
       # Before the build, because none of these need one. They compile a file or
       # two with the checks beside them, so they are the fastest real signal in
