@@ -607,24 +607,24 @@ final class ServerStore {
     ProfileStore.shared.load()
   }
 
-  /// Catalog order for catalog entries, then custom ones alphabetically.
+  /// Alphabetical by display name, with Bastion's own server pinned first.
   ///
-  /// Not alphabetical throughout: the catalog is ordered on purpose in
-  /// `servers.json`, and re-sorting it here would throw that away for no
-  /// reader's benefit.
+  /// It used to follow `servers.json` order for catalog entries and go
+  /// alphabetical only for custom ones. That order is the catalog's, not the
+  /// user's: nothing in the app shows it, so a sidebar of five servers read as
+  /// shuffled and a name had to be scanned for rather than jumped to.
   private func sort() {
-    let rank = Dictionary(
-      uniqueKeysWithValues: ServerCatalog.all.enumerated().map { ($0.element.id, $0.offset) })
     servers.sort { a, b in
       // Bastion itself first, always. It is the app rather than a choice, and a
       // control plane that moves around the list as servers are added and
       // removed is one nobody can find twice.
       if (a.origin == .builtin) != (b.origin == .builtin) { return a.origin == .builtin }
-      switch (rank[a.id], rank[b.id]) {
-      case (let x?, let y?): return x < y
-      case (_?, nil): return true
-      case (nil, _?): return false
-      case (nil, nil): return a.id < b.id
+      switch a.displayName.localizedStandardCompare(b.displayName) {
+      case .orderedAscending: return true
+      case .orderedDescending: return false
+      // Two servers may share a display name; the id cannot repeat, so it
+      // keeps the order stable rather than leaving it to the sort.
+      case .orderedSame: return a.id < b.id
       }
     }
   }
