@@ -112,7 +112,15 @@ guard let token = ProcessInfo.processInfo.environment["BASTION_TOKEN"], !token.i
     """, code: 2)
 }
 
-let endpoint = URL(string: "http://127.0.0.1:\(port)/s/\(profile)/\(server)")!
+// The gateway resolves both names against its closed table, so nothing here
+// validates them — but a name with a space or a control character in it does
+// not even form a URL, and that deserves the same sentence every other bad
+// argument gets rather than a trap.
+guard let endpoint = URL(string: "http://127.0.0.1:\(port)/s/\(profile)/\(server)") else {
+  die(
+    "--profile=\(profile) --server=\(server) does not form a URL. "
+      + "Profile and server names are lower-case letters, digits and hyphens.", code: 2)
+}
 
 // MARK: - Reaching the gateway
 
