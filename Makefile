@@ -23,8 +23,16 @@ TEAM_ID := 75QE9PRT3V
 # versions available` — a sentence that reads as if the package does not exist.
 # 24.20.0 is the first v24 carrying npm 11.19.0, which honours it.
 NODE_VERSION ?= 24.20.0
-# `arch x64` for a release; `arm64` alone builds far faster while iterating.
-NODE_ARCHS   ?= arm64 x64
+# arm64 ONLY, and this is not a size optimisation dressed up as one. The app
+# itself has no x86_64 slice — a Release build of Bastion and bastion-bridge is
+# arm64, measured, so an Intel Mac cannot launch the process that would spawn
+# node in the first place. The x86_64 node slice was 118 MB shipped to nobody.
+#
+# macOS 26 is the last release supporting Intel and Bastion already requires
+# 26.0, so the window was three Mac models wide before it closed; macOS 27 is
+# Apple silicon only. Re-add `x64` here only alongside an x86_64 slice in the
+# app, or the runtime is fat for a host that cannot reach it.
+NODE_ARCHS   ?= arm64
 STAGED       := apps/apple/.build/staged
 
 # NO SERVERS ARE BUNDLED. That is the one place Bastion differs from cupertino's
@@ -184,12 +192,27 @@ $(SPARKLE_STAMP):
 # in here would be one more thing to sign, notarize and explain. It is taken
 # from the arm64 tarball because npm is architecture-independent; the `lipo`
 # above is for the runtime, which is not.
-node: ## Download and stage the embedded node runtime and npm
+#
+# Every tarball is checked against nodejs.org's SHASUMS256.txt for the version
+# before anything is extracted, the same way `sparkle` checks its zip. A cached
+# tarball that fails is deleted so the next run fetches it again rather than
+# failing forever on the same bytes. The sums file is fetched over https from
+# the same host as the tarball, so what this defends against is a truncated or
+# substituted download and a stale cache, not a compromised nodejs.org.
+NODE_SUMS := apps/apple/.build/node-cache/SHASUMS256-v$(NODE_VERSION).txt
+
+node: ## Download, verify and stage the embedded node runtime and npm
 	@mkdir -p $(STAGED) apps/apple/.build/node-cache
+	@[ -f "$(NODE_SUMS)" ] || curl -fsSL -o "$(NODE_SUMS)" \
+		"https://nodejs.org/dist/v$(NODE_VERSION)/SHASUMS256.txt"
 	@for arch in $(NODE_ARCHS); do \
-		tar="apps/apple/.build/node-cache/node-v$(NODE_VERSION)-darwin-$$arch.tar.gz"; \
-		[ -f "$$tar" ] || curl -fsSL -o "$$tar" \
-			"https://nodejs.org/dist/v$(NODE_VERSION)/node-v$(NODE_VERSION)-darwin-$$arch.tar.gz"; \
+		name="node-v$(NODE_VERSION)-darwin-$$arch.tar.gz"; \
+		tar="apps/apple/.build/node-cache/$$name"; \
+		[ -f "$$tar" ] || curl -fsSL -o "$$tar" "https://nodejs.org/dist/v$(NODE_VERSION)/$$name"; \
+		grep " $$name$$" "$(NODE_SUMS)" | sed "s|  .*|  $$tar|" | shasum -a 256 -c - >/dev/null \
+			|| { echo "  !! $$name does not match SHASUMS256.txt for v$(NODE_VERSION); deleted, run 'make node' again"; \
+			     rm -f "$$tar"; exit 1; }; \
+		echo "  $$name verified"; \
 		tar -xzf "$$tar" -C apps/apple/.build/node-cache \
 			"node-v$(NODE_VERSION)-darwin-$$arch/bin/node"; \
 	done
