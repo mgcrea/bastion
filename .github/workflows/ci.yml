@@ -133,7 +133,7 @@ jobs:
         if: steps.token.outputs.present == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: pnpm --filter @mgcrea/bastion-api deploy
+        run: pnpm --filter @mgcrea/bastion-api run deploy
       # The one thing a green `wrangler deploy` does not prove is that the
       # Worker answers.
       - name: Health 🩺
@@ -175,7 +175,7 @@ jobs:
         if: steps.token.outputs.present == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: pnpm --filter @mgcrea/bastion-website deploy
+        run: pnpm --filter @mgcrea/bastion-website run deploy
       - name: Live 🩺
         if: steps.token.outputs.present == 'true'
         run: curl -fsS --max-time 20 -o /dev/null https://bastion.mgcrea.io/
