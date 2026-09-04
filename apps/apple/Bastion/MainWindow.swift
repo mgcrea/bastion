@@ -194,7 +194,32 @@ struct MainView: View {
             .foregroundStyle(.tertiary)
         }
       } header: {
-        Text("Servers")
+        // The `+` is back in the header, and the reason it works now is that it
+        // is no longer the only one. It was pulled from here because it was the
+        // sole route to adding a server: small, unlabelled, and sitting in a row
+        // that reads as a title. The labelled button under the list fixed that
+        // and stays; this is an accelerator at the end of the sidebar the eye
+        // reaches first, which is a different job from being the affordance.
+        //
+        // ⌘N is deliberately not repeated here. Two views in one window claiming
+        // the same shortcut is ambiguous, and the one under the list already has
+        // it. The label is spelled out rather than left to the glyph, because
+        // this control has no text for VoiceOver to read — the one way the
+        // original really was worse than the row below.
+        HStack(spacing: 4) {
+          Text("Servers")
+          Spacer()
+          Button {
+            editor.subject = .adding
+          } label: {
+            Image(systemName: "plus")
+          }
+          .buttonStyle(.plain)
+          .foregroundStyle(.secondary)
+          .contentShape(.rect)
+          .help("Add a server (⌘N)")
+          .accessibilityLabel("Add server")
+        }
       }
 
       Section("Clients") {
