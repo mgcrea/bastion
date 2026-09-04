@@ -219,6 +219,11 @@ struct MainView: View {
           .contentShape(.rect)
           .help("Add a server (⌘N)")
           .accessibilityLabel("Add server")
+          // The `Spacer` above puts the glyph flush against the header's
+          // trailing edge, which in this sidebar is nearer the window edge than
+          // anything in the rows below sits. Small enough to read as breathing
+          // room rather than an indent.
+          .padding(.trailing, 10)
         }
       }
 
