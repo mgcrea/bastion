@@ -7,6 +7,41 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.6.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Added
+
+- **Load a profile's tools on demand.** A profile can now hand its clients three Bastion tools —
+  `bastion_search_tools`, `bastion_describe_tool`, `bastion_call_tool` — instead of every tool its
+  server exposes. `prod/appstore-connect` goes from 85 tool definitions and about 26.2k tokens on
+  every connect to three and about 0.4k, a 67x cut, with the full searchable index costing 3.2k
+  only if something asks for it. Off by default, per profile, in the profile editor under Context
+  and on `upsert_profile` as `lazy_tools`.
+
+  MCP has no method for fetching a tool's schema later. `inputSchema` is required in a `tools/list`
+  entry and clients validate it, so a name-only listing is not a cheap server, it is an empty one.
+  Replacing the tools with an index and a dispatcher is the only lazy discovery the protocol
+  permits, and it is what `mcp-sentry` and `mcp-stripe` already ship as servers.
+
+  Bastion doing it rather than a server has one advantage, and it is the reason this is worth
+  having here: Bastion performs the dispatch, so it opens `bastion_call_tool` back up into the
+  ordinary `tools/call` it stands for before anything else sees the frame. The audit chain, the
+  Activity window, `CallCapture`'s secret-argument rules and the write gate all go on naming the
+  real tool. A facade bought as a server cannot do that, and flattens a supervised gateway into a
+  bag of anonymous calls.
+
+  The cost is on the client's side and the toggle says so: every call reaches the editor as
+  `bastion_call_tool`, so one approval rule there now covers every tool on that server. This is the
+  first switch in the app that trades rather than tightens, which is also why it is per profile —
+  a profile feeding Claude Code, which already defers tool schemas by itself, should leave it off
+  and lose nothing; a profile feeding a client that cannot has no other way to stop paying.
+
+  On all three transports, because a behaviour that appears on two and not the third is worse than
+  one that appears on none. A child's catalog is fetched once and held for the process, following
+  `nextCursor` to the end — under a facade a tool reachable only through the dispatcher is a tool
+  that has silently ceased to exist if page two goes missing. The badge on the profile row carries
+  both figures, "0.4k of 26.2k", rather than replacing the measurement with the saving.
+
 ## [1.6.0] - 2026-09-04
 
 ### Added

@@ -32,6 +32,18 @@ nonisolated struct Profile: Identifiable, Hashable {
   /// profile worth watching closely and a `prod` one worth watching quietly
   /// is a sane setup, and one global switch makes it unexpressible.
   var captureMode: CallCapture.Mode?
+  /// Whether this profile hands its clients `ToolFacade`'s three tools instead
+  /// of the server's own.
+  ///
+  /// Per profile, and for a sharper version of the reason the write gate is:
+  /// this one is a trade rather than a tightening. It buys back the whole tool
+  /// listing — about 26.2k tokens on `prod/appstore-connect` — and spends the
+  /// host's own allowlist to do it, because every call arrives as
+  /// `bastion_call_tool`. A profile feeding Claude Code, which already defers
+  /// tool schemas by itself, should leave this off and lose nothing; a profile
+  /// feeding Claude Desktop through the bridge has no other way to stop paying.
+  /// Nobody can make that call globally, so nobody is asked to.
+  var lazyTools: Bool = false
 
   var id: String { "\(name)/\(serverID)" }
 
@@ -132,6 +144,10 @@ final class ProfileStore {
     /// additive rule `ServerStore.Stored.enabled` follows. Never make this
     /// required and never rename it.
     var captureMode: CallCapture.Mode?
+    /// Optional for the same additive reason, with nil meaning off: a
+    /// `profiles.json` written before the facade existed describes profiles
+    /// that were not using it.
+    var lazyTools: Bool?
   }
 
   func load() {
@@ -185,7 +201,7 @@ final class ProfileStore {
       }
       return Profile(
         name: row.name, serverID: row.server, values: values, allowWrites: row.allowWrites,
-        captureMode: row.captureMode)
+        captureMode: row.captureMode, lazyTools: row.lazyTools ?? false)
     }
     refreshSnapshot()
   }
@@ -198,7 +214,7 @@ final class ProfileStore {
       profiles.map {
         Stored(
           name: $0.name, server: $0.serverID, values: $0.values, allowWrites: $0.allowWrites,
-          captureMode: $0.captureMode)
+          captureMode: $0.captureMode, lazyTools: $0.lazyTools)
       } + orphaned
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -230,6 +246,11 @@ final class ProfileStore {
     if let index = profiles.firstIndex(where: { $0.id == profile.id }) {
       let previous = profiles[index]
       profiles[index] = profile
+      // `lazyTools` is deliberately NOT in this condition. The facade is applied
+      // to a reply on its way out, from a catalog the instance already holds, so
+      // it changes what clients are sent without changing anything the child was
+      // spawned with. Killing a warm process to flip a switch it cannot observe
+      // would cost the next caller a whole spawn and handshake for nothing.
       if previous.values != profile.values || previous.allowWrites != profile.allowWrites {
         Supervisor.shared.stop(profile: profile.name, server: profile.serverID)
         ServerCheck.shared.forget(profile.id)

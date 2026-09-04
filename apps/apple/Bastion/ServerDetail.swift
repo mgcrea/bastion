@@ -778,6 +778,24 @@ private struct ProfileRow: View {
     let tokens = ToolCost.short(ToolCost.tokens(bytes: measured.bytes))
     let count = measured.toolCount
     let when = measured.measuredAt.formatted(.relative(presentation: .numeric))
+
+    // With the facade on, the measurement above is still the honest cost of the
+    // SERVER — it is what a client would pay without it, and it is what makes
+    // the saving legible. What the client is actually sent is the three
+    // declarations, so the badge carries both and neither number is a claim the
+    // other contradicts.
+    if profile.lazyTools {
+      let facade = ToolFacade.declarationBytes(
+        displayName: server.displayName, summary: server.summary, toolCount: count)
+      return (
+        "\(ToolCost.short(ToolCost.tokens(bytes: facade))) of \(tokens)\(measured.partial ? "+" : "") tokens",
+        "\(count) tool\(count == 1 ? "" : "s") behind three. Clients are sent "
+          + ToolCost.phrase(bytes: facade) + " on connect instead of "
+          + ToolCost.phrase(bytes: measured.bytes, partial: measured.partial)
+          + ", and fetch a schema when they need one. Measured \(when)."
+      )
+    }
+
     return (
       // The "+" carries the paginated case into a label with no room for the
       // sentence the check sheet gets to write.

@@ -79,6 +79,10 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     /// more likely to be slow, since it is a real API call over somebody
     /// else's network.
     var inFlight = 0
+    /// Every tool upstream exposes, or nil for "not asked yet". `ToolFacade`
+    /// cannot search a list it does not hold; `Supervisor.Instance.toolCatalog`
+    /// says the rest, including why it is never written to disk.
+    var toolCatalog: [[String: Any]]?
   }
 
   private let state = OSAllocatedUnfairLock(initialState: State())
@@ -86,6 +90,11 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
   /// normal case — an editor and a CLI starting together — and without this
   /// both would open their own session and one would be orphaned upstream.
   private let handshakeGate = DispatchSemaphore(value: 1)
+  /// The same one-at-a-time bargain for the catalog walk, and for the same
+  /// reason: two clients connecting together would otherwise each walk it.
+  private let catalogGate = DispatchSemaphore(value: 1)
+  /// A server that returns the same cursor forever is a hang, not a big list.
+  private static let catalogPageLimit = 20
   private let session: URLSession
 
   init(profile: Profile, server: BastionServer) throws {
@@ -178,8 +187,44 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
       if method == "notifications/initialized" { return nil }
     }
 
+    // The facade. Identical in shape to `Supervisor.Instance`, deliberately, and
+    // the rule itself is in `ToolFacade` so there is one of it rather than two —
+    // the bargain the write gate above already makes. Before the log row and the
+    // gate on purpose: `bastion_call_tool` is rewritten into the `tools/call` it
+    // stood for, so the audit row, `CallCapture` and the write gate all name the
+    // real tool. Never for Bastion's own callers, which budget and report over
+    // the real list.
+    var facadeAnswer: [String: Any]?
+    if profile.lazyTools, client != ServerCheck.client,
+      ToolFacade.handles(method: method, params: frame["params"] as? [String: Any])
+    {
+      _ = try ensureHandshake()
+      switch ToolFacade.route(
+        method: method, params: frame["params"] as? [String: Any], catalog: try facadeCatalog(),
+        displayName: server.displayName, summary: server.summary)
+      {
+      case .answer(let result): facadeAnswer = result
+      case .rewrite(let params): frame["params"] = params
+      case .passThrough: break
+      }
+    }
+
     let logID = LogStore.record(
       origin: key, frame: frame, mode: profile.capture, secretKeys: secretKeys)
+
+    // Answered here, so the record is completed here — nothing is going upstream
+    // to come back and complete it.
+    if let facadeAnswer {
+      guard let clientID else { return nil }
+      let reply: [String: Any] = ["jsonrpc": "2.0", "id": clientID, "result": facadeAnswer]
+      if let logID {
+        hostCallResult(
+          logID, CallCapture.result(reply, mode: profile.capture, secretKeys: secretKeys),
+          failed: CallCapture.isFailure(reply))
+      }
+      return try encode(reply)
+    }
+
     _ = try ensureHandshake()
 
     // The write gate, before anything leaves the machine. A refused call is a
@@ -241,6 +286,10 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
       state.withLock {
         $0.session = nil
         $0.handshake = nil
+        // Beside the handshake, for the child case's reason: a new session may
+        // be a different tool surface, and a stale catalog would deny a tool
+        // that now exists.
+        $0.toolCatalog = nil
       }
       _ = try ensureHandshake()
       response = try post(frame)
@@ -262,6 +311,83 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     // The upstream id is Bastion's own only for the handshake; for a relayed
     // request it is the client's, sent as-is and returned as-is.
     return try encode(filteredForWriteGate(object, method: method))
+  }
+
+  // MARK: - The facade
+
+  /// Every tool upstream exposes, fetched once and held for the session.
+  ///
+  /// The whole list, following `nextCursor`: under a facade a client reaches a
+  /// tool only through `bastion_call_tool`, so a catalog missing page two is a
+  /// set of tools that have silently ceased to exist.
+  ///
+  /// This is also the only chance to measure what a remote profile costs when
+  /// the facade is on. `filteredForWriteGate` takes that figure off a client's
+  /// own `tools/list` as it passes, and with the facade in front of it no such
+  /// reply ever passes — so without this the detail pane would go blank for
+  /// exactly the profiles where the number is most worth reading.
+  private func ensureCatalog() throws -> [[String: Any]] {
+    if let held = state.withLock({ $0.toolCatalog }) { return held }
+    catalogGate.wait()
+    defer { catalogGate.signal() }
+    if let held = state.withLock({ $0.toolCatalog }) { return held }
+
+    var collected: [[String: Any]] = []
+    var cursor: String?
+    var pages = 0
+    repeat {
+      var params: [String: Any] = [:]
+      if let cursor { params["cursor"] = cursor }
+      let request: [String: Any] = [
+        "jsonrpc": "2.0", "id": "bastion-catalog-\(pages)", "method": "tools/list",
+        "params": params,
+      ]
+      guard let object = try post(request).jsonRPC(),
+        let payload = object["result"] as? [String: Any],
+        let entries = payload["tools"] as? [[String: Any]]
+      else {
+        throw Supervisor.SupervisorError.startFailed("the server would not list its tools")
+      }
+      collected += entries
+      cursor = payload["nextCursor"] as? String
+      pages += 1
+    } while cursor != nil && pages < Self.catalogPageLimit
+
+    if cursor != nil {
+      hostLog(
+        key, .error,
+        "stopped listing tools after \(pages) pages — the server keeps asking for another")
+    }
+    let catalog = collected
+    state.withLock { $0.toolCatalog = catalog }
+    hostLog(key, .info, "catalog: \(catalog.count) tool(s) behind the facade")
+    return catalog
+  }
+
+  /// The catalog as this profile is allowed to see it, and the measurement of
+  /// it.
+  ///
+  /// After the gate rather than before, which is the rule
+  /// `filteredForWriteGate` already states: the figure has to be the list this
+  /// profile's gate produces, not the one upstream sent.
+  private func facadeCatalog() throws -> [[String: Any]] {
+    let catalog = try ensureCatalog()
+    let learned = WriteGate.annotatedWriteTools(in: catalog)
+    if !learned.isEmpty { state.withLock { $0.annotatedWriteTools.formUnion(learned) } }
+    let visible = WriteGate.visibleTools(
+      in: catalog, declared: server.writeTools,
+      annotated: state.withLock { $0.annotatedWriteTools }, allowWrites: profile.allowWrites)
+
+    let bytes = visible.reduce(0) { $0 + ToolCost.bytes(of: $1) }
+    let profileID = profile.id
+    let allowWrites = profile.allowWrites
+    let count = visible.count
+    Task { @MainActor in
+      ToolCostStore.shared.record(
+        profileID: profileID, bytes: bytes, toolCount: count, partial: false, version: nil,
+        allowWrites: allowWrites)
+    }
+    return visible
   }
 
   // MARK: - The handshake, once

@@ -1236,6 +1236,236 @@ struct UnitCheck {
     check("a package that went away drops it", !isCurrent("1.2.0", false, nil, false))
     check("and one that appeared drops it", !isCurrent(nil, false, "1.2.0", false))
 
+    print("\nTool facade: the index")
+
+    // A tools shaped like a real one: two tools whose names share a stem, one
+    // whose only match is in its prose, and one the write gate would hide.
+    let tools: [[String: Any]] = [
+      ["name": "list_versions", "description": "List every version of an app."],
+      ["name": "get_version", "description": "Read one version."],
+      ["name": "list_apps", "description": "List apps. Each carries its latest version."],
+      [
+        "name": "update_app", "description": "Rename an app.",
+        "annotations": ["readOnlyHint": false],
+      ],
+    ]
+
+    check(
+      "an empty query returns everything", ToolFacade.search(catalog: tools, query: "").count == 4)
+    check(
+      "an empty query keeps the tools's own order",
+      ToolFacade.search(catalog: tools, query: "").first?.name == "list_versions")
+    // The ranking's whole job: a name match beats a match in somebody's prose,
+    // or a model asking for "version" is handed `list_apps` first.
+    let versions = ToolFacade.search(catalog: tools, query: "version")
+    check("a name match outranks a description match", versions.first?.name == "get_version")
+    check(
+      "but the description match is still returned", versions.contains { $0.name == "list_apps" })
+    check(
+      "every term has to appear somewhere",
+      ToolFacade.search(catalog: tools, query: "version nothing").isEmpty)
+    // Both `list_versions` and `list_apps` carry "list" and "version" somewhere,
+    // so both are hits — the name match is what decides which comes first.
+    check(
+      "two terms both matching is a hit",
+      ToolFacade.search(catalog: tools, query: "list version").map(\.name).sorted()
+        == ["list_apps", "list_versions"])
+    check(
+      "and the name match leads",
+      ToolFacade.search(catalog: tools, query: "list version").first?.name == "list_versions")
+    check(
+      "an exact name wins outright",
+      ToolFacade.search(catalog: tools, query: "list_apps").first?.name == "list_apps")
+    check(
+      "matching is case-insensitive",
+      ToolFacade.search(catalog: tools, query: "LIST_APPS").first?.name == "list_apps")
+    check("a miss is a miss", ToolFacade.search(catalog: tools, query: "kubernetes").isEmpty)
+    // Two identical searches have to be two identical strings, or nothing about
+    // this file is testable.
+    check(
+      "the order is stable",
+      ToolFacade.search(catalog: tools, query: "list").map(\.name)
+        == ToolFacade.search(catalog: tools, query: "list").map(\.name))
+    check(
+      "the limit is honoured", ToolFacade.search(catalog: tools, query: "", limit: 2).count == 2)
+
+    print("\nTool facade: summaries stay short")
+
+    let wordy = [["name": "a", "description": String(repeating: "x", count: 400)]]
+    check(
+      "a long description is cut",
+      (ToolFacade.search(catalog: wordy, query: "").first?.summary.count ?? 0)
+        <= ToolFacade.summaryLimit + 1)
+    check(
+      "a sentence boundary is preferred to a hard cut",
+      ToolFacade.shorten("List every version of an app. " + String(repeating: "x", count: 300))
+        == "List every version of an app.")
+    check(
+      "a short description is left alone",
+      ToolFacade.shorten("Read one version.") == "Read one version.")
+    check("newlines are flattened", ToolFacade.shorten("one\ntwo") == "one two")
+    // A tool with no description at all is common and must not become a blank
+    // row with a dangling dash.
+    check(
+      "a tool with no description still lists",
+      ToolFacade.search(catalog: [["name": "bare"]], query: "").first?.summary == "")
+    check(
+      "and its row carries no separator",
+      !ToolFacade.searchText(catalog: [["name": "bare"]], query: "").hasPrefix("bare —"))
+
+    print("\nTool facade: describing one tool")
+
+    check(
+      "a known tool comes back as its own entry",
+      ToolFacade.describe(catalog: tools, name: "get_version")?.contains("\"Read one version.\"")
+        == true)
+    check(
+      "an unknown tool is nil, not an empty object",
+      ToolFacade.describe(catalog: tools, name: "nope") == nil)
+    // The near-miss list is what turns a model's typo into a retry that works
+    // rather than into the same typo again.
+    check(
+      "a near miss suggests the real name",
+      ToolFacade.describeText(catalog: tools, name: "list_version").contains("list_versions"))
+    check(
+      "a mistyped name finds the one it meant",
+      ToolFacade.nearest(catalog: tools, name: "list_appz").first == "list_apps")
+    check(
+      "a typo inside a word still finds it",
+      ToolFacade.describeText(catalog: tools, name: "list_appz").contains("list_apps"))
+    check(
+      "a hopeless miss says how to see everything",
+      ToolFacade.describeText(catalog: tools, name: "kubernetes").contains(ToolFacade.searchName))
+
+    print("\nTool facade: the declarations")
+
+    let declared = ToolFacade.declarations(
+      displayName: "App Store Connect", summary: "Apple's store.", toolCount: 85)
+    check("there are exactly three", declared.count == 3)
+    check(
+      "they are the three names the router dispatches on",
+      Set(declared.compactMap { $0["name"] as? String }) == ToolFacade.names)
+    check("the count is stated", (declared[0]["description"] as? String)?.contains("85") == true)
+    check(
+      "and the server is named",
+      (declared[0]["description"] as? String)?.contains("App Store Connect") == true)
+    // `bastion_call_tool` dispatches to anything, so the only honest annotation
+    // is none: `readOnlyHint: true` would relax a host's confirmation for every
+    // write, and `false` would feed `WriteGate` the dispatcher's own name and
+    // gate the reads with it.
+    let dispatcher = declared.first { $0["name"] as? String == ToolFacade.callName }
+    check("the dispatcher claims no read-only hint", dispatcher?["annotations"] == nil)
+    check(
+      "search does, because a confirmed search is a search nobody runs",
+      ((declared[0]["annotations"] as? [String: Any])?["readOnlyHint"] as? Bool) == true)
+    // The number the whole feature is spent on.
+    let facadeBytes = ToolFacade.declarationBytes(
+      displayName: "App Store Connect", summary: "Apple's store.", toolCount: 85)
+    check(
+      "three declarations cost under a thousand tokens", ToolCost.tokens(bytes: facadeBytes) < 1000)
+    check("and are not free either", facadeBytes > 0)
+    // The prefix is what makes a collision with the server being fronted
+    // impossible rather than unlikely.
+    check(
+      "every facade name is namespaced", ToolFacade.names.allSatisfy { $0.hasPrefix("bastion_") })
+
+    print("\nTool facade: routing")
+
+    func route(_ method: String, _ params: [String: Any]?) -> ToolFacade.Routing {
+      ToolFacade.route(
+        method: method, params: params, catalog: tools, displayName: "App Store Connect",
+        summary: "Apple's store.")
+    }
+
+    check("tools/list is answered, never forwarded", route("tools/list", nil) != .passThrough)
+    check("initialize is none of its business", route("initialize", nil) == .passThrough)
+    check(
+      "resources/read is none of its business",
+      route("resources/read", ["uri": "x"]) == .passThrough)
+    // The rule that keeps a live session working when the toggle moves: a
+    // client inside the 60s ttlMs is still calling real names.
+    check(
+      "a real tool name passes straight through",
+      route("tools/call", ["name": "list_apps"]) == .passThrough)
+    check(
+      "handles() agrees, so the tools is never fetched for it",
+      !ToolFacade.handles(method: "tools/call", params: ["name": "list_apps"]))
+    check("handles() claims tools/list", ToolFacade.handles(method: "tools/list", params: nil))
+    check(
+      "handles() claims the facade's own tools",
+      ToolFacade.handles(method: "tools/call", params: ["name": ToolFacade.callName]))
+
+    // The unwrap is the single most important behaviour here: everything that
+    // makes an in-gateway facade better than a bought one — the audit row, the
+    // write gate, CallCapture's secret rules — reads the name it produces.
+    let dispatched = route(
+      "tools/call",
+      ["name": ToolFacade.callName, "arguments": ["name": "list_apps", "arguments": ["limit": 5]]])
+    check(
+      "a dispatch is a rewrite, not an answer",
+      dispatched == .rewrite(["name": "list_apps", "arguments": ["limit": 5]]))
+    if case .rewrite(let rewritten) = dispatched {
+      check("the rewrite names the REAL tool", rewritten["name"] as? String == "list_apps")
+      check(
+        "and carries the inner arguments verbatim",
+        (rewritten["arguments"] as? [String: Any])?["limit"] as? Int == 5)
+    } else {
+      check("the rewrite names the REAL tool", false)
+      check("and carries the inner arguments verbatim", false)
+    }
+    // A tool taking no arguments is a legal call, not a malformed one.
+    check(
+      "missing arguments become an empty object",
+      route("tools/call", ["name": ToolFacade.callName, "arguments": ["name": "list_apps"]])
+        == .rewrite(["name": "list_apps", "arguments": [:]]))
+    check(
+      "a dispatch with no name is refused, not forwarded",
+      route("tools/call", ["name": ToolFacade.callName, "arguments": [:]]) != .passThrough)
+
+    // A name the model invented. Answered with near misses rather than
+    // forwarded, because the server would return a protocol error a model
+    // cannot act on.
+    let invented = route(
+      "tools/call", ["name": ToolFacade.callName, "arguments": ["name": "list_appz"]])
+    check("an invented name is never dispatched", invented != .passThrough)
+    if case .answer(let result) = invented {
+      check("it is marked an error", result["isError"] as? Bool == true)
+      let text = ((result["content"] as? [[String: Any]])?.first?["text"] as? String) ?? ""
+      check("and suggests the real one", text.contains("list_apps"))
+    } else {
+      check("it is marked an error", false)
+      check("and suggests the real one", false)
+    }
+
+    print("\nTool facade: the write gate still decides what is visible")
+
+    // The tools handed to `route` is already gated, which is where this rule
+    // lives — but the dispatcher has to refuse a hidden name too, or a model
+    // holding one from an earlier turn would walk straight past the gate.
+    let gated = WriteGate.visibleTools(
+      in: tools, declared: [], annotated: WriteGate.annotatedWriteTools(in: tools),
+      allowWrites: false)
+    check(
+      "the write tool is out of the catalog",
+      !gated.contains { $0["name"] as? String == "update_app" })
+    check(
+      "so it is out of the index",
+      !ToolFacade.searchText(catalog: gated, query: "").contains("update_app"))
+    check(
+      "and the dispatcher will not reach it",
+      ToolFacade.route(
+        method: "tools/call",
+        params: ["name": ToolFacade.callName, "arguments": ["name": "update_app"]],
+        catalog: gated, displayName: "App Store Connect", summary: "Apple's store.")
+        != .rewrite(["name": "update_app", "arguments": [:]]))
+    check(
+      "with writes on it is reachable again",
+      ToolFacade.route(
+        method: "tools/call",
+        params: ["name": ToolFacade.callName, "arguments": ["name": "update_app"]],
+        catalog: tools, displayName: "App Store Connect", summary: "Apple's store.")
+        == .rewrite(["name": "update_app", "arguments": [:]]))
+
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 {
       print("\(failures) failed")

@@ -344,6 +344,11 @@ enum BuiltinTools {
           "boolean",
           "Whether this profile may use the server's destructive tools. Per profile, never "
             + "global."),
+        "lazy_tools": schema(
+          "boolean",
+          "Whether clients get three Bastion tools — search, describe, call — instead of every "
+            + "tool this server exposes. Saves the listing's context at the cost of the client's "
+            + "own per-tool approval rules."),
       ],
       required: ["name", "server"], mutates: true),
 
@@ -705,6 +710,7 @@ enum BuiltinTools {
           "server": profile.serverID,
           "endpoint": "/s/\(profile.name)/\(profile.serverID)",
           "allow_writes": profile.allowWrites,
+          "lazy_tools": profile.lazyTools,
           "values": profile.values,
         ]
         guard let server = ServerStore.shared.server(id: profile.serverID) else { return row }
@@ -1191,7 +1197,8 @@ enum BuiltinTools {
       // above. This tool takes no capture argument, so rebuilding the profile
       // without it would let an agent editing an unrelated field silently
       // reset a choice the person made in the window.
-      captureMode: existing?.captureMode)
+      captureMode: existing?.captureMode,
+      lazyTools: arguments["lazy_tools"] as? Bool ?? existing?.lazyTools ?? false)
     try ProfileStore.shared.upsert(profile)
 
     var out: [String: Any] = [
@@ -1199,6 +1206,7 @@ enum BuiltinTools {
       "created": existing == nil,
       "endpoint": "http://127.0.0.1:\(Gateway.shared.port)/s/\(name)/\(serverID)",
       "allow_writes": profile.allowWrites,
+      "lazy_tools": profile.lazyTools,
     ]
     let missing = ProfileEnvironment.missing(for: profile, server: server)
     if !missing.isEmpty { out["missing"] = missing }

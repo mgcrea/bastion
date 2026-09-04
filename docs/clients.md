@@ -53,6 +53,50 @@ HTTP entry a client silently ignores is a client that does not work, with nothin
 on either side saying why. Either row moves to `.http` the moment somebody
 watches a header carry a token into it.
 
+## What a client pays to be wired at all
+
+Every client wired to a profile is sent every tool definition that profile's
+server exposes, before it can call one, and holds them for the whole
+conversation. That is the largest fixed charge a shared gateway imposes:
+`prod/appstore-connect` is 85 tools and about 26.2k tokens per connect. The
+profile row in the window carries the figure, so it is readable rather than
+inferred.
+
+Some clients already handle this themselves. Claude Code defers a tool's schema
+until something reaches for it, so its window holds the names and almost nothing
+else. Claude Desktop, and most editors, do not — they take the whole listing on
+connect and there is nothing the user can do about it from that side.
+
+**Load tools on demand** (per profile, in the profile editor under Context) is
+Bastion's answer for the clients that cannot. With it on, a client is served
+three tools instead of the server's own:
+
+| Tool                    | What it does                                                              |
+| ----------------------- | ------------------------------------------------------------------------- |
+| `bastion_search_tools`  | Names and one-line summaries, filtered by a query; empty lists everything |
+| `bastion_describe_tool` | One tool's full input schema, by exact name                               |
+| `bastion_call_tool`     | Runs one, by name and arguments                                           |
+
+`prod/appstore-connect` becomes three tools and about 0.4k tokens on connect,
+with the full index costing about 3.2k only if something asks for it. Nothing
+becomes unreachable, and a client still holding a pre-toggle list keeps working:
+a real tool name is forwarded as it always was.
+
+MCP has no method for fetching a schema later — `inputSchema` is required in a
+`tools/list` entry — so an index and a dispatcher is the only shape lazy
+discovery can take. Doing it in the gateway rather than buying a facade server
+is what keeps it honest: Bastion opens `bastion_call_tool` back up into the
+`tools/call` it stands for before the audit chain, the Activity window or the
+write gate sees the frame, so all three go on naming the real tool.
+
+**What it costs is on the client's side.** Every call arrives at the editor as
+`bastion_call_tool`, so a per-tool approval rule there — Claude Code's
+`mcp__appstore-connect__app_store_connect_update_app`, say — collapses into one
+rule covering every tool on that server. Bastion's own gate is unaffected: a
+write tool is still absent from the index and still refused by the dispatcher
+for a profile with writes off. But the editor's gate is coarser, which is why
+this is off by default and decided per profile rather than once for the machine.
+
 ## Why Claude Desktop gets a bridge
 
 Four clients get a URL and no child process of their own:
@@ -466,10 +510,11 @@ appears to succeed and changes nothing.
 
 ## What asserts what
 
-|                          |                                                                                                                                                                                                                                                                                                                                                                   |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `make wiring-check`      | The merge, the audit, per-entry state, the foreign listings and single-key removal, against fixtures shaped like the real files. No app, no I/O beyond a temp directory.                                                                                                                                                                                          |
-| `make wiring-check-real` | The same properties against **your actual** Claude Code, Claude Desktop, VS Code and Codex configs, dispatching on the file extension the way `ClientWiring` dispatches on a client's format. Read-only: parsed, merged and pruned in memory, then compared. Fixtures only cover the shapes somebody thought of; this covers the ones nobody would have invented. |
+|                          |                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `make wiring-check`      | The merge, the audit, per-entry state, the foreign listings and single-key removal, against fixtures shaped like the real files. No app, no I/O beyond a temp directory.                                                                                                                                                                                             |
+| `make wiring-check-real` | The same properties against **your actual** Claude Code, Claude Desktop, VS Code and Codex configs, dispatching on the file extension the way `ClientWiring` dispatches on a client's format. Read-only: parsed, merged and pruned in memory, then compared. Fixtures only cover the shapes somebody thought of; this covers the ones nobody would have invented.    |
+| `make facade`            | Load-on-demand end to end against a running Debug build: the listing actually shrinks, search finds a tool and describe returns its schema, a dispatched call is recorded under the **real** tool name, and a write tool is neither indexed nor reachable for a profile with writes off. Scratch profiles of Bastion's own server, so no credentials and no network. |
 
 The TOML half adds its own sections, and they are all the same question asked of
 bytes rather than of parsed values: every byte outside our spans is unchanged,

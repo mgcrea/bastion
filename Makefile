@@ -463,6 +463,9 @@ dialect: app ## Assert Bastion serves both protocol eras (needs a profile)
 builtin: app ## Assert Bastion's own server: the write gate, and that no tool returns a secret
 	@scripts/builtin-check.sh
 
+facade: app ## Assert the tool facade end to end: the saving, the way in, the audit, the gate
+	@scripts/facade-check.sh
+
 # The other half of the money loop. A refund or a chargeback marks the row in D1;
 # nothing reaches the app until this bakes the list into the next build, because
 # the app is not allowed to ask anyone anything at runtime.
@@ -527,7 +530,7 @@ audit: app remote-check ## Assert the listener is loopback-only and refuses fore
 # none, and `audit-listener.sh` only ever sends the parser well-formed requests.
 # Malformed input against a parser that runs BEFORE authentication is exactly
 # the case worth having, and it needs no app at all.
-unit: ## Assert the translation, the parser, call capture, the audit chain and the tool-cost estimate, with no app and no network
+unit: ## Assert the translation, the parser, call capture, the audit chain, the tool-cost estimate and the tool facade, with no app and no network
 	@mkdir -p apps/apple/.build
 	@swiftc -O -o apps/apple/.build/unit-check \
 		apps/apple/Bastion/Dialect.swift \
@@ -538,6 +541,8 @@ unit: ## Assert the translation, the parser, call capture, the audit chain and t
 		apps/apple/Bastion/AuditChain.swift \
 		apps/apple/Bastion/Log.swift \
 		apps/apple/Bastion/ToolCost.swift \
+		apps/apple/Bastion/WriteGate.swift \
+		apps/apple/Bastion/ToolFacade.swift \
 		scripts/unit-check.swift
 	@apps/apple/.build/unit-check
 

@@ -143,6 +143,35 @@ nonisolated enum BuiltinServer {
       if method == "notifications/initialized" { return nil }
     }
 
+    // The facade, for a profile that asked for it. Here as well as in
+    // `Supervisor.Instance` and `RemoteInstance` because a behaviour that
+    // appears on two transports and not the third is worse than one that
+    // appears on none — the same argument `ToolCost` makes about a figure it
+    // could only produce for a remote server.
+    //
+    // No catalog to fetch and no write gate to re-run: `declarations` is
+    // synchronous and already gated, and `BuiltinTools.invoke` re-checks the
+    // name anyway because "tools/list is advisory". So this is the whole
+    // mechanism, minus everything that only a real server needs.
+    //
+    // Before the log row, for the reason the other two state: the rewrite is
+    // what lets the audit go on naming the real tool.
+    var frame = frame
+    var facadeAnswer: [String: Any]?
+    if profile.lazyTools, client != ServerCheck.client,
+      ToolFacade.handles(method: method, params: frame["params"] as? [String: Any])
+    {
+      let catalog = onMain { BuiltinTools.declarations(allowWrites: profile.allowWrites) }
+      switch ToolFacade.route(
+        method: method, params: frame["params"] as? [String: Any], catalog: catalog,
+        displayName: definition.displayName, summary: definition.summary)
+      {
+      case .answer(let result): facadeAnswer = result
+      case .rewrite(let params): frame["params"] = params
+      case .passThrough: break
+      }
+    }
+
     // The same audit line every other server produces, through the same
     // helper: a tool call here is a tool call, and leaving it out of the
     // Activity log would make the one server that can change everything the
@@ -158,6 +187,19 @@ nonisolated enum BuiltinServer {
       // A notification naming something else. Nothing to correlate and nothing
       // to forward — there is no child.
       return nil
+    }
+
+    if let facadeAnswer {
+      if let logID {
+        let answer: [String: Any] = ["result": facadeAnswer]
+        hostCallResult(
+          logID,
+          CallCapture.result(
+            answer, mode: profile.capture, secretKeys: Set(BuiltinTools.secretArgumentNames),
+            tool: (frame["params"] as? [String: Any])?["name"] as? String),
+          failed: CallCapture.isFailure(answer))
+      }
+      return try encode(["jsonrpc": "2.0", "id": clientID, "result": facadeAnswer])
     }
 
     switch method {

@@ -305,6 +305,17 @@ nonisolated extension Supervisor {
       /// Only servers gated by tool name use it; the ones with an env gate never
       /// register a write tool in the first place.
       var annotatedWriteTools: Set<String> = []
+      /// Every tool this child exposes, as it last described them, or nil for
+      /// "not asked yet".
+      ///
+      /// The one upstream schema cache in the app, and it exists for exactly one
+      /// caller: `ToolFacade` cannot search or describe a list it does not hold.
+      /// `ServerCheck` says why nothing else caches one and the reasoning stands
+      /// — a stored tool list becomes a confident claim about a process that has
+      /// since moved on — so this is scoped to survive it: it lives on the
+      /// instance, not on disk, and `childExited` clears it beside the handshake
+      /// so a restarted child is never described by the dead one's tools.
+      var toolCatalog: [[String: Any]]?
     }
 
     private struct Waiter {
@@ -342,6 +353,17 @@ nonisolated extension Supervisor {
     private static let idleTimeout: TimeInterval = 30 * 60
 
     private var reaper: DispatchSourceTimer?
+
+    /// Serialises the one-time catalog walk.
+    ///
+    /// Two clients calling `tools/list` at the same moment would otherwise both
+    /// walk it, which is harmless but wasteful; the second thread waits here and
+    /// finds it warm. It cannot deadlock: the walk blocks on the reader thread,
+    /// and the reader never takes this.
+    private let catalogGate = DispatchSemaphore(value: 1)
+
+    /// A server that returns the same cursor forever is a hang, not a big list.
+    private static let catalogPageLimit = 20
 
     var pendingCount: Int { state.withLock { $0.pending.count } }
     var pid: Int32 { state.withLock { $0.process?.processIdentifier ?? -1 } }
@@ -514,6 +536,7 @@ nonisolated extension Supervisor {
         current.process = nil
         current.stdin = nil
         current.handshake = nil
+        current.toolCatalog = nil
         return taken
       }
       let detail = "exit \(status)"
@@ -673,8 +696,41 @@ nonisolated extension Supervisor {
         if method == "notifications/initialized" { return nil }
       }
 
+      // The facade, for a profile that asked for it, and BEFORE the log row and
+      // the write gate on purpose. `bastion_call_tool` is not intercepted, it is
+      // REWRITTEN into the ordinary `tools/call` it stands for — so the audit
+      // row, `CallCapture`'s secret-argument rules, the write gate below and the
+      // frame the child receives all name the real tool, and not one of them has
+      // to know the facade exists. That rewrite is the entire reason this belongs
+      // in the gateway instead of in a facade server somebody installs beside it:
+      // a bought one cannot unwrap what it is dispatching, so it turns a
+      // supervised gateway into a bag of anonymous calls.
+      //
+      // Never for Bastion's own callers. The Chat pane budgets over the real list
+      // and the deep check reports what the server exposes; both would otherwise
+      // be told this server has three tools, and the check sheet would say so on
+      // screen.
+      var facade = FacadeOutcome.passThrough
+      if profile.lazyTools, client != ServerCheck.client {
+        facade = try facadeOutcome(for: frame, method: method, clientID: clientID)
+        if case .rewritten(let rewritten) = facade { frame = rewritten }
+      }
+
       let logID = LogStore.record(
         origin: key, frame: frame, mode: profile.capture, secretKeys: secretKeys)
+
+      // Answered here, so the record has to be completed here too — `received`
+      // is the only other place that attaches a reply and no reply is coming.
+      if case .answered(let data) = facade {
+        if let logID, let data,
+          let reply = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        {
+          hostCallResult(
+            logID, CallCapture.result(reply, mode: profile.capture, secretKeys: secretKeys),
+            failed: CallCapture.isFailure(reply))
+        }
+        return data
+      }
 
       // The write gate, for a child that has no environment variable to gate
       // with. Most do: they read `*_ALLOW_WRITES` at startup and never register
@@ -715,6 +771,23 @@ nonisolated extension Supervisor {
         return nil
       }
 
+      let data = try awaitReply(frame: frame, logID: logID, clientID: clientID)
+      return filteredForWriteGate(data, method: method)
+    }
+
+    /// Send one frame under Bastion's own id and block until the child answers.
+    ///
+    /// Shared by client traffic and by the requests Bastion asks on its own
+    /// behalf — `ensureCatalog`'s walk is the same wait as a client's call, and
+    /// two copies of a hand-off this delicate is two places to get the
+    /// exactly-once resume wrong.
+    ///
+    /// `clientID` and `logID` are carried rather than used: the reader attaches
+    /// the reply to the right log row and answers under the id the CLIENT chose,
+    /// and Bastion's own requests pass nil for both, which is what keeps them out
+    /// of the Activity window.
+    private func awaitReply(frame: [String: Any], logID: UUID?, clientID: Any?) throws -> Data {
+      var frame = frame
       let internalID = state.withLock { current -> Int in
         let next = current.nextID
         current.nextID += 1
@@ -758,7 +831,7 @@ nonisolated extension Supervisor {
       guard let result = outcome.withLock({ $0 }) else {
         throw SupervisorError.childDied("no response")
       }
-      return try filteredForWriteGate(result.get(), method: method)
+      return try result.get()
     }
 
     // MARK: - The write gate, for a child gated by tool name
@@ -806,6 +879,114 @@ nonisolated extension Supervisor {
       // `JSONSerialization` a moment ago, so the fallback is the original bytes
       // rather than an error: a filter that cannot run must not lose the reply.
       return (try? JSONSerialization.data(withJSONObject: response)) ?? data
+    }
+
+    // MARK: - The facade
+
+    private enum FacadeOutcome {
+      /// Bastion answered it. Nil for a notification, which has no id to answer.
+      case answered(Data?)
+      /// `bastion_call_tool`, opened up into the call it stood for.
+      case rewritten([String: Any])
+      /// Not the facade's business.
+      case passThrough
+    }
+
+    /// Every tool the child exposes, fetched once and held for its lifetime.
+    ///
+    /// Blocking, on the connection's own thread, which is what that thread is
+    /// for: `handle` already waits on the child exactly this way for every
+    /// client call. In the ordinary case it does no work at all, because
+    /// `measureToolCost` warmed it off a reply it was taking anyway.
+    ///
+    /// The WHOLE list, following `nextCursor`. Under a facade a client can reach
+    /// a tool only through `bastion_call_tool`, so a catalog missing page two is
+    /// a set of tools that have silently ceased to exist — which is the one way
+    /// this feature could lose something rather than just cost something.
+    private func ensureCatalog() throws -> [[String: Any]] {
+      if let held = state.withLock({ $0.toolCatalog }) { return held }
+      catalogGate.wait()
+      defer { catalogGate.signal() }
+      // Again, inside the gate: the walk this thread queued behind may have been
+      // the walk it was about to start.
+      if let held = state.withLock({ $0.toolCatalog }) { return held }
+
+      var collected: [[String: Any]] = []
+      var cursor: String?
+      var pages = 0
+      repeat {
+        var params: [String: Any] = [:]
+        if let cursor { params["cursor"] = cursor }
+        let frame: [String: Any] = ["jsonrpc": "2.0", "method": "tools/list", "params": params]
+        let data = try awaitReply(frame: frame, logID: nil, clientID: nil)
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let payload = object["result"] as? [String: Any],
+          let entries = payload["tools"] as? [[String: Any]]
+        else {
+          throw SupervisorError.startFailed("the server would not list its tools")
+        }
+        collected += entries
+        cursor = payload["nextCursor"] as? String
+        pages += 1
+      } while cursor != nil && pages < Self.catalogPageLimit
+
+      if cursor != nil {
+        hostLog(
+          key, .error,
+          "stopped listing tools after \(pages) pages — the server keeps asking for another")
+      }
+      let catalog = collected
+      state.withLock { $0.toolCatalog = catalog }
+      hostLog(key, .info, "catalog: \(catalog.count) tool(s) behind the facade")
+      return catalog
+    }
+
+    /// The catalog as this profile is allowed to see it.
+    ///
+    /// The write gate has to run here as well as on `tools/call`, and for the
+    /// reason `WriteGate.visibleTools` gives: a model never plans around a tool
+    /// it cannot see, and a search that offers `update_app` to a profile that
+    /// will then refuse it wastes a turn to teach nothing. Same guard as
+    /// `filteredForWriteGate` — a child with an env gate never registered the
+    /// tool, so there is nothing here to hide.
+    private func facadeCatalog() throws -> [[String: Any]] {
+      let catalog = try ensureCatalog()
+      guard !server.writeTools.isEmpty else { return catalog }
+      let learned = WriteGate.annotatedWriteTools(in: catalog)
+      if !learned.isEmpty { state.withLock { $0.annotatedWriteTools.formUnion(learned) } }
+      return WriteGate.visibleTools(
+        in: catalog, declared: server.writeTools, annotated: annotatedWriteTools,
+        allowWrites: profile.allowWrites)
+    }
+
+    /// `ToolFacade.route`, wired to this child.
+    ///
+    /// The fetch is behind `handles` so the catalog walk happens on the frames
+    /// that need it and on no others — every `resources/read` and every ordinary
+    /// `tools/call` from a client with a pre-toggle list goes straight past.
+    private func facadeOutcome(for frame: [String: Any], method: String, clientID: Any?) throws
+      -> FacadeOutcome
+    {
+      let params = frame["params"] as? [String: Any]
+      guard ToolFacade.handles(method: method, params: params) else { return .passThrough }
+
+      switch ToolFacade.route(
+        method: method, params: params, catalog: try facadeCatalog(),
+        displayName: server.displayName, summary: server.summary)
+      {
+      case .answer(let result):
+        // A notification naming a facade tool has no id to answer under, and
+        // there is nothing to forward either — the tool it names does not exist
+        // below. Swallowed, which is what `nil` means everywhere else here.
+        guard let clientID else { return .answered(nil) }
+        return .answered(try encode(["jsonrpc": "2.0", "id": clientID, "result": result]))
+      case .rewrite(let params):
+        var rewritten = frame
+        rewritten["params"] = params
+        return .rewritten(rewritten)
+      case .passThrough:
+        return .passThrough
+      }
     }
 
     /// Answer a legacy client's `initialize` from the child's, with the
@@ -957,12 +1138,21 @@ nonisolated extension Supervisor {
       let version = ServerInstaller.installedVersion(of: server)
       let waiter = Waiter(
         clientID: nil, deadline: Date().addingTimeInterval(30), logID: nil
-      ) { result in
+      ) { [weak self] result in
         guard let data = try? result.get(),
           let frame = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           let payload = frame["result"] as? [String: Any],
           let entries = payload["tools"] as? [[String: Any]]
         else { return }
+        // Warm the facade's catalog off the same reply, but only when the
+        // server answered in one page. A truncated catalog is worse than none:
+        // `ensureCatalog` would find it non-nil and stop, and `bastion_call_tool`
+        // would then deny a tool that exists. The paged case falls through to
+        // the full walk there, which is the right amount of work in the rare
+        // case and none at all in the common one.
+        if payload["nextCursor"] == nil {
+          self?.state.withLock { $0.toolCatalog = entries }
+        }
         let bytes = entries.reduce(0) { $0 + ToolCost.bytes(of: $1) }
         Task { @MainActor in
           ToolCostStore.shared.record(

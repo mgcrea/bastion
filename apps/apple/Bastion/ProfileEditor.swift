@@ -45,6 +45,7 @@ struct ProfileEditor: View {
   /// Secrets the user asked to delete outright, applied on save.
   @State private var cleared: Set<String>
   @State private var allowWrites: Bool
+  @State private var lazyTools: Bool
   /// Empty string means "follow the app-wide default", which is what nil means
   /// on the profile — `Picker` needs a concrete tag, so the absence is spelled
   /// rather than optional here.
@@ -79,6 +80,7 @@ struct ProfileEditor: View {
     _secrets = State(initialValue: [:])
     _cleared = State(initialValue: [])
     _allowWrites = State(initialValue: profile?.allowWrites ?? false)
+    _lazyTools = State(initialValue: profile?.lazyTools ?? false)
     _capture = State(initialValue: profile?.captureMode?.rawValue ?? "")
   }
 
@@ -159,6 +161,7 @@ struct ProfileEditor: View {
         }
 
         writesSection
+        contextSection
       }
       .formStyle(.grouped)
       // The badge is read from the Keychain rather than remembered, so it is
@@ -359,6 +362,43 @@ struct ProfileEditor: View {
     }
   }
 
+  /// The Context section: whether this profile hands its clients three tools
+  /// instead of the server's own.
+  ///
+  /// The caption is the whole feature's honesty. This is the one toggle in the
+  /// app that TRADES rather than tightens — it buys back a client's context
+  /// window by spending that client's own permission rules — and a switch whose
+  /// cost is invisible is a switch somebody flips once and never connects to the
+  /// consequence weeks later. Same obligation `writesSection` carries with "this
+  /// filters Bastion, not the server".
+  @ViewBuilder private var contextSection: some View {
+    Section {
+      Toggle("Load tools on demand", isOn: $lazyTools)
+
+      Text(
+        "Clients see three Bastion tools — search, describe and call — instead of every tool "
+          + "\(server.displayName) exposes, and fetch a schema when they need one. Nothing "
+          + "becomes unreachable."
+      )
+      .font(.caption).foregroundStyle(.secondary)
+
+      Text(
+        "The cost is on the client's side: every call arrives as bastion_call_tool, so one "
+          + "approval rule in the editor now covers every tool on this server. Bastion's own "
+          + "Activity and audit log go on naming the real one."
+      )
+      .font(.caption).foregroundStyle(.secondary)
+
+      Text(
+        "Leave this off for Claude Code, which already loads tool schemas on demand by itself. "
+          + "It is worth turning on for clients that cannot."
+      )
+      .font(.caption).foregroundStyle(.secondary)
+    } header: {
+      Text("Context")
+    }
+  }
+
   /// The Writes section, lifted out of `body` for the same reason as the
   /// Authorization one: the form is a single expression and was already at
   /// the edge of what the type checker will solve.
@@ -425,7 +465,7 @@ struct ProfileEditor: View {
   private var draftProfile: Profile {
     Profile(
       name: name, serverID: server.id, values: [:], allowWrites: allowWrites,
-      captureMode: CallCapture.Mode(rawValue: capture))
+      captureMode: CallCapture.Mode(rawValue: capture), lazyTools: lazyTools)
   }
 
   /// The callback URL this profile has been assigned, or `nil` before there is
@@ -680,7 +720,7 @@ struct ProfileEditor: View {
       try ProfileStore.shared.upsert(
         Profile(
           name: trimmed, serverID: server.id, values: keep, allowWrites: allowWrites,
-          captureMode: CallCapture.Mode(rawValue: capture)))
+          captureMode: CallCapture.Mode(rawValue: capture), lazyTools: lazyTools))
       hostLog(
         "profiles", .info,
         "\(isNew ? "created" : "updated") profile '\(trimmed)/\(server.id)'")
