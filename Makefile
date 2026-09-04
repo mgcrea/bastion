@@ -820,6 +820,14 @@ format-swift: swift-format-version ## swift-format the Swift half
 format-swift-check: swift-format-version ## Fail on unformatted Swift
 	@xcrun swift-format lint --recursive --parallel --strict $(SWIFT_SRC)
 
+# `git blame` walks straight into the reformat commit unless it is told not to,
+# and the file that says so is per-clone config, not something the repo can set
+# for you. GitHub honours .git-blame-ignore-revs on its own; your terminal does
+# not until this runs.
+blame-setup: ## Teach git blame to skip the formatting-only commits
+	@git config blame.ignoreRevsFile .git-blame-ignore-revs
+	@echo "git blame will skip the commits in .git-blame-ignore-revs"
+
 # The JavaScript half's tests: the Worker's vitest suite and the script tests
 # under scripts/lib, which include the one asserting the Node minter and the
 # Worker produce byte-identical licence keys against the public key compiled
@@ -837,4 +845,4 @@ typecheck: ## tsc the Worker and astro check the website
 	screenshots screenshots-capture screenshots-check screenshots-update \
 	screenshots-seal screenshots-selftest screenshots-appstore \
 	screenshots-website screenshots-compose screenshots-doctor screenshots-clean \
-	lint format format-check format-swift format-swift-check swift-format-version test typecheck
+	lint format format-check format-swift format-swift-check swift-format-version blame-setup test typecheck

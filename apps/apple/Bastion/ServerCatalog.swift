@@ -314,6 +314,12 @@ nonisolated struct BastionServer: Identifiable, Hashable {
   /// Bastion is what the spec calls a **dual-era server**: it selects its
   /// behaviour from how the client opens, and fronts legacy children either
   /// way.
+  ///
+  /// The case names carry underscores so each one reads as the wire version it
+  /// equals. lowerCamelCase would spell `v20241105`, which no longer matches
+  /// the string beside it or anything in the spec, so the rule is off for this
+  /// declaration only rather than for the repo.
+  // swift-format-ignore: AlwaysUseLowerCamelCase
   enum Dialect: String, Hashable, Comparable, CaseIterable {
     case v2024_11_05 = "2024-11-05"
     case v2025_03_26 = "2025-03-26"
