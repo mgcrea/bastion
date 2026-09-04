@@ -158,7 +158,7 @@ nonisolated enum BuiltinServer {
     // what lets the audit go on naming the real tool.
     var frame = frame
     var facadeAnswer: [String: Any]?
-    if profile.lazyTools, client != ServerCheck.client,
+    if profile.loadsToolsOnDemand, client != ServerCheck.client,
       ToolFacade.handles(method: method, params: frame["params"] as? [String: Any])
     {
       let catalog = onMain { BuiltinTools.declarations(allowWrites: profile.allowWrites) }

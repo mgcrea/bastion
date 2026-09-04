@@ -33,22 +33,29 @@ nonisolated struct Profile: Identifiable, Hashable {
   /// is a sane setup, and one global switch makes it unexpressible.
   var captureMode: CallCapture.Mode?
   /// Whether this profile hands its clients `ToolFacade`'s three tools instead
-  /// of the server's own.
+  /// of the server's own, or nil to follow the app-wide default.
   ///
-  /// Per profile, and for a sharper version of the reason the write gate is:
-  /// this one is a trade rather than a tightening. It buys back the whole tool
-  /// listing — about 26.2k tokens on `prod/appstore-connect` — and spends the
-  /// host's own allowlist to do it, because every call arrives as
-  /// `bastion_call_tool`. A profile feeding Claude Code, which already defers
-  /// tool schemas by itself, should leave this off and lose nothing; a profile
-  /// feeding Claude Desktop through the bridge has no other way to stop paying.
-  /// Nobody can make that call globally, so nobody is asked to.
-  var lazyTools: Bool = false
+  /// Tri-state for `captureMode`'s reason, one line down: the answer is usually
+  /// the same for every profile on the machine, so making it a per-profile
+  /// setting alone buried the feature in a sheet — but it is not ALWAYS the
+  /// same, so a profile has to be able to disagree. This one is a trade rather
+  /// than a tightening: it buys back the whole tool listing, about 26.2k tokens
+  /// on `prod/appstore-connect`, and spends the host's own allowlist to do it
+  /// because every call arrives as `bastion_call_tool`. A profile feeding Claude
+  /// Code, which defers tool schemas by itself, gains nothing and pays all of
+  /// that — which is exactly the disagreement the override exists for.
+  var lazyTools: Bool?
 
   var id: String { "\(name)/\(serverID)" }
 
   /// What this profile actually records, default resolved.
   var capture: CallCapture.Mode { captureMode ?? CallCapture.globalDefault }
+
+  /// Whether this profile actually fronts its server with `ToolFacade`, default
+  /// resolved. The only form the gateway ever reads — nothing branches on
+  /// `lazyTools` directly, so a profile that has expressed no preference cannot
+  /// be mistaken for one that said no.
+  var loadsToolsOnDemand: Bool { lazyTools ?? ToolFacade.globalDefault }
 
   static func isValidName(_ name: String) -> Bool {
     !name.isEmpty && name.count <= 64
@@ -144,9 +151,10 @@ final class ProfileStore {
     /// additive rule `ServerStore.Stored.enabled` follows. Never make this
     /// required and never rename it.
     var captureMode: CallCapture.Mode?
-    /// Optional for the same additive reason, with nil meaning off: a
-    /// `profiles.json` written before the facade existed describes profiles
-    /// that were not using it.
+    /// Optional for the same additive reason, with nil meaning "follow the
+    /// app-wide default": a `profiles.json` written before the facade existed
+    /// describes profiles that expressed no preference, which is exactly what
+    /// nil says.
     var lazyTools: Bool?
   }
 
@@ -201,7 +209,7 @@ final class ProfileStore {
       }
       return Profile(
         name: row.name, serverID: row.server, values: values, allowWrites: row.allowWrites,
-        captureMode: row.captureMode, lazyTools: row.lazyTools ?? false)
+        captureMode: row.captureMode, lazyTools: row.lazyTools)
     }
     refreshSnapshot()
   }

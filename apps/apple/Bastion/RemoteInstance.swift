@@ -195,7 +195,7 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     // real tool. Never for Bastion's own callers, which budget and report over
     // the real list.
     var facadeAnswer: [String: Any]?
-    if profile.lazyTools, client != ServerCheck.client,
+    if profile.loadsToolsOnDemand, client != ServerCheck.client,
       ToolFacade.handles(method: method, params: frame["params"] as? [String: Any])
     {
       _ = try ensureHandshake()

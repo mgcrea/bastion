@@ -67,9 +67,9 @@ until something reaches for it, so its window holds the names and almost nothing
 else. Claude Desktop, and most editors, do not — they take the whole listing on
 connect and there is nothing the user can do about it from that side.
 
-**Load tools on demand** (per profile, in the profile editor under Context) is
-Bastion's answer for the clients that cannot. With it on, a client is served
-three tools instead of the server's own:
+**Load tools on demand** (Settings › General, with a per-profile override under
+Context) is Bastion's answer for the clients that cannot. With it on, a client is
+served three tools instead of the server's own:
 
 | Tool                    | What it does                                                              |
 | ----------------------- | ------------------------------------------------------------------------- |
@@ -94,8 +94,15 @@ write gate sees the frame, so all three go on naming the real tool.
 `mcp__appstore-connect__app_store_connect_update_app`, say — collapses into one
 rule covering every tool on that server. Bastion's own gate is unaffected: a
 write tool is still absent from the index and still refused by the dispatcher
-for a profile with writes off. But the editor's gate is coarser, which is why
-this is off by default and decided per profile rather than once for the machine.
+for a profile with writes off. But the editor's gate is coarser, which is why it
+is off by default.
+
+The switch is app-wide because the answer is usually the same for every profile
+on one machine. It is overridable per profile because it is not always: a profile
+wired to Claude Code should be set to off there, since Claude Code defers tool
+schemas by itself and so gains nothing while still paying the coarser approval
+rule. A profile that has expressed no preference follows the app-wide setting,
+which is the same tri-state **Record** uses one section further down.
 
 ## Why Claude Desktop gets a bridge
 

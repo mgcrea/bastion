@@ -29,6 +29,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="$ROOT/apps/apple/.build/Build/Products/Debug/Bastion.app/Contents/MacOS/Bastion"
 PORT="${BASTION_PORT:-8720}"
 SUPPORT="$HOME/Library/Application Support/io.mgcrea.bastion.debug"
+BUNDLE="io.mgcrea.bastion.debug"
 
 [ -x "$BIN" ] || { echo "no build — run \`make app\` first"; exit 2; }
 
@@ -48,8 +49,15 @@ restore() {
   for f in servers.json profiles.json; do
     [ -f "$SUPPORT/$f.facade-check-backup" ] && mv "$SUPPORT/$f.facade-check-backup" "$SUPPORT/$f"
   done
+  defaults delete "$BUNDLE" lazyToolsDefault 2>/dev/null || true
 }
 trap restore EXIT
+
+# The app-wide switch ON, so the three profiles below cover all three states of
+# the tri-state: one following it, one overriding to off, one overriding to on.
+# A setting whose default nothing reads is a setting that silently does nothing,
+# and that is precisely the bug a per-profile-only version would have had.
+defaults write "$BUNDLE" lazyToolsDefault -bool YES
 
 python3 - "$SUPPORT" <<'PY'
 import json, os, sys
@@ -70,11 +78,16 @@ profiles = [
     p for p in load("profiles.json", [])
     if not (p.get("server") == "bastion" and p.get("name") in scratch)
 ]
-# Three profiles of one server. The pair is the measurement — same tools, same
-# process, one number each — and the third is the write gate under a facade.
-profiles.append({"name": "facadeoff", "server": "bastion", "values": {}, "allowWrites": True})
-profiles.append({"name": "facadeon", "server": "bastion", "values": {}, "allowWrites": True,
-                 "lazyTools": True})
+# Three profiles of one server, one per state of the tri-state. The pair is the
+# measurement — same tools, same process, one number each — and the third is the
+# write gate under a facade.
+#
+# `facadeon` carries NO lazyTools key on purpose: it is the profile that has
+# expressed no preference, so every assertion about the facade below is also an
+# assertion that the app-wide default actually reaches a profile.
+profiles.append({"name": "facadeoff", "server": "bastion", "values": {}, "allowWrites": True,
+                 "lazyTools": False})
+profiles.append({"name": "facadeon", "server": "bastion", "values": {}, "allowWrites": True})
 profiles.append({"name": "facadero", "server": "bastion", "values": {}, "allowWrites": False,
                  "lazyTools": True})
 json.dump(profiles, open(os.path.join(support, "profiles.json"), "w"), indent=2)
@@ -111,8 +124,10 @@ LAZY_N=$(printf '%s' "$LAZY" | python3 -c 'import json,sys; print(len(json.load(
 PLAIN_B=${#PLAIN}
 LAZY_B=${#LAZY}
 
-[ "$LAZY_N" = "3" ] && ok "the facade lists three tools (server has $PLAIN_N)" \
-  || bad "the facade lists three tools — got $LAZY_N"
+[ "$LAZY_N" = "3" ] && ok "a profile following the app-wide default gets three tools" \
+  || bad "a profile following the app-wide default gets three tools — got $LAZY_N"
+[ "$PLAIN_N" != "3" ] && ok "and a profile overriding it to off gets all $PLAIN_N" \
+  || bad "a profile overriding to off still got the facade"
 [ "$PLAIN_N" -gt 10 ] && ok "the server itself lists $PLAIN_N" \
   || bad "the server itself lists more than ten — got $PLAIN_N"
 [ "$LAZY_B" -lt "$((PLAIN_B / 4))" ] \

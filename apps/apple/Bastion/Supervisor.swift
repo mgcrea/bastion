@@ -711,7 +711,7 @@ nonisolated extension Supervisor {
       // be told this server has three tools, and the check sheet would say so on
       // screen.
       var facade = FacadeOutcome.passThrough
-      if profile.lazyTools, client != ServerCheck.client {
+      if profile.loadsToolsOnDemand, client != ServerCheck.client {
         facade = try facadeOutcome(for: frame, method: method, clientID: clientID)
         if case .rewritten(let rewritten) = facade { frame = rewritten }
       }

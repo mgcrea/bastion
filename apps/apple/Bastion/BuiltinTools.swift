@@ -348,7 +348,8 @@ enum BuiltinTools {
           "boolean",
           "Whether clients get three Bastion tools — search, describe, call — instead of every "
             + "tool this server exposes. Saves the listing's context at the cost of the client's "
-            + "own per-tool approval rules."),
+            + "own per-tool approval rules. Overrides the app-wide setting for this profile; "
+            + "omit to leave the override as it is."),
       ],
       required: ["name", "server"], mutates: true),
 
@@ -710,7 +711,7 @@ enum BuiltinTools {
           "server": profile.serverID,
           "endpoint": "/s/\(profile.name)/\(profile.serverID)",
           "allow_writes": profile.allowWrites,
-          "lazy_tools": profile.lazyTools,
+          "lazy_tools": profile.loadsToolsOnDemand,
           "values": profile.values,
         ]
         guard let server = ServerStore.shared.server(id: profile.serverID) else { return row }
@@ -1198,7 +1199,11 @@ enum BuiltinTools {
       // without it would let an agent editing an unrelated field silently
       // reset a choice the person made in the window.
       captureMode: existing?.captureMode,
-      lazyTools: arguments["lazy_tools"] as? Bool ?? existing?.lazyTools ?? false)
+      // Absent means "leave the override alone", never "set it to the app-wide
+      // default" — the same carry-over `captureMode` gets above, and the same
+      // hazard: an agent editing a credential must not silently reset a
+      // decision somebody made in the window.
+      lazyTools: arguments["lazy_tools"] as? Bool ?? existing?.lazyTools)
     try ProfileStore.shared.upsert(profile)
 
     var out: [String: Any] = [
@@ -1206,7 +1211,9 @@ enum BuiltinTools {
       "created": existing == nil,
       "endpoint": "http://127.0.0.1:\(Gateway.shared.port)/s/\(name)/\(serverID)",
       "allow_writes": profile.allowWrites,
-      "lazy_tools": profile.lazyTools,
+      // The resolved answer, not the override: an agent asking what this
+      // profile does needs what it DOES, and nil is not an answer to that.
+      "lazy_tools": profile.loadsToolsOnDemand,
     ]
     let missing = ProfileEnvironment.missing(for: profile, server: server)
     if !missing.isEmpty { out["missing"] = missing }

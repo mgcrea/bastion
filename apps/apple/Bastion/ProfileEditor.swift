@@ -45,7 +45,9 @@ struct ProfileEditor: View {
   /// Secrets the user asked to delete outright, applied on save.
   @State private var cleared: Set<String>
   @State private var allowWrites: Bool
-  @State private var lazyTools: Bool
+  /// "" is "follow the app-wide default", the same spelling `capture` uses —
+  /// a `Picker` cannot tag an option with nil, so the empty string carries it.
+  @State private var lazyTools: String
   /// Empty string means "follow the app-wide default", which is what nil means
   /// on the profile — `Picker` needs a concrete tag, so the absence is spelled
   /// rather than optional here.
@@ -80,7 +82,7 @@ struct ProfileEditor: View {
     _secrets = State(initialValue: [:])
     _cleared = State(initialValue: [])
     _allowWrites = State(initialValue: profile?.allowWrites ?? false)
-    _lazyTools = State(initialValue: profile?.lazyTools ?? false)
+    _lazyTools = State(initialValue: profile?.lazyTools.map(String.init) ?? "")
     _capture = State(initialValue: profile?.captureMode?.rawValue ?? "")
   }
 
@@ -373,7 +375,11 @@ struct ProfileEditor: View {
   /// filters Bastion, not the server".
   @ViewBuilder private var contextSection: some View {
     Section {
-      Toggle("Load tools on demand", isOn: $lazyTools)
+      Picker("Load tools on demand", selection: $lazyTools) {
+        Text("Default (\(ToolFacade.globalDefault ? "on" : "off"))").tag("")
+        Text("On").tag("true")
+        Text("Off").tag("false")
+      }
 
       Text(
         "Clients see three Bastion tools — search, describe and call — instead of every tool "
@@ -389,9 +395,12 @@ struct ProfileEditor: View {
       )
       .font(.caption).foregroundStyle(.secondary)
 
+      // The override's whole purpose, said where somebody is deciding. The
+      // app-wide switch cannot know which client a profile is wired to; this
+      // is where that is known.
       Text(
-        "Leave this off for Claude Code, which already loads tool schemas on demand by itself. "
-          + "It is worth turning on for clients that cannot."
+        "Worth overriding to off for a profile wired to Claude Code, which already loads tool "
+          + "schemas on demand by itself — it gains nothing here and still pays the cost above."
       )
       .font(.caption).foregroundStyle(.secondary)
     } header: {
@@ -465,7 +474,7 @@ struct ProfileEditor: View {
   private var draftProfile: Profile {
     Profile(
       name: name, serverID: server.id, values: [:], allowWrites: allowWrites,
-      captureMode: CallCapture.Mode(rawValue: capture), lazyTools: lazyTools)
+      captureMode: CallCapture.Mode(rawValue: capture), lazyTools: Bool(lazyTools))
   }
 
   /// The callback URL this profile has been assigned, or `nil` before there is
@@ -720,7 +729,7 @@ struct ProfileEditor: View {
       try ProfileStore.shared.upsert(
         Profile(
           name: trimmed, serverID: server.id, values: keep, allowWrites: allowWrites,
-          captureMode: CallCapture.Mode(rawValue: capture), lazyTools: lazyTools))
+          captureMode: CallCapture.Mode(rawValue: capture), lazyTools: Bool(lazyTools)))
       hostLog(
         "profiles", .info,
         "\(isNew ? "created" : "updated") profile '\(trimmed)/\(server.id)'")

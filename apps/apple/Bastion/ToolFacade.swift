@@ -26,7 +26,9 @@ import Foundation
 /// `mcp__appstore-connect__bastion_call_tool`, so one permission rule now covers
 /// all eighty-five. Bastion's audit stays exact; the editor's gate does not.
 /// This is the same shape of caveat as `WriteGate`'s "this filters Bastion, not
-/// the server", and it is why the toggle is per profile and off by default.
+/// the server", and it is why the switch is off by default and why a profile can
+/// still override the app-wide answer: a profile feeding Claude Code, which
+/// defers tool schemas by itself, gains nothing here and pays the whole cost.
 ///
 /// Pure, and taking strings rather than a `BastionServer`, so `make unit` and
 /// `scripts/remote-check.swift` can compile it alone. The argument is
@@ -47,6 +49,24 @@ nonisolated enum ToolFacade {
 
   /// Membership test for the dispatch branch in `Supervisor.Instance.handle`.
   static let names: Set<String> = [searchName, describeName, callName]
+
+  // MARK: - Settings
+
+  /// The app-wide default, for every profile that has expressed no preference.
+  ///
+  /// A global switch with a per-profile override, which is `CallCapture`'s shape
+  /// and is here for a reason that took a round of review to see: a setting that
+  /// exists ONLY inside a profile sheet is a setting nobody finds. The saving is
+  /// the whole point of this feature and it was reachable only by editing every
+  /// profile one at a time, which is the same as not shipping it.
+  ///
+  /// Off, still. This is the one switch in the app that trades rather than
+  /// tightens — it spends the client's own per-tool approval rules — so turning
+  /// it on has to be somebody's decision. What changed is where the decision is
+  /// made, not that it is made.
+  static let defaultsKey = "lazyToolsDefault"
+
+  static var globalDefault: Bool { UserDefaults.standard.bool(forKey: defaultsKey) }
 
   // MARK: - Limits
 

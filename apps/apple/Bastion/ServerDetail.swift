@@ -784,7 +784,7 @@ private struct ProfileRow: View {
     // the saving legible. What the client is actually sent is the three
     // declarations, so the badge carries both and neither number is a claim the
     // other contradicts.
-    if profile.lazyTools {
+    if profile.loadsToolsOnDemand {
       let facade = ToolFacade.declarationBytes(
         displayName: server.displayName, summary: server.summary, toolCount: count)
       return (

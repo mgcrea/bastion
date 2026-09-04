@@ -152,6 +152,9 @@ private struct GeneralPane: View {
   @AppStorage(ServerInstaller.releaseAgeKey) private var releaseAge = -1
   /// Empty by default: the prefix is opt-in. See `ClientWiring.prefix`.
   @AppStorage(ClientWiring.prefixKey) private var keyPrefix = ""
+  /// Off. See `ToolFacade.defaultsKey` — this is the one setting in the app
+  /// that trades rather than tightens, so it is somebody's decision to make.
+  @AppStorage(ToolFacade.defaultsKey) private var lazyTools = false
 
   /// What the current prefix does to the keys that would actually be written,
   /// rather than to an invented example — the profiles are right there.
@@ -189,6 +192,37 @@ private struct GeneralPane: View {
         }
       } header: {
         Text("Gateway")
+      }
+
+      Section {
+        Toggle("Load tools on demand", isOn: $lazyTools)
+        Text(
+          "Clients are sent three Bastion tools — search, describe and call — instead of every "
+            + "tool a server exposes, and fetch a schema when they need one. Nothing becomes "
+            + "unreachable, and a server with 85 tools costs a client about 0.4k tokens on "
+            + "connect instead of 26.2k."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+        Text(
+          "The cost is on the client's side: every call arrives as bastion_call_tool, so one "
+            + "approval rule in an editor covers every tool on that server. Bastion's own "
+            + "Activity and audit log go on naming the real one, and the write gate still holds."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+        // Named here rather than only in the profile sheet: this switch moves
+        // every profile at once, and the client it is wrong for is the one
+        // most people are running.
+        Text(
+          "Claude Code already loads tool schemas on demand by itself. A profile wired to it "
+            + "gains nothing here and still pays the cost above — override that profile to off "
+            + "in its own settings."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      } header: {
+        Text("Tools")
       }
 
       Section {
