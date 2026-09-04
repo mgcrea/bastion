@@ -63,7 +63,7 @@
             {
               "type": "object",
               "additionalProperties": false,
-              "required": ["kind", "npmName", "binName", "distribution", "localPath"],
+              "required": ["kind", "npmName", "binName", "distribution", "localPath", "vendor"],
               "properties": {
                 "kind": {
                   "const": "child"
@@ -83,6 +83,10 @@
                 "localPath": {
                   "type": "string",
                   "minLength": 1
+                },
+                "vendor": {
+                  "enum": ["mgcrea", "third-party"],
+                  "description": "Who publishes the package. Stated rather than inferred from the scope, because the typo most worth catching is a typo IN the scope: `@mgcre/mcp-reddit` fails a startsWith check and would be waved through as somebody else's package. `mgcrea` holds the entry to the naming rule (@mgcrea/mcp-<id>, <id>-mcp, mcp-<id>); `third-party` requires a published package, derives localPath from the package name, and is what ServerDetail keys its provenance copy on — silence must not read as \"ours\"."
                 }
               }
             },
@@ -114,7 +118,11 @@
         "writeGate": {
           "type": ["string", "null"],
           "pattern": "^[A-Z][A-Z0-9_]*$",
-          "description": "Env var that enables destructive tools, or null when the server has no write path."
+          "description": "Env var that gates destructive tools, or null when the server has no write path. Null is a claim that every tool is a read, not a shrug for a server Bastion cannot configure: ToolProbe turns it into \"every tool is a read\" and stops asking for confirmation."
+        },
+        "writeGateSense": {
+          "enum": ["enables", "disables"],
+          "description": "Which way the write gate points. `enables` (the default) means Bastion writes \"1\" for writes on; `disables` means the variable is a READ-ONLY switch and the values invert. Required on a third-party child that names a gate, because the convention is nobody's to assume: MDB_MCP_READ_ONLY, READONLY and ALLOW_ONLY_NON_DESTRUCTIVE_TOOLS are all inverted, and the last one contains the word ALLOW, so no name heuristic can be trusted to tell."
         },
         "gateBypass": {
           "type": "array",
@@ -264,7 +272,7 @@
             "type": "string",
             "minLength": 1
           },
-          "description": "Remote transport only. Tool names the write gate hides, since a remote server has no environment to set a writeGate in. A filter over what Bastion forwards, never a promise about what the server will refuse."
+          "description": "Tool names the write gate hides, for a server with no writeGate to set: a remote endpoint, which has no environment at all, or a child whose own read-only switch is a CLI flag, which Bastion cannot pass. A filter over what Bastion forwards, never a promise about what the server will refuse. Mutually exclusive with writeGate — two switches on one wire drift apart."
         }
       }
     }

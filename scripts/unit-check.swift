@@ -454,7 +454,7 @@ struct UnitCheck {
     func server(
       writeGate: String? = nil, writeTools: [String] = [],
       transport: BastionServer.Transport = .child(
-        .init(npmName: "@a/b", binName: "b", distribution: .npm, localPath: "b"))
+        .init(npmName: "@a/b", binName: "b", distribution: .npm, localPath: "b", vendor: .mgcrea))
     ) -> BastionServer {
       BastionServer(
         id: "x", displayName: "X", summary: "", transport: transport, docsURL: nil,
@@ -493,7 +493,7 @@ struct UnitCheck {
       BastionServer(
         id: "x", displayName: "X", summary: "",
         transport: .child(
-          .init(npmName: "@a/b", binName: "b", distribution: .npm, localPath: "b")),
+          .init(npmName: "@a/b", binName: "b", distribution: .npm, localPath: "b", vendor: .mgcrea)),
         docsURL: nil, dialect: .v2025_11_25, writeGate: gate, writeTools: [], gateBypass: [],
         authModes: [], stateEnv: [], callbackEnv: [],
         env: names.map { .init(name: $0, isRequired: false, isSecret: false, summary: "") })
@@ -526,6 +526,120 @@ struct UnitCheck {
         "\(entry.id) drops exactly one variable",
         entry.editableEnv.count == entry.env.count - 1)
     }
+
+    print("\nWhich way each write gate points")
+    // The value a profile's toggle actually sends. Ours all point the same way
+    // and always have; nobody else's do, and the failure is silent in the worst
+    // direction — a server spawned with writes ON while the profile, the editor
+    // and the Activity window all read as off.
+    func polarised(_ sense: Bool) -> BastionServer {
+      var s = gated("A_ALLOW_WRITES", ["A_ALLOW_WRITES"])
+      s.writeGateEnablesWrites = sense
+      return s
+    }
+    check(
+      "a normal gate is \"1\" for writes on", polarised(true).gateValue(allowWrites: true) == "1")
+    check("and \"0\" for writes off", polarised(true).gateValue(allowWrites: false) == "0")
+    check(
+      "an inverted gate is \"0\" for writes on",
+      polarised(false).gateValue(allowWrites: true) == "0")
+    check(
+      "and \"1\" for writes off", polarised(false).gateValue(allowWrites: false) == "1")
+    // No gate means nothing to set, whichever way the flag happens to sit —
+    // `ProfileEnvironment.build` writes the variable only when both are present.
+    check("no gate sets nothing", gated(nil, ["A"]).gateValue(allowWrites: true) == nil)
+    check(
+      "and a remote server sets nothing either",
+      ServerCatalog.all.first { $0.id == "stripe" }?.gateValue(allowWrites: true) == nil)
+    // Named, not counted. A count would let the next inverted gate in silently;
+    // this makes it fail until somebody has read the server's source and said
+    // so out loud. `ALLOW_ONLY_NON_DESTRUCTIVE_TOOLS` is why no name heuristic
+    // can replace this list — it contains the word ALLOW and is inverted.
+    let inverted: Set<String> = [
+      "MDB_MCP_READ_ONLY", "READONLY", "ALLOW_ONLY_READONLY_TOOLS",
+    ]
+    check(
+      "every gate not named as inverted enables writes",
+      ServerCatalog.all
+        .filter { $0.writeGate != nil && !inverted.contains($0.writeGate!) }
+        .allSatisfy { $0.writeGateEnablesWrites })
+    check(
+      "and every one named as inverted really is",
+      ServerCatalog.all
+        .filter { $0.writeGate.map(inverted.contains) == true }
+        .allSatisfy { !$0.writeGateEnablesWrites })
+
+    print("\nWho publishes each catalog package")
+    // The naming rule, asserted against what the generator wrote rather than
+    // against the generator. A `.mgcrea` entry claims to be ours, so it is held
+    // to the derivation; a `.thirdParty` entry claims the opposite, and the
+    // things that cannot be checked offline for somebody else's package are
+    // made unrepresentable instead.
+    let children = ServerCatalog.all.compactMap { s in s.package.map { (s, $0) } }
+    check(
+      "every mgcrea package is @mgcrea/mcp-<id>",
+      children.filter { $0.1.vendor == .mgcrea }
+        .allSatisfy { $0.1.npmName == "@mgcrea/mcp-\($0.0.id)" })
+    check(
+      "no third-party entry claims our scope",
+      children.filter { $0.1.vendor == .thirdParty }
+        .allSatisfy { !$0.1.npmName.hasPrefix("@mgcrea/") })
+    // `local` resolves only against a checkout named by dev.json, which nobody
+    // has for a stranger's package — the install button would report "not
+    // published" forever.
+    check(
+      "every third-party entry is published",
+      children.filter { $0.1.vendor == .thirdParty }.allSatisfy { $0.1.distribution == .npm })
+    // `boolean.default` is a claim about the server's own schema, and there is
+    // no schema to read for a built bundle. Unrepresentable beats unverified.
+    check(
+      "no third-party entry declares a boolean",
+      children.filter { $0.1.vendor == .thirdParty }
+        .allSatisfy { $0.0.env.allSatisfy { $0.booleanDefault == nil } })
+    // A custom server is the user's, and the scope is the only evidence there
+    // is — unlike a manifest entry, where a stated vendor is what catches a
+    // misspelled scope.
+    check(
+      "a custom @mgcrea package is still ours",
+      BastionServer.Vendor.inferred(fromPackage: "@mgcrea/mcp-shopify") == .mgcrea)
+    check(
+      "and a lookalike scope is not",
+      BastionServer.Vendor.inferred(fromPackage: "@mgcrea-ai/mcp-shopify") == .thirdParty)
+    check(
+      "and an unscoped package is not",
+      BastionServer.Vendor.inferred(fromPackage: "mongodb-mcp-server") == .thirdParty)
+
+    print("\nA child gated by tool name rather than by a variable")
+    // The shape that exists because Bastion passes no argv: a server whose own
+    // read-only switch is a CLI flag has no variable to set, and writing it down
+    // as `writeGate: nil` would tell ToolProbe every tool is a read.
+    let toolGated = ServerCatalog.all.filter { $0.package != nil && !$0.writeTools.isEmpty }
+    check("some catalog child is gated this way", !toolGated.isEmpty)
+    check(
+      "and every one of them has a write path",
+      toolGated.allSatisfy { $0.hasWritePath })
+    // One wire, one switch. An env gate is the stronger mechanism — the server
+    // never registers the tool — so a server with both would be two answers to
+    // the same question, drifting apart the first time one is edited.
+    check(
+      "no child carries both a gate variable and a tool list",
+      ServerCatalog.all.allSatisfy {
+        $0.package == nil || $0.writeGate == nil
+          || $0.writeTools.isEmpty
+      })
+    check(
+      "a tool-gated child sets no variable at spawn",
+      toolGated.allSatisfy { $0.gateValue(allowWrites: true) == nil })
+    // The regression this pairs with, from the section above: `hasWritePath`
+    // was `writeGate != nil || isRemote`, which called every one of these
+    // read-only and handed a model `browser_click` and `execute_sql` with no
+    // confirmation at all.
+    check(
+      "playwright is not read-only",
+      ServerCatalog.all.first { $0.id == "playwright" }?.hasWritePath == true)
+    check(
+      "and supabase is not either",
+      ServerCatalog.all.first { $0.id == "supabase" }?.hasWritePath == true)
 
     print("\nHow a boolean variable's stored value is read")
     // This has to agree with the servers exactly, or the editor shows a switch

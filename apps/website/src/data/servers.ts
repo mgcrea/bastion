@@ -33,6 +33,14 @@ export interface Server {
    * there is no process — so the page has to be able to tell them apart.
    */
   transport: "child" | "remote";
+  /**
+   * Who publishes a child's package, and `null` for a remote entry, which has
+   * none. The page used to be able to say "the children" and mean "the ones
+   * written here" in one breath; a third-party child makes those two different
+   * sets, and a sentence that still conflates them is a claim about somebody
+   * else's code with our name on it.
+   */
+  vendor: "mgcrea" | "third-party" | null;
   /** The newest protocol revision the server's SDK negotiates. */
   dialect: string;
 }
@@ -45,6 +53,7 @@ export const SERVERS: Server[] = [
     summary: "App Store Connect API: apps, versions, builds, TestFlight, listings, analytics, sales.",
     writeGate: "APP_STORE_CONNECT_ALLOW_WRITES",
     transport: "child",
+    vendor: "mgcrea",
     dialect: "2025-11-25",
   },
   {
@@ -53,6 +62,7 @@ export const SERVERS: Server[] = [
     summary: "CloudKit management API: container schema — record types, fields, Development/Production diff and deploy.",
     writeGate: "CLOUDKIT_ALLOW_WRITES",
     transport: "child",
+    vendor: "mgcrea",
     dialect: "2025-11-25",
   },
   {
@@ -61,6 +71,7 @@ export const SERVERS: Server[] = [
     summary: "Reddit API: subreddits, posts, comments, search, and the user's own history.",
     writeGate: "REDDIT_ALLOW_WRITES",
     transport: "child",
+    vendor: "mgcrea",
     dialect: "2025-11-25",
   },
   {
@@ -69,6 +80,7 @@ export const SERVERS: Server[] = [
     summary: "X (Twitter) API v2: posts, threads, timelines, search, bookmarks, and the Ads API.",
     writeGate: "X_ALLOW_WRITES",
     transport: "child",
+    vendor: "mgcrea",
     dialect: "2025-11-25",
   },
   {
@@ -77,6 +89,7 @@ export const SERVERS: Server[] = [
     summary: "UniFi Protect: cameras, event history, recordings, snapshots and NVR status.",
     writeGate: "UNIFI_PROTECT_ALLOW_WRITES",
     transport: "child",
+    vendor: "mgcrea",
     dialect: "2025-11-25",
   },
   {
@@ -85,6 +98,7 @@ export const SERVERS: Server[] = [
     summary: "UniFi Network API: sites, devices, clients, WLANs, port and firewall configuration.",
     writeGate: "UNIFI_ALLOW_WRITES",
     transport: "child",
+    vendor: "mgcrea",
     dialect: "2025-11-25",
   },
   {
@@ -93,6 +107,7 @@ export const SERVERS: Server[] = [
     summary: "Stripe's own remote MCP server: the API surface, plus documentation and knowledge-base search.",
     writeGate: null,
     transport: "remote",
+    vendor: null,
     dialect: "2025-03-26",
   },
   {
@@ -101,6 +116,7 @@ export const SERVERS: Server[] = [
     summary: "Shopify Admin GraphQL API: products, variants, collections, metafields, locations.",
     writeGate: null,
     transport: "child",
+    vendor: "mgcrea",
     dialect: "2025-11-25",
   },
   {
@@ -109,6 +125,7 @@ export const SERVERS: Server[] = [
     summary: "OVHcloud API, focused on Object Storage: containers, objects, policies, regions.",
     writeGate: "OVH_ALLOW_WRITES",
     transport: "child",
+    vendor: "mgcrea",
     dialect: "2025-11-25",
   },
   {
@@ -117,6 +134,7 @@ export const SERVERS: Server[] = [
     summary: "Keycloak Admin REST API: realms, clients, users, roles, sessions.",
     writeGate: "KEYCLOAK_ALLOW_WRITES",
     transport: "child",
+    vendor: "mgcrea",
     dialect: "2025-11-25",
   },
   {
@@ -125,6 +143,7 @@ export const SERVERS: Server[] = [
     summary: "npm registry: packages, versions, downloads, advisories, dist-tags, orgs, tokens and trusted publishing.",
     writeGate: "NPM_ALLOW_WRITES",
     transport: "child",
+    vendor: "mgcrea",
     dialect: "2025-11-25",
   },
   {
@@ -133,6 +152,7 @@ export const SERVERS: Server[] = [
     summary: "GitHub's own remote MCP server: repositories, issues, pull requests, Actions, code scanning and Dependabot alerts.",
     writeGate: null,
     transport: "remote",
+    vendor: null,
     dialect: "2025-11-25",
   },
   {
@@ -141,6 +161,7 @@ export const SERVERS: Server[] = [
     summary: "Notion's own remote MCP server: search, read and update pages, databases and comments.",
     writeGate: null,
     transport: "remote",
+    vendor: null,
     dialect: "2025-11-25",
   },
   {
@@ -149,6 +170,7 @@ export const SERVERS: Server[] = [
     summary: "Linear's own remote MCP server: issues, projects, cycles, comments and documents.",
     writeGate: null,
     transport: "remote",
+    vendor: null,
     dialect: "2025-11-25",
   },
   {
@@ -157,6 +179,7 @@ export const SERVERS: Server[] = [
     summary: "Sentry's own remote MCP server: issues, events, releases and Seer analysis across your organisations.",
     writeGate: null,
     transport: "remote",
+    vendor: null,
     dialect: "2025-11-25",
   },
   {
@@ -165,6 +188,7 @@ export const SERVERS: Server[] = [
     summary: "Atlassian's own Rovo MCP server: Jira, Confluence, Jira Service Management, Bitbucket and Compass.",
     writeGate: null,
     transport: "remote",
+    vendor: null,
     dialect: "2025-11-25",
   },
   {
@@ -173,6 +197,7 @@ export const SERVERS: Server[] = [
     summary: "Figma's own remote MCP server: design file context, components and variables for coding agents.",
     writeGate: null,
     transport: "remote",
+    vendor: null,
     dialect: "2025-11-25",
   },
   {
@@ -181,6 +206,7 @@ export const SERVERS: Server[] = [
     summary: "Vercel's own remote MCP server: projects, deployments, runtime logs, Web Analytics and documentation search.",
     writeGate: null,
     transport: "remote",
+    vendor: null,
     dialect: "2025-11-25",
   },
   {
@@ -189,6 +215,7 @@ export const SERVERS: Server[] = [
     summary: "Cloudflare's own remote MCP server: the API surface across zones, DNS, Workers, R2 and the rest of the account.",
     writeGate: null,
     transport: "remote",
+    vendor: null,
     dialect: "2025-11-25",
   },
   {
@@ -197,6 +224,7 @@ export const SERVERS: Server[] = [
     summary: "Cloudflare's documentation search, as a remote MCP server. Needs no credential.",
     writeGate: null,
     transport: "remote",
+    vendor: null,
     dialect: "2025-11-25",
   },
   {
@@ -205,6 +233,7 @@ export const SERVERS: Server[] = [
     summary: "Cloudflare Workers logs and analytics, as a remote MCP server: query invocations, errors and traces.",
     writeGate: null,
     transport: "remote",
+    vendor: null,
     dialect: "2025-11-25",
   },
   {
@@ -213,6 +242,106 @@ export const SERVERS: Server[] = [
     summary: "Drive a physical iPhone or iPad: screenshot, accessibility tree, tap, swipe, type, and app lifecycle.",
     writeGate: "IOS_DEVICE_ALLOW_WRITES",
     transport: "child",
+    vendor: "mgcrea",
+    dialect: "2025-11-25",
+  },
+  {
+    id: "mongodb",
+    displayName: "MongoDB",
+    summary: "MongoDB and Atlas: collections, documents, indexes, aggregations, and cluster administration.",
+    writeGate: "MDB_MCP_READ_ONLY",
+    transport: "child",
+    vendor: "third-party",
+    dialect: "2025-11-25",
+  },
+  {
+    id: "dbhub",
+    displayName: "DBHub",
+    summary: "SQL databases behind one server: PostgreSQL, MySQL, MariaDB, SQL Server and SQLite, over a single DSN.",
+    writeGate: "READONLY",
+    transport: "child",
+    vendor: "third-party",
+    dialect: "2025-11-25",
+  },
+  {
+    id: "kubernetes",
+    displayName: "Kubernetes",
+    summary: "A Kubernetes cluster through kubectl and Helm: pods, deployments, services, logs, events and manifests.",
+    writeGate: "ALLOW_ONLY_READONLY_TOOLS",
+    transport: "child",
+    vendor: "third-party",
+    dialect: "2025-11-25",
+  },
+  {
+    id: "context7",
+    displayName: "Context7",
+    summary: "Up-to-date documentation and code examples for public libraries, fetched per version.",
+    writeGate: null,
+    transport: "child",
+    vendor: "third-party",
+    dialect: "2025-11-25",
+  },
+  {
+    id: "firecrawl",
+    displayName: "Firecrawl",
+    summary: "Web scraping and crawling as structured content: scrape a page, crawl a site, extract fields, search.",
+    writeGate: null,
+    transport: "child",
+    vendor: "third-party",
+    dialect: "2025-11-25",
+  },
+  {
+    id: "exa",
+    displayName: "Exa",
+    summary: "Exa neural search: web search, company and people research, and full page contents.",
+    writeGate: null,
+    transport: "child",
+    vendor: "third-party",
+    dialect: "2025-11-25",
+  },
+  {
+    id: "tavily",
+    displayName: "Tavily",
+    summary: "Tavily search: web search built for agents, plus page extraction, site mapping and crawling.",
+    writeGate: null,
+    transport: "child",
+    vendor: "third-party",
+    dialect: "2025-11-25",
+  },
+  {
+    id: "playwright",
+    displayName: "Playwright",
+    summary: "Drive a real browser: navigate, snapshot the accessibility tree, click, type, fill forms and read network traffic.",
+    writeGate: null,
+    transport: "child",
+    vendor: "third-party",
+    dialect: "2025-11-25",
+  },
+  {
+    id: "supabase",
+    displayName: "Supabase",
+    summary: "Supabase projects: tables, migrations, SQL, edge functions, branches, logs and advisors.",
+    writeGate: null,
+    transport: "child",
+    vendor: "third-party",
+    dialect: "2025-11-25",
+  },
+  {
+    id: "netlify",
+    displayName: "Netlify",
+    summary: "Netlify projects and deploys: read teams, projects and deploy state, and update them.",
+    writeGate: null,
+    transport: "child",
+    vendor: "third-party",
+    dialect: "2025-11-25",
+  },
+  {
+    id: "apify",
+    displayName: "Apify",
+    summary: "Apify Actors: search the store, inspect an Actor, run one, and read its dataset and key-value store.",
+    writeGate: null,
+    transport: "child",
+    vendor: "third-party",
     dialect: "2025-11-25",
   },
 ];
@@ -242,3 +371,14 @@ export const gated = SERVERS.filter(hasWritePath);
  *  different things about each, so it needs to count them apart. */
 export const children = SERVERS.filter((s) => s.transport === "child");
 export const remote = SERVERS.filter((s) => s.transport === "remote");
+
+/**
+ * The children split by who wrote them.
+ *
+ * The page used to say "the children run an SDK whose newest protocol is X" and
+ * mean the servers in this repo, because those were the only children there
+ * were. They are not any more, and a sentence that still says "the children"
+ * makes a measured claim about somebody else's dependency.
+ */
+export const ownChildren = children.filter((s) => s.vendor === "mgcrea");
+export const thirdPartyChildren = children.filter((s) => s.vendor === "third-party");

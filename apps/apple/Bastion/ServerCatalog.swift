@@ -70,6 +70,20 @@ nonisolated struct BastionServer: Identifiable, Hashable {
   /// reason `ServerHost.swift` gives for one process per connection: write
   /// permissions do not have to be shared just because a process is.
   let writeGate: String?
+  /// Which way `writeGate` points. `true` — the default and every server we
+  /// write — means the variable ENABLES writes, so the toggle sends `"1"` for
+  /// on. `false` means it is a read-only switch and the values invert.
+  ///
+  /// Defaulted so the generated catalog does not repeat the common case, and
+  /// stated in `servers.json` rather than guessed from the name, because the
+  /// name cannot be read: of the third-party gates measured so far
+  /// `MDB_MCP_READ_ONLY`, `READONLY` and `ALLOW_ONLY_NON_DESTRUCTIVE_TOOLS`
+  /// are all inverted, and the last one contains the word ALLOW. Any heuristic
+  /// over the name gets Kubernetes exactly backwards.
+  ///
+  /// Read only through `gateValue(allowWrites:)`. Nothing else should compare
+  /// this to anything.
+  var writeGateEnablesWrites: Bool = true
   /// The remote counterpart to `writeGate`: tool names the gate hides.
   ///
   /// A child gets an environment variable that switches its destructive tools
@@ -161,8 +175,28 @@ nonisolated struct BastionServer: Identifiable, Hashable {
   /// a remote entry with an empty list can still gate tools it has not met yet.
   /// "Read-only" is not a claim that can be made about a remote server in
   /// advance, and the honest default is that it has a write path.
+  ///
+  /// A child gated by tool NAME counts too. That shape exists because Bastion
+  /// passes no argv, so a server whose own read-only switch is a CLI flag has
+  /// no variable to set — and declaring `writeGate: nil` for one would say
+  /// "every tool is a read" about a server that can drop a table.
   var hasWritePath: Bool {
-    writeGate != nil || transport.isRemote
+    writeGate != nil || transport.isRemote || !writeTools.isEmpty
+  }
+
+  /// The literal a profile's write toggle resolves to, or `nil` when there is
+  /// no gate to set.
+  ///
+  /// The one place polarity is applied. It lives here, on the definition,
+  /// rather than at the single call site in `ProfileEnvironment.build` for a
+  /// reason that is not style: `make unit` compiles this file and not that one,
+  /// so a rule written here is asserted on every catalog entry for free, and
+  /// the same rule written there cannot be tested at all. Getting a gate
+  /// backwards spawns a server with writes ON while its profile, the editor and
+  /// the Activity window all read as off — a failure with no other detector.
+  func gateValue(allowWrites: Bool) -> String? {
+    guard writeGate != nil else { return nil }
+    return allowWrites == writeGateEnablesWrites ? "1" : "0"
   }
 
   /// The variables a profile actually fills in, which is **not** `env`.
@@ -273,9 +307,11 @@ nonisolated struct BastionServer: Identifiable, Hashable {
   /// does when there is no package, which is the question the old shape let
   /// them all skip.
   struct Package: Hashable {
-    /// Catalog entries are always `@mgcrea/mcp-<id>` and the generator
-    /// enforces that; a custom entry names somebody else's package and is held
-    /// only to npm's own naming rules.
+    /// A catalog entry marked `.mgcrea` is always `@mgcrea/mcp-<id>` and the
+    /// generator enforces that. A `.thirdParty` entry — catalog or custom —
+    /// names somebody else's package and is held only to npm's own naming
+    /// rules, because `@acme/mcp-foo` shipping a `foo` binary is nobody's
+    /// mistake.
     let npmName: String
     /// The `bin` entry to run out of that package. Looked up in the installed
     /// `package.json` rather than assumed — a package is free to put its entry
@@ -286,8 +322,41 @@ nonisolated struct BastionServer: Identifiable, Hashable {
     /// against a checkout named by `dev.json`.
     let distribution: Distribution
     /// Directory name in the mgcrea-ai checkout, for `.local` and for DEBUG
-    /// overrides of `.npm`.
+    /// overrides of `.npm`. Derived from `npmName` for a `.thirdParty` entry,
+    /// where it is a convenience for anyone who happens to have the package
+    /// cloned beside the others and never a claim that they do — a miss in
+    /// `ServerLocator.developmentBinaries` falls through rather than failing.
     let localPath: String
+    /// Who publishes this package, and therefore whose rules it is held to.
+    ///
+    /// Deliberately not defaulted. A forgotten `vendor` would silently claim
+    /// first-party provenance, and that claim is what `ServerDetail` renders to
+    /// somebody deciding whether to run the thing.
+    let vendor: Vendor
+  }
+
+  /// Who publishes a child's package.
+  enum Vendor: Hashable {
+    /// Written here. Held to the `@mgcrea/mcp-<id>` naming rule, and its
+    /// declared variables are checked against its own TypeScript source.
+    case mgcrea
+    /// Somebody else's package, which Bastion installs from npm and runs on the
+    /// user's machine with the profile's credentials in its environment. The
+    /// higher-trust ask of the two, and the reason it is said out loud in the UI
+    /// rather than left to be inferred from a package name.
+    case thirdParty
+
+    /// The vendor of a package nobody vetted, read off its npm scope.
+    ///
+    /// Inference is refused in `servers.json` — a stated `vendor` is what makes
+    /// a misspelled scope like `@mgcre/mcp-reddit` fail loudly instead of being
+    /// waved through as somebody else's package. That argument does not carry
+    /// here: a CUSTOM entry is typed by the user, there is no expected name to
+    /// check it against, and the scope is the only evidence there is. `@mgcrea`
+    /// is a scope we control, so a package inside it is ours by construction.
+    static func inferred(fromPackage npmName: String) -> Vendor {
+      npmName.hasPrefix("@mgcrea/") ? .mgcrea : .thirdParty
+    }
   }
 
   enum Distribution: Hashable {
@@ -497,7 +566,8 @@ nonisolated enum ServerCatalog {
           npmName: "@mgcrea/mcp-appstore-connect",
           binName: "appstore-connect-mcp",
           distribution: .npm,
-          localPath: "mcp-appstore-connect")),
+          localPath: "mcp-appstore-connect",
+          vendor: .mgcrea)),
       docsURL: URL(string: "https://github.com/mgcrea/mcp-appstore-connect"),
       dialect: .v2025_11_25,
       writeGate: "APP_STORE_CONNECT_ALLOW_WRITES",
@@ -581,9 +651,9 @@ nonisolated enum ServerCatalog {
     // field can be added, never removed, renamed or retyped — so that diff is
     // the one thing worth reading before confirm: true.
     //
-    // Local until published — npm 404s on @mgcrea/mcp-cloudkit today, so this
-    // entry only resolves against a checkout under MCP_ROOT. docsUrl is null
-    // for the same reason: the GitHub repo does not exist yet.
+    // Published as @mgcrea/mcp-cloudkit 0.1.0 on 2026-09-04, so a stranger
+    // can install this one. The scope is covered by a min-release-age-exclude
+    // locally, which is the only reason a version this fresh installs at all.
     BastionServer(
       id: "cloudkit",
       displayName: "CloudKit",
@@ -592,9 +662,10 @@ nonisolated enum ServerCatalog {
         .init(
           npmName: "@mgcrea/mcp-cloudkit",
           binName: "cloudkit-mcp",
-          distribution: .local,
-          localPath: "mcp-cloudkit")),
-      docsURL: nil,
+          distribution: .npm,
+          localPath: "mcp-cloudkit",
+          vendor: .mgcrea)),
+      docsURL: URL(string: "https://github.com/mgcrea/mcp-cloudkit"),
       dialect: .v2025_11_25,
       writeGate: "CLOUDKIT_ALLOW_WRITES",
       writeTools: [],
@@ -646,7 +717,8 @@ nonisolated enum ServerCatalog {
           npmName: "@mgcrea/mcp-reddit",
           binName: "reddit-mcp",
           distribution: .npm,
-          localPath: "mcp-reddit")),
+          localPath: "mcp-reddit",
+          vendor: .mgcrea)),
       docsURL: URL(string: "https://github.com/mgcrea/mcp-reddit"),
       dialect: .v2025_11_25,
       writeGate: "REDDIT_ALLOW_WRITES",
@@ -712,7 +784,8 @@ nonisolated enum ServerCatalog {
           npmName: "@mgcrea/mcp-x",
           binName: "x-mcp",
           distribution: .npm,
-          localPath: "mcp-x")),
+          localPath: "mcp-x",
+          vendor: .mgcrea)),
       docsURL: URL(string: "https://github.com/mgcrea/mcp-x"),
       dialect: .v2025_11_25,
       writeGate: "X_ALLOW_WRITES",
@@ -810,7 +883,8 @@ nonisolated enum ServerCatalog {
           npmName: "@mgcrea/mcp-unifi-protect",
           binName: "unifi-protect-mcp",
           distribution: .npm,
-          localPath: "mcp-unifi-protect")),
+          localPath: "mcp-unifi-protect",
+          vendor: .mgcrea)),
       docsURL: URL(string: "https://github.com/mgcrea/mcp-unifi-protect"),
       dialect: .v2025_11_25,
       writeGate: "UNIFI_PROTECT_ALLOW_WRITES",
@@ -926,7 +1000,8 @@ nonisolated enum ServerCatalog {
           npmName: "@mgcrea/mcp-unifi-network",
           binName: "unifi-network-mcp",
           distribution: .npm,
-          localPath: "mcp-unifi-network")),
+          localPath: "mcp-unifi-network",
+          vendor: .mgcrea)),
       docsURL: URL(string: "https://github.com/mgcrea/mcp-unifi-network"),
       dialect: .v2025_11_25,
       writeGate: "UNIFI_ALLOW_WRITES",
@@ -1131,7 +1206,8 @@ nonisolated enum ServerCatalog {
           npmName: "@mgcrea/mcp-shopify",
           binName: "shopify-mcp",
           distribution: .npm,
-          localPath: "mcp-shopify")),
+          localPath: "mcp-shopify",
+          vendor: .mgcrea)),
       docsURL: URL(string: "https://github.com/mgcrea/mcp-shopify"),
       dialect: .v2025_11_25,
       writeGate: nil,
@@ -1174,7 +1250,8 @@ nonisolated enum ServerCatalog {
           npmName: "@mgcrea/mcp-ovh",
           binName: "ovh-mcp",
           distribution: .npm,
-          localPath: "mcp-ovh")),
+          localPath: "mcp-ovh",
+          vendor: .mgcrea)),
       docsURL: URL(string: "https://github.com/mgcrea/mcp-ovh"),
       dialect: .v2025_11_25,
       writeGate: "OVH_ALLOW_WRITES",
@@ -1272,7 +1349,8 @@ nonisolated enum ServerCatalog {
           npmName: "@mgcrea/mcp-keycloak",
           binName: "keycloak-mcp",
           distribution: .npm,
-          localPath: "mcp-keycloak")),
+          localPath: "mcp-keycloak",
+          vendor: .mgcrea)),
       docsURL: URL(string: "https://github.com/mgcrea/mcp-keycloak"),
       dialect: .v2025_11_25,
       writeGate: "KEYCLOAK_ALLOW_WRITES",
@@ -1368,7 +1446,8 @@ nonisolated enum ServerCatalog {
           npmName: "@mgcrea/mcp-npm",
           binName: "npm-mcp",
           distribution: .npm,
-          localPath: "mcp-npm")),
+          localPath: "mcp-npm",
+          vendor: .mgcrea)),
       docsURL: URL(string: "https://github.com/mgcrea/mcp-npm"),
       dialect: .v2025_11_25,
       writeGate: "NPM_ALLOW_WRITES",
@@ -2016,7 +2095,8 @@ nonisolated enum ServerCatalog {
           npmName: "@mgcrea/mcp-ios-device",
           binName: "ios-device-mcp",
           distribution: .npm,
-          localPath: "mcp-ios-device")),
+          localPath: "mcp-ios-device",
+          vendor: .mgcrea)),
       docsURL: URL(string: "https://github.com/mgcrea/mcp-ios-device"),
       dialect: .v2025_11_25,
       writeGate: "IOS_DEVICE_ALLOW_WRITES",
@@ -2051,6 +2131,473 @@ nonisolated enum ServerCatalog {
           isRequired: false,
           isSecret: false,
           summary: "Enables the nine tools that drive the device: tap, tap_element, swipe, type, press_button, install, launch, terminate, pull_container."),
+      ]),
+    // The first entry in this catalog that mgcrea did not write. Everything Bastion adds to it is the same as for any other child - one process instead of one per editor, the credential in the Keychain rather than in four config files, and a line in the audit log per call - and the one thing it does not add is any review of the code. `transport.vendor` says so out loud, and ServerDetail renders that rather than leaving it to be guessed from the package name.
+    //
+    // THE WRITE GATE IS INVERTED, and it is the reason `writeGateSense` exists. Every server written here names its gate `*_ALLOW_WRITES` and treats "1" as on. This one's switch is `MDB_MCP_READ_ONLY`, where "1" means the opposite, so a profile with writes off would have spawned a server with writes on - and the toggle, the profile editor and the Activity window would all have read as off while it happened. Bastion resolves the value through `BastionServer.gateValue(allowWrites:)`, which is the only place polarity is applied.
+    //
+    // Two auth modes because there are two different things to address. A connection string points at one deployment and carries its own password; an Atlas API key pair points at an account and is what the cluster-management tools use. Neither is required, because requiring either would make the other unsatisfiable.
+    //
+    // The variables are checked against the PUBLISHED TARBALL rather than against source, because there is no checkout of somebody else's repo to read. That check is by name rather than by read: this server hands its whole schema to a config library with `envPrefix: "MDB_MCP_"`, so `MDB_MCP_READ_ONLY` is never read by name anywhere in the shipped code - it is assembled at runtime. A rename upstream still takes the old name out of the bundle, which is the failure worth catching.
+    //
+    // DIALECT MEASURED. A live `initialize` that asks for 2026-07-28 - a revision no server here supports - is answered with this server's own newest, which is how a server is made to name it rather than echo the client. Asking for 2025-06-18 instead gets 2025-06-18 back from every one of these, which measures nothing.
+    BastionServer(
+      id: "mongodb",
+      displayName: "MongoDB",
+      summary: "MongoDB and Atlas: collections, documents, indexes, aggregations, and cluster administration.",
+      transport: .child(
+        .init(
+          npmName: "mongodb-mcp-server",
+          binName: "mongodb-mcp-server",
+          distribution: .npm,
+          localPath: "mongodb-mcp-server",
+          vendor: .thirdParty)),
+      docsURL: URL(string: "https://github.com/mongodb-js/mongodb-mcp-server"),
+      dialect: .v2025_11_25,
+      writeGate: "MDB_MCP_READ_ONLY",
+      writeGateEnablesWrites: false,
+      writeTools: [],
+      gateBypass: [],
+      authModes: [
+        .init(
+          id: "connection-string",
+          displayName: "Connection string",
+          kind: .env,
+          env: ["MDB_MCP_CONNECTION_STRING"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+        .init(
+          id: "atlas-api",
+          displayName: "Atlas API key",
+          kind: .env,
+          env: ["MDB_MCP_API_CLIENT_ID", "MDB_MCP_API_CLIENT_SECRET"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+      ],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "MDB_MCP_CONNECTION_STRING",
+          isRequired: false,
+          isSecret: true,
+          summary: "The full MongoDB connection string, including its password. Addresses one deployment; the Atlas API key addresses an account."),
+        .init(
+          name: "MDB_MCP_API_CLIENT_ID",
+          isRequired: false,
+          isSecret: false,
+          summary: "Atlas API public key, for the tools that manage clusters rather than query one."),
+        .init(
+          name: "MDB_MCP_API_CLIENT_SECRET",
+          isRequired: false,
+          isSecret: true,
+          summary: "Atlas API private key."),
+        .init(
+          name: "MDB_MCP_READ_ONLY",
+          isRequired: false,
+          isSecret: false,
+          summary: "Set from the profile's write toggle, never typed. Inverted: this server's switch turns writes OFF, so Bastion sends \"1\" when writes are off and \"0\" when they are on."),
+      ]),
+    // One entry for five database engines, because the server picks its driver from the DSN's scheme rather than from a setting. A profile per database is the unit that matters here, and that is what Bastion was already for: two DSNs are two credentials, and they have no business sharing a process or a Keychain entry.
+    //
+    // The gate is inverted - `READONLY` turns writes OFF - so `writeGateSense` is `disables` and the toggle's meaning is reversed for it. It is also the most consequential gate in this catalog: with writes on, this server will run whatever SQL a model composes.
+    //
+    // The DSN is the credential AND the address, which is why it is the only variable offered. The server also reads a `DB_*` set and an `SSH_*` tunnel group, left out because a profile editor with eleven connection fields is worse than one with a connection string - and the DSN is the form every one of these engines already documents.
+    //
+    // `READONLY` is a generic name for an environment shared with everything else the user runs, and that is the server's choice rather than Bastion's. It is set per profile and never globally, so nothing outside this server's own process sees it.
+    //
+    // DIALECT MEASURED. A live `initialize` that asks for 2026-07-28 - a revision no server here supports - is answered with this server's own newest, which is how a server is made to name it rather than echo the client. Asking for 2025-06-18 instead gets 2025-06-18 back from every one of these, which measures nothing. Worth having measured this one: it builds on @modelcontextprotocol/server 2.0.0, which KNOWS 2026-07-28, and still negotiates legacy. The newest revision an SDK knows is not the one a server speaks.
+    BastionServer(
+      id: "dbhub",
+      displayName: "DBHub",
+      summary: "SQL databases behind one server: PostgreSQL, MySQL, MariaDB, SQL Server and SQLite, over a single DSN.",
+      transport: .child(
+        .init(
+          npmName: "@bytebase/dbhub",
+          binName: "dbhub",
+          distribution: .npm,
+          localPath: "bytebase-dbhub",
+          vendor: .thirdParty)),
+      docsURL: URL(string: "https://github.com/bytebase/dbhub"),
+      dialect: .v2025_11_25,
+      writeGate: "READONLY",
+      writeGateEnablesWrites: false,
+      writeTools: [],
+      gateBypass: [],
+      authModes: [],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "DSN",
+          isRequired: true,
+          isSecret: true,
+          summary: "The whole connection string, including the password: postgres://user:pass@host:5432/db. Which database engine is being spoken to is read from its scheme."),
+        .init(
+          name: "READONLY",
+          isRequired: false,
+          isSecret: false,
+          summary: "Set from the profile's write toggle, never typed. Inverted: this is a read-only switch, so Bastion sends \"1\" when writes are off."),
+      ]),
+    // A kubeconfig is not one credential, it is all of them: the default file names every cluster the user has ever touched, and a model asking for "the deployment" gets whichever context happened to be current. `K8S_CONTEXT` per profile is the point of this entry - one profile per cluster, each pinned, each with its own write toggle, so staging and production stop being one keystroke apart.
+    //
+    // The gate is inverted. `ALLOW_ONLY_READONLY_TOOLS` restricts rather than permits, so `writeGateSense` is `disables` and Bastion sends "1" for writes OFF. The server also reads `ALLOW_ONLY_NON_DESTRUCTIVE_TOOLS`, a middle setting that permits create and update but not delete. It is not offered: it sits between the two states the toggle has, and a second switch on the same wire is how the two drift apart. The stricter of the two is the one wired up.
+    //
+    // `K8S_SKIP_TLS_VERIFY` is read by the server and deliberately not offered. It is a boolean, third-party entries cannot declare booleans - nothing can check what their default is - and a free-text field for one is a trap: every server parsing these reads `yes` and `enable` as FALSE without complaining, which on a certificate check is the insecure direction.
+    //
+    // DIALECT MEASURED. A live `initialize` that asks for 2026-07-28 - a revision no server here supports - is answered with this server's own newest, which is how a server is made to name it rather than echo the client. Asking for 2025-06-18 instead gets 2025-06-18 back from every one of these, which measures nothing.
+    BastionServer(
+      id: "kubernetes",
+      displayName: "Kubernetes",
+      summary: "A Kubernetes cluster through kubectl and Helm: pods, deployments, services, logs, events and manifests.",
+      transport: .child(
+        .init(
+          npmName: "mcp-server-kubernetes",
+          binName: "mcp-server-kubernetes",
+          distribution: .npm,
+          localPath: "mcp-server-kubernetes",
+          vendor: .thirdParty)),
+      docsURL: URL(string: "https://github.com/Flux159/mcp-server-kubernetes"),
+      dialect: .v2025_11_25,
+      writeGate: "ALLOW_ONLY_READONLY_TOOLS",
+      writeGateEnablesWrites: false,
+      writeTools: [],
+      gateBypass: [],
+      authModes: [
+        .init(
+          id: "kubeconfig",
+          displayName: "Kubeconfig file",
+          kind: .env,
+          env: ["KUBECONFIG_PATH"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+        .init(
+          id: "service-account",
+          displayName: "Service account token",
+          kind: .env,
+          env: ["K8S_SERVER", "K8S_TOKEN"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+      ],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "KUBECONFIG_PATH",
+          isRequired: false,
+          isSecret: false,
+          summary: "Path to a kubeconfig file. Unset falls through to the server's own default of ~/.kube/config, which is every cluster the user has."),
+        .init(
+          name: "K8S_SERVER",
+          isRequired: false,
+          isSecret: false,
+          summary: "API server URL, for reaching a cluster with a token instead of a kubeconfig."),
+        .init(
+          name: "K8S_TOKEN",
+          isRequired: false,
+          isSecret: true,
+          summary: "Service account bearer token, paired with K8S_SERVER."),
+        .init(
+          name: "K8S_CONTEXT",
+          isRequired: false,
+          isSecret: false,
+          summary: "Which context in the kubeconfig to use. The difference between staging and production is usually this one string."),
+        .init(
+          name: "K8S_NAMESPACE",
+          isRequired: false,
+          isSecret: false,
+          summary: "Default namespace for operations that do not name one."),
+        .init(
+          name: "ALLOW_ONLY_READONLY_TOOLS",
+          isRequired: false,
+          isSecret: false,
+          summary: "Set from the profile's write toggle, never typed. Inverted: this restricts the server to reads, so Bastion sends \"1\" when writes are off."),
+      ]),
+    // No write gate because there is no write path: every tool resolves a library name or fetches documentation. That claim is load-bearing rather than cosmetic - Bastion reads it as "every tool is a read" and stops asking for confirmation - so it is made only for a server where it is true.
+    //
+    // No auth modes, because "no credential at all" is not a mode that can be written down: a mode has to name at least one variable, and this server works without one. The key raises a rate limit rather than unlocking anything, so the honest shape is one optional variable and no modes.
+    //
+    // DIALECT MEASURED. A live `initialize` that asks for 2026-07-28 - a revision no server here supports - is answered with this server's own newest, which is how a server is made to name it rather than echo the client. Asking for 2025-06-18 instead gets 2025-06-18 back from every one of these, which measures nothing. Like DBHub, this one builds on the 2.0 SDK that knows 2026-07-28 and negotiates legacy anyway.
+    BastionServer(
+      id: "context7",
+      displayName: "Context7",
+      summary: "Up-to-date documentation and code examples for public libraries, fetched per version.",
+      transport: .child(
+        .init(
+          npmName: "@upstash/context7-mcp",
+          binName: "context7-mcp",
+          distribution: .npm,
+          localPath: "upstash-context7-mcp",
+          vendor: .thirdParty)),
+      docsURL: URL(string: "https://github.com/upstash/context7"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: [],
+      gateBypass: [],
+      authModes: [],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "CONTEXT7_API_KEY",
+          isRequired: false,
+          isSecret: true,
+          summary: "Raises the rate limit. The server answers without one, at a lower limit, which is why this is not required."),
+      ]),
+    // No write gate: nothing here changes anything the user owns. It does SPEND, though - a crawl bills per page - and that is a limit a write toggle was never going to express. The real bound is the key's own plan, which is the same thing the remote entries say about scopes.
+    //
+    // The server reads a long `FIRECRAWL_MCP_*` group for running itself as a hosted HTTP service with its own OAuth. None of it is offered: Bastion speaks stdio to a child it spawned, so a server configuring its own listener is configuring something Bastion does not use. `FIRECRAWL_API_URL`, which points at a self-hosted instance, is left out for the same reason the other base-URL overrides are.
+    //
+    // DIALECT MEASURED. A live `initialize` that asks for 2026-07-28 - a revision no server here supports - is answered with this server's own newest, which is how a server is made to name it rather than echo the client. Asking for 2025-06-18 instead gets 2025-06-18 back from every one of these, which measures nothing. This one does not use the official SDK at all - it is built on fastmcp - so a reading of its dependencies would have said nothing, and the handshake was the only way to know.
+    BastionServer(
+      id: "firecrawl",
+      displayName: "Firecrawl",
+      summary: "Web scraping and crawling as structured content: scrape a page, crawl a site, extract fields, search.",
+      transport: .child(
+        .init(
+          npmName: "firecrawl-mcp",
+          binName: "firecrawl-mcp",
+          distribution: .npm,
+          localPath: "firecrawl-mcp",
+          vendor: .thirdParty)),
+      docsURL: URL(string: "https://github.com/firecrawl/firecrawl-mcp-server"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: [],
+      gateBypass: [],
+      authModes: [],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "FIRECRAWL_API_KEY",
+          isRequired: true,
+          isSecret: true,
+          summary: "Firecrawl API key. The server will not start without one."),
+      ]),
+    // No write gate: every tool is a search or a fetch.
+    //
+    // This package declares no `license` field in its package.json, unlike every other entry here. The repository states MIT; the published artefact does not say so, and anyone whose review depends on the manifest should know that before installing it rather than after.
+    //
+    // DIALECT MEASURED. A live `initialize` that asks for 2026-07-28 - a revision no server here supports - is answered with this server's own newest, which is how a server is made to name it rather than echo the client. Asking for 2025-06-18 instead gets 2025-06-18 back from every one of these, which measures nothing. The declared @modelcontextprotocol/sdk range is ^1.12.1, but the package ships a bundled copy, so the declaration was never going to be the answer.
+    BastionServer(
+      id: "exa",
+      displayName: "Exa",
+      summary: "Exa neural search: web search, company and people research, and full page contents.",
+      transport: .child(
+        .init(
+          npmName: "exa-mcp-server",
+          binName: "exa-mcp-server",
+          distribution: .npm,
+          localPath: "exa-mcp-server",
+          vendor: .thirdParty)),
+      docsURL: URL(string: "https://github.com/exa-labs/exa-mcp-server"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: [],
+      gateBypass: [],
+      authModes: [],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "EXA_API_KEY",
+          isRequired: true,
+          isSecret: true,
+          summary: "Exa API key."),
+      ]),
+    // No write gate: every tool is a search or a fetch.
+    //
+    // DIALECT MEASURED. A live `initialize` that asks for 2026-07-28 - a revision no server here supports - is answered with this server's own newest, which is how a server is made to name it rather than echo the client. Asking for 2025-06-18 instead gets 2025-06-18 back from every one of these, which measures nothing.
+    BastionServer(
+      id: "tavily",
+      displayName: "Tavily",
+      summary: "Tavily search: web search built for agents, plus page extraction, site mapping and crawling.",
+      transport: .child(
+        .init(
+          npmName: "tavily-mcp",
+          binName: "tavily-mcp",
+          distribution: .npm,
+          localPath: "tavily-mcp",
+          vendor: .thirdParty)),
+      docsURL: URL(string: "https://github.com/tavily-ai/tavily-mcp"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: [],
+      gateBypass: [],
+      authModes: [],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "TAVILY_API_KEY",
+          isRequired: true,
+          isSecret: true,
+          summary: "Tavily API key."),
+      ]),
+    // The most-installed MCP server on npm, and the entry that makes the point of the app rather than the point of the catalog: a browser is expensive to start and stateful once it is running, so one supervised instance shared by every editor is the difference this app exists for. Four clients pointed at the same profile drive one browser, not four.
+    //
+    // `PLAYWRIGHT_MCP_USER_DATA_DIR` is in `stateEnv` for the reason mcp-reddit's token file is: a browser profile holds cookies and live sessions, so two Bastion profiles sharing one directory are two identities sharing one login. Each gets its own.
+    //
+    // GATED BY TOOL NAME, not by an environment variable, and it is the second shape of write gate rather than a weaker one. Most children read a `*_ALLOW_WRITES` variable at startup and never register the tool at all, which is stronger than anything Bastion can do from outside. This server's own read-only switch is a COMMAND-LINE FLAG, and Bastion passes no argv - that is the KEPT rule, and it is not being reopened for a convenience. So the gate moves to the only thing Bastion controls: what it forwards. The named tools are absent from tools/list with writes off, and refused if a client names one from a cached list.
+    //
+    // The alternative was `writeGate: null`, and that would have been the worst of the three: ToolProbe reads a null gate as "every tool is a read" and stops asking for confirmation. A server that can act on the world must never be written down that way.
+    //
+    // SAY THE LIMIT OUT LOUD. This filters Bastion, not the server. Anything holding this credential can call the same API directly; the real boundary is the scopes the credential itself carries.
+    //
+    // The list was read off the server's own annotations rather than invented: every tool it ships carries a `readOnlyHint`, and these seventeen are the ones marked false. Bastion gates annotated tools anyway, so a mutating tool added after this list was written is still caught - the list is the floor, not the ceiling.
+    //
+    // It holds no credential of its own, which does not make it safe: it drives a browser that is already logged into things. `PLAYWRIGHT_MCP_ALLOWED_ORIGINS` is offered for that, and left unset means everywhere.
+    //
+    // DIALECT MEASURED. A live `initialize` that asks for 2026-07-28 - a revision no server here supports - is answered with this server's own newest, which is how a server is made to name it rather than echo the client.
+    BastionServer(
+      id: "playwright",
+      displayName: "Playwright",
+      summary: "Drive a real browser: navigate, snapshot the accessibility tree, click, type, fill forms and read network traffic.",
+      transport: .child(
+        .init(
+          npmName: "@playwright/mcp",
+          binName: "playwright-mcp",
+          distribution: .npm,
+          localPath: "playwright-mcp",
+          vendor: .thirdParty)),
+      docsURL: URL(string: "https://github.com/microsoft/playwright-mcp"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: ["browser_click", "browser_close", "browser_drag", "browser_drop", "browser_evaluate", "browser_file_upload", "browser_fill_form", "browser_handle_dialog", "browser_hover", "browser_navigate", "browser_navigate_back", "browser_press_key", "browser_resize", "browser_run_code_unsafe", "browser_select_option", "browser_tabs", "browser_type"],
+      gateBypass: [],
+      authModes: [],
+      stateEnv: ["PLAYWRIGHT_MCP_USER_DATA_DIR"],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "PLAYWRIGHT_MCP_BROWSER",
+          isRequired: false,
+          isSecret: false,
+          summary: "Which browser to drive: chrome, firefox, webkit, msedge. Unset uses the server's own default of chrome."),
+        .init(
+          name: "PLAYWRIGHT_MCP_USER_DATA_DIR",
+          isRequired: false,
+          isSecret: false,
+          summary: "The browser profile directory, which holds cookies and logged-in sessions. Redirected per profile by Bastion."),
+        .init(
+          name: "PLAYWRIGHT_MCP_ALLOWED_ORIGINS",
+          isRequired: false,
+          isSecret: false,
+          summary: "Semicolon-separated origins the browser may reach. Unset means all of them, which is the setting worth thinking about before a model drives this."),
+      ]),
+    // GATED BY TOOL NAME, not by an environment variable, and it is the second shape of write gate rather than a weaker one. Most children read a `*_ALLOW_WRITES` variable at startup and never register the tool at all, which is stronger than anything Bastion can do from outside. This server's own read-only switch is a COMMAND-LINE FLAG, and Bastion passes no argv - that is the KEPT rule, and it is not being reopened for a convenience. So the gate moves to the only thing Bastion controls: what it forwards. The named tools are absent from tools/list with writes off, and refused if a client names one from a cached list.
+    //
+    // The alternative was `writeGate: null`, and that would have been the worst of the three: ToolProbe reads a null gate as "every tool is a read" and stops asking for confirmation. A server that can act on the world must never be written down that way.
+    //
+    // SAY THE LIMIT OUT LOUD. This filters Bastion, not the server. Anything holding this credential can call the same API directly; the real boundary is the scopes the credential itself carries.
+    //
+    // The eleven names were read off the server's own `readOnlyHint` annotations, which it sets on all twenty-nine of its tools.
+    //
+    // PROJECT SCOPING IS NOT AVAILABLE PER PROFILE. The server takes `--project-ref` as a command-line flag and reads no environment variable for it, so a profile cannot pin one project the way the Kubernetes entry pins one context. The token reaches the whole account, and `apply_migration` and `execute_sql` are in the list above for a reason. A token scoped narrowly by Supabase is the only real limit.
+    //
+    // DIALECT MEASURED. A live `initialize` that asks for 2026-07-28 - a revision no server here supports - is answered with this server's own newest, which is how a server is made to name it rather than echo the client.
+    BastionServer(
+      id: "supabase",
+      displayName: "Supabase",
+      summary: "Supabase projects: tables, migrations, SQL, edge functions, branches, logs and advisors.",
+      transport: .child(
+        .init(
+          npmName: "@supabase/mcp-server-supabase",
+          binName: "mcp-server-supabase",
+          distribution: .npm,
+          localPath: "supabase-mcp-server-supabase",
+          vendor: .thirdParty)),
+      docsURL: URL(string: "https://github.com/supabase/mcp"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: ["apply_migration", "create_branch", "create_project", "delete_branch", "deploy_edge_function", "execute_sql", "merge_branch", "pause_project", "rebase_branch", "reset_branch", "restore_project"],
+      gateBypass: [],
+      authModes: [],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "SUPABASE_ACCESS_TOKEN",
+          isRequired: true,
+          isSecret: true,
+          summary: "Supabase personal access token. It reaches every project in the account, which is why the scope of the token is the real boundary here."),
+      ]),
+    // The counterpart to the Vercel entry, and a good illustration of the two shapes: Vercel operates a remote endpoint, so Bastion relays to it and gates by tool name; Netlify publishes an npm package, so Bastion runs it here - and gates by tool name anyway, because it has no environment switch either.
+    //
+    // GATED BY TOOL NAME, not by an environment variable, and it is the second shape of write gate rather than a weaker one. Most children read a `*_ALLOW_WRITES` variable at startup and never register the tool at all, which is stronger than anything Bastion can do from outside. This server's own read-only switch is a COMMAND-LINE FLAG, and Bastion passes no argv - that is the KEPT rule, and it is not being reopened for a convenience. So the gate moves to the only thing Bastion controls: what it forwards. The named tools are absent from tools/list with writes off, and refused if a client names one from a cached list.
+    //
+    // The alternative was `writeGate: null`, and that would have been the worst of the three: ToolProbe reads a null gate as "every tool is a read" and stops asking for confirmation. A server that can act on the world must never be written down that way.
+    //
+    // SAY THE LIMIT OUT LOUD. This filters Bastion, not the server. Anything holding this credential can call the same API directly; the real boundary is the scopes the credential itself carries.
+    //
+    // This server splits its surface into readers and updaters by name, so the three gated tools are the three ending in `-updater`, and its own annotations agree.
+    //
+    // DIALECT MEASURED. A live `initialize` that asks for 2026-07-28 - a revision no server here supports - is answered with this server's own newest, which is how a server is made to name it rather than echo the client.
+    BastionServer(
+      id: "netlify",
+      displayName: "Netlify",
+      summary: "Netlify projects and deploys: read teams, projects and deploy state, and update them.",
+      transport: .child(
+        .init(
+          npmName: "@netlify/mcp",
+          binName: "netlify-mcp",
+          distribution: .npm,
+          localPath: "netlify-mcp",
+          vendor: .thirdParty)),
+      docsURL: URL(string: "https://github.com/netlify/netlify-mcp"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: ["netlify-deploy-services-updater", "netlify-extension-services-updater", "netlify-project-services-updater"],
+      gateBypass: [],
+      authModes: [],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "NETLIFY_PERSONAL_ACCESS_TOKEN",
+          isRequired: true,
+          isSecret: true,
+          summary: "Netlify personal access token."),
+      ]),
+    // GATED BY TOOL NAME, not by an environment variable, and it is the second shape of write gate rather than a weaker one. Most children read a `*_ALLOW_WRITES` variable at startup and never register the tool at all, which is stronger than anything Bastion can do from outside. This server's own read-only switch is a COMMAND-LINE FLAG, and Bastion passes no argv - that is the KEPT rule, and it is not being reopened for a convenience. So the gate moves to the only thing Bastion controls: what it forwards. The named tools are absent from tools/list with writes off, and refused if a client names one from a cached list.
+    //
+    // The alternative was `writeGate: null`, and that would have been the worst of the three: ToolProbe reads a null gate as "every tool is a read" and stops asking for confirmation. A server that can act on the world must never be written down that way.
+    //
+    // SAY THE LIMIT OUT LOUD. This filters Bastion, not the server. Anything holding this credential can call the same API directly; the real boundary is the scopes the credential itself carries.
+    //
+    // `call-actor` is the one that matters, and it is gated for a reason that is not quite "writes": running an Actor executes somebody else's code in Apify's cloud and BILLS for it. The write toggle is the closest control this catalog has to "may spend money", and the mapping is worth saying out loud rather than leaving to be discovered on an invoice.
+    //
+    // DIALECT MEASURED. A live `initialize` that asks for 2026-07-28 - a revision no server here supports - is answered with this server's own newest, which is how a server is made to name it rather than echo the client.
+    BastionServer(
+      id: "apify",
+      displayName: "Apify",
+      summary: "Apify Actors: search the store, inspect an Actor, run one, and read its dataset and key-value store.",
+      transport: .child(
+        .init(
+          npmName: "@apify/actors-mcp-server",
+          binName: "actors-mcp-server",
+          distribution: .npm,
+          localPath: "apify-actors-mcp-server",
+          vendor: .thirdParty)),
+      docsURL: URL(string: "https://github.com/apify/apify-mcp-server"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: ["abort-actor-run", "call-actor", "report-problem"],
+      gateBypass: [],
+      authModes: [],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "APIFY_TOKEN",
+          isRequired: true,
+          isSecret: true,
+          summary: "Apify API token."),
       ]),
   ]
   // </generated:servers>

@@ -57,6 +57,11 @@ const DIALECTS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-
 const validate = (servers) => {
   const problems = [];
   const seen = new Set();
+  // Every child's dev-checkout directory name. Unique by derivation within each
+  // vendor, but not ACROSS them: an unscoped third-party package called
+  // `mcp-shopify` derives the same directory as our own shopify entry, and in a
+  // DEBUG build `ServerLocator` would run whichever one is on disk as both.
+  const localPaths = new Set();
   const ENV_NAME = /^[A-Z][A-Z0-9_]*$/;
 
   for (const [i, s] of servers.entries()) {
@@ -90,6 +95,15 @@ const validate = (servers) => {
       if (!["npm", "local"].includes(t.distribution)) {
         p('transport.distribution must be "npm" or "local"');
       }
+      // Stated, never inferred. See the naming rule below for why.
+      if (!["mgcrea", "third-party"].includes(t.vendor)) {
+        p('transport.vendor must be "mgcrea" or "third-party"');
+      }
+      if (localPaths.has(t.localPath)) p(`transport.localPath ${t.localPath} is already taken`);
+      localPaths.add(t.localPath);
+    }
+    if (isRemote && t.vendor !== undefined) {
+      p("transport.vendor is child-only — nothing is installed for a remote endpoint");
     }
 
     if (isRemote) {
@@ -107,8 +121,14 @@ const validate = (servers) => {
         p("a remote server has no on-disk state: stateEnv must be empty");
       if ((s.callbackEnv ?? []).length)
         p("a remote server has no child to redirect: callbackEnv must be empty");
-    } else if (s.writeTools !== undefined) {
-      p("writeTools is remote-only — a child server gates writes with writeGate");
+    }
+    // A child may carry `writeTools` too, but only INSTEAD of a `writeGate`.
+    // An env gate is the stronger mechanism - the server never registers the
+    // tool, rather than Bastion declining to forward it - so it is preferred
+    // wherever one exists, and a server with both would have two switches on
+    // one wire.
+    if (isChild && (s.writeTools ?? []).length && s.writeGate !== null) {
+      p("a child with a writeGate must not also list writeTools — one wire, one switch");
     }
     if (s.writeTools !== undefined && !Array.isArray(s.writeTools))
       p("writeTools must be an array");
@@ -131,16 +151,49 @@ const validate = (servers) => {
     // checked here so the two can never disagree — which is the failure that
     // makes a "helpfully" redundant field worse than no field.
     //
-    // Catalog entries only. A CUSTOM server added in the app is not held to
-    // this: it names somebody else's package, and `@acme/mcp-foo` shipping a
-    // `foo` binary is nobody's mistake. `ServerStore` validates those instead,
-    // which is why that check lives in Swift and this one does not move.
+    // Catalog entries WE PUBLISH only. A third-party entry names somebody
+    // else's package, and `@acme/mcp-foo` shipping a `foo` binary is nobody's
+    // mistake - the same reason a CUSTOM server added in the app was never
+    // held to this, and `ServerStore` validates those in Swift instead.
     // Nothing to derive for a remote entry: the endpoint belongs to whoever
     // operates it, and `mcp.stripe.com` is not Bastion's to name.
-    if (isChild) {
+    //
+    // The branch reads `vendor`, a STATED field, and not the scope of
+    // `npmName`. Inferring it would make the check blind to the typo most
+    // worth catching: `@mgcre/mcp-reddit` fails a startsWith test, gets
+    // treated as somebody else's package, and passes. A rule that reads the
+    // scope to decide which rules apply cannot catch a wrong scope.
+    if (isChild && t.vendor === "mgcrea") {
       if (t.npmName !== `@mgcrea/mcp-${s.id}`) p(`transport.npmName must be @mgcrea/mcp-${s.id}`);
       if (t.binName !== `${s.id}-mcp`) p(`transport.binName must be ${s.id}-mcp`);
       if (t.localPath !== `mcp-${s.id}`) p(`transport.localPath must be mcp-${s.id}`);
+    }
+    if (isChild && t.vendor === "third-party") {
+      // An entry cannot disclaim what it is. Only `binName` is genuinely free
+      // here - it is the key in somebody else's `bin` map, and the only thing
+      // that can check it is `catalog-check`, against the real tarball.
+      if (/^@mgcrea\b/i.test(t.npmName ?? "")) {
+        p("transport.vendor is third-party, but the package is ours");
+      }
+      // `local` means "resolves only against a checkout named by dev.json",
+      // which for a stranger's package nobody has is an install button that
+      // reports "not published" forever.
+      if (t.distribution !== "npm") {
+        p("a third-party entry must be distribution npm — nobody else's package resolves locally");
+      }
+      // Derived, not stated. `localPath` is read in DEBUG builds only, by
+      // `ServerLocator.developmentBinaries`, and a miss there falls through
+      // rather than failing - so a stated value would be an unverifiable claim
+      // that nothing in a Release build ever reads.
+      //
+      // The SCOPE is flattened into it rather than dropped. Taking the last
+      // path segment reads better and collides: `@playwright/mcp` and
+      // `@netlify/mcp` both end in `mcp`, and two entries naming one directory
+      // means a DEBUG build can run Netlify's checkout as Playwright. A
+      // directory name nobody reads in a Release build is not worth a
+      // collision to make prettier.
+      const derived = (t.npmName ?? "").replace(/^@/, "").replaceAll("/", "-");
+      if (t.localPath !== derived) p(`transport.localPath must be ${derived}`);
     }
 
     // ── coherence
@@ -178,6 +231,16 @@ const validate = (servers) => {
         // answer — the default below — so it can never be missing, and the
         // editor would show a blocking warning that nothing can clear.
         if (e.required) problems.push(`${eat}: a boolean cannot be required — it has a default`);
+        // `boolean.default` is a claim about what the SERVER does with the
+        // variable unset, and `catalog-check` proves it against the zod schema
+        // it was read from. There is no zod schema to read for somebody else's
+        // package - only a built bundle - so the claim would be unverifiable
+        // for the life of the entry. Unrepresentable beats unverified.
+        if (isChild && t.vendor === "third-party") {
+          problems.push(
+            `${eat}: a third-party entry cannot declare a boolean — nothing can check its default`,
+          );
+        }
         // The gate is not a variable a profile sets; it is set from the
         // profile's own toggle, and `editableEnv` keeps it out of the editor.
         // Typing it would offer a control for a control.
@@ -221,6 +284,35 @@ const validate = (servers) => {
     // no wire and reads, in every UI, as if it were off.
     if (s.writeGate !== null && !envNames.has(s.writeGate)) {
       p(`writeGate ${s.writeGate} is not in env`);
+    }
+
+    // WHICH WAY THE GATE POINTS, and the reason it has to be written down
+    // rather than guessed. Ours are all named `*_ALLOW_WRITES` and all point
+    // the same way; nobody else's do. Of the third-party servers measured so
+    // far, MDB_MCP_READ_ONLY, READONLY and ALLOW_ONLY_NON_DESTRUCTIVE_TOOLS
+    // are ALL inverted - and the last one contains the word ALLOW, so a name
+    // heuristic would get Kubernetes exactly backwards. Requiredness is the
+    // only mechanism that cannot be wrong quietly.
+    if (s.writeGateSense !== undefined && !["enables", "disables"].includes(s.writeGateSense)) {
+      p('writeGateSense must be "enables" or "disables"');
+    }
+    if (s.writeGateSense !== undefined && s.writeGate === null) {
+      p("writeGateSense has no meaning without a writeGate");
+    }
+    if (isRemote && s.writeGateSense !== undefined) {
+      p("writeGateSense is child-only — a remote server has no environment to set");
+    }
+    if (isChild && t.vendor === "third-party" && s.writeGate !== null) {
+      if (s.writeGateSense === undefined) {
+        p("a third-party writeGate must state its writeGateSense — the convention is not ours");
+      }
+    }
+    // A bypass is forced to "0" unconditionally, which means "off" only while
+    // the gate points the usual way. Under an inverted gate "0" is the ON
+    // value, so the mechanism that exists to close a hole would open one. No
+    // entry needs both today; refusing the pair keeps it that way.
+    if (s.writeGateSense === "disables" && (s.gateBypass ?? []).length) {
+      p("gateBypass cannot be forced to 0 alongside an inverted gate — 0 would mean writes on");
     }
 
     for (const name of s.stateEnv ?? []) {
@@ -423,7 +515,8 @@ const swiftTransport = (t) =>
         `          npmName: ${swiftString(t.npmName)},`,
         `          binName: ${swiftString(t.binName)},`,
         `          distribution: .${t.distribution},`,
-        `          localPath: ${swiftString(t.localPath)})),`,
+        `          localPath: ${swiftString(t.localPath)},`,
+        `          vendor: .${t.vendor === "third-party" ? "thirdParty" : "mgcrea"})),`,
       ].join("\n")
     : `      transport: .remote(endpoint: URL(string: ${swiftString(t.url)})!),`;
 
@@ -443,6 +536,10 @@ const swiftServer = (s) => {
     `      docsURL: ${swiftOptionalURL(s.docsUrl)},`,
     `      dialect: ${swiftDialect(s.dialect)},`,
     `      writeGate: ${swiftOptionalString(s.writeGate)},`,
+    // Emitted only when it is false. The property is defaulted on the Swift
+    // side, so the common case stays absent from twenty-two entries rather than
+    // repeating a `true` nobody reads — the same trick as `origin`.
+    ...(s.writeGateSense === "disables" ? [`      writeGateEnablesWrites: false,`] : []),
     `      writeTools: ${swiftStringList(s.writeTools ?? [])},`,
     `      gateBypass: ${swiftStringList(s.gateBypass)},`,
     s.authModes.length === 0
@@ -484,7 +581,9 @@ const mdRow = (s) =>
         ? `${mdCode(s.transport.npmName)} (npm)`
         : `${mdCode(s.transport.localPath)} (local)`,
     s.writeGate !== null
-      ? mdCode(s.writeGate)
+      ? s.writeGateSense === "disables"
+        ? `${mdCode(s.writeGate)} (inverted)`
+        : mdCode(s.writeGate)
       : (s.writeTools ?? []).length
         ? `${s.writeTools.map(mdCode).join(", ")} (by name)`
         : "read-only",
@@ -602,6 +701,7 @@ const tsServer = (s) =>
     `    summary: ${tsString(s.summary)},`,
     `    writeGate: ${tsOptionalString(s.writeGate)},`,
     `    transport: ${tsString(s.transport.kind)},`,
+    `    vendor: ${tsString(s.transport.vendor ?? null)},`,
     `    dialect: ${tsString(s.dialect)},`,
     "  },",
   ].join("\n");

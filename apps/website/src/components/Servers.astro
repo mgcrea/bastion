@@ -103,12 +103,14 @@ const gateIds = new Set(gated.map((s) => s.id));
       </ul>
 
       <p class="m-0 text-[13px] leading-[1.6] text-fg-muted text-pretty">
-        None of the {COUNTS.serversWord} are modern. The {COUNTS.childrenWord} children run an SDK
-        whose newest protocol is {DIALECT.children}, which is what they negotiate; the catalog said
-        2025-06-18 until a live handshake was run against one, and that was Bastion's own pin
-        masquerading as a fact about the servers. The remote entries carry the same revision as a
-        starting point, and the first real handshake through a profile is what measures each one.
-        A server you add yourself is fronted the same way.{" "}
+        None of the {COUNTS.serversWord} are modern. The {COUNTS.ownChildrenWord} children written
+        here run an SDK whose newest protocol is {DIALECT.children}, which is what they negotiate;
+        the catalog said 2025-06-18 until a live handshake was run against one, and that was
+        Bastion's own pin masquerading as a fact about the servers. The {COUNTS.thirdPartyChildrenWord}
+        published by somebody else carry the same revision as a seed rather than a measurement —
+        their SDK is a dependency of a package this repo does not own — and so do the remote
+        entries; the first real handshake through a profile is what measures each one. A server you
+        add yourself is fronted the same way.{" "}
         <a href={DOCS.manifest} rel="noopener" class="text-accent-hi hover:text-plate-top">
           The catalog
         </a> is one file, and <a href={DOCS.servers} rel="noopener" class="text-accent-hi hover:text-plate-top">

@@ -7,7 +7,15 @@
  * root README's Status table, the tree is right and this file is stale.
  */
 
-import { children, gated, readOnly, remote, SERVERS } from "./data/servers.ts";
+import {
+  children,
+  gated,
+  ownChildren,
+  readOnly,
+  remote,
+  SERVERS,
+  thirdPartyChildren,
+} from "./data/servers.ts";
 
 export const SITE_DOMAIN = "bastion.mgcrea.io";
 export const SITE_URL = `https://${SITE_DOMAIN}`;
@@ -82,12 +90,16 @@ const title = (s: string) => `${s[0]?.toUpperCase() ?? ""}${s.slice(1)}`;
 export const COUNTS = {
   servers: SERVERS.length,
   children: children.length,
+  ownChildren: ownChildren.length,
+  thirdPartyChildren: thirdPartyChildren.length,
   remote: remote.length,
   gated: gated.length,
   readOnly: readOnly.length,
   serversWord: spell(SERVERS.length),
   serversTitle: title(spell(SERVERS.length)),
   childrenWord: spell(children.length),
+  ownChildrenWord: spell(ownChildren.length),
+  thirdPartyChildrenWord: spell(thirdPartyChildren.length),
   remoteWord: spell(remote.length),
   gatedWord: spell(gated.length),
   readOnlyWord: spell(readOnly.length),
