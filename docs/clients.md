@@ -8,15 +8,15 @@ own.
 
 ## The seven clients
 
-| Client          | Config                                                            | Root key      | Format | Transport |
-| --------------- | ----------------------------------------------------------------- | ------------- | ------ | --------- |
-| Claude Code     | `~/.claude.json`                                                  | `mcpServers`  | JSON   | HTTP      |
-| Claude Desktop  | `~/Library/Application Support/Claude/claude_desktop_config.json` | `mcpServers`  | JSON   | bridge    |
-| VS Code         | `~/Library/Application Support/Code/User/mcp.json`                | `servers`     | JSON   | HTTP      |
-| Cursor          | `~/.cursor/mcp.json`                                              | `mcpServers`  | JSON   | HTTP      |
+| Client          | Config                                                            | Root key      | Format | Transport  |
+| --------------- | ----------------------------------------------------------------- | ------------- | ------ | ---------- |
+| Claude Code     | `~/.claude.json`                                                  | `mcpServers`  | JSON   | HTTP       |
+| Claude Desktop  | `~/Library/Application Support/Claude/claude_desktop_config.json` | `mcpServers`  | JSON   | bridge     |
+| VS Code         | `~/Library/Application Support/Code/User/mcp.json`                | `servers`     | JSON   | HTTP       |
+| Cursor          | `~/.cursor/mcp.json`                                              | `mcpServers`  | JSON   | HTTP       |
 | LM Studio       | `~/.lmstudio/mcp.json`                                            | `mcpServers`  | JSON   | **bridge** |
 | Windsurf        | `~/.codeium/windsurf/mcp_config.json`                             | `mcpServers`  | JSON   | **bridge** |
-| ChatGPT & Codex | `~/.codex/config.toml`                                            | `mcp_servers` | TOML   | HTTP      |
+| ChatGPT & Codex | `~/.codex/config.toml`                                            | `mcp_servers` | TOML   | HTTP       |
 
 Three disagreements shape the whole design, and none is Bastion's to fix.
 Clients disagree about **where servers live** in the file — `mcpServers` here,
@@ -38,7 +38,7 @@ client](#the-one-toml-client) is about.
 
 The last two arrived from Cupertino, which had them first and which this list is
 otherwise kept in step with. Both get the bridge, and neither for Claude
-Desktop's reason — they get it because nobody has *checked* that they take a
+Desktop's reason — they get it because nobody has _checked_ that they take a
 URL in the shape this app writes.
 
 LM Studio demonstrably reaches remote servers: the config it was added from

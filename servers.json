@@ -177,21 +177,15 @@
         {
           "id": "inline-key",
           "displayName": "Inline private key",
-          "env": [
-            "APP_STORE_CONNECT_P8"
-          ]
+          "env": ["APP_STORE_CONNECT_P8"]
         },
         {
           "id": "key-file",
           "displayName": "Private key file",
-          "env": [
-            "APP_STORE_CONNECT_P8_PATH"
-          ]
+          "env": ["APP_STORE_CONNECT_P8_PATH"]
         }
       ],
-      "stateEnv": [
-        "APP_STORE_CONNECT_CONFIG"
-      ],
+      "stateEnv": ["APP_STORE_CONNECT_CONFIG"],
       "callbackEnv": [],
       "env": [
         {
@@ -260,9 +254,7 @@
       "writeGate": "CLOUDKIT_ALLOW_WRITES",
       "gateBypass": [],
       "authModes": [],
-      "stateEnv": [
-        "CLOUDKIT_CONFIG"
-      ],
+      "stateEnv": ["CLOUDKIT_CONFIG"],
       "callbackEnv": [],
       "env": [
         {
@@ -355,9 +347,7 @@
           "env": []
         }
       ],
-      "stateEnv": [
-        "REDDIT_TOKEN_PATH"
-      ],
+      "stateEnv": ["REDDIT_TOKEN_PATH"],
       "callbackEnv": [
         {
           "name": "REDDIT_REDIRECT_URI",
@@ -427,22 +417,15 @@
         {
           "id": "bearer",
           "displayName": "App-only bearer token",
-          "env": [
-            "X_BEARER_TOKEN"
-          ]
+          "env": ["X_BEARER_TOKEN"]
         },
         {
           "id": "oauth2",
           "displayName": "OAuth2 user context",
-          "env": [
-            "X_CLIENT_ID"
-          ]
+          "env": ["X_CLIENT_ID"]
         }
       ],
-      "stateEnv": [
-        "X_CONFIG",
-        "X_TOKEN_FILE"
-      ],
+      "stateEnv": ["X_CONFIG", "X_TOKEN_FILE"],
       "callbackEnv": [
         {
           "name": "X_REDIRECT_URI",
@@ -546,19 +529,12 @@
         {
           "id": "cloud",
           "displayName": "Cloud API key",
-          "env": [
-            "UNIFI_PROTECT_API_KEY",
-            "UNIFI_PROTECT_CONSOLE_ID"
-          ]
+          "env": ["UNIFI_PROTECT_API_KEY", "UNIFI_PROTECT_CONSOLE_ID"]
         },
         {
           "id": "local",
           "displayName": "Local account",
-          "env": [
-            "UNIFI_PROTECT_HOST",
-            "UNIFI_PROTECT_USERNAME",
-            "UNIFI_PROTECT_PASSWORD"
-          ]
+          "env": ["UNIFI_PROTECT_HOST", "UNIFI_PROTECT_USERNAME", "UNIFI_PROTECT_PASSWORD"]
         }
       ],
       "stateEnv": [
@@ -693,32 +669,20 @@
         {
           "id": "console",
           "displayName": "Console API key",
-          "env": [
-            "UNIFI_HOST",
-            "UNIFI_API_KEY"
-          ]
+          "env": ["UNIFI_HOST", "UNIFI_API_KEY"]
         },
         {
           "id": "cloud",
           "displayName": "Cloud API key",
-          "env": [
-            "UNIFI_API_KEY",
-            "UNIFI_CONSOLE_ID"
-          ]
+          "env": ["UNIFI_API_KEY", "UNIFI_CONSOLE_ID"]
         },
         {
           "id": "legacy",
           "displayName": "Local admin account",
-          "env": [
-            "UNIFI_HOST",
-            "UNIFI_USERNAME",
-            "UNIFI_PASSWORD"
-          ]
+          "env": ["UNIFI_HOST", "UNIFI_USERNAME", "UNIFI_PASSWORD"]
         }
       ],
-      "stateEnv": [
-        "UNIFI_CONFIG"
-      ],
+      "stateEnv": ["UNIFI_CONFIG"],
       "callbackEnv": [],
       "env": [
         {
@@ -835,11 +799,7 @@
       "docsUrl": "https://docs.stripe.com/mcp",
       "dialect": "2025-03-26",
       "writeGate": null,
-      "writeTools": [
-        "stripe_api_write",
-        "create_refund",
-        "stripe_report"
-      ],
+      "writeTools": ["stripe_api_write", "create_refund", "stripe_report"],
       "gateBypass": [],
       "authModes": [
         {
@@ -851,9 +811,7 @@
         {
           "id": "bearer",
           "displayName": "Restricted API key",
-          "env": [
-            "STRIPE_SECRET_KEY"
-          ]
+          "env": ["STRIPE_SECRET_KEY"]
         }
       ],
       "stateEnv": [],
@@ -992,26 +950,17 @@
         {
           "id": "oauth2",
           "displayName": "OAuth2 service account",
-          "env": [
-            "OVH_CLIENT_ID",
-            "OVH_CLIENT_SECRET"
-          ]
+          "env": ["OVH_CLIENT_ID", "OVH_CLIENT_SECRET"]
         },
         {
           "id": "signature",
           "displayName": "Application key triplet",
-          "env": [
-            "OVH_APPLICATION_KEY",
-            "OVH_APPLICATION_SECRET",
-            "OVH_CONSUMER_KEY"
-          ]
+          "env": ["OVH_APPLICATION_KEY", "OVH_APPLICATION_SECRET", "OVH_CONSUMER_KEY"]
         },
         {
           "id": "accessToken",
           "displayName": "Access token",
-          "env": [
-            "OVH_ACCESS_TOKEN"
-          ]
+          "env": ["OVH_ACCESS_TOKEN"]
         }
       ],
       "stateEnv": [],
@@ -1103,17 +1052,12 @@
         {
           "id": "client_credentials",
           "displayName": "Client credentials",
-          "env": [
-            "KEYCLOAK_CLIENT_SECRET"
-          ]
+          "env": ["KEYCLOAK_CLIENT_SECRET"]
         },
         {
           "id": "password",
           "displayName": "Username and password",
-          "env": [
-            "KEYCLOAK_USERNAME",
-            "KEYCLOAK_PASSWORD"
-          ]
+          "env": ["KEYCLOAK_USERNAME", "KEYCLOAK_PASSWORD"]
         }
       ],
       "stateEnv": [],
@@ -1190,10 +1134,7 @@
       "writeGate": "NPM_ALLOW_WRITES",
       "gateBypass": [],
       "authModes": [],
-      "stateEnv": [
-        "NPM_CONFIG_USERCONFIG",
-        "NPM_MCP_CONFIG"
-      ],
+      "stateEnv": ["NPM_CONFIG_USERCONFIG", "NPM_MCP_CONFIG"],
       "callbackEnv": [],
       "env": [
         {
@@ -1327,9 +1268,7 @@
         {
           "id": "pat",
           "displayName": "Personal access token",
-          "env": [
-            "GITHUB_TOKEN"
-          ]
+          "env": ["GITHUB_TOKEN"]
         }
       ],
       "stateEnv": [],
@@ -1392,9 +1331,7 @@
         {
           "id": "token",
           "displayName": "Integration token",
-          "env": [
-            "NOTION_TOKEN"
-          ]
+          "env": ["NOTION_TOKEN"]
         }
       ],
       "stateEnv": [],
@@ -1452,9 +1389,7 @@
         {
           "id": "api-key",
           "displayName": "API key",
-          "env": [
-            "LINEAR_API_KEY"
-          ]
+          "env": ["LINEAR_API_KEY"]
         }
       ],
       "stateEnv": [],
@@ -1517,9 +1452,7 @@
         {
           "id": "token",
           "displayName": "User auth token",
-          "env": [
-            "SENTRY_ACCESS_TOKEN"
-          ]
+          "env": ["SENTRY_ACCESS_TOKEN"]
         }
       ],
       "stateEnv": [],
@@ -1576,9 +1509,7 @@
         {
           "id": "api-key",
           "displayName": "Service account API key",
-          "env": [
-            "ATLASSIAN_API_KEY"
-          ]
+          "env": ["ATLASSIAN_API_KEY"]
         }
       ],
       "stateEnv": [],
@@ -1641,9 +1572,7 @@
         {
           "id": "token",
           "displayName": "Personal access token",
-          "env": [
-            "FIGMA_ACCESS_TOKEN"
-          ]
+          "env": ["FIGMA_ACCESS_TOKEN"]
         }
       ],
       "stateEnv": [],
@@ -1716,9 +1645,7 @@
         {
           "id": "token",
           "displayName": "Access token",
-          "env": [
-            "VERCEL_TOKEN"
-          ]
+          "env": ["VERCEL_TOKEN"]
         }
       ],
       "stateEnv": [],
@@ -1789,9 +1716,7 @@
         {
           "id": "api-token",
           "displayName": "API token",
-          "env": [
-            "CLOUDFLARE_API_TOKEN"
-          ]
+          "env": ["CLOUDFLARE_API_TOKEN"]
         }
       ],
       "stateEnv": [],
@@ -1904,9 +1829,7 @@
         {
           "id": "api-token",
           "displayName": "API token",
-          "env": [
-            "CLOUDFLARE_OBSERVABILITY_TOKEN"
-          ]
+          "env": ["CLOUDFLARE_OBSERVABILITY_TOKEN"]
         }
       ],
       "stateEnv": [],
@@ -1958,9 +1881,7 @@
       "writeGate": "IOS_DEVICE_ALLOW_WRITES",
       "gateBypass": [],
       "authModes": [],
-      "stateEnv": [
-        "IOS_DEVICE_OUTPUT_DIR"
-      ],
+      "stateEnv": ["IOS_DEVICE_OUTPUT_DIR"],
       "callbackEnv": [],
       "env": [
         {
