@@ -1950,10 +1950,10 @@
         "kind": "child",
         "npmName": "@mgcrea/mcp-ios-device",
         "binName": "ios-device-mcp",
-        "distribution": "local",
+        "distribution": "npm",
         "localPath": "mcp-ios-device"
       },
-      "docsUrl": null,
+      "docsUrl": "https://github.com/mgcrea/mcp-ios-device",
       "dialect": "2025-11-25",
       "writeGate": "IOS_DEVICE_ALLOW_WRITES",
       "gateBypass": [],
@@ -2012,9 +2012,15 @@
         "the mitigation worth setting beside it: it pins the app under test into a",
         "fixture mode by default rather than its owner's real account.",
         "",
-        "Local until published - npm 404s on @mgcrea/mcp-ios-device today, so this",
-        "entry only resolves against a checkout under MCP_ROOT. docsUrl is null for",
-        "the same reason: the GitHub repo does not exist yet."
+        "Published 2026-09-04 at 0.1.0, with a SLSA provenance attestation from the",
+        "tag-triggered CI job over OIDC. A 0.0.0 placeholder sits below it on npm:",
+        "OIDC cannot create a package name, so the name had to be claimed by hand",
+        "before CI could publish anything. Do not install that one.",
+        "",
+        "The package ships a second binary, ios-device-wda, which builds and starts",
+        "the WebDriverAgent runner. Bastion does not run it - it is a one-off the user",
+        "invokes themselves, and the screen tools stay unavailable, and say so, until",
+        "they have."
       ]
     }
   ]

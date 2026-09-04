@@ -174,7 +174,7 @@ asserts both eras against a running build.
 | [Cloudflare](https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/) | `cloudflare` | — | `https://mcp.cloudflare.com/mcp` (remote) | read-only | 1 |
 | [Cloudflare Docs](https://github.com/cloudflare/mcp-server-cloudflare/tree/main/apps/docs-ai-search) | `cloudflare-docs` | — | `https://docs.mcp.cloudflare.com/mcp` (remote) | read-only | 1 |
 | [Cloudflare Observability](https://github.com/cloudflare/mcp-server-cloudflare/tree/main/apps/workers-observability) | `cloudflare-observability` | — | `https://observability.mcp.cloudflare.com/mcp` (remote) | read-only | 1 |
-| iOS Device | `ios-device` | `ios-device-mcp` | `mcp-ios-device` (local) | `IOS_DEVICE_ALLOW_WRITES` | — |
+| [iOS Device](https://github.com/mgcrea/mcp-ios-device) | `ios-device` | `ios-device-mcp` | `@mgcrea/mcp-ios-device` (npm) | `IOS_DEVICE_ALLOW_WRITES` | — |
 
 ### App Store Connect
 
@@ -831,9 +831,15 @@ anything on an unlocked phone in someone's hand. IOS_DEVICE_LAUNCH_ARGS is
 the mitigation worth setting beside it: it pins the app under test into a
 fixture mode by default rather than its owner's real account.
 
-Local until published - npm 404s on @mgcrea/mcp-ios-device today, so this
-entry only resolves against a checkout under MCP_ROOT. docsUrl is null for
-the same reason: the GitHub repo does not exist yet.
+Published 2026-09-04 at 0.1.0, with a SLSA provenance attestation from the
+tag-triggered CI job over OIDC. A 0.0.0 placeholder sits below it on npm:
+OIDC cannot create a package name, so the name had to be claimed by hand
+before CI could publish anything. Do not install that one.
+
+The package ships a second binary, ios-device-wda, which builds and starts
+the WebDriverAgent runner. Bastion does not run it - it is a one-off the user
+invokes themselves, and the screen tools stay unavailable, and say so, until
+they have.
 
 | Variable | Required | Secret | Meaning |
 | --- | --- | --- | --- |
