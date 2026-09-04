@@ -177,8 +177,15 @@ check  "writes off still lists the read tools" "$RO" 'list_servers'
 absent "writes off hides remove_server"       "$RO" 'remove_server'
 absent "writes off hides set_credential"      "$RO" 'set_credential'
 absent "writes off hides add_custom_server"   "$RO" 'add_custom_server'
+absent "writes off hides update_server"       "$RO" 'update_server'
 check  "writes on lists remove_server"        "$RW" 'remove_server'
 check  "writes on lists set_credential"       "$RW" 'set_credential'
+check  "writes on lists update_server"        "$RW" 'update_server'
+# The one read tool that reaches the network. It is a read tool because a
+# `--dry-run` writes nothing — but that makes it the first thing a read-only
+# profile can use to cause an outbound request, so which side of the gate it
+# lands on is a decision worth pinning rather than inferring from the table.
+check  "writes off still lists check_server_update" "$RO" 'check_server_update'
 # The gate is not merely a filter on the list: a client with a stale list, or
 # one guessing a name, has to be refused at the point of use too.
 check "a mutating tool called anyway is refused" \
@@ -194,6 +201,10 @@ check "disable_server refuses bastion" \
   "$(tool checkrw disable_server '{"id":"bastion"}')" 'cannot disable itself'
 check "remove_server refuses bastion" \
   "$(tool checkrw remove_server '{"id":"bastion"}')" 'cannot remove itself'
+check "update_server refuses bastion" \
+  "$(tool checkrw update_server '{"id":"bastion"}')" 'nothing to update'
+check "check_server_update refuses bastion" \
+  "$(tool checkro check_server_update '{"id":"bastion"}')" 'nothing to update'
 check "the id is reserved against a custom server" \
   "$(tool checkrw add_custom_server '{"id":"bastion","display_name":"X","npm_name":"@x/y","env":[{"name":"A"}]}')" \
   'reserved'
@@ -344,6 +355,27 @@ tool checkrw enable_server '{"id":"checkscratch"}' >/dev/null
 check "and it answers again once enabled" \
   "$(curl -s --max-time 10 -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT/health")" \
   'checkscratch'
+
+echo
+echo "Updating"
+# `checkscratch` names a package that is not on npm, so nothing here reaches the
+# registry: both tools refuse before they would start one. That is the point of
+# testing this end — an assertion that had to download something would be an
+# assertion about whether npm was reachable today.
+check "check_server_update refuses a server with no code on disk" \
+  "$(tool checkro check_server_update '{"id":"checkscratch"}')" 'no code on disk yet'
+check "and names the tool that fixes it" \
+  "$(tool checkro check_server_update '{"id":"checkscratch"}')" 'update_server'
+check "an unknown id is refused rather than checked" \
+  "$(tool checkro check_server_update '{"id":"nope-zzz"}')" 'not in your server list'
+check "update_server refuses an unknown id" \
+  "$(tool checkrw update_server '{"id":"nope-zzz"}')" 'not in your server list'
+# Nothing has asked npm anything, and `availability` is in-memory only, so the
+# honest answer is a missing key rather than a confident "up to date".
+absent "get_server claims no update state before a check has run" \
+  "$(tool checkrw get_server '{"id":"checkscratch"}')" '"state":"up-to-date"'
+absent "and list_servers advertises no version to update to" \
+  "$(tool checkrw list_servers '{}')" 'update_available'
 
 echo
 echo "Cleanup"

@@ -287,6 +287,26 @@ struct ServerDetail: View {
         let installer = ServerInstaller.shared
         let version = ServerInstaller.installedVersion(of: server)
 
+        // Who wrote the thing about to run on this machine.
+        //
+        // The remote card has said "somebody else runs this one" from the day
+        // remote entries existed. A catalog CHILD had no such line because it
+        // did not need one: every one of them was ours. A third-party child is
+        // the higher-trust ask of the two — not an endpoint Bastion relays to,
+        // but code downloaded and executed here, unsandboxed, with the
+        // profile's credentials in its environment — so the line it does not
+        // get is the one it most needs. Keyed on the manifest's stated vendor
+        // and not on the package name, so silence can never read as "ours".
+        if server.package?.vendor == .thirdParty {
+          Text(
+            "Somebody else publishes this one. Bastion installs it from npm and runs it here "
+              + "with the profile's credentials in its environment; what Bastion adds is the "
+              + "profile, the write gate and the audit line, not a review of the code."
+          )
+          .font(.callout)
+          .fixedSize(horizontal: false, vertical: true)
+        }
+
         HStack(spacing: 8) {
           if installer.isRunning(server.id) {
             ProgressView().controlSize(.small)

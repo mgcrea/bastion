@@ -27,6 +27,9 @@ enum BuiltinTools {
     case writesDisabled(String)
     case refusedBuiltin(String)
     case noSuchServer(String)
+    case nothingToUpdate(String)
+    case notInstalled(String)
+    case notPublished(id: String, package: String)
     case noSuchProfile(profile: String, server: String)
     case noSuchClient(id: String, known: [String])
     case unknownVariable(variable: String, server: String)
@@ -50,6 +53,19 @@ enum BuiltinTools {
           + "here. Do it in the Bastion window instead."
       case .noSuchServer(let id):
         return "'\(id)' is not in your server list"
+      case .nothingToUpdate(let id):
+        return
+          "'\(id)' has no code Bastion downloaded, so there is nothing to update. Bastion's own "
+          + "server is the running app — it updates with the app — and a remote server runs on "
+          + "somebody else's machine."
+      case .notInstalled(let id):
+        return
+          "'\(id)' has no code on disk yet, so there is no installed version to compare against. "
+          + "Call update_server to download it."
+      case .notPublished(let id, let package):
+        return
+          "'\(id)' is not published to npm, so there is no registry to ask about \(package). It "
+          + "resolves only against a local checkout in a Debug build."
       case .noSuchProfile(let profile, let server):
         return "there is no profile '\(profile)' for '\(server)'"
       case .noSuchClient(let id, let known):
@@ -140,6 +156,15 @@ enum BuiltinTools {
       required: ["id"]),
 
     Declaration(
+      "check_server_update", title: "Check a server for updates",
+      "Ask npm what it would install for a server whose code is already downloaded, without "
+        + "writing anything: no tree is touched and no version changes. Bastion never polls for "
+        + "this on a timer, so the answer is only ever as fresh as the last time something "
+        + "asked. The check runs in the background — poll get_server for 'update'.",
+      properties: ["id": schema("string", "The server id, as listed by list_servers.")],
+      required: ["id"]),
+
+    Declaration(
       "list_catalog", title: "List the catalog",
       "Servers Bastion ships a definition for that are not in your list yet. These can be added "
         + "with install_server by id alone."),
@@ -199,6 +224,17 @@ enum BuiltinTools {
       "Add a server from Bastion's catalog to this install's list and start downloading its code. "
         + "The download runs in the background; poll list_servers for 'installed'.",
       properties: ["id": schema("string", "A catalog id, as listed by list_catalog.")],
+      required: ["id"], mutates: true),
+
+    Declaration(
+      "update_server", title: "Update a server",
+      "Re-download a server already in your list, resolving its package at 'latest' again. This "
+        + "is also how an install that failed is retried, and how a dependency tree npm would "
+        + "rebuild is repaired. Anything running from this server is stopped when the new code "
+        + "lands, because the code it was running is no longer the code on disk. The download "
+        + "runs in the background; poll list_servers for 'installed_version'. Call "
+        + "check_server_update first if you want to know what it would move to.",
+      properties: ["id": schema("string", "The server id, as listed by list_servers.")],
       required: ["id"], mutates: true),
 
     Declaration(
@@ -391,10 +427,12 @@ enum BuiltinTools {
     case "list_clients": return listClients()
     case "status": return status()
     case "recent_activity": return recentActivity(arguments, caller: caller)
+    case "check_server_update": return try checkServerUpdate(arguments)
 
     case "enable_server": return try setEnabled(arguments, to: true)
     case "disable_server": return try setEnabled(arguments, to: false)
     case "install_server": return try installServer(arguments)
+    case "update_server": return try updateServer(arguments)
     case "add_custom_server": return try addCustomServer(arguments)
     case "remove_server": return try removeServer(arguments)
     case "upsert_profile": return try upsertProfile(arguments)
@@ -429,6 +467,13 @@ enum BuiltinTools {
         row["installed"] = ServerInstaller.isInstalled(server)
         if let version = ServerInstaller.installedVersion(of: server) {
           row["installed_version"] = version
+        }
+        // Only the actionable state, and only when a check has actually run.
+        // The other four are shapes `get_server` has room to explain and a
+        // list row does not, and repeating "unchecked" on every row would be a
+        // column that is empty until somebody does something else.
+        if case .newer(let latest) = ServerInstaller.shared.availability[server.id] {
+          row["update_available"] = latest
         }
         if ServerInstaller.shared.isRunning(server.id) { row["installing"] = true }
         if let failure = ServerInstaller.shared.failures[server.id] { row["last_error"] = failure }
@@ -485,6 +530,20 @@ enum BuiltinTools {
       if let version = ServerInstaller.installedVersion(of: server) {
         out["installed_version"] = version
       }
+      // What the last check found, and nothing when nothing has asked. Absent
+      // rather than "unknown": `availability` is in memory only and a relaunch
+      // forgets it, so the honest reading of an empty slot is "no check has
+      // been run", which is what a missing key already says.
+      if let availability = ServerInstaller.shared.availability[server.id] {
+        out["update"] = describe(availability)
+      } else if ServerInstaller.shared.isChecking(server.id) {
+        out["update"] = ["state": "checking"]
+      } else if package.distribution == .npm, ServerInstaller.isInstalled(server) {
+        out["update"] = [
+          "state": "unchecked",
+          "note": "Nothing has asked npm about this server. check_server_update does.",
+        ]
+      }
     }
     if let gate = server.writeGate { out["write_gate"] = gate }
     if let docs = server.docsURL { out["docs_url"] = docs.absoluteString }
@@ -510,6 +569,88 @@ enum BuiltinTools {
       }
     }
     return out
+  }
+
+  /// Ask npm what it would install, and say where the answer will appear.
+  ///
+  /// Not awaited, for the same reason `install_server` is not: `npm --dry-run`
+  /// against a cold cache is seconds, and a tool call should not hold a
+  /// connection open for it. The answer lands in `ServerInstaller.availability`
+  /// and `get_server` reports it, which also means a caller that never polls
+  /// has still not lost anything — the next `get_server` carries it.
+  ///
+  /// Declared read-only because it is: `--dry-run` resolves against the
+  /// installed tree without writing to it, and nothing about this server
+  /// changes. It is the one read tool that reaches the network, and it does so
+  /// only because something asked — the same rule the window's own button
+  /// follows, and the reason there is no timer behind either of them.
+  private static func checkServerUpdate(_ arguments: [String: Any]) throws -> Any {
+    let id = try string(arguments, "id")
+    guard let server = ServerStore.shared.server(id: id) else { throw ToolError.noSuchServer(id) }
+    guard let package = server.package else { throw ToolError.nothingToUpdate(id) }
+    guard package.distribution == .npm else {
+      throw ToolError.notPublished(id: id, package: package.npmName)
+    }
+    // `checkForUpdate` requires something to compare against and returns
+    // silently without it, which from here would look like a check that ran and
+    // found nothing. Said as a refusal instead, naming the tool that fixes it.
+    guard let installed = ServerInstaller.installedVersion(of: server) else {
+      throw ToolError.notInstalled(id)
+    }
+
+    let installer = ServerInstaller.shared
+    // Already busy — either answer would be the same one this call would
+    // produce, so start nothing and point at the same place.
+    guard !installer.isChecking(id), !installer.isRunning(id) else {
+      return [
+        "id": id, "installed_version": installed, "checking": true,
+        "note": installer.isRunning(id)
+          ? "'\(id)' is downloading right now, which makes any answer about what npm would "
+            + "install stale before it arrives. Poll get_server for 'installed_version'."
+          : "A check for '\(id)' is already running. Poll get_server for 'update'.",
+      ]
+    }
+
+    Task { await installer.checkForUpdate(server) }
+    return [
+      "id": id, "installed_version": installed, "checking": true,
+      "note": "Asking npm what it would install for \(package.npmName). Poll get_server for "
+        + "'update'.",
+    ]
+  }
+
+  /// One `Availability` as an object, for `get_server`.
+  ///
+  /// A state string plus the number, rather than a sentence alone: a model
+  /// deciding whether to call `update_server` needs `pinned-older` to be
+  /// machine-readable, because that is the one state where updating is the
+  /// wrong move and the version number alone reads like any other.
+  private static func describe(_ availability: ServerInstaller.Availability) -> [String: Any] {
+    switch availability {
+    case .upToDate:
+      return ["state": "up-to-date", "note": "npm would change nothing here."]
+    case .newer(let latest):
+      return [
+        "state": "newer", "version": latest,
+        "note": "update_server installs \(latest). Anything running from this server is stopped "
+          + "when the new code lands.",
+      ]
+    case .pinnedOlder(let resolved):
+      return [
+        "state": "pinned-older", "version": resolved,
+        "note": "The minimum package age set for this Bastion holds npm at \(resolved), which is "
+          + "older than what is installed. update_server would go backwards, not forwards.",
+      ]
+    case .needsRepair(let count):
+      return [
+        "state": "needs-repair", "packages": count,
+        "note": "The server package itself is current, but \(count) "
+          + "\(count == 1 ? "package" : "packages") in its tree "
+          + "\(count == 1 ? "is" : "are") missing or out of range. update_server rebuilds it.",
+      ]
+    case .failed(let reason):
+      return ["state": "failed", "error": reason]
+    }
   }
 
   private static func listCatalog() -> Any {
@@ -809,6 +950,62 @@ enum BuiltinTools {
       "note": "'\(id)' is in your list and its code is downloading. Poll list_servers for "
         + "'installed'. It needs a profile before any client can reach it.",
     ]
+  }
+
+  /// Re-resolve a server's package at `latest` and re-download it.
+  ///
+  /// The same `ServerInstaller.install` the window's Update button calls, which
+  /// is also its Install, its Reinstall and its Repair install — one operation
+  /// wearing four labels, because npm resolving `latest` again is all any of
+  /// them do. So this tool is the retry for a failed download as well as the
+  /// update, and the caller does not have to know which situation it is in.
+  private static func updateServer(_ arguments: [String: Any]) throws -> Any {
+    let id = try string(arguments, "id")
+    guard let server = ServerStore.shared.server(id: id) else { throw ToolError.noSuchServer(id) }
+    // Invariant, and the reason this is not simply "reinstall anything": the
+    // built-in server is the running app and updates with it, and a remote one
+    // is somebody else's process. Neither has a directory to replace.
+    guard let package = server.package else { throw ToolError.nothingToUpdate(id) }
+    // Refused here rather than left to fail inside the install. `runInstall`
+    // would throw `notPublished` on a detached task, which lands in `failures`
+    // — visible only to a later `list_servers`, under a note from this tool
+    // telling the caller to poll for a version that is never coming.
+    guard package.distribution == .npm else {
+      throw ToolError.notPublished(id: id, package: package.npmName)
+    }
+
+    let installer = ServerInstaller.shared
+    let installed = ServerInstaller.installedVersion(of: server)
+    guard !installer.isRunning(id) else {
+      var busy: [String: Any] = [
+        "id": id, "updating": true,
+        "note": "'\(id)' is already downloading. Poll list_servers for 'installed_version'.",
+      ]
+      if let installed { busy["installed_version"] = installed }
+      return busy
+    }
+
+    Task { await installer.install(server) }
+    var out: [String: Any] = ["id": id, "updating": true, "npm_name": package.npmName]
+    if let installed { out["installed_version"] = installed }
+    // Two different sentences, because the two situations end differently. A
+    // server with nothing on disk has no running child to lose and no version
+    // to compare against; one that is installed does, and the restart is the
+    // part a caller has to be able to warn somebody about before it happens.
+    let profiles = ProfileStore.shared.profiles.filter { $0.serverID == id }.count
+    out["note"] =
+      installed == nil
+      ? "'\(id)' had no code on disk and \(package.npmName) is downloading now. Poll "
+        + "list_servers for 'installed'."
+      : "npm is resolving \(package.npmName)@latest again. Poll list_servers for "
+        + "'installed_version' — it may not move, since a re-resolve can change the packages "
+        + "underneath an unchanged top-level version. "
+        + (profiles == 0
+          ? "Nothing is running from this server."
+          : "Anything running from "
+            + "\(profiles == 1 ? "its profile" : "its \(profiles) profiles") is stopped when the "
+            + "new code lands, and starts again on the next request.")
+    return out
   }
 
   private static func addCustomServer(_ arguments: [String: Any]) throws -> Any {

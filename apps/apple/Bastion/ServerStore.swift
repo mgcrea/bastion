@@ -165,7 +165,8 @@ final class ServerStore {
       return .child(
         .init(
           npmName: npmName ?? "", binName: binName ?? "", distribution: .npm,
-          localPath: "mcp-custom"))
+          localPath: "mcp-custom",
+          vendor: .inferred(fromPackage: npmName ?? "")))
     }
   }
 
@@ -282,7 +283,8 @@ final class ServerStore {
         ? .child(
           .init(
             npmName: definition.npmName ?? "", binName: definition.binName ?? "",
-            distribution: .npm, localPath: "mcp-\(id)"))
+            distribution: .npm, localPath: "mcp-\(id)",
+            vendor: .inferred(fromPackage: definition.npmName ?? "")))
         : definition.transport,
       docsURL: definition.docsUrl.flatMap(URL.init(string:)),
       dialect: BastionServer.Dialect(rawValue: definition.dialect) ?? .v2025_11_25,

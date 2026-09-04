@@ -199,9 +199,14 @@ final class ServerInstaller {
   /// The script to hand to node.
   ///
   /// Taken from the package's own `bin` map, not assumed to be `dist/cli.js`.
-  /// The catalog is uniform and the assumption would hold for all nine of them;
-  /// a custom entry names somebody else's package, where it holds for no reason
-  /// at all.
+  /// That assumption would hold for the servers written here, whose layout is
+  /// uniform, and for no reason at all anywhere else — a third-party catalog
+  /// entry and a custom one both name somebody else's package.
+  ///
+  /// The fallbacks below make a wrong `binName` SILENT on a single-bin package
+  /// and fatal on a multi-bin one, which is why `catalog-check` asserts the
+  /// name against the real `bin` map rather than leaving it to be discovered
+  /// on somebody's machine.
   nonisolated static func entryScript(of server: BastionServer) -> URL? {
     guard let package = server.package, let directory = packageDirectory(of: server),
       let data = try? Data(contentsOf: directory.appendingPathComponent("package.json")),

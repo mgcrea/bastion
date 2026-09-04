@@ -104,9 +104,12 @@ enum ToolProbe {
       // has to say which one: a child never registers the tool, and a remote
       // server's write tools are filtered out by `RemoteInstance` before the
       // list ever reaches this process.
-      if let gate = server.writeGate {
+      if let gate = server.writeGate, let value = server.gateValue(allowWrites: false) {
+        // The literal, not a hardcoded "0". An inverted gate is off at "1", and
+        // this string is stored as the reason a tool call skipped confirmation —
+        // so a wrong one is a wrong answer to "why was this allowed?".
         return .anyTool(
-          because: "writes are off for this profile, so \(gate) is set to 0")
+          because: "writes are off for this profile, so \(gate) is set to \(value)")
       }
       return .anyTool(
         because:

@@ -341,8 +341,13 @@ nonisolated enum ProfileEnvironment {
     // and mcp-x: both read `parseBool(env.X) ?? file.allowWrites`, so an
     // UNSET variable falls through to a value in a config file on disk. An
     // explicit "0" never falls through.
-    if let gate = server.writeGate {
-      env[gate] = profile.allowWrites ? "1" : "0"
+    //
+    // The value comes from `gateValue` rather than from a ternary here, because
+    // not every gate points the same way: a third-party server's is typically a
+    // READ-ONLY switch, where "1" is writes OFF. Deciding that at this call site
+    // would put the rule in a file `make unit` does not compile.
+    if let gate = server.writeGate, let value = server.gateValue(allowWrites: profile.allowWrites) {
+      env[gate] = value
     }
 
     // And after the gate, never before: anything that could turn writes on

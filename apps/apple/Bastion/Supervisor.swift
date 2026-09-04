@@ -297,6 +297,14 @@ nonisolated extension Supervisor {
       /// The credential values this child was spawned with, so a line it
       /// prints to stderr can have them struck before it reaches the log.
       var secretValues: [String] = []
+      /// Tool names this child has annotated as mutating, accumulated from the
+      /// `tools/list` replies that have passed through.
+      ///
+      /// Per instance, and an instance is per profile — but the annotation is a
+      /// fact about the SERVER, so it is learned whether or not writes are on.
+      /// Only servers gated by tool name use it; the ones with an env gate never
+      /// register a write tool in the first place.
+      var annotatedWriteTools: Set<String> = []
     }
 
     private struct Waiter {
@@ -668,6 +676,35 @@ nonisolated extension Supervisor {
       let logID = LogStore.record(
         origin: key, frame: frame, mode: profile.capture, secretKeys: secretKeys)
 
+      // The write gate, for a child that has no environment variable to gate
+      // with. Most do: they read `*_ALLOW_WRITES` at startup and never register
+      // the tool, which is a stronger guarantee than this and is why `writeGate`
+      // stays the preferred shape. But a server whose own read-only switch is a
+      // CLI FLAG has neither — Bastion passes no argv — and the alternative was
+      // to declare it `writeGate: null`, which `ToolProbe` reads as "every tool
+      // is a read" and stops asking for confirmation over. So the gate moves to
+      // the only thing Bastion controls: what it forwards.
+      //
+      // Identical to `RemoteInstance`, deliberately, and the rule itself is in
+      // `WriteGate` so there is one of it rather than two.
+      if !profile.allowWrites, !server.writeTools.isEmpty, method == "tools/call",
+        let params = frame["params"] as? [String: Any],
+        let name = params["name"] as? String, isWriteTool(name)
+      {
+        // A gated notification is simply dropped: there is no id to answer.
+        guard clientID != nil else { return nil }
+        hostLog(key, .info, "refused \(name): writes are off for this profile")
+        return try encode([
+          "jsonrpc": "2.0", "id": clientID as Any,
+          "error": [
+            "code": -32601,
+            "message":
+              "'\(name)' changes things and writes are off for the \(profile.name) profile. Turn "
+              + "'Allow writes' on in Bastion if that is what you want.",
+          ],
+        ])
+      }
+
       // Make sure there is a child before rewriting anything into its numbering.
       try ensureRunning()
 
@@ -721,7 +758,54 @@ nonisolated extension Supervisor {
       guard let result = outcome.withLock({ $0 }) else {
         throw SupervisorError.childDied("no response")
       }
-      return try result.get()
+      return try filteredForWriteGate(result.get(), method: method)
+    }
+
+    // MARK: - The write gate, for a child gated by tool name
+
+    private var annotatedWriteTools: Set<String> {
+      state.withLock { $0.annotatedWriteTools }
+    }
+
+    private func isWriteTool(_ name: String) -> Bool {
+      WriteGate.isWriteTool(
+        name, declared: server.writeTools, annotated: annotatedWriteTools)
+    }
+
+    /// Hide the gated tools from `tools/list`, and learn the child's own
+    /// annotations while passing them.
+    ///
+    /// Only `tools/list` is decoded. Every other reply is handed back as the
+    /// bytes that arrived, because re-serialising somebody else's JSON to
+    /// change nothing is a way to lose something — key order, a number's
+    /// spelling — for no gain.
+    private func filteredForWriteGate(_ data: Data, method: String) -> Data {
+      // Only for a server the manifest gates by name. A child with an env gate
+      // does not need it — with writes off it never registered the tool, so
+      // there is nothing in the list to hide — and a child declared read-only
+      // must not be filtered by annotation alone, or `ToolProbe` would promise
+      // a tool that this then refuses.
+      guard !server.writeTools.isEmpty, method == "tools/list",
+        let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+      else { return data }
+
+      let (response, learned) = WriteGate.filter(
+        object, method: method, declared: server.writeTools, annotated: annotatedWriteTools,
+        allowWrites: profile.allowWrites)
+      if !learned.isEmpty {
+        state.withLock { $0.annotatedWriteTools.formUnion(learned) }
+      }
+
+      if let before = (object["result"] as? [String: Any])?["tools"] as? [[String: Any]],
+        let after = (response["result"] as? [String: Any])?["tools"] as? [[String: Any]],
+        after.count != before.count
+      {
+        hostLog(key, .info, "write gate hid \(before.count - after.count) tool(s) from tools/list")
+      }
+      // The re-encode can only fail on something that came out of
+      // `JSONSerialization` a moment ago, so the fallback is the original bytes
+      // rather than an error: a filter that cannot run must not lose the reply.
+      return (try? JSONSerialization.data(withJSONObject: response)) ?? data
     }
 
     /// Answer a legacy client's `initialize` from the child's, with the

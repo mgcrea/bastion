@@ -124,7 +124,16 @@ checked in CI.
 Every other entry in the list is an npm package Bastion downloads and relays to. One is the app.
 `bastion` answers MCP in-process — no package, no child, no credentials of its own — and its tools
 are the window: list and describe servers, install one from the catalog or add any npm package,
-create profiles, put credentials in the Keychain, wire clients, and read what is running.
+keep an installed one up to date, create profiles, put credentials in the Keychain, wire clients,
+and read what is running.
+
+Updating goes through the same two steps the server pane does, and in the same order.
+`check_server_update` asks npm what it would install and changes nothing; `update_server` resolves
+the package at `latest` again and re-downloads it, which is equally the retry for a download that
+failed and the repair for a dependency tree npm would rebuild. Neither runs on a timer — Bastion
+reaches the registry when something asks it to and not otherwise — so what `get_server` reports
+under `update` is only ever as fresh as the last time somebody asked, and it says `unchecked`
+rather than guessing.
 
 It is the one server that cannot be removed. Removing a server takes its profiles, their Keychain
 entries and its downloaded code with it, which was far too much to mean "not right now" — so every

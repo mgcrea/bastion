@@ -47,9 +47,10 @@ nonisolated enum BuiltinServer {
   /// The definition, hand-written rather than generated.
   ///
   /// Deliberately not in `servers.json`: that file generates the catalog, the
-  /// website and `docs/servers.md`, and `scripts/generate-servers.mjs` asserts
-  /// every catalog entry is published as `@mgcrea/mcp-<id>` — which this never
-  /// will be.
+  /// website and `docs/servers.md`, and every entry in it is either a package
+  /// to install or an endpoint to reach. This is neither. It runs in this
+  /// process, so there is no `npmName` for the manifest to carry and no
+  /// `transport` shape that would be honest about it.
   static let definition = BastionServer(
     id: id,
     displayName: "Bastion",

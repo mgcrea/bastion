@@ -9,6 +9,28 @@ are taken from this file, which is the curated summary.
 
 ## [Unreleased]
 
+### Added
+
+- **An update path on Bastion's own server.** The window has had one since the catalog became
+  editable — Check for updates, then Update to _x_ — and an agent driving Bastion through
+  `bastion` had no way to reach it: `install_server` adds a catalog entry and refuses anything
+  already in the list, so a server that was installed was a server nothing could move.
+
+  Two tools, in the order the pane asks in. `check_server_update` runs npm's own `--dry-run`
+  against the installed tree and writes nothing, so it sits on the read side of the write gate;
+  the answer lands under `update` in `get_server`, and `list_servers` carries `update_available`
+  on any row a check found a newer version for. `update_server` resolves the package at `latest`
+  again and re-downloads it — which is also the retry for a download that failed and the repair
+  for a tree npm would rebuild, because re-resolving is all any of those three ever did.
+
+  Both report the state a version number alone gets wrong. With a minimum package age set, npm
+  resolves `latest` to the newest version old _enough_, which can be older than what is installed
+  — so `pinned-older` is its own machine-readable state and says which direction pressing on would
+  go, rather than offering an update that is a downgrade.
+
+  Neither runs on a timer. Bastion reaches the registry when something asks it to, and `update`
+  reads `unchecked` until something has.
+
 ### Fixed
 
 - **`scripts/builtin-check.sh` honours `BASTION_PORT`.** It read the variable for its own requests
