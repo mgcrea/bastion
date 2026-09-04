@@ -149,6 +149,31 @@ enum ClientWiring {
         transport: .http,
         caveat: nil),
       Client(
+        id: "lm-studio",
+        displayName: "LM Studio",
+        configURL: home.appendingPathComponent(".lmstudio/mcp.json"),
+        rootKey: "mcpServers",
+        // The bridge, and not because LM Studio cannot take a URL — its own
+        // config on the machine this was added from holds three remote servers.
+        // It is that those three are a bare `url` with no `type` and no header
+        // anywhere in the file, so the shape this app writes for `.http` — `type`,
+        // `url`, `headers` — is unverified here, and an entry a client quietly
+        // ignores is worse than one that spawns a process. Move it to `.http`
+        // once somebody has watched a token-carrying header work.
+        transport: .bridge,
+        caveat: "spawns bastion-bridge; LM Studio's header shape is unverified"),
+      Client(
+        id: "windsurf",
+        displayName: "Windsurf",
+        configURL: home.appendingPathComponent(".codeium/windsurf/mcp_config.json"),
+        rootKey: "mcpServers",
+        // Same reasoning, less evidence: Windsurf was not installed on the
+        // machine this was added from, and its documented remote shape is a
+        // `serverUrl` key this app does not write. stdio is the shape every MCP
+        // client agrees on.
+        transport: .bridge,
+        caveat: "spawns bastion-bridge; Windsurf's remote shape is a serverUrl, which this does not write"),
+      Client(
         id: "codex",
         displayName: "ChatGPT & Codex",
         // One client, not three. The ChatGPT desktop app, the Codex CLI and the

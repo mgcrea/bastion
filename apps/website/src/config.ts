@@ -219,17 +219,19 @@ export const APP_VERSION = "1.4.1";
  *
  * Codex is one entry and three surfaces — ChatGPT, the Codex CLI and the IDE
  * extension share a single TOML config, which is why it is spliced rather than
- * re-serialised like the JSON four.
+ * re-serialised like the JSON six.
  */
 export const CLIENTS = [
   { name: "Claude Code", config: "~/.claude.json" },
   { name: "Claude Desktop", config: "claude_desktop_config.json", viaBridge: true },
   { name: "VS Code", config: "User/mcp.json" },
   { name: "Cursor", config: "~/.cursor/mcp.json" },
+  { name: "LM Studio", config: "~/.lmstudio/mcp.json", viaBridge: true },
+  { name: "Windsurf", config: "windsurf/mcp_config.json", viaBridge: true },
   { name: "ChatGPT & Codex", config: "~/.codex/config.toml" },
 ] as const;
 
-/** "Claude Code, Claude Desktop, VS Code, Cursor and ChatGPT & Codex". */
+/** "Claude Code, Claude Desktop, VS Code, Cursor, LM Studio, Windsurf and ChatGPT & Codex". */
 export const clientList = (() => {
   const names = CLIENTS.map((c) => c.name);
   return names.slice(0, -1).join(", ") + " and " + names[names.length - 1];

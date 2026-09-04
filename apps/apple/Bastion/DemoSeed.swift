@@ -602,7 +602,7 @@ enum DemoSeed {
 
   // MARK: - Clients
 
-  /// The same five clients the real list holds, rooted somewhere that is
+  /// The same seven clients the real list holds, rooted somewhere that is
   /// nobody's home directory.
   ///
   /// `/Users/you` is the whole trick. `ClientDetail.fileCard` prints
@@ -633,6 +633,16 @@ enum DemoSeed {
         id: "cursor", displayName: "Cursor",
         configURL: home.appendingPathComponent(".cursor/mcp.json"),
         rootKey: "mcpServers", transport: .http, caveat: nil),
+      ClientWiring.Client(
+        id: "lm-studio", displayName: "LM Studio",
+        configURL: home.appendingPathComponent(".lmstudio/mcp.json"),
+        rootKey: "mcpServers", transport: .bridge,
+        caveat: "spawns bastion-bridge; LM Studio's header shape is unverified"),
+      ClientWiring.Client(
+        id: "windsurf", displayName: "Windsurf",
+        configURL: home.appendingPathComponent(".codeium/windsurf/mcp_config.json"),
+        rootKey: "mcpServers", transport: .bridge,
+        caveat: "spawns bastion-bridge; Windsurf's remote shape is a serverUrl, which this does not write"),
       ClientWiring.Client(
         id: "codex", displayName: "ChatGPT & Codex",
         configURL: home.appendingPathComponent(".codex/config.toml"),
@@ -889,9 +899,9 @@ enum DemoSeed {
   /// short ones stop looking empty.
   ///
   /// **The sidebar is what sets the floor, not the detail pane**, and it is
-  /// taller than it looks. Six servers, five clients and three activity rows,
-  /// plus three section headers, is 14 rows at a 32pt pitch and 38pt per
-  /// header — about 570pt — and underneath it `sidebarStatus` takes another
+  /// taller than it looks. Six servers, seven clients and three activity rows,
+  /// plus three section headers, is 16 rows at a 32pt pitch and 38pt per
+  /// header — about 634pt — and underneath it `sidebarStatus` takes another
   /// 130pt as a `safeAreaInset`. An inset RESERVES space without filling the
   /// scroll view, so the list simply scrolls under it, silently.
   ///
@@ -902,8 +912,10 @@ enum DemoSeed {
   /// screen to say which pane the reader was looking at. 700 is the first
   /// height where the whole list clears the inset.
   ///
-  /// Adding a seventh server to the fixture pushes this up by another 32.
-  nonisolated static let contentSize = NSSize(width: 1180, height: 700)
+  /// Adding a seventh server to the fixture pushes this up by another 32, and
+  /// so does adding a client — 700 was measured against five of them, and LM
+  /// Studio and Windsurf arriving from Cupertino is what took it to 764.
+  nonisolated static let contentSize = NSSize(width: 1180, height: 764)
   /// The licence pane is the shortest screen in the app: a status card, a key
   /// field and two sentences. 620 left half the window empty under it.
   nonisolated static let settingsContentSize = NSSize(width: 760, height: 470)

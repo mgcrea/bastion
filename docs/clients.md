@@ -6,7 +6,7 @@ MCP clients Bastion knows how to configure, why they do not all get the same
 entry, and what the client pane can and cannot tell you about a file it does not
 own.
 
-## The five clients
+## The seven clients
 
 | Client          | Config                                                            | Root key      | Format | Transport |
 | --------------- | ----------------------------------------------------------------- | ------------- | ------ | --------- |
@@ -14,6 +14,8 @@ own.
 | Claude Desktop  | `~/Library/Application Support/Claude/claude_desktop_config.json` | `mcpServers`  | JSON   | bridge    |
 | VS Code         | `~/Library/Application Support/Code/User/mcp.json`                | `servers`     | JSON   | HTTP      |
 | Cursor          | `~/.cursor/mcp.json`                                              | `mcpServers`  | JSON   | HTTP      |
+| LM Studio       | `~/.lmstudio/mcp.json`                                            | `mcpServers`  | JSON   | **bridge** |
+| Windsurf        | `~/.codeium/windsurf/mcp_config.json`                             | `mcpServers`  | JSON   | **bridge** |
 | ChatGPT & Codex | `~/.codex/config.toml`                                            | `mcp_servers` | TOML   | HTTP      |
 
 Three disagreements shape the whole design, and none is Bastion's to fix.
@@ -33,6 +35,23 @@ user hand-wrote. mcp.json is strict JSON and is where VS Code keeps MCP servers
 anyway. Codex has no equivalent escape — its servers live in the same file as
 everything else it is configured with — which is what [the one TOML
 client](#the-one-toml-client) is about.
+
+The last two arrived from Cupertino, which had them first and which this list is
+otherwise kept in step with. Both get the bridge, and neither for Claude
+Desktop's reason — they get it because nobody has *checked* that they take a
+URL in the shape this app writes.
+
+LM Studio demonstrably reaches remote servers: the config it was added from
+holds three. But all three are a bare `url` with no `type` beside it and no
+header anywhere in the file, and the entry Bastion writes for `.http` is `type`,
+`url` and `headers` — so the token-carrying half is the unverified half.
+Windsurf was not installed at all, and its documented remote shape is a
+`serverUrl` key this app does not write.
+
+The asymmetry is the point: a bridge entry spawns a process, which is a cost. An
+HTTP entry a client silently ignores is a client that does not work, with nothing
+on either side saying why. Either row moves to `.http` the moment somebody
+watches a header carry a token into it.
 
 ## Why Claude Desktop gets a bridge
 

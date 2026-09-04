@@ -7,6 +7,30 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.4.1` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Added
+
+- **LM Studio and Windsurf.** Two rows Cupertino had and this did not, which is the whole reason
+  they are here: the two apps write into the same seven config files and the lists had drifted
+  apart. `~/.lmstudio/mcp.json` and `~/.codeium/windsurf/mcp_config.json`, both strict JSON with
+  servers under `mcpServers`.
+
+  Both get the **bridge** rather than a URL, and not for Claude Desktop's reason. LM Studio
+  demonstrably reaches remote servers — the config this was added from holds three — but every one
+  of them is a bare `url` with no `type` and no header anywhere in the file, so the token-carrying
+  half of what `.http` writes is the unverified half. Windsurf was not installed to check at all,
+  and its documented remote shape is a `serverUrl` key this app does not write. A bridge entry
+  spawns a process, which is a cost; an HTTP entry a client silently ignores is a client that does
+  not work with nothing on either side saying why. Either row moves to `.http` once somebody has
+  watched a header carry a token into it.
+
+### Changed
+
+- **The demo window is 764pt rather than 700.** That number is measured against the sidebar rather
+  than chosen, and two more client rows is 64pt more sidebar. The screenshot goldens have not been
+  re-taken.
+
 ## [1.4.1] - 2026-09-03
 
 ### Fixed
