@@ -1866,6 +1866,71 @@ nonisolated enum ServerCatalog {
           summary: "Cloudflare API token with Workers Observability read access, sent as the bearer token.",
           header: .init(name: "Authorization", format: "Bearer {value}")),
       ]),
+    // No credentials, so no auth modes. What authorises this server is the trust
+    // relationship between this Mac and the phone - pairing, Developer Mode, and
+    // the separate Enable UI Automation toggle - none of which passes through a
+    // profile. That is also why there is no auth_status tool to name here.
+    //
+    // Two lanes reach the device and they fail independently. `xcrun devicectl`
+    // covers app lifecycle and needs nothing installed on the phone; everything
+    // that sees or touches the screen goes through a WebDriverAgent runner the
+    // user builds and starts themselves, reached over the IPv6 tunnel CoreDevice
+    // already maintains. ios_device_diagnostics reports both separately, so
+    // 'the device is fine, the runner is not up' is a distinguishable answer.
+    //
+    // The write gate is unusually load-bearing here. With it on, a model can tap
+    // anything on an unlocked phone in someone's hand. IOS_DEVICE_LAUNCH_ARGS is
+    // the mitigation worth setting beside it: it pins the app under test into a
+    // fixture mode by default rather than its owner's real account.
+    //
+    // Local until published - npm 404s on @mgcrea/mcp-ios-device today, so this
+    // entry only resolves against a checkout under MCP_ROOT. docsUrl is null for
+    // the same reason: the GitHub repo does not exist yet.
+    BastionServer(
+      id: "ios-device",
+      displayName: "iOS Device",
+      summary: "Drive a physical iPhone or iPad: screenshot, accessibility tree, tap, swipe, type, and app lifecycle.",
+      transport: .child(
+        .init(
+          npmName: "@mgcrea/mcp-ios-device",
+          binName: "ios-device-mcp",
+          distribution: .local,
+          localPath: "mcp-ios-device")),
+      docsURL: nil,
+      dialect: .v2025_11_25,
+      writeGate: "IOS_DEVICE_ALLOW_WRITES",
+      writeTools: [],
+      gateBypass: [],
+      authModes: [],
+      stateEnv: ["IOS_DEVICE_OUTPUT_DIR"],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "IOS_DEVICE_ID",
+          isRequired: false,
+          isSecret: false,
+          summary: "CoreDevice identifier, UDID or name of the device to drive. Unset uses the only connected device; two connected and no value is an error that names them."),
+        .init(
+          name: "IOS_DEVICE_WDA_URL",
+          isRequired: false,
+          isSecret: false,
+          summary: "Explicit WebDriverAgent URL. Unset derives it from the device's CoreDevice tunnel, which is the normal path and needs no port forwarding."),
+        .init(
+          name: "IOS_DEVICE_LAUNCH_ARGS",
+          isRequired: false,
+          isSecret: false,
+          summary: "Launch arguments applied when a launch passes none, e.g. -CanopyDemoMode to open fixtures instead of the owner's real account."),
+        .init(
+          name: "IOS_DEVICE_OUTPUT_DIR",
+          isRequired: false,
+          isSecret: false,
+          summary: "Where saved screenshots and pulled app containers land. Defaults to a directory under TMPDIR."),
+        .init(
+          name: "IOS_DEVICE_ALLOW_WRITES",
+          isRequired: false,
+          isSecret: false,
+          summary: "Enables the nine tools that drive the device: tap, tap_element, swipe, type, press_button, install, launch, terminate, pull_container."),
+      ]),
   ]
   // </generated:servers>
 

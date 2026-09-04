@@ -173,6 +173,7 @@ asserts both eras against a running build.
 | [Cloudflare](https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/) | `cloudflare` | — | `https://mcp.cloudflare.com/mcp` (remote) | read-only | 1 |
 | [Cloudflare Docs](https://github.com/cloudflare/mcp-server-cloudflare/tree/main/apps/docs-ai-search) | `cloudflare-docs` | — | `https://docs.mcp.cloudflare.com/mcp` (remote) | read-only | 1 |
 | [Cloudflare Observability](https://github.com/cloudflare/mcp-server-cloudflare/tree/main/apps/workers-observability) | `cloudflare-observability` | — | `https://observability.mcp.cloudflare.com/mcp` (remote) | read-only | 1 |
+| iOS Device | `ios-device` | `ios-device-mcp` | `mcp-ios-device` (local) | `IOS_DEVICE_ALLOW_WRITES` | — |
 
 ### App Store Connect
 
@@ -767,4 +768,39 @@ can edit DNS.
 | `CLOUDFLARE_OBSERVABILITY_TOKEN` | — | yes | `Authorization: Bearer {value}` | Cloudflare API token with Workers Observability read access, sent as the bearer token. |
 
 Satisfy exactly one of: **Sign in with Cloudflare** (no variables — Bastion holds the token), **API token** (`CLOUDFLARE_OBSERVABILITY_TOKEN`)
+
+### iOS Device
+
+Drive a physical iPhone or iPad: screenshot, accessibility tree, tap, swipe, type, and app lifecycle.
+
+No credentials, so no auth modes. What authorises this server is the trust
+relationship between this Mac and the phone - pairing, Developer Mode, and
+the separate Enable UI Automation toggle - none of which passes through a
+profile. That is also why there is no auth_status tool to name here.
+
+Two lanes reach the device and they fail independently. `xcrun devicectl`
+covers app lifecycle and needs nothing installed on the phone; everything
+that sees or touches the screen goes through a WebDriverAgent runner the
+user builds and starts themselves, reached over the IPv6 tunnel CoreDevice
+already maintains. ios_device_diagnostics reports both separately, so
+'the device is fine, the runner is not up' is a distinguishable answer.
+
+The write gate is unusually load-bearing here. With it on, a model can tap
+anything on an unlocked phone in someone's hand. IOS_DEVICE_LAUNCH_ARGS is
+the mitigation worth setting beside it: it pins the app under test into a
+fixture mode by default rather than its owner's real account.
+
+Local until published - npm 404s on @mgcrea/mcp-ios-device today, so this
+entry only resolves against a checkout under MCP_ROOT. docsUrl is null for
+the same reason: the GitHub repo does not exist yet.
+
+| Variable | Required | Secret | Meaning |
+| --- | --- | --- | --- |
+| `IOS_DEVICE_ID` | — | — | CoreDevice identifier, UDID or name of the device to drive. Unset uses the only connected device; two connected and no value is an error that names them. |
+| `IOS_DEVICE_WDA_URL` | — | — | Explicit WebDriverAgent URL. Unset derives it from the device's CoreDevice tunnel, which is the normal path and needs no port forwarding. |
+| `IOS_DEVICE_LAUNCH_ARGS` | — | — | Launch arguments applied when a launch passes none, e.g. -CanopyDemoMode to open fixtures instead of the owner's real account. |
+| `IOS_DEVICE_OUTPUT_DIR` | — | — | Where saved screenshots and pulled app containers land. Defaults to a directory under TMPDIR. |
+| `IOS_DEVICE_ALLOW_WRITES` | — | — | Enables the nine tools that drive the device: tap, tap_element, swipe, type, press_button, install, launch, terminate, pull_container. |
+
+Per-profile state: `IOS_DEVICE_OUTPUT_DIR`
 <!-- </generated:servers> -->

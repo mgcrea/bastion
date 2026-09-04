@@ -199,6 +199,14 @@ export const SERVERS: Server[] = [
     transport: "remote",
     dialect: "2025-11-25",
   },
+  {
+    id: "ios-device",
+    displayName: "iOS Device",
+    summary: "Drive a physical iPhone or iPad: screenshot, accessibility tree, tap, swipe, type, and app lifecycle.",
+    writeGate: "IOS_DEVICE_ALLOW_WRITES",
+    transport: "child",
+    dialect: "2025-11-25",
+  },
 ];
 // </generated:servers>
 
