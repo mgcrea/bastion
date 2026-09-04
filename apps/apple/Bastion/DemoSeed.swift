@@ -293,7 +293,7 @@ enum DemoSeed {
   ///
   /// Pinned rather than read, so a release does not churn every golden. Bump it
   /// deliberately, in the commit that re-captures.
-  nonisolated static let version = "1.4.1"
+  nonisolated static let version = "1.5.0"
 
   /// A licence that is rendered and never verified. See `LicenseStore.demoKey`.
   nonisolated static let license = License(

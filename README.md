@@ -71,7 +71,7 @@ restricted key.
 
 ## Servers
 
-**Bastion ships with nothing installed.** It ships with a _catalog_ of twenty-one, listed in
+**Bastion ships with nothing installed.** It ships with a _catalog_ of twenty-two, listed in
 [`servers.json`](servers.json) and documented in [docs/servers.md](docs/servers.md); the list an
 install actually runs lives in Application Support, starts empty, and the user edits it. Install
 from the catalog, or add any other MCP server by npm package name. Code is fetched on demand into
@@ -105,7 +105,7 @@ the id resolves against the list the _user_ installed, or it 404s. Nothing arriv
 can name a package, a path or an argv, and a custom entry supplies a package and a bin name rather
 than a command line.
 
-Bastion curates lightly, and only to fill the first screen. The catalog seeds twenty-one entries — ten
+Bastion curates lightly, and only to fill the first screen. The catalog seeds twenty-two entries — eleven
 servers written here, and eleven endpoints their own vendors operate — because a catalog that opens
 with nothing recognisable in it teaches nobody what the app is for. It is still not trying to be a
 directory: Docker MCP Toolkit ships hundreds of curated servers, Anthropic ships MCPB double-click
@@ -260,7 +260,7 @@ Built and verified:
 | **Gateway**             | loopback HTTP, `Origin` / `Host` / bearer, hand-written so the checks are auditable |
 | **Supervisor**          | one child per profile, id remapping, backoff, circuit breaker, idle stop            |
 | **Dialect**             | dual-era: modern 2026-07-28 and legacy `initialize`, onto legacy children           |
-| **Catalog**             | twenty-one seeded servers, a generator, and a CI drift check                        |
+| **Catalog**             | twenty-two seeded servers, a generator, and a CI drift check                        |
 | **Server store**        | the user's own list, on-demand npm install, add, remove, and a per-server switch    |
 | **Remote servers**      | an https endpoint fronted like any other server — eleven of them in the catalog     |
 | **OAuth 2.1**           | discovery, dynamic registration, PKCE and refresh — one consent, every client       |
@@ -283,7 +283,7 @@ all; a legacy client opens with `initialize` and is served that way. Both land o
 Bastion took with the child at spawn, and `server/discover` — mandatory in the modern revision, and
 implemented by none of these servers — is synthesised from it.
 
-None of the twenty-one catalog servers are modern. The ten children run an SDK whose newest protocol is
+None of the twenty-two catalog servers are modern. The eleven children run an SDK whose newest protocol is
 `2025-11-25`, which is what they negotiate. The manifest said `2025-06-18` until a live handshake was
 actually run against one; that was Bastion's own pin masquerading as a fact about the servers. A
 server you add yourself is fronted the same way, and declares its own dialect when you add it.

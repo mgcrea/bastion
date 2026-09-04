@@ -4,10 +4,10 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.4.1` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.5.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.5.0] - 2026-09-04
 
 ### Added
 
@@ -25,11 +25,45 @@ are taken from this file, which is the curated summary.
   not work with nothing on either side saying why. Either row moves to `.http` once somebody has
   watched a header carry a token into it.
 
+- **Two more servers in the catalog: iOS Device and CloudKit.** The catalog is now twenty-two
+  entries, eleven children and eleven remote.
+
+  **iOS Device** drives a physical iPhone or iPad over `xcrun devicectl` and a WebDriverAgent
+  runner reached through CoreDevice's tunnel. It takes no credentials, so it has no auth modes,
+  and a write gate guards the nine tools that actually touch the device. Bastion never runs the
+  runner itself — that stays yours to start. It installs from `@mgcrea/mcp-ios-device`.
+
+  **CloudKit** is split out of App Store Connect rather than folded into it: a separate service
+  with its own host and its own credential — a static management token, not a minted JWT — so a
+  second write gate on the App Store Connect entry would have described neither well. It installs
+  from a local checkout under `MCP_ROOT` until `@mgcrea/mcp-cloudkit` is published, the same way
+  iOS Device did until it was.
+
+- **A + at the end of the Servers header.** The labelled button under the list stays the real
+  affordance; this is a small unlabelled shortcut where the eye reaches the sidebar first. No ⌘N
+  on it, since the button below already claims that, and its accessibility label spells out what
+  the glyph alone cannot say to VoiceOver.
+
 ### Changed
 
+- **Client and server rows draw real icons.** Each client row now asks LaunchServices for that
+  app's actual icon at runtime, rather than bundling artwork that goes stale the next time
+  somebody rebrands; a declared SF Symbol is the fallback for CLIs and for rows with no bundle id.
+  The demo fixture pins the fallback unconditionally, so a marketing capture does not depend on
+  which editors happen to be installed on the Mac that took it.
+
+  Server rows move off origin onto **transport**, which is the question the icon was always
+  answering: gears for built-in, a box for a local package, a cloud for somebody else's endpoint.
+  Origin only ever drew a box for anything that was not built in, which meant a remote endpoint
+  was drawn as a downloaded package.
+
 - **The demo window is 764pt rather than 700.** That number is measured against the sidebar rather
-  than chosen, and two more client rows is 64pt more sidebar. The screenshot goldens have not been
-  re-taken.
+  than chosen, and two more client rows is 64pt more sidebar.
+
+- **The Swift half is under swift-format.** The JavaScript half has been formatted since the
+  start and the Swift half had no formatter at all; 30 of its 65 files disagreed with the config
+  now committed. The reformat is mechanical and is named in `.git-blame-ignore-revs`, so blame
+  still points at whoever wrote each line. Nothing about the app changed.
 
 ## [1.4.1] - 2026-09-03
 

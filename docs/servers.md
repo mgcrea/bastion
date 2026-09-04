@@ -57,7 +57,7 @@ than once when the entry is added, because a name that passed yesterday can
 resolve somewhere else today. `make remote-check` asserts all of it.
 
 Bastion curates lightly, and only to fill the first screen. The catalog seeds
-twenty-one entries — ten servers written here, and eleven endpoints their own
+twenty-two entries — eleven servers written here, and eleven endpoints their own
 vendors operate — because a catalog that opens with nothing recognisable in it
 teaches nobody what the app is for. It is still not trying to be a directory:
 Docker MCP Toolkit ships hundreds of curated servers, Anthropic ships MCPB
@@ -113,7 +113,7 @@ declares its protocol version, identity and capabilities in each request's
 shared server instance correct rather than a hack, and it is why Bastion fronts
 clients with it.
 
-None of the catalog entries below are modern. The nine children run an SDK
+None of the catalog entries below are modern. The eleven children run an SDK
 whose newest protocol is `2025-11-25`, and `server/discover` against one returns
 `-32601` — the exact signal the spec names for recognising a legacy server. The
 eleven remote entries carry that revision as a seeded starting point; ten of them
