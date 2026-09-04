@@ -46,6 +46,26 @@ are taken from this file, which is the curated summary.
   Neither runs on a timer. Bastion reaches the registry when something asks it to, and `update`
   reads `unchecked` until something has.
 
+### Changed
+
+- **The sidebar lists the clients you actually have.** Every client Bastion knows how to
+  configure used to get a row whether or not the Mac had it, so most people were shown a list of
+  editors they had never installed, each with a status dot reporting on a file that does not
+  exist. The _Clients_ section now shows the installed ones and disappears entirely when there
+  are none.
+
+  Installed is asked of LaunchServices first, so an editor in `~/Applications` or on a second
+  volume counts, and an editor installed this morning counts before it has written any config.
+  The config directory is the fallback, for the two clients that are a command rather than an app.
+
+  **Nothing about what can be wired has narrowed.** `wire_client` still resolves against the
+  whole list, and wiring a client that is not installed yet is allowed — it writes the config
+  that client will read on first launch. `list_clients` filters the same way the sidebar does but
+  then says what it left out, naming the absent ids in `not_installed` rather than dropping them
+  silently; `include_not_installed` asks for their full rows, with the paths their configs would
+  live at. A window can afford to say nothing about a client you do not have; an agent deciding
+  what it may wire cannot.
+
 ### Fixed
 
 - **`scripts/builtin-check.sh` honours `BASTION_PORT`.** It read the variable for its own requests
