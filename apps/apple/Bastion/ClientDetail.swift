@@ -264,8 +264,11 @@ struct ClientDetail: View {
 
   private func header(_ snapshot: Snapshot) -> some View {
     VStack(alignment: .leading, spacing: 10) {
-      Text(client.displayName)
-        .font(.title2).bold()
+      HStack(spacing: 10) {
+        ClientIconView(client: client, size: 28)
+        Text(client.displayName)
+          .font(.title2).bold()
+      }
 
       HStack(spacing: 8) {
         Circle().fill(ClientWiring.tint(snapshot.status)).frame(width: 8, height: 8)

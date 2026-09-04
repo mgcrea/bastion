@@ -78,12 +78,24 @@ enum ClientWiring {
     /// A note about this client worth showing next to it.
     let caveat: String?
     let format: Format
+    /// What LaunchServices is asked for this client's real icon, and the first
+    /// evidence `isInstalled` takes.
+    ///
+    /// `nil` for the two clients that are a command rather than an app. Claude
+    /// Code has no bundle at all; the ChatGPT & Codex row has one, because the
+    /// ChatGPT app reads the same file the CLI does.
+    let bundleID: String?
+    /// The SF Symbol standing in where there is no app icon to draw: a CLI, an
+    /// app that is not on this Mac, and every row under a capture. See
+    /// `ClientIconView` for why the last of those is deliberate.
+    let symbol: String
 
     /// Spelled out rather than memberwise, so that adding a format did not put
     /// a line on every client that does not have one.
     init(
       id: String, displayName: String, configURL: URL, rootKey: String,
-      transport: Transport, caveat: String?, format: Format = .json
+      transport: Transport, caveat: String?, format: Format = .json,
+      bundleID: String? = nil, symbol: String
     ) {
       self.id = id
       self.displayName = displayName
@@ -92,6 +104,8 @@ enum ClientWiring {
       self.transport = transport
       self.caveat = caveat
       self.format = format
+      self.bundleID = bundleID
+      self.symbol = symbol
     }
 
     /// Whether the client appears to be installed at all.
@@ -104,6 +118,16 @@ enum ClientWiring {
       // Mac — so without this the client plate is the "not installed" empty
       // state on every run.
       if DemoSeed.isEnabled { return true }
+      // LaunchServices first, which finds the app in `~/Applications`, on a
+      // second volume, anywhere — the directory check below finds it in exactly
+      // one place, and only once the client has written a config there. An
+      // editor installed this morning and never given an MCP server reads as
+      // "not installed" without this.
+      if let bundleID,
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil
+      {
+        return true
+      }
       return FileManager.default.fileExists(atPath: configURL.deletingLastPathComponent().path)
     }
   }
@@ -119,7 +143,11 @@ enum ClientWiring {
         configURL: home.appendingPathComponent(".claude.json"),
         rootKey: "mcpServers",
         transport: .http,
-        caveat: nil),
+        caveat: nil,
+        // A command, not an app: there is nothing for LaunchServices to find,
+        // and `terminal` is what it is.
+        bundleID: nil,
+        symbol: "terminal"),
       Client(
         id: "claude-desktop",
         displayName: "Claude Desktop",
@@ -128,7 +156,9 @@ enum ClientWiring {
         // Every entry in this file is a `command`; it has no `type: http` among
         // them. That is the whole reason `bastion-bridge` exists.
         transport: .bridge,
-        caveat: "spawns bastion-bridge, which starts Bastion on demand"),
+        caveat: "spawns bastion-bridge, which starts Bastion on demand",
+        bundleID: "com.anthropic.claudefordesktop",
+        symbol: "sparkles"),
       Client(
         id: "vscode",
         displayName: "VS Code",
@@ -140,14 +170,20 @@ enum ClientWiring {
         configURL: support.appendingPathComponent("Code/User/mcp.json"),
         rootKey: "servers",
         transport: .http,
-        caveat: nil),
+        caveat: nil,
+        bundleID: "com.microsoft.VSCode",
+        symbol: "chevron.left.forwardslash.chevron.right"),
       Client(
         id: "cursor",
         displayName: "Cursor",
         configURL: home.appendingPathComponent(".cursor/mcp.json"),
         rootKey: "mcpServers",
         transport: .http,
-        caveat: nil),
+        caveat: nil,
+        // Cursor ships under its Electron packager's id rather than anything
+        // resembling its name, so this cannot be derived and has to be quoted.
+        bundleID: "com.todesktop.230313mzl4w4u92",
+        symbol: "cursorarrow"),
       Client(
         id: "lm-studio",
         displayName: "LM Studio",
@@ -161,7 +197,9 @@ enum ClientWiring {
         // ignores is worse than one that spawns a process. Move it to `.http`
         // once somebody has watched a token-carrying header work.
         transport: .bridge,
-        caveat: "spawns bastion-bridge; LM Studio's header shape is unverified"),
+        caveat: "spawns bastion-bridge; LM Studio's header shape is unverified",
+        bundleID: "ai.elementlabs.lmstudio",
+        symbol: "cpu"),
       Client(
         id: "windsurf",
         displayName: "Windsurf",
@@ -172,7 +210,9 @@ enum ClientWiring {
         // `serverUrl` key this app does not write. stdio is the shape every MCP
         // client agrees on.
         transport: .bridge,
-        caveat: "spawns bastion-bridge; Windsurf's remote shape is a serverUrl, which this does not write"),
+        caveat: "spawns bastion-bridge; Windsurf's remote shape is a serverUrl, which this does not write",
+        bundleID: "com.exafunction.windsurf",
+        symbol: "wind"),
       Client(
         id: "codex",
         displayName: "ChatGPT & Codex",
@@ -188,7 +228,12 @@ enum ClientWiring {
         transport: .http,
         caveat: "the ChatGPT app, the Codex CLI and the IDE extension all read this one file, "
           + "and the ChatGPT app rewrites it on launch",
-        format: .toml),
+        format: .toml,
+        // The ChatGPT app's, which is `com.openai.codex` — the desktop app took
+        // the CLI's name, and it is the same row here for the same reason: they
+        // read one file. Somebody who has only the CLI gets the terminal glyph.
+        bundleID: "com.openai.codex",
+        symbol: "terminal"),
     ]
   }
 

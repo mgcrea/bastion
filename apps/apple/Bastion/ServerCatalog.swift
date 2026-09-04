@@ -230,6 +230,34 @@ nonisolated struct BastionServer: Identifiable, Hashable {
 
     var isRemote: Bool { if case .remote = self { true } else { false } }
 
+    /// The glyph for this transport, which is the only place in a sidebar row
+    /// where the difference is visible at all.
+    ///
+    /// The row used to ask `origin`, and got the wrong question's answer: every
+    /// non-builtin server drew a shipping box, so a remote endpoint appeared as
+    /// a package that had been downloaded — the one thing it never is. The
+    /// question the row is answering is whether this server runs on the
+    /// reader's machine or on somebody else's, and that is the question
+    /// `transport` is, so it is the one asked here.
+    var symbolName: String {
+      switch self {
+      case .child: "shippingbox"
+      case .remote: "cloud"
+      case .inProcess: "gearshape.2"
+      }
+    }
+
+    /// What that glyph means, spelled out. A three-way icon nobody has seen
+    /// before is a quiz until something answers it, and the badges beside it
+    /// already take this shape.
+    var summaryLabel: String {
+      switch self {
+      case .child: "Local package"
+      case .remote: "Remote endpoint"
+      case .inProcess: "Built in"
+      }
+    }
+
     /// The endpoint, or nil for a child. Named rather than pattern-matched at
     /// every call site that only wants to show a host.
     var endpoint: URL? { if case .remote(let url) = self { url } else { nil } }

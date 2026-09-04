@@ -612,6 +612,11 @@ enum DemoSeed {
   /// capturing Mac and as a full path everywhere else. Rooting it away from
   /// home makes it render in full, always, and makes it obviously not a real
   /// machine's path while it does so.
+  ///
+  /// The bundle ids ride along for parity with the real list rather than for
+  /// use: `ClientIconView` draws the declared symbol for every row under a
+  /// capture, precisely so the plate does not depend on which editors the
+  /// capturing Mac has.
   @MainActor static var clients: [ClientWiring.Client] {
     let home = URL(fileURLWithPath: "/Users/you", isDirectory: true)
     let support = home.appendingPathComponent("Library/Application Support")
@@ -619,37 +624,42 @@ enum DemoSeed {
       ClientWiring.Client(
         id: "claude-code", displayName: "Claude Code",
         configURL: home.appendingPathComponent(".claude.json"),
-        rootKey: "mcpServers", transport: .http, caveat: nil),
+        rootKey: "mcpServers", transport: .http, caveat: nil, symbol: "terminal"),
       ClientWiring.Client(
         id: "claude-desktop", displayName: "Claude Desktop",
         configURL: support.appendingPathComponent("Claude/claude_desktop_config.json"),
         rootKey: "mcpServers", transport: .bridge,
-        caveat: "spawns bastion-bridge, which starts Bastion on demand"),
+        caveat: "spawns bastion-bridge, which starts Bastion on demand",
+        bundleID: "com.anthropic.claudefordesktop", symbol: "sparkles"),
       ClientWiring.Client(
         id: "vscode", displayName: "VS Code",
         configURL: support.appendingPathComponent("Code/User/mcp.json"),
-        rootKey: "servers", transport: .http, caveat: nil),
+        rootKey: "servers", transport: .http, caveat: nil,
+        bundleID: "com.microsoft.VSCode", symbol: "chevron.left.forwardslash.chevron.right"),
       ClientWiring.Client(
         id: "cursor", displayName: "Cursor",
         configURL: home.appendingPathComponent(".cursor/mcp.json"),
-        rootKey: "mcpServers", transport: .http, caveat: nil),
+        rootKey: "mcpServers", transport: .http, caveat: nil,
+        bundleID: "com.todesktop.230313mzl4w4u92", symbol: "cursorarrow"),
       ClientWiring.Client(
         id: "lm-studio", displayName: "LM Studio",
         configURL: home.appendingPathComponent(".lmstudio/mcp.json"),
         rootKey: "mcpServers", transport: .bridge,
-        caveat: "spawns bastion-bridge; LM Studio's header shape is unverified"),
+        caveat: "spawns bastion-bridge; LM Studio's header shape is unverified",
+        bundleID: "ai.elementlabs.lmstudio", symbol: "cpu"),
       ClientWiring.Client(
         id: "windsurf", displayName: "Windsurf",
         configURL: home.appendingPathComponent(".codeium/windsurf/mcp_config.json"),
         rootKey: "mcpServers", transport: .bridge,
-        caveat: "spawns bastion-bridge; Windsurf's remote shape is a serverUrl, which this does not write"),
+        caveat: "spawns bastion-bridge; Windsurf's remote shape is a serverUrl, which this does not write",
+        bundleID: "com.exafunction.windsurf", symbol: "wind"),
       ClientWiring.Client(
         id: "codex", displayName: "ChatGPT & Codex",
         configURL: home.appendingPathComponent(".codex/config.toml"),
         rootKey: ClientWiringTOML.rootKey, transport: .http,
         caveat: "the ChatGPT app, the Codex CLI and the IDE extension all read this one file, "
           + "and the ChatGPT app rewrites it on launch",
-        format: .toml),
+        format: .toml, bundleID: "com.openai.codex", symbol: "terminal"),
     ]
   }
 

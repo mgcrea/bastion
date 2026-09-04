@@ -165,9 +165,13 @@ struct MainView: View {
               ServerBadge(server: server)
             }
           } icon: {
-            // Bastion's own server is not a package, and the box icon is the
-            // one thing on the row that says it is.
-            Image(systemName: server.origin == .builtin ? "gearshape.2" : "shippingbox")
+            // Three glyphs for three transports: gears for Bastion's own
+            // server, a box for a package it downloaded, a cloud for an
+            // endpoint somebody else operates. It is the only thing on the row
+            // that says which, and the sidebar is where a reader decides what
+            // a server is before opening it.
+            Image(systemName: server.transport.symbolName)
+              .help(server.transport.summaryLabel)
           }
           // Dimmed rather than hidden or moved. A disabled server is still
           // something you own and still where you left it — the sidebar's job
@@ -202,7 +206,13 @@ struct MainView: View {
               ClientDot(client: client)
             }
           } icon: {
-            Image(systemName: "app.connected.to.app.below.fill")
+            // The client's own app icon, so a row is recognised before it is
+            // read. The server rows above go the other way on purpose: their
+            // three glyphs say what KIND of thing a server is, which is the
+            // question there. Here there is nothing to encode — which client
+            // this is IS the fact, and every one of them already has a picture
+            // the reader knows.
+            ClientIconView(client: client)
           }
           .tag(MainPane.client(client.id))
         }
