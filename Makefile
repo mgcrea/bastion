@@ -339,6 +339,12 @@ sparkle-keys: sparkle ## Generate or reuse the EdDSA update-signing key
 # and used to be handed raw markdown, asterisks and all. The renderer escapes
 # `]]>`, and xmllint refuses a feed that is not well-formed rather than letting
 # every user's updater discover it.
+# The update signature comes from the keychain on a developer's Mac and from
+# $SPARKLE_ED_PRIVATE_KEY in CI, which has no keychain to have generated one in.
+# Both produce the same signature over the same bytes, so the feed stays
+# reproducible either way — and the failure that used to be silent is now a
+# hard stop: sign_update printing nothing left `sparkle:edSignature=""` in a
+# well-formed feed that xmllint happily accepted and every updater refused.
 # `stat` is called BSD-first, GNU-second: Homebrew's coreutils puts a GNU `stat`
 # ahead of /usr/bin on many machines, where `-f%z` fails with "invalid option"
 # and the enclosure came out as length="" — a malformed appcast whose only
@@ -350,7 +356,23 @@ appcast: ## Sign the release zip and write a one-item appcast
 	build=$$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' \
 		"$(RELEASE_APP)/Contents/Info.plist"); \
 	length=$$(stat -f%z apps/apple/.build/Bastion.zip 2>/dev/null || stat -c%s apps/apple/.build/Bastion.zip); \
-	signature=$$($(SPARKLE_TOOLS)/sign_update apps/apple/.build/Bastion.zip | sed 's/.*sparkle:edSignature="\([^"]*\)".*/\1/'); \
+	if [ -n "$$SPARKLE_ED_PRIVATE_KEY" ]; then \
+		: "# CI, which has no keychain to have generated the key in. It reaches"; \
+		: "# sign_update through a file and never through argv: a private key on"; \
+		: "# a command line is readable by every other process via ps."; \
+		umask 077; printf '%s' "$$SPARKLE_ED_PRIVATE_KEY" > apps/apple/.build/sparkle.key; \
+		raw=$$($(SPARKLE_TOOLS)/sign_update --ed-key-file apps/apple/.build/sparkle.key \
+			apps/apple/.build/Bastion.zip); \
+		rm -f apps/apple/.build/sparkle.key; \
+	else \
+		: "# A developer's Mac, where generate_keys put the key in the keychain."; \
+		: "# Same signature either way, so a feed can still be produced and read"; \
+		: "# locally without exporting the private key to do it."; \
+		raw=$$($(SPARKLE_TOOLS)/sign_update apps/apple/.build/Bastion.zip); \
+	fi; \
+	signature=$$(printf '%s' "$$raw" | sed 's/.*sparkle:edSignature="\([^"]*\)".*/\1/'); \
+	test -n "$$signature" && [ "$$signature" != "$$raw" ] \
+		|| { echo "  !! sign_update produced no edSignature; not shipping a feed" >&2; exit 1; }; \
 	notes=$$(node scripts/changelog-notes.mjs CHANGELOG.md); \
 	printf '%s\n' \
 		'<?xml version="1.0" encoding="utf-8"?>' \
@@ -561,10 +583,23 @@ servers-check: ## Fail if any generated copy has drifted from servers.json
 
 # The other direction. `servers-check` asserts every generated copy matches the
 # manifest; this asserts the MANIFEST matches the servers it describes, which no
-# amount of regenerating can tell you. Needs the mgcrea-ai checkout and skips
-# cleanly without it, like `dialect` without an installed server.
-catalog-check: ## Fail if servers.json disagrees with the servers in MCP_ROOT
-	@MCP_ROOT="$(MCP_ROOT)" node scripts/catalog-check.mjs
+# amount of regenerating can tell you.
+#
+# The servers written here need the mgcrea-ai checkout; the third-party entries
+# need only npm, and are checked against the published tarball Bastion would
+# actually install. `--strict` because an entry that could be checked against
+# neither is not a passing entry, and reading it as "skipped" is how a green run
+# comes to mean less than it looks.
+catalog-check: ## Fail if servers.json disagrees with the servers it describes
+	@MCP_ROOT="$(MCP_ROOT)" node scripts/catalog-check.mjs --strict
+
+# The other other direction: what is NOT in the catalog. Never run by CI and it
+# fails nothing — the catalog is a starting point rather than a closed list, and
+# that only stays true if somebody occasionally looks at what has been published
+# since. Ranked by monthly downloads, because every directory that ranks MCP
+# servers ranks them badly; the script says why in its header.
+discover: ## List popular MCP packages on npm that are not in the catalog
+	@node scripts/discover-servers.mjs
 
 # ─── the icon ────────────────────────────────────────────────────────────────
 
@@ -841,7 +876,7 @@ typecheck: ## tsc the Worker and astro check the website
 .PHONY: help app run stop dev-config clean \
 	sparkle sparkle-keys appcast node bundle sign notarize build-release \
 	install install-release install-from uninstall \
-	smoke dialect builtin wiring-check wiring-check-real remote-check remote-live-check unit license-check revocations audit audit-check migrate servers servers-check catalog-check icon \
+	smoke dialect builtin wiring-check wiring-check-real remote-check remote-live-check unit license-check revocations audit audit-check migrate servers servers-check catalog-check discover icon \
 	screenshots screenshots-capture screenshots-check screenshots-update \
 	screenshots-seal screenshots-selftest screenshots-appstore \
 	screenshots-website screenshots-compose screenshots-doctor screenshots-clean \
