@@ -774,11 +774,51 @@ screenshots-clean: ## Remove generated captures and composites (keeps the golden
 lint: ## oxlint the JavaScript half
 	@pnpm lint
 
-format: ## oxfmt the repo
+format: format-swift ## oxfmt the repo and swift-format the Swift half
 	@pnpm format
 
-format-check: ## Fail on unformatted files
+format-check: format-swift-check ## Fail on unformatted files
 	@pnpm format:check
+
+# The Swift half, which had no formatter at all until this landed while the
+# JavaScript half had been under oxfmt from the start.
+#
+# `xcrun swift-format`, not Homebrew's SwiftFormat: it ships inside the
+# toolchain, so every machine that can build the app already has it and there is
+# no second tool to install, pin or forget. Config is the committed
+# `.swift-format`, which swift-format discovers by walking up from each file —
+# no `--configuration` flag needed, and Xcode reads the same file.
+#
+# The paths are spelled out rather than pointing `-r` at `apps/apple`, and that
+# is not tidiness: `.build/` lives under there, and swift-format has no ignore
+# file — only `// swift-format-ignore-file` comments in source — so a recursive
+# walk from the parent would reformat build artifacts. BastionBridge is one
+# file and easy to leave out of this list; leaving it out means it silently
+# stops being formatted.
+SWIFT_SRC := apps/apple/Bastion apps/apple/BastionBridge scripts
+
+# swift-format's version follows whichever Xcode is selected, so a toolchain bump
+# can reformat the whole tree with no change to `.swift-format` and turn this
+# gate red on code nobody touched. Assert it, so that day arrives as a sentence
+# rather than a mystery diff.
+SWIFT_FORMAT_VERSION := 6.3
+
+swift-format-version:
+	@v="$$(xcrun swift-format --version)"; \
+	case "$$v" in \
+	  $(SWIFT_FORMAT_VERSION).*) ;; \
+	  *) echo "swift-format $$v, expected $(SWIFT_FORMAT_VERSION).x — the toolchain moved."; \
+	     echo "Reformat deliberately and bump SWIFT_FORMAT_VERSION, or select the matching Xcode."; \
+	     exit 1;; \
+	esac
+
+format-swift: swift-format-version ## swift-format the Swift half
+	@xcrun swift-format format --in-place --recursive --parallel $(SWIFT_SRC)
+
+# `--strict` is what makes this a gate: without it lint prints its findings and
+# still exits 0, so CI would pass while reporting every violation it found.
+format-swift-check: swift-format-version ## Fail on unformatted Swift
+	@xcrun swift-format lint --recursive --parallel --strict $(SWIFT_SRC)
 
 # The JavaScript half's tests: the Worker's vitest suite and the script tests
 # under scripts/lib, which include the one asserting the Node minter and the
@@ -797,4 +837,4 @@ typecheck: ## tsc the Worker and astro check the website
 	screenshots screenshots-capture screenshots-check screenshots-update \
 	screenshots-seal screenshots-selftest screenshots-appstore \
 	screenshots-website screenshots-compose screenshots-doctor screenshots-clean \
-	lint format format-check test typecheck
+	lint format format-check format-swift format-swift-check swift-format-version test typecheck
