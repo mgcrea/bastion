@@ -54,7 +54,8 @@ struct UnitCheck {
   ) -> HTTPRequest? {
     var fds: [Int32] = [0, 0]
     guard socketpair(AF_UNIX, SOCK_STREAM, 0, &fds) == 0 else { return nil }
-    let write = fds[1], read = fds[0]
+    let write = fds[1]
+    let read = fds[0]
     let data = Data(raw.utf8)
     let writer = Thread {
       data.withUnsafeBytes { buffer in
@@ -160,7 +161,9 @@ struct UnitCheck {
     }
     check("a byte-at-a-time trickle times out on the total", trickled == nil)
     check("well before the bytes would have all arrived", trickleTook < 1)
-    check("and no deadline still waits for EOF", parse("GET / HTTP/1.1\r\nHost: x\r\n", holdOpen: 0.3) == nil)
+    check(
+      "and no deadline still waits for EOF",
+      parse("GET / HTTP/1.1\r\nHost: x\r\n", holdOpen: 0.3) == nil)
 
     print("\nHTTP: the connection budget")
     let budget = ConnectionBudget(limit: 3)
@@ -169,7 +172,9 @@ struct UnitCheck {
     check("and the count says so", budget.inFlight == 3)
     budget.release()
     check("a release makes room", budget.acquire())
-    budget.release(); budget.release(); budget.release()
+    budget.release()
+    budget.release()
+    budget.release()
     check("releases balance to zero", budget.inFlight == 0)
     budget.release()
     check("and never below it", budget.inFlight == 0)
@@ -197,16 +202,25 @@ struct UnitCheck {
     check("[::1] is refused", !HTTPRequest.isLoopbackHost("[::1]:8720"))
     check("::1 is refused", !HTTPRequest.isLoopbackHost("::1"))
     check("a foreign name is refused", !HTTPRequest.isLoopbackHost("evil.example"))
-    check("a loopback prefix on a foreign name is refused", !HTTPRequest.isLoopbackHost("127.0.0.1.evil.example"))
+    check(
+      "a loopback prefix on a foreign name is refused",
+      !HTTPRequest.isLoopbackHost("127.0.0.1.evil.example"))
     check("an empty Host is refused", !HTTPRequest.isLoopbackHost(""))
 
     print("\nHTTP: the status lines a refusal needs")
     func statusLine(_ response: HTTPResponse) -> String {
-      String(decoding: response.wireFormat, as: UTF8.self).components(separatedBy: "\r\n").first ?? ""
+      String(decoding: response.wireFormat, as: UTF8.self).components(separatedBy: "\r\n").first
+        ?? ""
     }
-    check("408 carries a reason", statusLine(HTTPResponse(status: 408, message: "x")) == "HTTP/1.1 408 Request Timeout")
-    check("503 carries a reason", statusLine(HTTPResponse(status: 503, message: "x")) == "HTTP/1.1 503 Service Unavailable")
-    let busy = String(decoding: HTTPResponse(status: 503, message: "x", headers: ["Retry-After": "1"]).wireFormat, as: UTF8.self)
+    check(
+      "408 carries a reason",
+      statusLine(HTTPResponse(status: 408, message: "x")) == "HTTP/1.1 408 Request Timeout")
+    check(
+      "503 carries a reason",
+      statusLine(HTTPResponse(status: 503, message: "x")) == "HTTP/1.1 503 Service Unavailable")
+    let busy = String(
+      decoding: HTTPResponse(status: 503, message: "x", headers: ["Retry-After": "1"]).wireFormat,
+      as: UTF8.self)
     check("a cap refusal can say when to retry", busy.contains("\r\nRetry-After: 1\r\n"))
 
     print("\nHTTP: the bearer token")
@@ -230,7 +244,9 @@ struct UnitCheck {
       "a string id is found",
       HTTPRequest.jsonRPCID(of: Data("{\"id\":\"x\"}".utf8)) as? String == "x")
     check("a notification has none", HTTPRequest.jsonRPCID(of: Data("{\"a\":1}".utf8)) == nil)
-    check("garbage yields none rather than throwing", HTTPRequest.jsonRPCID(of: Data("{{{".utf8)) == nil)
+    check(
+      "garbage yields none rather than throwing", HTTPRequest.jsonRPCID(of: Data("{{{".utf8)) == nil
+    )
 
     print("\nHTTP: the response on the wire")
     let wire = String(decoding: HTTPResponse(status: 403, message: "no").wireFormat, as: UTF8.self)
@@ -239,7 +255,9 @@ struct UnitCheck {
     // Nothing here is meant for a browser, and the headers say so.
     check("nosniff is always set", wire.contains("X-Content-Type-Options: nosniff\r\n"))
     check("responses are never cached", wire.contains("Cache-Control: no-store\r\n"))
-    check("content-length matches the body", wire.contains("Content-Length: \(("{\"error\":\"no\"}").utf8.count)\r\n"))
+    check(
+      "content-length matches the body",
+      wire.contains("Content-Length: \(("{\"error\":\"no\"}").utf8.count)\r\n"))
     check(
       "extra headers are emitted",
       String(
@@ -251,7 +269,9 @@ struct UnitCheck {
     func era(_ frame: [String: Any]) -> Dialect.Era { Dialect.era(of: frame) }
     func isLegacy(_ e: Dialect.Era) -> Bool { if case .legacy = e { true } else { false } }
     func isModern(_ e: Dialect.Era) -> Bool { if case .modern = e { true } else { false } }
-    func isUnsupported(_ e: Dialect.Era) -> Bool { if case .unsupported = e { true } else { false } }
+    func isUnsupported(_ e: Dialect.Era) -> Bool {
+      if case .unsupported = e { true } else { false }
+    }
 
     // The ambiguous case must resolve to the era that can still be served: a
     // legacy client has no fall-forward mechanism.
@@ -300,7 +320,9 @@ struct UnitCheck {
     check("the client info key is removed", strippedMeta?[Dialect.clientInfoKey] == nil)
     check("the capabilities key is removed", strippedMeta?[Dialect.clientCapabilitiesKey] == nil)
     check("a progress token survives", strippedMeta?["progressToken"] as? Int == 42)
-    check("other params are untouched", (stripped["params"] as? [String: Any])?["name"] as? String == "t")
+    check(
+      "other params are untouched",
+      (stripped["params"] as? [String: Any])?["name"] as? String == "t")
 
     // A legacy server must never see an empty object where it expected none.
     let onlyModern: [String: Any] = [
@@ -310,7 +332,9 @@ struct UnitCheck {
     check(
       "_meta is removed entirely when nothing else was in it",
       (emptied["params"] as? [String: Any])?[Dialect.metaKey] == nil)
-    check("a frame with no params is returned unchanged", Dialect.stripModernMeta(from: ["method": "x"])["method"] as? String == "x")
+    check(
+      "a frame with no params is returned unchanged",
+      Dialect.stripModernMeta(from: ["method": "x"])["method"] as? String == "x")
 
     print("\nDialect: the Base64 header sentinel")
     // Case-sensitive and lowercase, per the spec. Comparing case-insensitively
@@ -321,9 +345,15 @@ struct UnitCheck {
       "a sentinel is decoded",
       Dialect.decodeHeaderValue("=?base64?" + Data("héllo".utf8).base64EncodedString() + "?=")
         == "héllo")
-    check("an upper-case marker is NOT a sentinel", Dialect.decodeHeaderValue("=?BASE64?aGk=?=") == "=?BASE64?aGk=?=")
-    check("invalid base64 inside a sentinel is refused", Dialect.decodeHeaderValue("=?base64?!!!?=") == nil)
-    check("an empty sentinel is not treated as one", Dialect.decodeHeaderValue("=?base64??=") == "=?base64??=")
+    check(
+      "an upper-case marker is NOT a sentinel",
+      Dialect.decodeHeaderValue("=?BASE64?aGk=?=") == "=?BASE64?aGk=?=")
+    check(
+      "invalid base64 inside a sentinel is refused",
+      Dialect.decodeHeaderValue("=?base64?!!!?=") == nil)
+    check(
+      "an empty sentinel is not treated as one",
+      Dialect.decodeHeaderValue("=?base64??=") == "=?base64??=")
 
     print("\nDialect: which methods must mirror a name")
     check(
@@ -637,7 +667,8 @@ struct UnitCheck {
     print("\nCall capture: malformed input")
 
     check(
-      "no params yields nil", CallCapture.arguments(tool: "t", params: nil, mode: .arguments) == nil)
+      "no params yields nil", CallCapture.arguments(tool: "t", params: nil, mode: .arguments) == nil
+    )
     check(
       "no arguments key yields nil",
       CallCapture.arguments(tool: "t", params: ["name": "t"], mode: .arguments) == nil)
@@ -833,8 +864,10 @@ struct UnitCheck {
     check("five records verify", cleanReport.isIntact)
     check("and are all counted", cleanReport.records == 5)
     check("the head is the last hash", cleanReport.head == clean[4].hash)
-    check("a blank line is skipped, not failed", AuditChain.verify(lines: cleanLines + [""]).isIntact)
-    check("an empty log verifies as genesis", AuditChain.verify(lines: []).head == AuditChain.genesis)
+    check(
+      "a blank line is skipped, not failed", AuditChain.verify(lines: cleanLines + [""]).isIntact)
+    check(
+      "an empty log verifies as genesis", AuditChain.verify(lines: []).head == AuditChain.genesis)
 
     print("\nAudit chain: tampering")
 
@@ -852,7 +885,9 @@ struct UnitCheck {
     deleted.remove(at: 2)
     let deletedReport = AuditChain.verify(lines: deleted)
     check("a deleted middle record is caught", !deletedReport.isIntact)
-    check("as a broken link on the record after it", deletedReport.failures.contains(.brokenLink(seq: 4)))
+    check(
+      "as a broken link on the record after it",
+      deletedReport.failures.contains(.brokenLink(seq: 4)))
     check("and as a gap in the sequence", deletedReport.failures.contains(.outOfOrder(seq: 4)))
 
     // Reordering. Hashes still match their bodies; the links do not.
@@ -883,7 +918,9 @@ struct UnitCheck {
     // it is a broken link on its first record, which is what stops a dropped
     // segment from passing as a complete log.
     let second = chain(3, from: clean[4].hash).map { AuditChain.line($0) }
-    check("a segment verifies from the previous head", AuditChain.verify(lines: second, from: clean[4].hash).isIntact)
+    check(
+      "a segment verifies from the previous head",
+      AuditChain.verify(lines: second, from: clean[4].hash).isIntact)
     check(
       "and fails from genesis",
       AuditChain.verify(lines: second).failures.contains(.brokenLink(seq: 1)))
@@ -901,7 +938,9 @@ struct UnitCheck {
       app: "Bastion 1.1.0", exportedAt: Date(timeIntervalSince1970: 1_756_000_000),
       records: 8, segments: described, head: "c17b", intact: true)
 
-    check("the manifest parses as JSON", (try? JSONSerialization.jsonObject(with: Data(card.utf8))) != nil)
+    check(
+      "the manifest parses as JSON",
+      (try? JSONSerialization.jsonObject(with: Data(card.utf8))) != nil)
     let decoded =
       (try? JSONSerialization.jsonObject(with: Data(card.utf8))) as? [String: Any] ?? [:]
     check("it names the format", decoded["format"] as? String == "bastion-audit")
@@ -932,14 +971,16 @@ struct UnitCheck {
       "a failed verification is recorded rather than hidden",
       AuditChain.manifest(
         app: "Bastion 1.1.0", exportedAt: Date(timeIntervalSince1970: 1_756_000_000),
-        records: 8, segments: described, head: "c17b", intact: false).contains("\"intact\":false"))
+        records: 8, segments: described, head: "c17b", intact: false
+      ).contains("\"intact\":false"))
 
     print("\nAudit chain: the canonical form")
 
     // The hash is taken over bytes a verifier must be able to rebuild. These
     // are the inputs most likely to make two implementations disagree.
     let quoted = record(1, "tool", prev: AuditChain.genesis, args: #"{"q":"he said \"hi\""}"#)
-    check("quotes survive a round trip", AuditChain.verify(lines: [AuditChain.line(quoted)]).isIntact)
+    check(
+      "quotes survive a round trip", AuditChain.verify(lines: [AuditChain.line(quoted)]).isIntact)
     let newline = record(1, "tool", prev: AuditChain.genesis, args: "line1\nline2\ttab")
     check("newlines and tabs do", AuditChain.verify(lines: [AuditChain.line(newline)]).isIntact)
     let unicode = record(1, "tool", prev: AuditChain.genesis, args: #"{"note":"café 🔒 日本"}"#)
@@ -960,8 +1001,10 @@ struct UnitCheck {
 
     print("\nLog search: what a query matches")
 
-    func row(_ text: String, origin: String = "prod/shopify", args: String? = nil,
-             result: String? = nil) -> LogStore.Entry {
+    func row(
+      _ text: String, origin: String = "prod/shopify", args: String? = nil,
+      result: String? = nil
+    ) -> LogStore.Entry {
       LogStore.Entry(
         at: Date(), origin: origin, level: .call, text: text, arguments: args, result: result)
     }

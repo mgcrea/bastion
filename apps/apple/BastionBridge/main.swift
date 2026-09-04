@@ -130,7 +130,8 @@ guard let endpoint = URL(string: "http://127.0.0.1:\(port)/s/\(profile)/\(server
 /// bare executable out of a build directory.
 func containingApp() -> URL? {
   guard let executable = Bundle.main.executableURL?.resolvingSymlinksInPath() else { return nil }
-  let app = executable  // …/Bastion.app/Contents/Helpers/bastion-bridge
+  let app =
+    executable  // …/Bastion.app/Contents/Helpers/bastion-bridge
     .deletingLastPathComponent()  // …/Contents/Helpers
     .deletingLastPathComponent()  // …/Contents
     .deletingLastPathComponent()  // …/Bastion.app
@@ -202,7 +203,8 @@ if !gatewayIsUp() {
   }
 }
 guard gatewayIsUp() else {
-  die("""
+  die(
+    """
     could not reach Bastion on 127.0.0.1:\(port).
     Tried to launch \(containingApp()?.path ?? "io.mgcrea.bastion").
     Open Bastion once by hand, then retry.

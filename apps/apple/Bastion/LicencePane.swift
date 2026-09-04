@@ -98,8 +98,10 @@ struct LicencePane: View {
           switch entitlement {
           case .licensed(let license):
             Text("Licensed to \(license.email)").foregroundStyle(.green)
-            Text("Licence \(license.id) · covers \(license.major).x · issued \(day(license.issuedAt))")
-              .font(.caption).foregroundStyle(.secondary)
+            Text(
+              "Licence \(license.id) · covers \(license.major).x · issued \(day(license.issuedAt))"
+            )
+            .font(.caption).foregroundStyle(.secondary)
           case .trial:
             Text("Trial · \(Trial.remainingText)").foregroundStyle(.blue)
             trialExplanation
@@ -181,9 +183,10 @@ struct LicencePane: View {
         .controlSize(.small)
         Text(
           "Full function, every server, no key — enough to see it working against your own "
-            + "clients and your own credentials.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "clients and your own credentials."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
       }
       .padding(.top, 6)
     }
@@ -266,8 +269,9 @@ struct LicencePane: View {
     Text(
       "One key covers every \(AppInfo.major).x release and every Mac you own — it is issued to "
         + "you, not to a machine, and nothing counts your installs. Bastion verifies it on this "
-        + "Mac and never asks anyone about it.")
-      .fixedSize(horizontal: false, vertical: true)
+        + "Mac and never asks anyone about it."
+    )
+    .fixedSize(horizontal: false, vertical: true)
   }
 
   /// Store it, or say why not. Refusing to persist a bad key is what stops the

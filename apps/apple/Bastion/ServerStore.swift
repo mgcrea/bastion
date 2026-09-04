@@ -479,7 +479,8 @@ final class ServerStore {
       }
       if variable.required {
         throw StoreError.contradictoryVariable(
-          name: variable.name, detail: "is a switch, so it always has an answer and cannot be required")
+          name: variable.name,
+          detail: "is a switch, so it always has an answer and cannot be required")
       }
       if variable.header != nil {
         throw StoreError.contradictoryVariable(

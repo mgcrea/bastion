@@ -139,10 +139,11 @@ struct ServerDetail: View {
           server.origin == .builtin
             ? "Off. Bastion's own tools are not served, and no agent can manage Bastion."
             : "Off. Requests are refused and nothing is running. Its profiles, their credentials "
-              + "and its downloaded code are all kept.")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+              + "and its downloaded code are all kept."
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
       }
     }
     .padding(.top, 2)
@@ -173,22 +174,28 @@ struct ServerDetail: View {
   private var builtinCard: some View {
     Card(title: "Built in") {
       VStack(alignment: .leading, spacing: 8) {
-        Text("Bastion itself. It runs inside this app, so there is nothing to download and "
-          + "nothing to keep up to date — it ships with the version you are running.")
-          .font(.callout)
-          .fixedSize(horizontal: false, vertical: true)
+        Text(
+          "Bastion itself. It runs inside this app, so there is nothing to download and "
+            + "nothing to keep up to date — it ships with the version you are running."
+        )
+        .font(.callout)
+        .fixedSize(horizontal: false, vertical: true)
 
-        Text("It cannot be removed. Switching it off is how you stop it, and that keeps its "
-          + "profiles and their credentials.")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+        Text(
+          "It cannot be removed. Switching it off is how you stop it, and that keeps its "
+            + "profiles and their credentials."
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
 
-        Text("Secrets are write-only through it: a profile can set a credential, and no tool it "
-          + "serves can read one back.")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+        Text(
+          "Secrets are write-only through it: a profile can set a credential, and no tool it "
+            + "serves can read one back."
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
       }
     }
   }
@@ -215,9 +222,10 @@ struct ServerDetail: View {
 
         Text(
           "Somebody else runs this one. Bastion relays to it with the profile's credential and "
-            + "records every call — there is nothing to download and no process to supervise.")
-          .font(.callout)
-          .fixedSize(horizontal: false, vertical: true)
+            + "records every call — there is nothing to download and no process to supervise."
+        )
+        .font(.callout)
+        .fixedSize(horizontal: false, vertical: true)
 
         if !server.writeTools.isEmpty {
           // The one place a user decides whether to trust the switch, so the
@@ -227,18 +235,20 @@ struct ServerDetail: View {
               + server.writeTools.joined(separator: ", ")
               + " — nor any tool the server marks as not read-only. That filters what Bastion "
               + "sends, not what the server accepts: anything holding this credential can call "
-              + "the same API directly, so its own scopes are the real limit.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+              + "the same API directly, so its own scopes are the real limit."
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
         }
 
         Text(
           "Every client on this profile shares one budget upstream, so a rate limit one of them "
-            + "hits is a rate limit they all hit.")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "hits is a rate limit they all hit."
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
 
         HStack(spacing: 8) {
           if server.origin == .custom {
@@ -336,9 +346,10 @@ struct ServerDetail: View {
 
         Text(
           "Installed on demand into Bastion's own directory and run with the embedded Node "
-            + "runtime. Nothing is fetched until you ask for it.")
-          .font(.caption2).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "runtime. Nothing is fetched until you ask for it."
+        )
+        .font(.caption2).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
       }
     }
     .confirmationDialog(
@@ -429,9 +440,10 @@ struct ServerDetail: View {
           "The installed code speaks \(measured.protocol) (SDK \(measured.sdk)), but this entry "
             + "says \(declared) — and that is what Bastion asks it for at startup. Update "
             + "servers.json and rebuild to use the newer one.",
-          systemImage: "arrow.triangle.branch")
-          .font(.caption).foregroundStyle(.orange)
-          .fixedSize(horizontal: false, vertical: true)
+          systemImage: "arrow.triangle.branch"
+        )
+        .font(.caption).foregroundStyle(.orange)
+        .fixedSize(horizontal: false, vertical: true)
       }
     }
   }
@@ -459,17 +471,20 @@ struct ServerDetail: View {
           "\(server.package?.npmName ?? "The package") is current, but \(count) "
             + "\(count == 1 ? "package" : "packages") in its tree "
             + "\(count == 1 ? "is" : "are") missing or out of range. Repair install rebuilds it.",
-          systemImage: "wrench.and.screwdriver")
-          .font(.caption).foregroundStyle(.orange)
-          .fixedSize(horizontal: false, vertical: true)
+          systemImage: "wrench.and.screwdriver"
+        )
+        .font(.caption).foregroundStyle(.orange)
+        .fixedSize(horizontal: false, vertical: true)
       case .newer:
         // The version itself is on the row above and on the button below.
         // What neither of those can say is what pressing it costs, so that is
         // all this line says.
-        Label("Updating restarts anything currently running from this server.",
-          systemImage: "arrow.down.circle.fill")
-          .font(.caption).foregroundStyle(.orange)
-          .fixedSize(horizontal: false, vertical: true)
+        Label(
+          "Updating restarts anything currently running from this server.",
+          systemImage: "arrow.down.circle.fill"
+        )
+        .font(.caption).foregroundStyle(.orange)
+        .fixedSize(horizontal: false, vertical: true)
       case .pinnedOlder(let resolved):
         // Not a failure, and not an update either. The minimum package age is
         // doing exactly what it was set to do, and the honest thing is to name
@@ -477,9 +492,10 @@ struct ServerDetail: View {
         Label(
           "Your minimum package age holds this at \(resolved), which is older than what is "
             + "installed. Installing it goes backwards, not forwards.",
-          systemImage: "clock.badge.exclamationmark")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+          systemImage: "clock.badge.exclamationmark"
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
       case .failed(let reason):
         Label(reason, systemImage: "exclamationmark.triangle.fill")
           .font(.caption).foregroundStyle(.red)
@@ -499,10 +515,11 @@ struct ServerDetail: View {
         if profiles.isEmpty {
           Text(
             "No profile yet. This server cannot start without one — a profile is the credential "
-              + "set a client's request runs as.")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+              + "set a client's request runs as."
+          )
+          .font(.callout)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
         } else {
           ForEach(profiles) { profile in
             ProfileRow(
@@ -541,10 +558,11 @@ struct ServerDetail: View {
       VStack(alignment: .leading, spacing: 10) {
         Text(
           "What this server reads. Values are set per profile; anything marked secret is held in "
-            + "the Keychain and never written to a client config or a log line.")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "the Keychain and never written to a client config or a log line."
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
 
         ForEach(server.env) { variable in
           VStack(alignment: .leading, spacing: 2) {
@@ -602,9 +620,10 @@ struct ServerDetail: View {
                 + "Bastion will not forward any tool this server marks as not read-only."
               : "Write gate: by tool name, set from each profile's own toggle. With writes off "
                 + "Bastion will not forward \(server.writeTools.joined(separator: ", ")) — nor "
-                + "any tool this server marks as not read-only.")
-            .font(.caption).foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+                + "any tool this server marks as not read-only."
+          )
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
         }
 
         if !server.gateBypass.isEmpty {
@@ -613,9 +632,10 @@ struct ServerDetail: View {
           // that "writes off" can be believed.
           Text(
             "Always forced off: \(server.gateBypass.joined(separator: ", ")). These would enable "
-              + "writes independently of the gate.")
-            .font(.caption).foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+              + "writes independently of the gate."
+          )
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
         }
       }
     }
@@ -662,16 +682,20 @@ private struct ProfileRow: View {
         TimelineView(.periodic(from: .now, by: 5)) { _ in
           Text(subtitle)
             .font(.caption)
-            .foregroundStyle(missing.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.orange))
+            .foregroundStyle(
+              missing.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.orange)
+            )
             .fixedSize(horizontal: false, vertical: true)
         }
         // The endpoint, always. It is what goes into a client config, and
         // someone debugging a 404 wants to read it rather than reconstruct it.
-        Text("http://127.0.0.1:\(String(Gateway.shared.port))/s/\(profile.name)/\(profile.serverID)")
-          .font(.system(.caption2, design: .monospaced))
-          .foregroundStyle(.tertiary)
-          .textSelection(.enabled)
-          .lineLimit(1).truncationMode(.middle)
+        Text(
+          "http://127.0.0.1:\(String(Gateway.shared.port))/s/\(profile.name)/\(profile.serverID)"
+        )
+        .font(.system(.caption2, design: .monospaced))
+        .foregroundStyle(.tertiary)
+        .textSelection(.enabled)
+        .lineLimit(1).truncationMode(.middle)
       }
 
       Spacer()

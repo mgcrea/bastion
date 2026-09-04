@@ -210,7 +210,8 @@ enum ClientWiring {
         // `serverUrl` key this app does not write. stdio is the shape every MCP
         // client agrees on.
         transport: .bridge,
-        caveat: "spawns bastion-bridge; Windsurf's remote shape is a serverUrl, which this does not write",
+        caveat:
+          "spawns bastion-bridge; Windsurf's remote shape is a serverUrl, which this does not write",
         bundleID: "com.exafunction.windsurf",
         symbol: "wind"),
       Client(
@@ -344,7 +345,8 @@ enum ClientWiring {
   static func reach(for profile: Profile, transport: Transport) -> ClientWiringMerge.Reach {
     switch transport {
     case .http:
-      return .http(url: "http://127.0.0.1:\(Gateway.shared.port)/s/\(profile.name)/\(profile.serverID)")
+      return .http(
+        url: "http://127.0.0.1:\(Gateway.shared.port)/s/\(profile.name)/\(profile.serverID)")
     case .bridge:
       return .bridge(
         command: bridgePath,

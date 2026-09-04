@@ -332,7 +332,9 @@ struct MainView: View {
         // The one entrance that says so. A status line that happens to be a
         // button is the right behaviour and no help at all to somebody who does
         // not already know it is one.
-        Button { SettingsWindowController.show() } label: {
+        Button {
+          SettingsWindowController.show()
+        } label: {
           Image(systemName: "gearshape")
             .font(.caption)
             .foregroundStyle(.tertiary)

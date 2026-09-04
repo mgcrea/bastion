@@ -507,10 +507,13 @@ nonisolated final class Gateway: Sendable {
       // a dual-era client inspects the body of a 400 to decide whether it has
       // found a modern server to retry against or a legacy one to fall back
       // to. A bare 400 would send it back to `initialize`.
-      hostLog("gateway", .info, "\(client) asked for protocol \(requested), which Bastion does not implement")
+      hostLog(
+        "gateway", .info,
+        "\(client) asked for protocol \(requested), which Bastion does not implement")
       return HTTPResponse(
         status: 400,
-        json: rpcFrame(id: frame["id"], error: Dialect.unsupportedVersionError(requested: requested)))
+        json: rpcFrame(
+          id: frame["id"], error: Dialect.unsupportedVersionError(requested: requested)))
 
     case .modern(let version):
       if let mismatch = Dialect.validateHeaders(

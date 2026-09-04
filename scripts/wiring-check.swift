@@ -155,12 +155,12 @@ struct WiringCheck {
   static func deepEqual(_ a: Any?, _ b: Any?) -> Bool {
     switch (a, b) {
     case (nil, nil): return true
-    case let (x as [String: Any], y as [String: Any]):
+    case (let x as [String: Any], let y as [String: Any]):
       return x.count == y.count && x.allSatisfy { deepEqual($0.value, y[$0.key]) }
-    case let (x as [Any], y as [Any]):
+    case (let x as [Any], let y as [Any]):
       return x.count == y.count && zip(x, y).allSatisfy { deepEqual($0, $1) }
     case (is NSNull, is NSNull): return true
-    case let (x as NSObject, y as NSObject): return x.isEqual(y)
+    case (let x as NSObject, let y as NSObject): return x.isEqual(y)
     default: return false
     }
   }
@@ -183,7 +183,8 @@ struct WiringCheck {
     for (key, value) in before where key != rootKey {
       if !deepEqual(value, after[key]) { topLevelIntact = false }
     }
-    check("every other top-level key is byte-identical (\(before.count - 1) of them)", topLevelIntact)
+    check(
+      "every other top-level key is byte-identical (\(before.count - 1) of them)", topLevelIntact)
 
     let afterServers = after[rootKey] as? [String: Any] ?? [:]
     var untouched = true
@@ -214,18 +215,24 @@ struct WiringCheck {
       afterServers.count == originalServers.count + added - superseded)
 
     // The nested case, where value semantics bite.
-    if let projects = before["projects"] as? [String: Any], let folder = projects.keys.sorted().first {
+    if let projects = before["projects"] as? [String: Any],
+      let folder = projects.keys.sorted().first
+    {
       let nested = ClientWiringMerge.mergedIntoProject(
         before, folder: folder, entries: entries { httpReach($0) })
       let afterProjects = nested["projects"] as? [String: Any] ?? [:]
-      check("all \(projects.count) project blocks survive a nested write", afterProjects.count == projects.count)
+      check(
+        "all \(projects.count) project blocks survive a nested write",
+        afterProjects.count == projects.count)
       var othersIntact = true
       for (key, value) in projects where key != folder {
         if !deepEqual(value, afterProjects[key]) { othersIntact = false }
       }
       check("the other \(projects.count - 1) project blocks are unchanged", othersIntact)
       let target = afterProjects[folder] as? [String: Any] ?? [:]
-      check("the write landed in the target folder", (target["mcpServers"] as? [String: Any])?["bastion-shopify"] != nil)
+      check(
+        "the write landed in the target folder",
+        (target["mcpServers"] as? [String: Any])?["bastion-shopify"] != nil)
     }
 
     // The other direction: taking one of THEIR entries out of the real file has
@@ -233,7 +240,8 @@ struct WiringCheck {
     if let victim = ClientWiringMerge.foreignEntries(in: originalServers).first?.key {
       let pruned = ClientWiringMerge.removing(key: victim, from: before, rootKey: rootKey)
       let prunedServers = pruned[rootKey] as? [String: Any] ?? [:]
-      check("removing '\(victim)' drops exactly one entry",
+      check(
+        "removing '\(victim)' drops exactly one entry",
         prunedServers.count == originalServers.count - 1 && prunedServers[victim] == nil)
       var siblingsIntact = true
       for (key, value) in originalServers where key != victim {
@@ -259,10 +267,12 @@ struct WiringCheck {
       for (key, value) in originalProjects where key != group.folder {
         if !deepEqual(value, all[key]) { othersIntact = false }
       }
-      check("the other \(originalProjects.count - 1) project blocks survive a nested removal",
+      check(
+        "the other \(originalProjects.count - 1) project blocks survive a nested removal",
         othersIntact)
       let target = all[group.folder] as? [String: Any] ?? [:]
-      check("the nested removal landed",
+      check(
+        "the nested removal landed",
         (target["mcpServers"] as? [String: Any])?[victim] == nil)
       let originalTarget = originalProjects[group.folder] as? [String: Any] ?? [:]
       var targetKeysIntact = true
@@ -304,7 +314,9 @@ struct WiringCheck {
     check("null value kept", out["nullish"] is NSNull)
     check("remote github kept", (servers["github"] as? [String: Any])?["url"] != nil)
     check("remote stripe kept", (servers["stripe"] as? [String: Any])?["url"] != nil)
-    check("third-party stdio server kept", (servers["some-local"] as? [String: Any])?["command"] as? String == "npx")
+    check(
+      "third-party stdio server kept",
+      (servers["some-local"] as? [String: Any])?["command"] as? String == "npx")
     check(
       "a different loopback server is not ours and survives",
       (servers["other-local"] as? [String: Any])?["url"] as? String == "http://127.0.0.1:9000/mcp")
@@ -322,8 +334,12 @@ struct WiringCheck {
       let out = ClientWiringMerge.merged(
         into: [:], rootKey: "mcpServers", entries: entries(reach))
       let servers = out["mcpServers"] as? [String: Any] ?? [:]
-      check("\(name): audits as configured", ClientWiringMerge.audit(servers: servers, expected: expected(reach)) == .configured)
-      check("\(name): every entry is recognised as ours", servers.values.allSatisfy { ClientWiringMerge.isOurs($0) })
+      check(
+        "\(name): audits as configured",
+        ClientWiringMerge.audit(servers: servers, expected: expected(reach)) == .configured)
+      check(
+        "\(name): every entry is recognised as ours",
+        servers.values.allSatisfy { ClientWiringMerge.isOurs($0) })
     }
     // The shapes are not interchangeable: a config wired for one and audited
     // against the other is stale, not configured. That is what a config written
@@ -331,7 +347,9 @@ struct WiringCheck {
     let httpOut = ClientWiringMerge.merged(
       into: [:], rootKey: "mcpServers", entries: entries { httpReach($0) })
     let servers = httpOut["mcpServers"] as? [String: Any] ?? [:]
-    if case .stale = ClientWiringMerge.audit(servers: servers, expected: expected { bridgeReach($0) }) {
+    if case .stale = ClientWiringMerge.audit(
+      servers: servers, expected: expected { bridgeReach($0) })
+    {
       check("http config audited as a bridge config is stale", true)
     } else {
       check("http config audited as a bridge config is stale", false)
@@ -341,16 +359,31 @@ struct WiringCheck {
   /// `isOurs` must recognise what we wrote and nothing more.
   static func isOursIsNarrow() {
     print("\nisOurs is narrow")
-    check("our http endpoint", ClientWiringMerge.isOurs(["type": "http", "url": "http://127.0.0.1:8720/s/prod/shopify"]))
-    check("our http endpoint on another port", ClientWiringMerge.isOurs(["url": "http://127.0.0.1:9999/s/staging/keycloak"]))
-    check("localhost spelling", ClientWiringMerge.isOurs(["url": "http://localhost:8720/s/prod/shopify"]))
-    check("our bridge command", ClientWiringMerge.isOurs(["command": "/Applications/Bastion.app/Contents/Helpers/bastion-bridge"]))
+    check(
+      "our http endpoint",
+      ClientWiringMerge.isOurs(["type": "http", "url": "http://127.0.0.1:8720/s/prod/shopify"]))
+    check(
+      "our http endpoint on another port",
+      ClientWiringMerge.isOurs(["url": "http://127.0.0.1:9999/s/staging/keycloak"]))
+    check(
+      "localhost spelling",
+      ClientWiringMerge.isOurs(["url": "http://localhost:8720/s/prod/shopify"]))
+    check(
+      "our bridge command",
+      ClientWiringMerge.isOurs([
+        "command": "/Applications/Bastion.app/Contents/Helpers/bastion-bridge"
+      ]))
     check(
       "a bridge from a build directory, wherever it was",
-      ClientWiringMerge.isOurs(["command": "/Users/x/D/Build/Products/Debug/Bastion.app/Contents/Helpers/bastion-bridge"]))
+      ClientWiringMerge.isOurs([
+        "command": "/Users/x/D/Build/Products/Debug/Bastion.app/Contents/Helpers/bastion-bridge"
+      ]))
 
-    check("a remote server is not ours", !ClientWiringMerge.isOurs(["url": "https://mcp.stripe.com/"]))
-    check("another loopback server is not ours", !ClientWiringMerge.isOurs(["url": "http://127.0.0.1:9000/mcp"]))
+    check(
+      "a remote server is not ours", !ClientWiringMerge.isOurs(["url": "https://mcp.stripe.com/"]))
+    check(
+      "another loopback server is not ours",
+      !ClientWiringMerge.isOurs(["url": "http://127.0.0.1:9000/mcp"]))
     check(
       "loopback with too many segments is not ours",
       !ClientWiringMerge.isOurs(["url": "http://127.0.0.1:8720/s/prod/shopify/extra"]))
@@ -396,17 +429,25 @@ struct WiringCheck {
       ClientWiringMerge.target(of: entry).map { "\($0.profile)/\($0.server)" }
     }
     check("http", endpoint(entry(httpReach("shopify"))) == "prod/shopify")
-    check("http on another port", endpoint(entry(httpReach("shopify", port: 9999))) == "prod/shopify")
+    check(
+      "http on another port", endpoint(entry(httpReach("shopify", port: 9999))) == "prod/shopify")
     check(
       "bridge", endpoint(entry(bridgeReach("keycloak", profile: "staging"))) == "staging/keycloak")
     check(
       "bridge from another bundle",
-      endpoint(entry(bridgeReach("stripe", command: "/Users/x/B.app" + ClientWiringMerge.bridgeSuffix)))
+      endpoint(
+        entry(bridgeReach("stripe", command: "/Users/x/B.app" + ClientWiringMerge.bridgeSuffix)))
         == "prod/stripe")
-    check("a foreign stdio entry reaches nothing", endpoint(["command": "npx", "args": ["-y", "x"]]) == nil)
-    check("a foreign loopback URL reaches nothing", endpoint(["url": "http://127.0.0.1:9000/mcp"]) == nil)
+    check(
+      "a foreign stdio entry reaches nothing",
+      endpoint(["command": "npx", "args": ["-y", "x"]]) == nil)
+    check(
+      "a foreign loopback URL reaches nothing",
+      endpoint(["url": "http://127.0.0.1:9000/mcp"]) == nil)
     check("a bridge with no args reaches nothing", endpoint(["command": bridge]) == nil)
-    check("a bridge with an empty flag reaches nothing", endpoint(["command": bridge, "args": ["--profile=", "--server=x"]]) == nil)
+    check(
+      "a bridge with an empty flag reaches nothing",
+      endpoint(["command": bridge, "args": ["--profile=", "--server=x"]]) == nil)
     check("nil reaches nothing", endpoint(nil) == nil)
   }
 
@@ -467,21 +508,28 @@ struct WiringCheck {
     check(
       "one of ours is not a collision, whatever port it names",
       ClientWiringMerge.collisions(
-        servers: ["shopify": entry(httpReach("shopify", port: 9999))], keys: ["shopify"]).isEmpty)
+        servers: ["shopify": entry(httpReach("shopify", port: 9999))], keys: ["shopify"]
+      ).isEmpty)
     check(
       "one of ours from a bundle that has moved is not a collision",
       ClientWiringMerge.collisions(
         servers: [
-          "shopify": entry(bridgeReach("shopify", command: "/Users/x/B.app" + ClientWiringMerge.bridgeSuffix))
-        ], keys: ["shopify"]).isEmpty)
-    check("an empty config collides with nothing", ClientWiringMerge.collisions(servers: [:], keys: ["shopify"]).isEmpty)
+          "shopify": entry(
+            bridgeReach("shopify", command: "/Users/x/B.app" + ClientWiringMerge.bridgeSuffix))
+        ], keys: ["shopify"]
+      ).isEmpty)
+    check(
+      "an empty config collides with nothing",
+      ClientWiringMerge.collisions(servers: [:], keys: ["shopify"]).isEmpty)
 
     // And the audit says collision rather than stale. Stale invites the one
     // action that would destroy the entry: write over it.
     let audit = ClientWiringMerge.audit(
       servers: ["bastion-shopify": ["command": "npx", "args": ["-y", "@shopify/mcp"]]],
       expected: expected { httpReach($0) })
-    check("a foreign entry under our key audits as a collision", audit == .collides(["bastion-shopify"]))
+    check(
+      "a foreign entry under our key audits as a collision", audit == .collides(["bastion-shopify"])
+    )
     check(
       "and outranks the servers that are merely missing",
       { if case .collides = audit { return true } else { return false } }())
@@ -529,8 +577,10 @@ struct WiringCheck {
     check("one of three present is incomplete", audit == .incomplete(["Keycloak", "Stripe"]))
     check(
       "and names them in the order given",
-      { if case .incomplete(let names) = audit { return names == ["Keycloak", "Stripe"] }
-        return false }())
+      {
+        if case .incomplete(let names) = audit { return names == ["Keycloak", "Stripe"] }
+        return false
+      }())
   }
 
   static func unwiringRemovesOnlyOurs() {
@@ -559,7 +609,9 @@ struct WiringCheck {
     try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
 
-    for (label, contents) in [("an array", "[1,2,3]"), ("a string", "\"hello\""), ("garbage", "{{{")] {
+    for (label, contents) in [
+      ("an array", "[1,2,3]"), ("a string", "\"hello\""), ("garbage", "{{{"),
+    ] {
       let url = directory.appendingPathComponent("\(UUID().uuidString).json")
       try? contents.write(to: url, atomically: true, encoding: .utf8)
       var threw = false
@@ -575,7 +627,8 @@ struct WiringCheck {
   static func backupAndNoLitter() {
     print("\nWriting")
     let fm = FileManager.default
-    let directory = fm.temporaryDirectory.appendingPathComponent("bastion-wiring-\(UUID().uuidString)")
+    let directory = fm.temporaryDirectory.appendingPathComponent(
+      "bastion-wiring-\(UUID().uuidString)")
     try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? fm.removeItem(at: directory) }
 
@@ -594,7 +647,8 @@ struct WiringCheck {
     check(
       "the backup holds the original bytes",
       (try? String(contentsOf: backup!, encoding: .utf8)) == original)
-    check("the config was replaced", (try? ClientWiringMerge.readJSON(config))?["mcpServers"] != nil)
+    check(
+      "the config was replaced", (try? ClientWiringMerge.readJSON(config))?["mcpServers"] != nil)
     check(
       "the unrelated key survived the round trip",
       ((try? ClientWiringMerge.readJSON(config))?["preferences"] as? [String: Any]) != nil)
@@ -700,7 +754,10 @@ struct WiringCheck {
     check(
       "a bridge entry from a bundle that has moved is stale, not foreign",
       ClientWiringMerge.state(
-        of: ["bastion-shopify": entry(bridgeReach("shopify", command: "/old" + ClientWiringMerge.bridgeSuffix))],
+        of: [
+          "bastion-shopify": entry(
+            bridgeReach("shopify", command: "/old" + ClientWiringMerge.bridgeSuffix))
+        ],
         key: "bastion-shopify", reach: bridgeReach("shopify"))
         == .stale("/old" + ClientWiringMerge.bridgeSuffix))
     check(
@@ -719,8 +776,10 @@ struct WiringCheck {
     func folded(_ servers: [String: Any]) -> ClientWiringMerge.Audit {
       ClientWiringMerge.audit(
         states: expect.map {
-          (key: $0.key, label: $0.label,
-           state: ClientWiringMerge.state(of: servers, key: $0.key, reach: $0.reach))
+          (
+            key: $0.key, label: $0.label,
+            state: ClientWiringMerge.state(of: servers, key: $0.key, reach: $0.reach)
+          )
         })
     }
     let cases: [(String, [String: Any])] = [
@@ -728,11 +787,14 @@ struct WiringCheck {
       ("fully wired", entries { httpReach($0) }),
       ("half wired", ["bastion-shopify": mine]),
       ("one stale", entries { $0 == "stripe" ? httpReach($0, port: 8719) : httpReach($0) }),
-      ("one taken", {
-        var s = entries { httpReach($0) }
-        s["bastion-stripe"] = ["command": "npx"]
-        return s
-      }()),
+      (
+        "one taken",
+        {
+          var s = entries { httpReach($0) }
+          s["bastion-stripe"] = ["command": "npx"]
+          return s
+        }()
+      ),
     ]
     for (label, servers) in cases {
       check(
@@ -863,11 +925,13 @@ struct WiringCheck {
     check(
       "the other folder is untouched",
       deepEqual(projects["/Users/x/b"], (root["projects"] as? [String: Any])?["/Users/x/b"]))
-    check("user scope is untouched by a nested removal",
+    check(
+      "user scope is untouched by a nested removal",
       deepEqual(nested["mcpServers"], root["mcpServers"]))
     check(
       "a folder the file does not know changes nothing",
-      deepEqual(ClientWiringMerge.removing(key: "theirs", inProject: "/Users/x/zz", from: root), root))
+      deepEqual(
+        ClientWiringMerge.removing(key: "theirs", inProject: "/Users/x/zz", from: root), root))
   }
 
   // MARK: - The TOML client
@@ -939,7 +1003,9 @@ struct WiringCheck {
 
     // Header through last-line-that-says-something, twice: the table and its
     // subtable, with the blank line between them belonging to neither.
-    check("the spans are exactly the lines that hold it", spans(doc, "node_repl") == [[18, 21], [23, 24]])
+    check(
+      "the spans are exactly the lines that hold it",
+      spans(doc, "node_repl") == [[18, 21], [23, 24]])
     check(
       "a subtable extends its server rather than starting a new one",
       spans(doc, "node_repl").count == 2)
@@ -1197,7 +1263,8 @@ struct WiringCheck {
       }())
 
     // Line endings and whitespace on lines nobody touched.
-    let crlf = "model = \"x\"\r\n\r\n[mcp_servers.a]\r\nurl = \"http://a/\"\r\n\r\n[other]\r\nk = 1\r\n"
+    let crlf =
+      "model = \"x\"\r\n\r\n[mcp_servers.a]\r\nurl = \"http://a/\"\r\n\r\n[other]\r\nk = 1\r\n"
     guard let wiredCRLF = wire(crlf) else { return check("CRLF wires", false) }
     check("a CRLF file stays CRLF", !wiredCRLF.contains("\n\n") || wiredCRLF.contains("\r\n\r\n"))
     check("our own blocks use its line ending", wiredCRLF.contains("[mcp_servers.shopify]\r\n"))
@@ -1259,7 +1326,10 @@ struct WiringCheck {
       ("an empty file", ""),
       ("a trailing blank line", "[other]\nk = 1\n\n"),
       ("servers last in the file", "[other]\nk = 1\n\n[mcp_servers.a]\nurl = \"http://a/\"\n"),
-      ("no blank line before the next table", "[mcp_servers.a]\nurl = \"http://a/\"\n[other]\nk = 1\n"),
+      (
+        "no blank line before the next table",
+        "[mcp_servers.a]\nurl = \"http://a/\"\n[other]\nk = 1\n"
+      ),
     ] {
       guard let once = wire(text), let twice = wire(once) else {
         check("\(label): it wires", false)
@@ -1303,7 +1373,8 @@ struct WiringCheck {
     let nextTable = lines.firstIndex(of: "[shell_environment_policy.set]") ?? -1
     check("our block goes after the servers already there", ours > lastForeign)
     check("and before the unrelated table below them", ours < nextTable)
-    check("with exactly one blank line above it", lines[ours - 1].isEmpty && !lines[ours - 2].isEmpty)
+    check(
+      "with exactly one blank line above it", lines[ours - 1].isEmpty && !lines[ours - 2].isEmpty)
     check(
       "and exactly one between two of our blocks",
       {
@@ -1313,9 +1384,10 @@ struct WiringCheck {
 
     check(
       "a file with no servers gets them at the end",
-      wire("model = \"x\"\n")?.hasSuffix("[mcp_servers.stripe]\n"
-        + "url = \"http://127.0.0.1:\(port)/s/prod/stripe\"\n"
-        + "http_headers = { Authorization = \"Bearer tok\" }\n") == true)
+      wire("model = \"x\"\n")?.hasSuffix(
+        "[mcp_servers.stripe]\n"
+          + "url = \"http://127.0.0.1:\(port)/s/prod/stripe\"\n"
+          + "http_headers = { Authorization = \"Bearer tok\" }\n") == true)
     check(
       "an empty file gets them and nothing else",
       wire("")?.hasPrefix("[mcp_servers.shopify]\n") == true)
@@ -1343,10 +1415,12 @@ struct WiringCheck {
     let block = ClientWiringTOML.render(
       name: "stripe", entry: tomlEntry("stripe"), newline: "\n")
     check("it is a table header for the server", block.hasPrefix("[mcp_servers.stripe]\n"))
-    check("the url comes first, because that is what a reader wants", {
-      let lines = block.split(separator: "\n")
-      return lines.count > 1 && lines[1].hasPrefix("url = ")
-    }())
+    check(
+      "the url comes first, because that is what a reader wants",
+      {
+        let lines = block.split(separator: "\n")
+        return lines.count > 1 && lines[1].hasPrefix("url = ")
+      }())
     check("the headers are an inline table", block.contains("http_headers = { Authorization ="))
     check("and there is no type key, because Codex has none", !block.contains("type"))
 
@@ -1391,7 +1465,8 @@ struct WiringCheck {
     guard let doc = scanned(codexConfig) else { return check("it scans", false) }
     // One contiguous run of its lines: the table's own span. Its subtable is a
     // second span with a blank line between, checked separately below.
-    let foreign = (doc.tables["node_repl"]?.ranges.first.map { $0.map { line(doc, $0) }.joined() })
+    let foreign =
+      (doc.tables["node_repl"]?.ranges.first.map { $0.map { line(doc, $0) }.joined() })
       ?? ""
     check("there is something to preserve", foreign.contains("startup_timeout_sec = 120"))
 
@@ -1416,7 +1491,9 @@ struct WiringCheck {
     check("its subtable went with it", !removed.contains("[mcp_servers.node_repl.env]"))
     check("and its values with that", !removed.contains("CODEX_HOME"))
     check("the other server is untouched", removed.contains("[mcp_servers.computer-use]"))
-    check("and so is everything that is not a server", removed.contains("[shell_environment_policy.set]"))
+    check(
+      "and so is everything that is not a server",
+      removed.contains("[shell_environment_policy.set]"))
     check("including the prose above them", removed.contains("- A # here is prose, not a comment"))
   }
 
@@ -1493,7 +1570,9 @@ struct WiringCheck {
       (try? String(contentsOf: config, encoding: .utf8)) == text)
     check(
       "and it reads back with our entries in it",
-      names(try? ClientWiringTOML.read(config)) == ["computer-use", "node_repl", "shopify", "stripe"])
+      names(try? ClientWiringTOML.read(config)) == [
+        "computer-use", "node_repl", "shopify", "stripe",
+      ])
 
     let mode = (try? fm.attributesOfItem(atPath: config.path))?[.posixPermissions] as? NSNumber
     check("the written config is 0600 — it now carries a token", mode?.intValue == 0o600)
@@ -1510,7 +1589,9 @@ struct WiringCheck {
       Data(blocks.utf8), to: fresh, backupSuffix: "bastion-backup")
     check("no backup for a file that did not exist", none == nil)
     check("parent directories created", fm.fileExists(atPath: fresh.path))
-    check("and the new file is exactly our blocks", names(try? ClientWiringTOML.read(fresh)) == ["shopify", "stripe"])
+    check(
+      "and the new file is exactly our blocks",
+      names(try? ClientWiringTOML.read(fresh)) == ["shopify", "stripe"])
   }
 
   /// The `wiring-check-real` half for a TOML config.

@@ -103,14 +103,16 @@ struct ProfileEditor: View {
               .textFieldStyle(.roundedBorder)
             Text(
               "Lower case, digits and hyphens. It becomes a URL path segment, a Keychain account "
-                + "and a directory name, which is why it is fixed once created.")
-              .font(.caption).foregroundStyle(.secondary)
+                + "and a directory name, which is why it is fixed once created."
+            )
+            .font(.caption).foregroundStyle(.secondary)
           } else {
             LabeledContent("Name", value: name)
             Text(
               "A profile cannot be renamed: its name is written into every client config that "
-                + "points at it. Remove it and add another instead.")
-              .font(.caption).foregroundStyle(.secondary)
+                + "points at it. Remove it and add another instead."
+            )
+            .font(.caption).foregroundStyle(.secondary)
           }
         } header: {
           Text("Profile")
@@ -127,7 +129,10 @@ struct ProfileEditor: View {
               isStored: stored.contains(variable.name) && !cleared.contains(variable.name),
               plain: binding(for: variable.name),
               secret: secretBinding(for: variable.name),
-              clear: { cleared.insert(variable.name); secrets[variable.name] = "" })
+              clear: {
+                cleared.insert(variable.name)
+                secrets[variable.name] = ""
+              })
           }
         } header: {
           Text("Values")
@@ -146,8 +151,9 @@ struct ProfileEditor: View {
           }
           Text(
             "For this profile alone. Another profile of the same server can record more, or "
-              + "nothing. Credentials are never recorded, and nothing is written to disk.")
-            .font(.caption).foregroundStyle(.secondary)
+              + "nothing. Credentials are never recorded, and nothing is written to disk."
+          )
+          .font(.caption).foregroundStyle(.secondary)
         } header: {
           Text("Activity")
         }
@@ -168,10 +174,13 @@ struct ProfileEditor: View {
         // rather than against what is on disk — so filling the last field
         // clears the warning before the sheet closes.
         if let blocking = pendingMissing, !blocking.isEmpty {
-          Label("Will not start — missing \(blocking.joined(separator: ", "))", systemImage: "exclamationmark.triangle.fill")
-            .font(.caption)
-            .foregroundStyle(.orange)
-            .fixedSize(horizontal: false, vertical: true)
+          Label(
+            "Will not start — missing \(blocking.joined(separator: ", "))",
+            systemImage: "exclamationmark.triangle.fill"
+          )
+          .font(.caption)
+          .foregroundStyle(.orange)
+          .fixedSize(horizontal: false, vertical: true)
         } else if let error {
           Text(error)
             .font(.caption).foregroundStyle(.red)
@@ -272,59 +281,60 @@ struct ProfileEditor: View {
   /// auth kind to it pushed the whole form past what the type checker will
   /// solve. Anything added here should stay here.
   @ViewBuilder private var authorizationSection: some View {
-  if let oauth = server.authModes.first(where: \.isInteractive) {
-    Section {
-      HStack(spacing: 10) {
-        Circle()
-          .fill(authorizationTint(for: oauth))
-          .frame(width: 7, height: 7)
-        Text(authorizationLabel(for: oauth))
-          .font(.callout)
-        Spacer()
-        if authorizing || childAuthState == .checking {
-          ProgressView().controlSize(.small)
-        } else if isSignedIn(for: oauth) {
-          Button("Sign out", role: .destructive) { signOut() }
-        } else {
-          // Offered next to the button rather than instead of it: an
-          // unknown state is not a reason to make signing in harder, and
-          // checking is the cheaper of the two for somebody who suspects
-          // they are already signed in.
-          if oauth.kind == .childOAuth, childAuthState == .unknown {
-            Button("Check") { refreshAuthorization(forceCheck: true) }
+    if let oauth = server.authModes.first(where: \.isInteractive) {
+      Section {
+        HStack(spacing: 10) {
+          Circle()
+            .fill(authorizationTint(for: oauth))
+            .frame(width: 7, height: 7)
+          Text(authorizationLabel(for: oauth))
+            .font(.callout)
+          Spacer()
+          if authorizing || childAuthState == .checking {
+            ProgressView().controlSize(.small)
+          } else if isSignedIn(for: oauth) {
+            Button("Sign out", role: .destructive) { signOut() }
+          } else {
+            // Offered next to the button rather than instead of it: an
+            // unknown state is not a reason to make signing in harder, and
+            // checking is the cheaper of the two for somebody who suspects
+            // they are already signed in.
+            if oauth.kind == .childOAuth, childAuthState == .unknown {
+              Button("Check") { refreshAuthorization(forceCheck: true) }
+            }
+            Button(oauth.displayName) { authorize() }
+              .buttonStyle(.borderedProminent)
           }
-          Button(oauth.displayName) { authorize() }
-            .buttonStyle(.borderedProminent)
         }
-      }
-      if let authError {
-        Text(authError)
-          .font(.caption).foregroundStyle(.red)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-      // Two kinds, two different true sentences. Bastion holds a
-      // `.oauth` token and can promise things about it; a `.childOAuth`
-      // token belongs to the server, and printing the Keychain promise
-      // over it would be a claim about custody Bastion does not have.
-      Text(authorizationCaption(for: oauth))
-        .font(.caption).foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-
-      if oauth.kind == .childOAuth, server.writeGate != nil {
-        // Scopes are fixed at the consent screen. mcp-reddit asks for the
-        // write scopes only when its gate is already on, so a login taken
-        // before the toggle was saved comes back read-only and every
-        // write fails later with a 403 that looks like a Reddit problem.
-        Text(
-          "The write toggle below is part of what is requested: sign in after setting it, "
-            + "and sign in again if you change it.")
+        if let authError {
+          Text(authError)
+            .font(.caption).foregroundStyle(.red)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        // Two kinds, two different true sentences. Bastion holds a
+        // `.oauth` token and can promise things about it; a `.childOAuth`
+        // token belongs to the server, and printing the Keychain promise
+        // over it would be a claim about custody Bastion does not have.
+        Text(authorizationCaption(for: oauth))
           .font(.caption).foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
+
+        if oauth.kind == .childOAuth, server.writeGate != nil {
+          // Scopes are fixed at the consent screen. mcp-reddit asks for the
+          // write scopes only when its gate is already on, so a login taken
+          // before the toggle was saved comes back read-only and every
+          // write fails later with a 403 that looks like a Reddit problem.
+          Text(
+            "The write toggle below is part of what is requested: sign in after setting it, "
+              + "and sign in again if you change it."
+          )
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+        }
+      } header: {
+        Text("Authorization")
       }
-    } header: {
-      Text("Authorization")
     }
-  }
   }
 
   /// The per-profile callback URL, lifted out of `body` for the same reason.
@@ -334,9 +344,10 @@ struct ProfileEditor: View {
         "The first profile keeps \(server.displayName)'s own default callback, so its setup "
           + "instructions stay correct. A second profile is a second identity and gets its own "
           + "port, which needs its own upstream app — the URL is matched byte for byte. "
-          + "Setting the variable above overrides whatever is shown.")
-        .font(.caption).foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
+          + "Setting the variable above overrides whatever is shown."
+      )
+      .font(.caption).foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
       ForEach(server.callbackEnv) { callback in
         // Selectable, because the whole point is that it gets pasted
         // into somebody's app registration page.
@@ -352,48 +363,52 @@ struct ProfileEditor: View {
   /// Authorization one: the form is a single expression and was already at
   /// the edge of what the type checker will solve.
   @ViewBuilder private var writesSection: some View {
-  if server.hasWritePath {
-    Section {
-      Toggle("Allow writes", isOn: $allowWrites)
+    if server.hasWritePath {
+      Section {
+        Toggle("Allow writes", isOn: $allowWrites)
 
-      if let gate = server.writeGate {
-        Text(
-          "The only thing that sets \(gate), and for this profile alone. Another profile of "
-            + "the same server can have it off at the same time.")
-          .font(.caption).foregroundStyle(.secondary)
-        if !server.gateBypass.isEmpty {
+        if let gate = server.writeGate {
           Text(
-            "\(server.gateBypass.joined(separator: ", ")) is forced off either way, so this "
-              + "toggle is the only switch on that wire.")
+            "The only thing that sets \(gate), and for this profile alone. Another profile of "
+              + "the same server can have it off at the same time."
+          )
+          .font(.caption).foregroundStyle(.secondary)
+          if !server.gateBypass.isEmpty {
+            Text(
+              "\(server.gateBypass.joined(separator: ", ")) is forced off either way, so this "
+                + "toggle is the only switch on that wire."
+            )
             .font(.caption).foregroundStyle(.secondary)
-        }
-      } else {
-        // A remote server has no environment, so there is no variable to
-        // name — the gate is a list of tools Bastion will not forward.
-        Text(
-          server.writeTools.isEmpty
-            ? "For this profile alone. With writes off, Bastion does not forward any tool "
-              + "this server marks as not read-only."
-            : "For this profile alone. With writes off, Bastion does not forward "
-              + "\(server.writeTools.joined(separator: ", ")) — nor any tool this server "
-              + "marks as not read-only.")
+          }
+        } else {
+          // A remote server has no environment, so there is no variable to
+          // name — the gate is a list of tools Bastion will not forward.
+          Text(
+            server.writeTools.isEmpty
+              ? "For this profile alone. With writes off, Bastion does not forward any tool "
+                + "this server marks as not read-only."
+              : "For this profile alone. With writes off, Bastion does not forward "
+                + "\(server.writeTools.joined(separator: ", ")) — nor any tool this server "
+                + "marks as not read-only."
+          )
           .font(.caption).foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
 
-        // The limit, at the point somebody decides whether to trust the
-        // switch. Said here as well as on the server's own card, because
-        // this is the screen where the decision is actually made.
-        Text(
-          "This filters what Bastion forwards, not what the server accepts. Anything else "
-            + "holding this credential can call the same API directly, so its own scopes "
-            + "are the real limit.")
+          // The limit, at the point somebody decides whether to trust the
+          // switch. Said here as well as on the server's own card, because
+          // this is the screen where the decision is actually made.
+          Text(
+            "This filters what Bastion forwards, not what the server accepts. Anything else "
+              + "holding this credential can call the same API directly, so its own scopes "
+              + "are the real limit."
+          )
           .font(.caption).foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
+        }
+      } header: {
+        Text("Writes")
       }
-    } header: {
-      Text("Writes")
     }
-  }
   }
 
   // MARK: - Authorization
@@ -712,9 +727,10 @@ private struct VariableField: View {
         SecureField(
           variable.name,
           text: $secret,
-          prompt: Text(isStored ? "Stored — type to replace" : "Not set"))
-          .labelsHidden()
-          .textFieldStyle(.roundedBorder)
+          prompt: Text(isStored ? "Stored — type to replace" : "Not set")
+        )
+        .labelsHidden()
+        .textFieldStyle(.roundedBorder)
       } else if let fallback = variable.booleanDefault {
         // Three choices, not a toggle. These variables are read as
         // `parseBool(env.X) ?? file.X`, so leaving one alone is not the same as

@@ -325,9 +325,10 @@ struct ClientDetail: View {
         Text(
           "Bastion writes only the entries below, under the '\(client.rootKey)' key. Everything "
             + "else in the file is left byte-for-byte alone, and the previous version is saved "
-            + "beside it as \(backupName) first.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "beside it as \(backupName) first."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
       }
     }
   }
@@ -352,9 +353,10 @@ struct ClientDetail: View {
           // not a brokerage refresh token.
           Text(
             "Each entry carries a bearer token issued to \(client.displayName), and never a "
-              + "credential. Credentials stay in the Keychain.")
-            .font(.caption).foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+              + "credential. Credentials stay in the Keychain."
+          )
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
         }
       }
     }
@@ -392,16 +394,18 @@ struct ClientDetail: View {
         Text(
           row.serverIsOff
             ? "Points at \(where_) right now. Switch the server back on and Configure rewrites it."
-            : "Points at \(where_) right now. Configure rewrites it.")
-          .font(.caption2)
-          .foregroundStyle(row.serverIsOff ? AnyShapeStyle(.secondary) : AnyShapeStyle(.red))
-          .fixedSize(horizontal: false, vertical: true)
+            : "Points at \(where_) right now. Configure rewrites it."
+        )
+        .font(.caption2)
+        .foregroundStyle(row.serverIsOff ? AnyShapeStyle(.secondary) : AnyShapeStyle(.red))
+        .fixedSize(horizontal: false, vertical: true)
       case .foreign(let what):
         Text(
           "Already taken by \(what ?? "an entry Bastion did not write"). Configure will refuse "
-            + "rather than replace it.")
-          .font(.caption2).foregroundStyle(.red)
-          .fixedSize(horizontal: false, vertical: true)
+            + "rather than replace it."
+        )
+        .font(.caption2).foregroundStyle(.red)
+        .fixedSize(horizontal: false, vertical: true)
       case .matches, .missing:
         EmptyView()
       }
@@ -411,9 +415,10 @@ struct ClientDetail: View {
       // dropped config, the fact is a key in the file.
       if row.isDisabled, !row.serverIsOff {
         Text(
-          "\(client.displayName) has this entry switched off. Configure turns it back on.")
-          .font(.caption2).foregroundStyle(.orange)
-          .fixedSize(horizontal: false, vertical: true)
+          "\(client.displayName) has this entry switched off. Configure turns it back on."
+        )
+        .font(.caption2).foregroundStyle(.orange)
+        .fixedSize(horizontal: false, vertical: true)
       }
       // The row Bastion's own switch produces. Left in the list rather than
       // hidden, because it is in the file whether this pane draws it or not,
@@ -421,9 +426,10 @@ struct ClientDetail: View {
       if row.serverIsOff {
         Text(
           "'\(row.profile.serverID)' is switched off in Bastion, so requests under this entry "
-            + "are refused. Configure leaves it alone; Remove Bastion's entries takes it out.")
-          .font(.caption2).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "are refused. Configure leaves it alone; Remove Bastion's entries takes it out."
+        )
+        .font(.caption2).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
       }
     }
     // Dimmed the same way the servers list dims a switched-off server, so the
@@ -472,9 +478,10 @@ struct ClientDetail: View {
           "\(client.displayName) starts \(count == 1 ? "this one" : "these") itself. "
             + "\(count == 1 ? "It carries" : "They carry") no Bastion token and no write gate, "
             + "and nothing \(count == 1 ? "it does" : "they do") reaches the activity log. "
-            + "Remove one once the same server is running through Bastion.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "Remove one once the same server is running through Bastion."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
 
         ForEach(snapshot.others, id: \.key) { entry in
           Divider()
@@ -501,9 +508,10 @@ struct ClientDetail: View {
       VStack(alignment: .leading, spacing: 10) {
         Text(
           "\(client.displayName) also keeps servers per project folder. These go around Bastion "
-            + "the same way, and only apply inside the folder they are filed under.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "the same way, and only apply inside the folder they are filed under."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
 
         // Only once there are enough folders for scrolling to be worse than
         // typing. Below that the field is a control with nothing to do.

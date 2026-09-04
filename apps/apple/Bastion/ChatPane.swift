@@ -112,9 +112,10 @@ struct ChatPane: View {
               Text("\(chat.selected.count) of \(chat.tools.count) tools")
               Text(
                 "\(chat.used.formatted(.number.grouping(.never)))/"
-                  + "\(ChatSession.budget.formatted(.number.grouping(.never)))")
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(chat.isOverBudget ? .orange : .secondary)
+                  + "\(ChatSession.budget.formatted(.number.grouping(.never)))"
+              )
+              .font(.system(.caption, design: .monospaced))
+              .foregroundStyle(chat.isOverBudget ? .orange : .secondary)
             }
           }
           .popover(isPresented: $showingTools, arrowEdge: .bottom) { toolPicker }
@@ -158,8 +159,9 @@ struct ChatPane: View {
       // first and the text simply wraps into it, which is all this needs.
       Text(
         "This profile has writes enabled. Only tools the server marks read-only are loaded, but "
-          + "that mark is the server's own claim about itself and not something Bastion can check.")
-        .font(.caption)
+          + "that mark is the server's own claim about itself and not something Bastion can check."
+      )
+      .font(.caption)
       Spacer(minLength: 8)
       Button("I understand") { acknowledged = true }
         .controlSize(.small)
@@ -184,21 +186,27 @@ struct ChatPane: View {
     VStack(alignment: .leading, spacing: 8) {
       Text("Tools loaded into the conversation")
         .font(.headline)
-      ProgressView(value: Double(min(chat.used, ChatSession.budget)), total: Double(ChatSession.budget))
-        .tint(chat.isOverBudget ? .orange : .accentColor)
+      ProgressView(
+        value: Double(min(chat.used, ChatSession.budget)), total: Double(ChatSession.budget)
+      )
+      .tint(chat.isOverBudget ? .orange : .accentColor)
       Text(
         "The model holds \(ChatSession.contextSize) tokens in total — instructions, tools, the "
           + "conversation and its reply. Every tool spends part of that budget for the whole "
-          + "conversation, so this is a choice about what to make reachable, not a preference.")
-        .font(.caption).foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
+          + "conversation, so this is a choice about what to make reachable, not a preference."
+      )
+      .font(.caption).foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
 
       Divider()
 
       ScrollView {
         VStack(alignment: .leading, spacing: 2) {
           ForEach(chat.tools) { tool in
-            Toggle(isOn: Binding(get: { chat.selected.contains(tool.name) }, set: { _ in chat.toggle(tool) })) {
+            Toggle(
+              isOn: Binding(
+                get: { chat.selected.contains(tool.name) }, set: { _ in chat.toggle(tool) })
+            ) {
               HStack(spacing: 6) {
                 Text(tool.name).font(.system(.caption, design: .monospaced))
                 Spacer(minLength: 8)
@@ -273,9 +281,10 @@ struct ChatPane: View {
           .font(.callout).foregroundStyle(.secondary)
         Text(
           "Every call runs against the real supervised server, as this profile, and shows up in "
-            + "the Log pane too.")
-          .font(.caption).foregroundStyle(.tertiary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "the Log pane too."
+        )
+        .font(.caption).foregroundStyle(.tertiary)
+        .fixedSize(horizontal: false, vertical: true)
       } else {
         Text("Choose a profile to load its tools.")
           .font(.callout).foregroundStyle(.secondary)
@@ -438,8 +447,11 @@ private struct CallRow: View {
           .foregroundStyle(call.failed ? .red : .green)
         Text(call.tool).font(.system(.caption, design: .monospaced)).bold()
         Spacer(minLength: 8)
-        Text(call.seconds < 1 ? "\(Int((call.seconds * 1000).rounded()))ms" : String(format: "%.1fs", call.seconds))
-          .font(.system(.caption2, design: .monospaced)).foregroundStyle(.tertiary)
+        Text(
+          call.seconds < 1
+            ? "\(Int((call.seconds * 1000).rounded()))ms" : String(format: "%.1fs", call.seconds)
+        )
+        .font(.system(.caption2, design: .monospaced)).foregroundStyle(.tertiary)
       }
       // The arguments the model invented are the most informative thing on
       // screen: they say what it understood the tool's schema to mean.

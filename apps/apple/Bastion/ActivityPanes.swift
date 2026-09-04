@@ -182,7 +182,8 @@ struct LogPane: View {
         // lied. `AuditExport` is the one copy of it.
         Button("Export…") { exported = AuditExport.run()?.note }
           .disabled(!AuditLog.isEnabled)
-          .help(AuditLog.isEnabled ? "Save the audit log and its manifest." : AuditExport.unavailable)
+          .help(
+            AuditLog.isEnabled ? "Save the audit log and its manifest." : AuditExport.unavailable)
       }
       .controlSize(.small)
       .padding(.horizontal, 12)
@@ -300,9 +301,10 @@ struct LogPane: View {
             + (AuditLog.isEnabled
               ? "An audit log is being kept on disk — see Settings › Activity. "
               : "Nothing here is written to disk. ")
-            + "It does not see what a server then does over the network or on disk.")
-          .font(.caption2)
-          .foregroundStyle(.secondary)
+            + "It does not see what a server then does over the network or on disk."
+        )
+        .font(.caption2)
+        .foregroundStyle(.secondary)
         Spacer(minLength: 12)
         // What the export did, where the export happened. A result reported in
         // a window the user is no longer looking at is a result nobody reads.

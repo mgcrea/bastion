@@ -370,7 +370,8 @@ nonisolated extension Supervisor {
       // Short values are left alone: striking every "1" out of a log is worse.
       let secrets = secretKeys
       state.withLock { taken in
-        taken.secretValues = environment
+        taken.secretValues =
+          environment
           .filter { secrets.contains($0.key) && $0.value.count >= 8 }
           .map(\.value)
       }
@@ -386,7 +387,9 @@ nonisolated extension Supervisor {
       process.currentDirectoryURL = ProfileEnvironment.directory(
         profile: profile.name, server: server.id)
 
-      let toChild = Pipe(), fromChild = Pipe(), childErr = Pipe()
+      let toChild = Pipe()
+      let fromChild = Pipe()
+      let childErr = Pipe()
       process.standardInput = toChild
       process.standardOutput = fromChild
       process.standardError = childErr

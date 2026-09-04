@@ -478,7 +478,8 @@ nonisolated enum ServerCatalog {
     BastionServer(
       id: "appstore-connect",
       displayName: "App Store Connect",
-      summary: "App Store Connect API: apps, versions, builds, TestFlight, listings, analytics, sales.",
+      summary:
+        "App Store Connect API: apps, versions, builds, TestFlight, listings, analytics, sales.",
       transport: .child(
         .init(
           npmName: "@mgcrea/mcp-appstore-connect",
@@ -525,12 +526,16 @@ nonisolated enum ServerCatalog {
           name: "APP_STORE_CONNECT_P8",
           isRequired: false,
           isSecret: true,
-          summary: "The .p8 private key, inline PEM. Preferred: Bastion keeps it in the Keychain and never writes it to disk."),
+          summary:
+            "The .p8 private key, inline PEM. Preferred: Bastion keeps it in the Keychain and never writes it to disk."
+        ),
         .init(
           name: "APP_STORE_CONNECT_P8_PATH",
           isRequired: false,
           isSecret: false,
-          summary: "Path to a .p8 file on disk. The legacy shape — it leaves the key readable outside the Keychain."),
+          summary:
+            "Path to a .p8 file on disk. The legacy shape — it leaves the key readable outside the Keychain."
+        ),
         .init(
           name: "APP_STORE_CONNECT_VENDOR_NUMBER",
           isRequired: false,
@@ -545,7 +550,8 @@ nonisolated enum ServerCatalog {
           name: "APP_STORE_CONNECT_ALLOW_WRITES",
           isRequired: false,
           isSecret: false,
-          summary: "Enables the mutating tools: version metadata, screenshots, submissions, pricing."),
+          summary:
+            "Enables the mutating tools: version metadata, screenshots, submissions, pricing."),
       ]),
     // A separate service from App Store Connect, not a feature of it: different
     // host (api.icloud.apple.com), different credential (a static management
@@ -574,7 +580,8 @@ nonisolated enum ServerCatalog {
     BastionServer(
       id: "cloudkit",
       displayName: "CloudKit",
-      summary: "CloudKit management API: container schema — record types, fields, Development/Production diff and deploy.",
+      summary:
+        "CloudKit management API: container schema — record types, fields, Development/Production diff and deploy.",
       transport: .child(
         .init(
           npmName: "@mgcrea/mcp-cloudkit",
@@ -594,17 +601,23 @@ nonisolated enum ServerCatalog {
           name: "CLOUDKIT_MANAGEMENT_TOKEN",
           isRequired: true,
           isSecret: true,
-          summary: "CloudKit management token, from icloud.developer.apple.com/dashboard/account/tokens — CloudKit Management Tokens. Can rewrite the container's schema; scope it and revoke when done."),
+          summary:
+            "CloudKit management token, from icloud.developer.apple.com/dashboard/account/tokens — CloudKit Management Tokens. Can rewrite the container's schema; scope it and revoke when done."
+        ),
         .init(
           name: "CLOUDKIT_TEAM_ID",
           isRequired: true,
           isSecret: false,
-          summary: "10-character Apple Developer team id, e.g. 75QE9PRT3V. Also in the app's exportOptions.plist."),
+          summary:
+            "10-character Apple Developer team id, e.g. 75QE9PRT3V. Also in the app's exportOptions.plist."
+        ),
         .init(
           name: "CLOUDKIT_CONTAINER_ID",
           isRequired: false,
           isSecret: false,
-          summary: "Default container, e.g. iCloud.io.mgcrea.Balise, so it need not be passed on every call. cloudkit_list_containers finds it if unset."),
+          summary:
+            "Default container, e.g. iCloud.io.mgcrea.Balise, so it need not be passed on every call. cloudkit_list_containers finds it if unset."
+        ),
         .init(
           name: "CLOUDKIT_CONFIG",
           isRequired: false,
@@ -619,7 +632,9 @@ nonisolated enum ServerCatalog {
           name: "CLOUDKIT_ALLOW_WRITES",
           isRequired: false,
           isSecret: false,
-          summary: "Enables cloudkit_deploy_schema and cloudkit_import_schema. Both additionally require confirm: true on every call."),
+          summary:
+            "Enables cloudkit_deploy_schema and cloudkit_import_schema. Both additionally require confirm: true on every call."
+        ),
       ]),
     // The clearest case for stateEnv and portEnv. This server logs a user in
     // over a local callback and keeps the refresh token in a file — both of
@@ -647,7 +662,7 @@ nonisolated enum ServerCatalog {
           env: [],
           loginTool: "reddit_auth_login",
           statusTool: "reddit_auth_status",
-          logoutTool: "reddit_auth_logout"),
+          logoutTool: "reddit_auth_logout")
       ],
       stateEnv: ["REDDIT_TOKEN_PATH"],
       callbackEnv: [.init(name: "REDDIT_REDIRECT_URI", format: "http://127.0.0.1:{port}/callback")],
@@ -656,7 +671,9 @@ nonisolated enum ServerCatalog {
           name: "REDDIT_CLIENT_ID",
           isRequired: false,
           isSecret: false,
-          summary: "App client id. Anonymous app-only reads work without it; anything user-scoped does not."),
+          summary:
+            "App client id. Anonymous app-only reads work without it; anything user-scoped does not."
+        ),
         .init(
           name: "REDDIT_CLIENT_SECRET",
           isRequired: false,
@@ -666,17 +683,22 @@ nonisolated enum ServerCatalog {
           name: "REDDIT_USER_AGENT",
           isRequired: false,
           isSecret: false,
-          summary: "platform:app-id:version (by /u/username). Reddit throttles generic agents regardless of rate limit."),
+          summary:
+            "platform:app-id:version (by /u/username). Reddit throttles generic agents regardless of rate limit."
+        ),
         .init(
           name: "REDDIT_REDIRECT_URI",
           isRequired: false,
           isSecret: false,
-          summary: "Loopback OAuth callback. Per-profile, or two profiles race for one port — and the URL must be registered with the Reddit app."),
+          summary:
+            "Loopback OAuth callback. Per-profile, or two profiles race for one port — and the URL must be registered with the Reddit app."
+        ),
         .init(
           name: "REDDIT_TOKEN_PATH",
           isRequired: false,
           isSecret: false,
-          summary: "Where the refresh token is stored. Per-profile, or two profiles share one login."),
+          summary:
+            "Where the refresh token is stored. Per-profile, or two profiles share one login."),
         .init(
           name: "REDDIT_ALLOW_WRITES",
           isRequired: false,
@@ -735,7 +757,8 @@ nonisolated enum ServerCatalog {
           name: "X_CLIENT_ID",
           isRequired: false,
           isSecret: false,
-          summary: "OAuth2 client id. Required for a user context, and therefore for writes and for Ads."),
+          summary:
+            "OAuth2 client id. Required for a user context, and therefore for writes and for Ads."),
         .init(
           name: "X_CLIENT_SECRET",
           isRequired: false,
@@ -745,7 +768,9 @@ nonisolated enum ServerCatalog {
           name: "X_REDIRECT_URI",
           isRequired: false,
           isSecret: false,
-          summary: "Loopback OAuth callback. Per-profile, or two profiles race for one port — and the URL must be registered with the X app."),
+          summary:
+            "Loopback OAuth callback. Per-profile, or two profiles race for one port — and the URL must be registered with the X app."
+        ),
         .init(
           name: "X_TOKEN_FILE",
           isRequired: false,
@@ -760,7 +785,8 @@ nonisolated enum ServerCatalog {
           name: "X_MONTHLY_BUDGET_USD",
           isRequired: false,
           isSecret: false,
-          summary: "Spend ceiling. X bills per read, so this is a real safety control, not a preference."),
+          summary:
+            "Spend ceiling. X bills per read, so this is a real safety control, not a preference."),
         .init(
           name: "X_ALLOW_WRITES",
           isRequired: false,
@@ -821,7 +847,9 @@ nonisolated enum ServerCatalog {
           statusTool: nil,
           logoutTool: nil),
       ],
-      stateEnv: ["UNIFI_PROTECT_CONFIG", "UNIFI_PROTECT_SESSION_FILE", "UNIFI_PROTECT_SNAPSHOT_DIR"],
+      stateEnv: [
+        "UNIFI_PROTECT_CONFIG", "UNIFI_PROTECT_SESSION_FILE", "UNIFI_PROTECT_SNAPSHOT_DIR",
+      ],
       callbackEnv: [],
       env: [
         .init(
@@ -874,7 +902,9 @@ nonisolated enum ServerCatalog {
           name: "UNIFI_PROTECT_SNAPSHOT_DIR",
           isRequired: false,
           isSecret: false,
-          summary: "Where snapshots and exports are written. Per-profile, or one profile reads another's footage."),
+          summary:
+            "Where snapshots and exports are written. Per-profile, or one profile reads another's footage."
+        ),
         .init(
           name: "UNIFI_PROTECT_CONFIG",
           isRequired: false,
@@ -907,7 +937,8 @@ nonisolated enum ServerCatalog {
     BastionServer(
       id: "unifi-network",
       displayName: "UniFi Network",
-      summary: "UniFi Network API: sites, devices, clients, WLANs, port and firewall configuration.",
+      summary:
+        "UniFi Network API: sites, devices, clients, WLANs, port and firewall configuration.",
       transport: .child(
         .init(
           npmName: "@mgcrea/mcp-unifi-network",
@@ -1024,7 +1055,8 @@ nonisolated enum ServerCatalog {
           name: "UNIFI_ALLOW_WRITES",
           isRequired: false,
           isSecret: false,
-          summary: "Enables the mutating tools: WLANs, port profiles, firewall rules, device adoption."),
+          summary:
+            "Enables the mutating tools: WLANs, port profiles, firewall rules, device adoption."),
       ]),
     // REMOTE. This entry used to be a placeholder for @mgcrea/mcp-stripe, a
     // package that was never written and never published. Stripe operates a
@@ -1059,7 +1091,8 @@ nonisolated enum ServerCatalog {
     BastionServer(
       id: "stripe",
       displayName: "Stripe",
-      summary: "Stripe's own remote MCP server: the API surface, plus documentation and knowledge-base search.",
+      summary:
+        "Stripe's own remote MCP server: the API surface, plus documentation and knowledge-base search.",
       transport: .remote(endpoint: URL(string: "https://mcp.stripe.com")!),
       docsURL: URL(string: "https://docs.stripe.com/mcp"),
       dialect: .v2025_03_26,
@@ -1091,19 +1124,22 @@ nonisolated enum ServerCatalog {
           name: "STRIPE_SECRET_KEY",
           isRequired: false,
           isSecret: true,
-          summary: "Restricted API key, sent as the bearer token. A restricted key is the right one here: the write gate filters what Bastion forwards, it cannot take back a permission the key already grants.",
+          summary:
+            "Restricted API key, sent as the bearer token. A restricted key is the right one here: the write gate filters what Bastion forwards, it cannot take back a permission the key already grants.",
           header: .init(name: "Authorization", format: "Bearer {value}")),
         .init(
           name: "STRIPE_ACCOUNT_ID",
           isRequired: false,
           isSecret: false,
-          summary: "Connected account to act on behalf of, sent as Stripe-Account. Stripe does not support OAuth in this mode, so a profile using it must authenticate with a restricted key.",
+          summary:
+            "Connected account to act on behalf of, sent as Stripe-Account. Stripe does not support OAuth in this mode, so a profile using it must authenticate with a restricted key.",
           header: .init(name: "Stripe-Account", format: "{value}")),
         .init(
           name: "STRIPE_API_VERSION",
           isRequired: false,
           isSecret: false,
-          summary: "Pin the API version instead of using the account default, sent as Stripe-Version.",
+          summary:
+            "Pin the API version instead of using the account default, sent as Stripe-Version.",
           header: .init(name: "Stripe-Version", format: "{value}")),
       ]),
     // No write gate because there is no write path: every tool is a read.
@@ -1300,7 +1336,8 @@ nonisolated enum ServerCatalog {
           name: "KEYCLOAK_AUTH_REALM",
           isRequired: false,
           isSecret: false,
-          summary: "Realm to authenticate against, when it differs from the one being administered."),
+          summary: "Realm to authenticate against, when it differs from the one being administered."
+        ),
         .init(
           name: "KEYCLOAK_CLIENT_ID",
           isRequired: false,
@@ -1349,7 +1386,8 @@ nonisolated enum ServerCatalog {
     BastionServer(
       id: "npm",
       displayName: "npm",
-      summary: "npm registry: packages, versions, downloads, advisories, dist-tags, orgs, tokens and trusted publishing.",
+      summary:
+        "npm registry: packages, versions, downloads, advisories, dist-tags, orgs, tokens and trusted publishing.",
       transport: .child(
         .init(
           npmName: "@mgcrea/mcp-npm",
@@ -1369,43 +1407,58 @@ nonisolated enum ServerCatalog {
           name: "NPM_TOKEN",
           isRequired: false,
           isSecret: true,
-          summary: "npm access token. Optional: with none set the server falls back to the token `npm login` wrote to ~/.npmrc. A granular token with 'Bypass 2FA' enabled is refused by every trusted-publisher write."),
+          summary:
+            "npm access token. Optional: with none set the server falls back to the token `npm login` wrote to ~/.npmrc. A granular token with 'Bypass 2FA' enabled is refused by every trusted-publisher write."
+        ),
         .init(
           name: "NPM_REGISTRY",
           isRequired: false,
           isSecret: false,
-          summary: "Registry to talk to. Defaults to https://registry.npmjs.org, and the .npmrc token is looked up for whichever host this names, never sent to another."),
+          summary:
+            "Registry to talk to. Defaults to https://registry.npmjs.org, and the .npmrc token is looked up for whichever host this names, never sent to another."
+        ),
         .init(
           name: "NPM_CONFIG_USERCONFIG",
           isRequired: false,
           isSecret: false,
-          summary: "Which .npmrc the fallback token is read from. Unset means the machine's own ~/.npmrc, which every profile would then share."),
+          summary:
+            "Which .npmrc the fallback token is read from. Unset means the machine's own ~/.npmrc, which every profile would then share."
+        ),
         .init(
           name: "NPM_MCP_CONFIG",
           isRequired: false,
           isSecret: false,
-          summary: "Config file path. Bastion already points the default at the profile's own directory; set this only to name a file elsewhere."),
+          summary:
+            "Config file path. Bastion already points the default at the profile's own directory; set this only to name a file elsewhere."
+        ),
         .init(
           name: "NPM_OTP_MODE",
           isRequired: false,
           isSecret: false,
-          summary: "How the one-time password npm demands on every trusted-publisher call is obtained: web opens npm's confirmation page and waits, static uses NPM_OTP, none refuses with instructions. Defaults to web."),
+          summary:
+            "How the one-time password npm demands on every trusted-publisher call is obtained: web opens npm's confirmation page and waits, static uses NPM_OTP, none refuses with instructions. Defaults to web."
+        ),
         .init(
           name: "NPM_OTP",
           isRequired: false,
           isSecret: true,
-          summary: "A one-time password, and the only thing NPM_OTP_MODE=static will start without complaining about. Rarely right: a code lasts about five minutes, so one set at spawn is dead before anything calls a tool."),
+          summary:
+            "A one-time password, and the only thing NPM_OTP_MODE=static will start without complaining about. Rarely right: a code lasts about five minutes, so one set at spawn is dead before anything calls a tool."
+        ),
         .init(
           name: "NPM_AUTO_OPEN_BROWSER",
           isRequired: false,
           isSecret: false,
-          summary: "Whether the one-time-password flow launches a browser, or only prints the authorization URL.",
+          summary:
+            "Whether the one-time-password flow launches a browser, or only prints the authorization URL.",
           booleanDefault: true),
         .init(
           name: "NPM_ALLOW_WRITES",
           isRequired: false,
           isSecret: false,
-          summary: "Registers the write tools: publish and unpublish, dist-tags, deprecation, package access, org and team membership, tokens, and trusted-publisher changes."),
+          summary:
+            "Registers the write tools: publish and unpublish, dist-tags, deprecation, package access, org and team membership, tokens, and trusted-publisher changes."
+        ),
       ]),
     // REMOTE. GitHub operates this one; Bastion holds the credential and the
     // audit line and forwards the call.
@@ -1431,12 +1484,25 @@ nonisolated enum ServerCatalog {
     BastionServer(
       id: "github",
       displayName: "GitHub",
-      summary: "GitHub's own remote MCP server: repositories, issues, pull requests, Actions, code scanning and Dependabot alerts.",
+      summary:
+        "GitHub's own remote MCP server: repositories, issues, pull requests, Actions, code scanning and Dependabot alerts.",
       transport: .remote(endpoint: URL(string: "https://api.githubcopilot.com/mcp/")!),
       docsURL: URL(string: "https://github.com/github/github-mcp-server"),
       dialect: .v2025_11_25,
       writeGate: nil,
-      writeTools: ["actions_run_trigger", "add_comment_to_pending_review", "add_issue_comment", "add_reply_to_pull_request_comment", "assign_copilot_to_issue", "assign_copilot_to_issue_with_intent", "create_branch", "create_gist", "create_or_update_file", "create_pull_request", "create_pull_request_with_copilot", "create_repository", "delete_file", "delete_repository", "discussion_comment_write", "dismiss_notification", "fork_repository", "issue_write", "label_write", "manage_notification_subscription", "manage_repository_notification_subscription", "mark_all_notifications_read", "merge_pull_request", "projects_write", "pull_request_review_write", "push_files", "request_copilot_review", "star_repository", "sub_issue_write", "unstar_repository", "update_gist", "update_pull_request", "update_pull_request_branch"],
+      writeTools: [
+        "actions_run_trigger", "add_comment_to_pending_review", "add_issue_comment",
+        "add_reply_to_pull_request_comment", "assign_copilot_to_issue",
+        "assign_copilot_to_issue_with_intent", "create_branch", "create_gist",
+        "create_or_update_file", "create_pull_request", "create_pull_request_with_copilot",
+        "create_repository", "delete_file", "delete_repository", "discussion_comment_write",
+        "dismiss_notification", "fork_repository", "issue_write", "label_write",
+        "manage_notification_subscription", "manage_repository_notification_subscription",
+        "mark_all_notifications_read", "merge_pull_request", "projects_write",
+        "pull_request_review_write", "push_files", "request_copilot_review", "star_repository",
+        "sub_issue_write", "unstar_repository", "update_gist", "update_pull_request",
+        "update_pull_request_branch",
+      ],
       gateBypass: [],
       authModes: [
         .init(
@@ -1463,8 +1529,9 @@ nonisolated enum ServerCatalog {
           name: "GITHUB_TOKEN",
           isRequired: false,
           isSecret: true,
-          summary: "Personal access token, sent as the bearer token. Scope it to the repositories you actually want reachable: the write gate filters what Bastion forwards, it cannot take back a permission the token already grants.",
-          header: .init(name: "Authorization", format: "Bearer {value}")),
+          summary:
+            "Personal access token, sent as the bearer token. Scope it to the repositories you actually want reachable: the write gate filters what Bastion forwards, it cannot take back a permission the token already grants.",
+          header: .init(name: "Authorization", format: "Bearer {value}"))
       ]),
     // REMOTE. Its own discovery document calls it "Notion MCP (Beta)", so
     // expect the tool surface to move.
@@ -1485,7 +1552,8 @@ nonisolated enum ServerCatalog {
     BastionServer(
       id: "notion",
       displayName: "Notion",
-      summary: "Notion's own remote MCP server: search, read and update pages, databases and comments.",
+      summary:
+        "Notion's own remote MCP server: search, read and update pages, databases and comments.",
       transport: .remote(endpoint: URL(string: "https://mcp.notion.com/mcp")!),
       docsURL: URL(string: "https://developers.notion.com/docs/mcp"),
       dialect: .v2025_11_25,
@@ -1517,8 +1585,9 @@ nonisolated enum ServerCatalog {
           name: "NOTION_TOKEN",
           isRequired: false,
           isSecret: true,
-          summary: "Internal integration token, sent as the bearer token. A Notion integration reaches only the pages explicitly shared with it, so the sharing list is the real boundary here.",
-          header: .init(name: "Authorization", format: "Bearer {value}")),
+          summary:
+            "Internal integration token, sent as the bearer token. A Notion integration reaches only the pages explicitly shared with it, so the sharing list is the real boundary here.",
+          header: .init(name: "Authorization", format: "Bearer {value}"))
       ]),
     // REMOTE. The cleanest OAuth story in this file: discovery advertises a
     // registration_endpoint, PKCE, and scopes_supported [read, write], so
@@ -1576,8 +1645,9 @@ nonisolated enum ServerCatalog {
           name: "LINEAR_API_KEY",
           isRequired: false,
           isSecret: true,
-          summary: "Linear API key, sent as the bearer token. Linear issues read and write as separate OAuth scopes, so a key minted for reads is a stronger control than the write gate.",
-          header: .init(name: "Authorization", format: "Bearer {value}")),
+          summary:
+            "Linear API key, sent as the bearer token. Linear issues read and write as separate OAuth scopes, so a key minted for reads is a stronger control than the write gate.",
+          header: .init(name: "Authorization", format: "Bearer {value}"))
       ]),
     // REMOTE. docs.sentry.io/product/sentry-mcp/ 301s to mcp.sentry.dev,
     // which is both the server and its documentation, so docsUrl points
@@ -1597,7 +1667,8 @@ nonisolated enum ServerCatalog {
     BastionServer(
       id: "sentry",
       displayName: "Sentry",
-      summary: "Sentry's own remote MCP server: issues, events, releases and Seer analysis across your organisations.",
+      summary:
+        "Sentry's own remote MCP server: issues, events, releases and Seer analysis across your organisations.",
       transport: .remote(endpoint: URL(string: "https://mcp.sentry.dev/mcp")!),
       docsURL: URL(string: "https://mcp.sentry.dev/"),
       dialect: .v2025_11_25,
@@ -1629,8 +1700,9 @@ nonisolated enum ServerCatalog {
           name: "SENTRY_ACCESS_TOKEN",
           isRequired: false,
           isSecret: true,
-          summary: "Sentry user auth token, sent as the bearer token. Its own scopes decide what is reachable; project:write and event:write are the ones to leave off unless something needs them.",
-          header: .init(name: "Authorization", format: "Bearer {value}")),
+          summary:
+            "Sentry user auth token, sent as the bearer token. Its own scopes decide what is reachable; project:write and event:write are the ones to leave off unless something needs them.",
+          header: .init(name: "Authorization", format: "Bearer {value}"))
       ]),
     // REMOTE. v2 is the current path - anything still pointing at
     // mcp.atlassian.com/v1/sse is on a version Atlassian has retired.
@@ -1656,7 +1728,8 @@ nonisolated enum ServerCatalog {
     BastionServer(
       id: "atlassian",
       displayName: "Atlassian",
-      summary: "Atlassian's own Rovo MCP server: Jira, Confluence, Jira Service Management, Bitbucket and Compass.",
+      summary:
+        "Atlassian's own Rovo MCP server: Jira, Confluence, Jira Service Management, Bitbucket and Compass.",
       transport: .remote(endpoint: URL(string: "https://mcp.atlassian.com/v2/mcp")!),
       docsURL: URL(string: "https://github.com/atlassian/atlassian-mcp-server"),
       dialect: .v2025_11_25,
@@ -1688,8 +1761,9 @@ nonisolated enum ServerCatalog {
           name: "ATLASSIAN_API_KEY",
           isRequired: false,
           isSecret: true,
-          summary: "Service account API key, sent as the bearer token. An organisation admin must enable API token authentication before any key works; if that is off, OAuth is the only way in.",
-          header: .init(name: "Authorization", format: "Bearer {value}")),
+          summary:
+            "Service account API key, sent as the bearer token. An organisation admin must enable API token authentication before any key works; if that is off, OAuth is the only way in.",
+          header: .init(name: "Authorization", format: "Bearer {value}"))
       ]),
     // REMOTE. Figma also ships a local server that talks to the desktop app;
     // this entry is the hosted one, which is the one Figma recommends.
@@ -1712,7 +1786,8 @@ nonisolated enum ServerCatalog {
     BastionServer(
       id: "figma",
       displayName: "Figma",
-      summary: "Figma's own remote MCP server: design file context, components and variables for coding agents.",
+      summary:
+        "Figma's own remote MCP server: design file context, components and variables for coding agents.",
       transport: .remote(endpoint: URL(string: "https://mcp.figma.com/mcp")!),
       docsURL: URL(string: "https://developers.figma.com/docs/figma-mcp-server/"),
       dialect: .v2025_11_25,
@@ -1744,8 +1819,9 @@ nonisolated enum ServerCatalog {
           name: "FIGMA_ACCESS_TOKEN",
           isRequired: false,
           isSecret: true,
-          summary: "Figma personal access token, sent as the bearer token. Note that Figma's REST API takes its tokens in X-Figma-Token instead; if this path is refused, sign in with OAuth.",
-          header: .init(name: "Authorization", format: "Bearer {value}")),
+          summary:
+            "Figma personal access token, sent as the bearer token. Note that Figma's REST API takes its tokens in X-Figma-Token instead; if this path is refused, sign in with OAuth.",
+          header: .init(name: "Authorization", format: "Bearer {value}"))
       ]),
     // REMOTE. Its discovery document points authorization_servers at
     // vercel.com rather than at itself, so the OAuth dance leaves the MCP
@@ -1779,12 +1855,17 @@ nonisolated enum ServerCatalog {
     BastionServer(
       id: "vercel",
       displayName: "Vercel",
-      summary: "Vercel's own remote MCP server: projects, deployments, runtime logs, Web Analytics and documentation search.",
+      summary:
+        "Vercel's own remote MCP server: projects, deployments, runtime logs, Web Analytics and documentation search.",
       transport: .remote(endpoint: URL(string: "https://mcp.vercel.com")!),
       docsURL: URL(string: "https://vercel.com/docs/agent-resources/vercel-mcp"),
       dialect: .v2025_11_25,
       writeGate: nil,
-      writeTools: ["deploy_to_vercel", "use_vercel_cli", "import-claude-design-from-url", "buy_pro", "buy_credits", "buy_addon", "buy_domain", "change_toolbar_thread_resolve_status", "reply_to_toolbar_thread", "edit_toolbar_message", "add_toolbar_reaction"],
+      writeTools: [
+        "deploy_to_vercel", "use_vercel_cli", "import-claude-design-from-url", "buy_pro",
+        "buy_credits", "buy_addon", "buy_domain", "change_toolbar_thread_resolve_status",
+        "reply_to_toolbar_thread", "edit_toolbar_message", "add_toolbar_reaction",
+      ],
       gateBypass: [],
       authModes: [
         .init(
@@ -1811,8 +1892,9 @@ nonisolated enum ServerCatalog {
           name: "VERCEL_TOKEN",
           isRequired: false,
           isSecret: true,
-          summary: "Vercel access token, sent as the bearer token. Scope it to one team if you can - this server can deploy code and spend money, and the token's own scopes are the only thing that stops it.",
-          header: .init(name: "Authorization", format: "Bearer {value}")),
+          summary:
+            "Vercel access token, sent as the bearer token. Scope it to one team if you can - this server can deploy code and spend money, and the token's own scopes are the only thing that stops it.",
+          header: .init(name: "Authorization", format: "Bearer {value}"))
       ]),
     // REMOTE. Cloudflare runs seventeen separate hosted endpoints rather than
     // one; three of them are in this catalog - the API surface here, the
@@ -1839,9 +1921,13 @@ nonisolated enum ServerCatalog {
     BastionServer(
       id: "cloudflare",
       displayName: "Cloudflare",
-      summary: "Cloudflare's own remote MCP server: the API surface across zones, DNS, Workers, R2 and the rest of the account.",
+      summary:
+        "Cloudflare's own remote MCP server: the API surface across zones, DNS, Workers, R2 and the rest of the account.",
       transport: .remote(endpoint: URL(string: "https://mcp.cloudflare.com/mcp")!),
-      docsURL: URL(string: "https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/"),
+      docsURL: URL(
+        string:
+          "https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/"
+      ),
       dialect: .v2025_11_25,
       writeGate: nil,
       writeTools: [],
@@ -1871,8 +1957,9 @@ nonisolated enum ServerCatalog {
           name: "CLOUDFLARE_API_TOKEN",
           isRequired: false,
           isSecret: true,
-          summary: "Cloudflare API token, sent as the bearer token. Mint it against the specific zones and permissions you want reachable rather than reusing an account-wide token.",
-          header: .init(name: "Authorization", format: "Bearer {value}")),
+          summary:
+            "Cloudflare API token, sent as the bearer token. Mint it against the specific zones and permissions you want reachable rather than reusing an account-wide token.",
+          header: .init(name: "Authorization", format: "Bearer {value}"))
       ]),
     // REMOTE, and the only entry in this file that needs no credential at
     // all. A POST of `initialize` with no Authorization header returns 200.
@@ -1898,7 +1985,8 @@ nonisolated enum ServerCatalog {
       displayName: "Cloudflare Docs",
       summary: "Cloudflare's documentation search, as a remote MCP server. Needs no credential.",
       transport: .remote(endpoint: URL(string: "https://docs.mcp.cloudflare.com/mcp")!),
-      docsURL: URL(string: "https://github.com/cloudflare/mcp-server-cloudflare/tree/main/apps/docs-ai-search"),
+      docsURL: URL(
+        string: "https://github.com/cloudflare/mcp-server-cloudflare/tree/main/apps/docs-ai-search"),
       dialect: .v2025_11_25,
       writeGate: nil,
       writeTools: [],
@@ -1911,8 +1999,9 @@ nonisolated enum ServerCatalog {
           name: "CLOUDFLARE_DOCS_TOKEN",
           isRequired: false,
           isSecret: true,
-          summary: "Not needed. This server answers unauthenticated, and a remote entry has to declare at least one variable somewhere for a value to land; leave it empty.",
-          header: .init(name: "Authorization", format: "Bearer {value}")),
+          summary:
+            "Not needed. This server answers unauthenticated, and a remote entry has to declare at least one variable somewhere for a value to land; leave it empty.",
+          header: .init(name: "Authorization", format: "Bearer {value}"))
       ]),
     // REMOTE. A narrow read surface next to the full Cloudflare API entry:
     // Workers logs, analytics and traces, which is what you want open during
@@ -1933,9 +2022,13 @@ nonisolated enum ServerCatalog {
     BastionServer(
       id: "cloudflare-observability",
       displayName: "Cloudflare Observability",
-      summary: "Cloudflare Workers logs and analytics, as a remote MCP server: query invocations, errors and traces.",
+      summary:
+        "Cloudflare Workers logs and analytics, as a remote MCP server: query invocations, errors and traces.",
       transport: .remote(endpoint: URL(string: "https://observability.mcp.cloudflare.com/mcp")!),
-      docsURL: URL(string: "https://github.com/cloudflare/mcp-server-cloudflare/tree/main/apps/workers-observability"),
+      docsURL: URL(
+        string:
+          "https://github.com/cloudflare/mcp-server-cloudflare/tree/main/apps/workers-observability"
+      ),
       dialect: .v2025_11_25,
       writeGate: nil,
       writeTools: [],
@@ -1965,8 +2058,9 @@ nonisolated enum ServerCatalog {
           name: "CLOUDFLARE_OBSERVABILITY_TOKEN",
           isRequired: false,
           isSecret: true,
-          summary: "Cloudflare API token with Workers Observability read access, sent as the bearer token.",
-          header: .init(name: "Authorization", format: "Bearer {value}")),
+          summary:
+            "Cloudflare API token with Workers Observability read access, sent as the bearer token.",
+          header: .init(name: "Authorization", format: "Bearer {value}"))
       ]),
     // No credentials, so no auth modes. What authorises this server is the trust
     // relationship between this Mac and the phone - pairing, Developer Mode, and
@@ -1997,7 +2091,8 @@ nonisolated enum ServerCatalog {
     BastionServer(
       id: "ios-device",
       displayName: "iOS Device",
-      summary: "Drive a physical iPhone or iPad: screenshot, accessibility tree, tap, swipe, type, and app lifecycle.",
+      summary:
+        "Drive a physical iPhone or iPad: screenshot, accessibility tree, tap, swipe, type, and app lifecycle.",
       transport: .child(
         .init(
           npmName: "@mgcrea/mcp-ios-device",
@@ -2017,27 +2112,37 @@ nonisolated enum ServerCatalog {
           name: "IOS_DEVICE_ID",
           isRequired: false,
           isSecret: false,
-          summary: "CoreDevice identifier, UDID or name of the device to drive. Unset uses the only connected device; two connected and no value is an error that names them."),
+          summary:
+            "CoreDevice identifier, UDID or name of the device to drive. Unset uses the only connected device; two connected and no value is an error that names them."
+        ),
         .init(
           name: "IOS_DEVICE_WDA_URL",
           isRequired: false,
           isSecret: false,
-          summary: "Explicit WebDriverAgent URL. Unset derives it from the device's CoreDevice tunnel, which is the normal path and needs no port forwarding."),
+          summary:
+            "Explicit WebDriverAgent URL. Unset derives it from the device's CoreDevice tunnel, which is the normal path and needs no port forwarding."
+        ),
         .init(
           name: "IOS_DEVICE_LAUNCH_ARGS",
           isRequired: false,
           isSecret: false,
-          summary: "Launch arguments applied when a launch passes none, e.g. -CanopyDemoMode to open fixtures instead of the owner's real account."),
+          summary:
+            "Launch arguments applied when a launch passes none, e.g. -CanopyDemoMode to open fixtures instead of the owner's real account."
+        ),
         .init(
           name: "IOS_DEVICE_OUTPUT_DIR",
           isRequired: false,
           isSecret: false,
-          summary: "Where saved screenshots and pulled app containers land. Defaults to a directory under TMPDIR."),
+          summary:
+            "Where saved screenshots and pulled app containers land. Defaults to a directory under TMPDIR."
+        ),
         .init(
           name: "IOS_DEVICE_ALLOW_WRITES",
           isRequired: false,
           isSecret: false,
-          summary: "Enables the nine tools that drive the device: tap, tap_element, swipe, type, press_button, install, launch, terminate, pull_container."),
+          summary:
+            "Enables the nine tools that drive the device: tap, tap_element, swipe, type, press_button, install, launch, terminate, pull_container."
+        ),
       ]),
   ]
   // </generated:servers>

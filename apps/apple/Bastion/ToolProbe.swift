@@ -420,7 +420,9 @@ enum ToolProbe {
   /// Anything outside it throws rather than guesses: a tool called with
   /// arguments shaped by a guess is a worse outcome than a tool reported as
   /// unprobeable, because only one of those two is honest about what happened.
-  nonisolated private static func node(_ json: [String: Any], name: String, path: String, depth: Int) throws
+  nonisolated private static func node(
+    _ json: [String: Any], name: String, path: String, depth: Int
+  ) throws
     -> DynamicGenerationSchema
   {
     guard depth <= 4 else {

@@ -230,10 +230,12 @@ struct RemoteCheck {
       RemoteOAuth.PKCE.challenge(for: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk")
         == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
     check("no padding survives", !RemoteOAuth.PKCE().challenge.contains("="))
-    check("nothing needs URL-escaping", {
-      let c = RemoteOAuth.PKCE().challenge
-      return !c.contains("+") && !c.contains("/")
-    }())
+    check(
+      "nothing needs URL-escaping",
+      {
+        let c = RemoteOAuth.PKCE().challenge
+        return !c.contains("+") && !c.contains("/")
+      }())
     check(
       "two verifiers differ",
       RemoteOAuth.PKCE().verifier != RemoteOAuth.PKCE().verifier)
@@ -251,7 +253,8 @@ struct RemoteCheck {
     // The one that matters: a response to a request this app never made.
     check("a mismatched state is refused", code("code=abc&state=nope", state: "xyz") == nil)
     check("a missing state is refused", code("code=abc", state: "xyz") == nil)
-    check("an error response is refused", code("error=access_denied&state=xyz", state: "xyz") == nil)
+    check(
+      "an error response is refused", code("error=access_denied&state=xyz", state: "xyz") == nil)
 
     print("\nOAuth: token requests and token sets")
     // A code containing + or & is legal and would arrive truncated unencoded —

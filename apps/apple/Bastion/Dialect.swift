@@ -302,7 +302,8 @@ nonisolated enum Dialect {
   /// happens to look like a sentinel, which is the ambiguity the spec closes by
   /// requiring clients to encode any literal matching the pattern.
   static func decodeHeaderValue(_ raw: String) -> String? {
-    let prefix = "=?base64?", suffix = "?="
+    let prefix = "=?base64?"
+    let suffix = "?="
     guard raw.hasPrefix(prefix), raw.hasSuffix(suffix), raw.count > prefix.count + suffix.count
     else { return raw }
     let inner = String(raw.dropFirst(prefix.count).dropLast(suffix.count))

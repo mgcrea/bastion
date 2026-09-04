@@ -91,8 +91,11 @@ struct ServerCheckSheet: View {
             // A restart count is the number that turns "it feels flaky" into a
             // fact, so it is only shown when there is a fact to report.
             if live.restarts > 0 {
-              Label("\(live.restarts) restart\(live.restarts == 1 ? "" : "s")", systemImage: "arrow.clockwise")
-                .foregroundStyle(.orange)
+              Label(
+                "\(live.restarts) restart\(live.restarts == 1 ? "" : "s")",
+                systemImage: "arrow.clockwise"
+              )
+              .foregroundStyle(.orange)
             }
             Spacer()
           }
@@ -131,32 +134,36 @@ struct ServerCheckSheet: View {
           "Every editor that connects to this profile receives all \(count) tool "
             + "definition\(count == 1 ? "" : "s") before it can call one. That is "
             + "\(ToolCost.phrase(bytes: bytes, partial: run.listIsPartial)) of its context "
-            + "window, held for the whole conversation.")
-          .font(.callout)
-          .fixedSize(horizontal: false, vertical: true)
+            + "window, held for the whole conversation."
+        )
+        .font(.callout)
+        .fixedSize(horizontal: false, vertical: true)
 
         Text(
           "Counted from what this check received, with writes \(gate), at four bytes to the "
             + "token. Editors reshape tool definitions into their own prompt "
-            + "format, so read it as an order of magnitude rather than a bill.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "format, so read it as an order of magnitude rather than a bill."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
 
         if run.listIsPartial {
           Label(
             "The list is paginated and this check read only the first page, so the real figure "
               + "is higher.",
-            systemImage: "exclamationmark.triangle.fill")
-            .font(.caption).foregroundStyle(.orange)
-            .fixedSize(horizontal: false, vertical: true)
+            systemImage: "exclamationmark.triangle.fill"
+          )
+          .font(.caption).foregroundStyle(.orange)
+          .fixedSize(horizontal: false, vertical: true)
         }
 
         Text(
           "The Chat pane counts a smaller number for the same tools. It measures what Bastion "
             + "hands the on-device model after trimming each description, not what the server "
-            + "puts on the wire.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "puts on the wire."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
 
         if count > 5 {
           Divider()
@@ -189,9 +196,10 @@ struct ServerCheckSheet: View {
       VStack(alignment: .leading, spacing: 10) {
         Text(
           "Calls one tool for real, using Apple's on-device model to invent the arguments. "
-            + "Nothing leaves this Mac.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "Nothing leaves this Mac."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
 
         switch eligibility {
         case .anyTool(let because):
@@ -285,8 +293,9 @@ struct ServerCheckSheet: View {
         if entries.isEmpty {
           Text(
             showingEverything
-              ? "This profile has logged nothing." : "Nothing logged since the check began.")
-            .font(.caption).foregroundStyle(.secondary)
+              ? "This profile has logged nothing." : "Nothing logged since the check began."
+          )
+          .font(.caption).foregroundStyle(.secondary)
         }
       }
     }

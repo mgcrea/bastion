@@ -147,7 +147,9 @@ final class ServerInstaller {
   /// reusing the live supervised child rather than probing a private one, and
   /// this file has no business changing that from underneath them. The SDK's
   /// own constant is the same fact, sitting in a file, costing nothing.
-  nonisolated static func protocolCeiling(of server: BastionServer) -> (protocol: String, sdk: String)? {
+  nonisolated static func protocolCeiling(of server: BastionServer) -> (
+    protocol: String, sdk: String
+  )? {
     if DemoSeed.isEnabled { return DemoSeed.protocolCeiling(of: server) }
     guard server.origin != .builtin else { return nil }
     // Hoisted to the install prefix in practice — one prefix per server means
@@ -215,7 +217,8 @@ final class ServerInstaller {
       // A package with one unnamed-looking bin is the common case and refusing
       // it over a name mismatch would be pedantry with a broken server at the
       // end of it.
-      relative = map[package.binName] ?? map[package.npmName] ?? (map.count == 1 ? map.values.first : nil)
+      relative =
+        map[package.binName] ?? map[package.npmName] ?? (map.count == 1 ? map.values.first : nil)
     default:
       relative = nil
     }
@@ -371,7 +374,9 @@ final class ServerInstaller {
 
     checking.insert(server.id)
     let result = await Task.detached(priority: .userInitiated) { () -> Result<Plan, Error> in
-      do { return .success(try Self.runCheck(server, package: package)) } catch { return .failure(error) }
+      do { return .success(try Self.runCheck(server, package: package)) } catch {
+        return .failure(error)
+      }
     }.value
     checking.remove(server.id)
 
@@ -412,7 +417,9 @@ final class ServerInstaller {
 
   // MARK: - The subprocess
 
-  private nonisolated static func runInstall(_ server: BastionServer, package: BastionServer.Package) throws {
+  private nonisolated static func runInstall(
+    _ server: BastionServer, package: BastionServer.Package
+  ) throws {
     guard package.distribution == .npm else {
       throw InstallError.notPublished(package.npmName)
     }
@@ -562,7 +569,8 @@ final class ServerInstaller {
     // Nothing is written: no stub is rewritten, no tree is touched. The prefix
     // already has the `package.json` the install left there, and `--dry-run`
     // resolves against the installed tree without changing it.
-    process.arguments = installArguments(package, npm: npm, in: directory) + ["--dry-run", "--json"]
+    process.arguments =
+      installArguments(package, npm: npm, in: directory) + ["--dry-run", "--json"]
     process.currentDirectoryURL = directory
     process.environment = npmEnvironment()
 
@@ -608,7 +616,8 @@ final class ServerInstaller {
     }
     // `add` rather than `change` when the tree lost the package underneath us.
     if let add = added.first(where: { $0["name"] as? String == package.npmName }),
-      let version = add["version"] as? String {
+      let version = add["version"] as? String
+    {
       return .package(version)
     }
 

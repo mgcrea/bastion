@@ -517,7 +517,8 @@ final class ServerCheck {
         print("\n\(profile.name)/\(server.id) — \(run.wasWarm ? "already running" : "cold start")")
         for step in run.steps { print("  " + line(for: step)) }
         for tool in run.tools {
-          let mark = tool.readOnlyHint == true ? "r/o" : (tool.readOnlyHint == false ? "rw " : "  ?")
+          let mark =
+            tool.readOnlyHint == true ? "r/o" : (tool.readOnlyHint == false ? "rw " : "  ?")
           let tokens = ToolCost.tokens(bytes: tool.wireBytes)
           print("    \(mark)  \(String(format: "%6d", tokens))  \(tool.name)")
         }

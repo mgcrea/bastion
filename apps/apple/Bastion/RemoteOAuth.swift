@@ -230,7 +230,8 @@ nonisolated enum RemoteOAuth {
     metadata: Metadata, clientID: String, redirectURI: String, resource: URL, state: String,
     pkce: PKCE, scope: String?
   ) -> URL? {
-    guard var components = URLComponents(url: metadata.authorization, resolvingAgainstBaseURL: false)
+    guard
+      var components = URLComponents(url: metadata.authorization, resolvingAgainstBaseURL: false)
     else { return nil }
     var items = [
       URLQueryItem(name: "response_type", value: "code"),

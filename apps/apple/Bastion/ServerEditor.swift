@@ -171,8 +171,9 @@ struct ServerEditor: View {
           ContentUnavailableView(
             "Everything in the catalog is installed",
             systemImage: "checkmark.circle",
-            description: Text("Use Custom to add a server by npm package."))
-            .padding(.top, 40)
+            description: Text("Use Custom to add a server by npm package.")
+          )
+          .padding(.top, 40)
         } else {
           ForEach(available) { entry in
             CatalogRow(entry: entry, add: { add(catalogEntry: entry) })
@@ -258,9 +259,10 @@ struct ServerEditor: View {
               Text(
                 "Nothing is installed and no process is started. What Bastion adds is the "
                   + "credential in the Keychain instead of in every config file, one identity "
-                  + "per profile, and a record of every call.")
-                .font(.caption2).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                  + "per profile, and a record of every call."
+              )
+              .font(.caption2).foregroundStyle(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
             }
             Field("Docs URL", text: $draft.docsUrl, placeholder: "https://…")
             HStack {
@@ -276,8 +278,9 @@ struct ServerEditor: View {
             }
             Text(
               "The version the server itself speaks. Bastion fronts clients with the newest one "
-                + "either way and translates.")
-              .font(.caption2).foregroundStyle(.secondary)
+                + "either way and translates."
+            )
+            .font(.caption2).foregroundStyle(.secondary)
           }
         }
 
@@ -289,9 +292,10 @@ struct ServerEditor: View {
                   + "variable that is not listed here can never be set on the child process."
                 : "What Bastion sends with each request. A remote server has no environment, so "
                   + "each variable names the header it becomes — Authorization with a format of "
-                  + "Bearer {value} is the usual one.")
-              .font(.caption).foregroundStyle(.secondary)
-              .fixedSize(horizontal: false, vertical: true)
+                  + "Bearer {value} is the usual one."
+            )
+            .font(.caption).foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
 
             ForEach($draft.variables) { $variable in
               VariableRow(
@@ -308,7 +312,8 @@ struct ServerEditor: View {
             Field(
               "Write gate", text: $draft.writeGate, placeholder: "ACME_ALLOW_WRITES",
               help: "The variable that turns destructive tools on, if there is one. Bastion sets "
-                + "it per profile — to \"0\" when the profile's toggle is off, never leaving it unset.")
+                + "it per profile — to \"0\" when the profile's toggle is off, never leaving it unset."
+            )
           }
         }
       }
@@ -327,8 +332,12 @@ struct ServerEditor: View {
           TextField("ACME_TOKEN", text: $variable.name)
             .font(.system(.body, design: .monospaced))
             .textFieldStyle(.roundedBorder)
-          Button(role: .destructive) { remove() } label: { Image(systemName: "minus.circle") }
-            .buttonStyle(.borderless)
+          Button(role: .destructive) {
+            remove()
+          } label: {
+            Image(systemName: "minus.circle")
+          }
+          .buttonStyle(.borderless)
         }
         TextField("What it is", text: $variable.summary)
           .textFieldStyle(.roundedBorder)
@@ -344,9 +353,10 @@ struct ServerEditor: View {
           }
           Text(
             "The header this becomes, and the template around it. {value} is where the "
-              + "credential goes, so a profile holds the key and not the word Bearer.")
-            .font(.caption2).foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+              + "credential goes, so a profile holds the key and not the word Bearer."
+          )
+          .font(.caption2).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
         }
         HStack(spacing: 12) {
           Toggle("Required", isOn: $variable.isRequired)
@@ -378,17 +388,22 @@ struct ServerEditor: View {
             "Offered as Default / On / Off rather than a checkbox, because unset is its own "
               + "state: the server falls through to its own config file and then to whichever "
               + "of these you pick. Match the server's documented default — getting it wrong "
-              + "is how a profile that looks untouched turns a safety check off.")
-            .font(.caption2).foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+              + "is how a profile that looks untouched turns a safety check off."
+          )
+          .font(.caption2).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
         }
         if variable.isSecret {
-          Text("Held in the Keychain. Never written to a client config, a log line or the Activity window.")
-            .font(.caption2).foregroundStyle(.secondary)
+          Text(
+            "Held in the Keychain. Never written to a client config, a log line or the Activity window."
+          )
+          .font(.caption2).foregroundStyle(.secondary)
         }
         if variable.isState {
-          Text("Points at a file or directory the server writes. Bastion redirects it into each profile's own directory, so two profiles are never one login.")
-            .font(.caption2).foregroundStyle(.secondary)
+          Text(
+            "Points at a file or directory the server writes. Bastion redirects it into each profile's own directory, so two profiles are never one login."
+          )
+          .font(.caption2).foregroundStyle(.secondary)
         }
       }
       .onChange(of: variable.isBoolean) { _, isBoolean in

@@ -909,7 +909,8 @@ enum BuiltinTools {
     let serverID = try string(arguments, "server")
     guard Profile.isValidName(name) else {
       throw ToolError.badArgument(
-        name: "name", expected: "lowercase letters, digits and dashes — it becomes a URL path "
+        name: "name",
+        expected: "lowercase letters, digits and dashes — it becomes a URL path "
           + "segment and a Keychain account component")
     }
     guard let server = ServerStore.shared.server(id: serverID) else {
@@ -1090,7 +1091,8 @@ enum BuiltinTools {
     let backup = try ClientWiring.unwire(client)
     var out: [String: Any] = ["client": id, "unwired": true]
     if let backup { out["backup"] = backup.path }
-    out["note"] = "Only Bastion's own entries were removed; everything else in the file is as it was."
+    out["note"] =
+      "Only Bastion's own entries were removed; everything else in the file is as it was."
     return out
   }
 

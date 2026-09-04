@@ -228,7 +228,11 @@ final class ChatSession {
   // MARK: - The session
 
   func toggle(_ tool: MCPTool) {
-    if selected.contains(tool.name) { selected.remove(tool.name) } else { selected.insert(tool.name) }
+    if selected.contains(tool.name) {
+      selected.remove(tool.name)
+    } else {
+      selected.insert(tool.name)
+    }
     rebuild()
   }
 
@@ -247,7 +251,10 @@ final class ChatSession {
           try ToolProbe.bridgeTool(for: tool) { [self] json in
             let call = ToolProbe.invoke(
               tool: tool, argumentsJSON: json, profile: profile, server: server,
-              id: callIDs.withLock { $0 += 1; return $0 })
+              id: callIDs.withLock {
+                $0 += 1
+                return $0
+              })
             Task { @MainActor in self.record(call) }
             return call.output
           })

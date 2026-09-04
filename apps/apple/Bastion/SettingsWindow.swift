@@ -175,15 +175,17 @@ private struct GeneralPane: View {
         Text(
           "Bastion listens on 127.0.0.1 only, and that is not configurable. Changing the port "
             + "takes effect when Bastion next starts, and every client config already written "
-            + "names the old one.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "names the old one."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
         if port != Int(Gateway.shared.port) {
           Label(
             "Currently serving on \(String(Gateway.shared.port)). Quit and reopen Bastion to move it.",
-            systemImage: "exclamationmark.triangle.fill")
-            .font(.caption).foregroundStyle(.orange)
-            .fixedSize(horizontal: false, vertical: true)
+            systemImage: "exclamationmark.triangle.fill"
+          )
+          .font(.caption).foregroundStyle(.orange)
+          .fixedSize(horizontal: false, vertical: true)
         }
       } header: {
         Text("Gateway")
@@ -194,9 +196,10 @@ private struct GeneralPane: View {
           .frame(maxWidth: 200)
         Text(
           "A client config gets one entry per profile, named <prefix><server>. Empty writes the "
-            + "server name alone, which is the default.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "server name alone, which is the default."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
         if ClientWiring.isValidPrefix(keyPrefix) {
           Text("Entries would be named \(sampleKeys).")
             .font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
@@ -207,9 +210,10 @@ private struct GeneralPane: View {
           Label(
             "Lowercase letters, digits and dashes, starting with a letter or digit. Ignored "
               + "until it is.",
-            systemImage: "exclamationmark.triangle.fill")
-            .font(.caption).foregroundStyle(.orange)
-            .fixedSize(horizontal: false, vertical: true)
+            systemImage: "exclamationmark.triangle.fill"
+          )
+          .font(.caption).foregroundStyle(.orange)
+          .fixedSize(horizontal: false, vertical: true)
         }
         // The cost worth naming before someone changes it: a client's saved
         // permission rules are keyed on the tool name, and the tool name carries
@@ -219,9 +223,10 @@ private struct GeneralPane: View {
             + "it, and renames the tools the model sees with them — 'mcp__bastion_shopify__…' "
             + "becomes 'mcp__shopify__…'. Any permission rule saved against the old name stops "
             + "matching. Entries Bastion did not write are never touched, and a name already "
-            + "taken by one of them is refused rather than overwritten.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "taken by one of them is refused rather than overwritten."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
       } header: {
         Text("MCP clients")
       }
@@ -239,9 +244,10 @@ private struct GeneralPane: View {
         Text(
           "npm can be told to refuse versions published too recently, which is a real defence: it "
             + "is the window in which a compromised release tends to get caught and unpulled. "
-            + "Bastion reads that setting from your ~/.npmrc and leaves it alone by default.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "Bastion reads that setting from your ~/.npmrc and leaves it alone by default."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
         if releaseAge >= 0 {
           Label(
             releaseAge == 0
@@ -249,10 +255,11 @@ private struct GeneralPane: View {
                 + "to everything else."
               : "Bastion will only install versions at least \(releaseAge) day\(releaseAge == 1 ? "" : "s") "
                 + "old, whatever ~/.npmrc says.",
-            systemImage: releaseAge == 0 ? "exclamationmark.triangle.fill" : "info.circle")
-            .font(.caption)
-            .foregroundStyle(releaseAge == 0 ? .orange : .secondary)
-            .fixedSize(horizontal: false, vertical: true)
+            systemImage: releaseAge == 0 ? "exclamationmark.triangle.fill" : "info.circle"
+          )
+          .font(.caption)
+          .foregroundStyle(releaseAge == 0 ? .orange : .secondary)
+          .fixedSize(horizontal: false, vertical: true)
         }
       } header: {
         Text("Installing servers")
@@ -276,9 +283,10 @@ private struct AboutPane: View {
           // credentials is otherwise a confusing afternoon.
           Text(
             "A debug build. It has its own bundle identifier, and therefore its own Keychain "
-              + "items, its own profiles and its own port.")
-            .font(.caption).foregroundStyle(.orange)
-            .fixedSize(horizontal: false, vertical: true)
+              + "items, its own profiles and its own port."
+          )
+          .font(.caption).foregroundStyle(.orange)
+          .fixedSize(horizontal: false, vertical: true)
         }
       } header: {
         Text("This build")
@@ -288,17 +296,19 @@ private struct AboutPane: View {
         Text(
           "Bastion binds 127.0.0.1 and nothing else, validates Origin and Host on every request, "
             + "and requires a per-client bearer token. It ships with no entitlements file at all: "
-            + "spawning children and binding loopback need none.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "spawning children and binding loopback need none."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
         Text(
           "The audit log records which profile, which method, which tool and the arguments it was "
             + "called with; results too, for a profile that asks for them. Credentials are never "
             + "recorded, and none of it is written to disk unless you keep an audit log. It does "
             + "not see what a server then "
-            + "does over the network or on disk.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "does over the network or on disk."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
       } header: {
         Text("What it does")
       }
@@ -360,9 +370,10 @@ private struct UpdatesPane: View {
           "Off until you say otherwise. This is the only network connection Bastion makes, and it "
             + "makes none at all until you turn this on or press Check Now. It reads one file, the "
             + "appcast at bastion.mgcrea.io/appcast.xml, which redirects to the GitHub release, "
-            + "and sends no identifier with it: not your licence key, not a machine id.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "and sends no identifier with it: not your licence key, not a machine id."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
       }
     }
     .formStyle(.grouped)
@@ -407,18 +418,20 @@ private struct AuditPane: View {
         Text(
           "What every profile records unless it says otherwise. Arguments answer 'what did the "
             + "agent actually send'; results are the unbounded half, so they are opt-in. "
-            + "Credentials are never recorded either way.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "Credentials are never recorded either way."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
 
         Toggle("Let an agent read every profile's activity", isOn: $allProfiles)
         Text(
           "Off. An agent asking Bastion for recent activity is answered with its own profile's "
             + "lines — which it already sent and received. Turning this on lets one profile's "
             + "agent read another's, and another profile's lines never carry arguments or "
-            + "results whichever way this is set.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "results whichever way this is set."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
       } header: {
         Text("What is recorded")
       }
@@ -428,18 +441,20 @@ private struct AuditPane: View {
         Text(
           keepFile
             ? "Records survive a quit, in \(AuditLog.directory.path), readable only by you."
-            : "Off. The Activity window is a ring in memory and nothing outlives the app.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            : "Off. The Activity window is a ring in memory and nothing outlives the app."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
 
         Toggle("Include arguments and results in the file", isOn: $filePayloads)
           .disabled(!keepFile)
         Text(
           "Off, and separate from the switch above on purpose: keeping a record of WHICH tools "
             + "ran is a smaller thing to leave on disk than keeping what they were called with. "
-            + "Turning both on writes payloads to a file.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "Turning both on writes payloads to a file."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
 
         LabeledContent("Keep for") {
           Stepper("\(maxDays) days", value: $maxDays, in: 1...365)
@@ -449,9 +464,10 @@ private struct AuditPane: View {
         }
         Text(
           "Whichever runs out first. The log is written in segments and a whole segment is "
-            + "dropped at a time — a chain cannot lose a record from the middle and still verify.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "dropped at a time — a chain cannot lose a record from the middle and still verify."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
       } header: {
         Text("On disk")
       }
@@ -471,10 +487,11 @@ private struct AuditPane: View {
                 + "segment\(summary.segments == 1 ? "" : "s"), \(bytes(summary.bytes)). "
                 + "The chain verifies."
               : "\(summary.records) records, and the chain does NOT verify: "
-                + describe(summary.report.failures))
-            .font(.caption)
-            .foregroundStyle(summary.report.isIntact ? Color.secondary : .red)
-            .fixedSize(horizontal: false, vertical: true)
+                + describe(summary.report.failures)
+          )
+          .font(.caption)
+          .foregroundStyle(summary.report.isIntact ? Color.secondary : .red)
+          .fixedSize(horizontal: false, vertical: true)
         }
         if let note {
           Text(note).font(.caption).foregroundStyle(.secondary)
@@ -484,9 +501,10 @@ private struct AuditPane: View {
           "Each record carries a hash of the one before it, so an edited field, a deleted record "
             + "or a truncated file can be detected. That is the whole claim: it catches tampering "
             + "by something that does not know it is a chain. It is not proof against anyone who "
-            + "can write the file, because they can recompute it.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "can write the file, because they can recompute it."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
       } header: {
         Text("The chain")
       }
@@ -496,7 +514,8 @@ private struct AuditPane: View {
           LabeledContent {
             Button {
               NSPasteboard.general.clearContents()
-              NSPasteboard.general.setString((try? AuditSigning.publicKey()) ?? "", forType: .string)
+              NSPasteboard.general.setString(
+                (try? AuditSigning.publicKey()) ?? "", forType: .string)
               copied = true
             } label: {
               Image(systemName: copied ? "checkmark" : "doc.on.doc")
@@ -521,13 +540,15 @@ private struct AuditPane: View {
             + "does not prove the log was not curated before it was signed — you control this "
             + "machine. And it only means anything to someone who already has the key above, "
             + "sent to them some other way: a key that travels only inside the export proves "
-            + "nothing, because a forger would include their own.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+            + "nothing, because a forger would include their own."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
         Text(
-          "A new Mac makes a new key. Exports already signed keep verifying against the old one.")
-          .font(.caption).foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+          "A new Mac makes a new key. Exports already signed keep verifying against the old one."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
       } header: {
         Text("Signing")
       }

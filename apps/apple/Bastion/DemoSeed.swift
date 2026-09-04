@@ -651,7 +651,8 @@ enum DemoSeed {
         id: "windsurf", displayName: "Windsurf",
         configURL: home.appendingPathComponent(".codeium/windsurf/mcp_config.json"),
         rootKey: "mcpServers", transport: .bridge,
-        caveat: "spawns bastion-bridge; Windsurf's remote shape is a serverUrl, which this does not write",
+        caveat:
+          "spawns bastion-bridge; Windsurf's remote shape is a serverUrl, which this does not write",
         bundleID: "com.exafunction.windsurf", symbol: "wind"),
       ClientWiring.Client(
         id: "codex", displayName: "ChatGPT & Codex",
@@ -730,7 +731,9 @@ enum DemoSeed {
         "/Users/you/Projects/acme-api": [
           "mcpServers": [
             "sentry": ["command": "npx", "args": ["-y", "@sentry/mcp-server"]],
-            "postgres": ["command": "npx", "args": ["-y", "@modelcontextprotocol/server-postgres"]],
+            "postgres": [
+              "command": "npx", "args": ["-y", "@modelcontextprotocol/server-postgres"],
+            ],
           ]
         ],
         "/Users/you/Projects/weekly-report": [
@@ -787,20 +790,36 @@ enum DemoSeed {
     let query: [String: Any] = ["type": "string", "description": "Search query."]
 
     let tools = [
-      tool("shopify_list_products", "List products, newest first.", required: [], properties: ["first": count]),
-      tool("shopify_list_collections", "List collections.", required: [], properties: ["first": count]),
+      tool(
+        "shopify_list_products", "List products, newest first.", required: [],
+        properties: ["first": count]),
+      tool(
+        "shopify_list_collections", "List collections.", required: [], properties: ["first": count]),
       tool("shopify_list_locations", "List inventory locations.", required: [], properties: [:]),
-      tool("shopify_list_orders", "List orders, newest first.", required: [], properties: ["first": count]),
-      tool("shopify_search_products", "Search products by query.", required: ["query"], properties: ["query": query, "first": count]),
+      tool(
+        "shopify_list_orders", "List orders, newest first.", required: [],
+        properties: ["first": count]),
+      tool(
+        "shopify_search_products", "Search products by query.", required: ["query"],
+        properties: ["query": query, "first": count]),
       tool("shopify_get_product", "One product by id.", required: ["id"], properties: ["id": id]),
       tool("shopify_get_order", "One order by id.", required: ["id"], properties: ["id": id]),
-      tool("shopify_get_collection", "One collection by id.", required: ["id"], properties: ["id": id]),
+      tool(
+        "shopify_get_collection", "One collection by id.", required: ["id"], properties: ["id": id]),
       tool("shopify_get_customer", "One customer by id.", required: ["id"], properties: ["id": id]),
-      tool("shopify_get_inventory_level", "Stock for one inventory item.", required: ["inventoryItemId"], properties: ["inventoryItemId": id]),
-      tool("shopify_list_metafields", "Metafields on one resource.", required: ["ownerId"], properties: ["ownerId": id]),
-      tool("shopify_list_variants", "Variants of one product.", required: ["productId"], properties: ["productId": id, "first": count]),
+      tool(
+        "shopify_get_inventory_level", "Stock for one inventory item.",
+        required: ["inventoryItemId"], properties: ["inventoryItemId": id]),
+      tool(
+        "shopify_list_metafields", "Metafields on one resource.", required: ["ownerId"],
+        properties: ["ownerId": id]),
+      tool(
+        "shopify_list_variants", "Variants of one product.", required: ["productId"],
+        properties: ["productId": id, "first": count]),
       tool("shopify_get_shop", "The shop's own settings.", required: [], properties: [:]),
-      tool("shopify_list_price_rules", "Discount price rules.", required: [], properties: ["first": count]),
+      tool(
+        "shopify_list_price_rules", "Discount price rules.", required: [],
+        properties: ["first": count]),
     ].compactMap { $0 }
 
     // Chosen the way `finishLoading` chooses: callable-cold first, then
