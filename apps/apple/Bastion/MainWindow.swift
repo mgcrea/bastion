@@ -227,24 +227,32 @@ struct MainView: View {
         }
       }
 
-      Section("Clients") {
-        ForEach(ClientWiring.all) { client in
-          Label {
-            HStack(spacing: 6) {
-              Text(client.displayName)
-              Spacer(minLength: 4)
-              ClientDot(client: client)
+      // Installed only, and absent rather than empty when there are none. Which
+      // editors this Mac happens to have is a fact about this Mac: a client
+      // nobody has is not a client to nag anybody about, and a row that cannot
+      // be acted on is a support burden with no action attached. The id space is
+      // untouched — `wire_client` still resolves against `ClientWiring.all`, so
+      // nothing here narrows what can be wired.
+      if !installedClients.isEmpty {
+        Section("Clients") {
+          ForEach(installedClients) { client in
+            Label {
+              HStack(spacing: 6) {
+                Text(client.displayName)
+                Spacer(minLength: 4)
+                ClientDot(client: client)
+              }
+            } icon: {
+              // The client's own app icon, so a row is recognised before it is
+              // read. The server rows above go the other way on purpose: their
+              // three glyphs say what KIND of thing a server is, which is the
+              // question there. Here there is nothing to encode — which client
+              // this is IS the fact, and every one of them already has a picture
+              // the reader knows.
+              ClientIconView(client: client)
             }
-          } icon: {
-            // The client's own app icon, so a row is recognised before it is
-            // read. The server rows above go the other way on purpose: their
-            // three glyphs say what KIND of thing a server is, which is the
-            // question there. Here there is nothing to encode — which client
-            // this is IS the fact, and every one of them already has a picture
-            // the reader knows.
-            ClientIconView(client: client)
+            .tag(MainPane.client(client.id))
           }
-          .tag(MainPane.client(client.id))
         }
       }
 
@@ -256,6 +264,17 @@ struct MainView: View {
     }
     .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
     .safeAreaInset(edge: .bottom) { sidebarStatus }
+  }
+
+  /// The MCP clients this Mac actually has. Recomputed per redraw, because
+  /// `isInstalled` is a LaunchServices lookup and a directory check rather than
+  /// a stored value, and installing an editor while this window is open is a
+  /// perfectly ordinary thing to do.
+  ///
+  /// The detail pane deliberately does not filter: a pane remembered in
+  /// `@AppStorage` for a client since uninstalled still renders, and says so.
+  private var installedClients: [ClientWiring.Client] {
+    ClientWiring.all.filter(\.isInstalled)
   }
 
   /// The add button, under the list where macOS puts one.

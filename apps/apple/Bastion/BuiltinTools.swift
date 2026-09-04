@@ -180,9 +180,16 @@ enum BuiltinTools {
 
     Declaration(
       "list_clients", title: "List clients",
-      "The MCP clients Bastion can configure — Claude Code, Claude Desktop, VS Code, Cursor, "
-        + "and ChatGPT & Codex, which share one file — whether each is installed, and whether "
-        + "its config currently points at Bastion."),
+      "The MCP clients on this Mac that Bastion can configure, and whether each one's config "
+        + "currently points at Bastion. Clients Bastion knows but this Mac does not have are "
+        + "named in 'not_installed' rather than listed in full, because there is nothing to "
+        + "report about a config file that does not exist. Every id in either place is wirable.",
+      properties: [
+        "include_not_installed": schema(
+          "boolean",
+          "List the absent clients in full too, with their would-be config paths. Off by "
+            + "default.")
+      ]),
 
     Declaration(
       "status", title: "Bastion status",
@@ -369,7 +376,10 @@ enum BuiltinTools {
         + "and a backup is written first. What lands in the file is a revocable loopback token, "
         + "never a credential.",
       properties: [
-        "client": schema("string", "The client id, as listed by list_clients."),
+        "client": schema(
+          "string",
+          "The client id, from either list_clients' rows or its 'not_installed' ids — wiring a "
+            + "client that is not installed yet is allowed, and writes the config it will read."),
         "profiles": [
           "type": "array", "items": ["type": "string"],
           "description":
@@ -424,7 +434,7 @@ enum BuiltinTools {
     case "get_server": return try getServer(arguments)
     case "list_catalog": return listCatalog()
     case "list_profiles": return listProfiles(arguments)
-    case "list_clients": return listClients()
+    case "list_clients": return listClients(arguments)
     case "status": return status()
     case "recent_activity": return recentActivity(arguments, caller: caller)
     case "check_server_update": return try checkServerUpdate(arguments)
@@ -710,17 +720,31 @@ enum BuiltinTools {
       }
   }
 
-  private static func listClients() -> Any {
+  private static func listClients(_ arguments: [String: Any]) -> Any {
     // The same list `wire_client` writes from, so the status this reports is a
     // status that Configure can actually reach. Reported against every profile,
     // it named a switched-off server as missing and then refused to write it.
     let profiles = ProfileStore.shared.onEnabledServers
-    return ClientWiring.all.map { client -> [String: Any] in
+    // Installed only by default, matching the sidebar: a row about this Mac beats
+    // a row describing a config file that does not exist.
+    //
+    // Named rather than dropped, which is the difference between this and the
+    // sidebar. A window can afford to say nothing about an absent client because
+    // the person reading it knows what they have installed; an agent does not,
+    // and one that cannot see 'cursor' at all will report Bastion as unable to
+    // configure Cursor rather than reporting Cursor as absent. The ids stay
+    // wirable either way — `wire_client` resolves against `ClientWiring.all`.
+    let includeAbsent = arguments["include_not_installed"] as? Bool ?? false
+    // Asked once per client. `isInstalled` is a LaunchServices lookup, and the
+    // rows and the omitted list both want the answer.
+    let all = ClientWiring.all.map { (client: $0, installed: $0.isInstalled) }
+    let rows = all.filter { includeAbsent || $0.installed }.map { entry -> [String: Any] in
+      let client = entry.client
       var row: [String: Any] = [
         "id": client.id,
         "display_name": client.displayName,
         "config_path": client.configURL.path,
-        "installed": client.isInstalled,
+        "installed": entry.installed,
         "status": ClientWiring.status(of: client, profiles: profiles).summary,
         "transport": client.transport == .http ? "http" : "bridge",
         // So a reader knows what it is about to open before it goes looking for
@@ -730,6 +754,17 @@ enum BuiltinTools {
       if let caveat = client.caveat { row["note"] = caveat }
       return row
     }
+
+    var out: [String: Any] = ["clients": rows]
+    let absent = all.filter { !$0.installed }.map(\.client)
+    if !includeAbsent, !absent.isEmpty {
+      out["not_installed"] = absent.map(\.id)
+      out["note"] =
+        "Not on this Mac, so not listed: "
+        + absent.map(\.displayName).joined(separator: ", ")
+        + ". Bastion can still wire any of them; pass include_not_installed for their rows."
+    }
+    return out
   }
 
   private static func status() -> Any {

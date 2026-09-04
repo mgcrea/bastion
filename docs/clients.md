@@ -1,7 +1,7 @@
 # Clients
 
 `docs/servers.md` describes what Bastion runs and `docs/remote-servers.md` the
-transport under the remote half of it. This describes the other end: the five
+transport under the remote half of it. This describes the other end: the seven
 MCP clients Bastion knows how to configure, why they do not all get the same
 entry, and what the client pane can and cannot tell you about a file it does not
 own.
@@ -306,6 +306,38 @@ which is why a Codex entry — `url` and `http_headers`, no `type` — flows thr
 `isOurs`, `target`, the audit, the collision check and the merge without any of
 them learning the file is TOML. The format shows up in exactly two places: the
 function that opens the file, and the one that writes it.
+
+## Which clients are shown
+
+Knowing how to configure a client and having it installed are different facts,
+and only the second is about this Mac. The sidebar lists the installed ones and
+drops the whole _Clients_ section when there are none: a row that cannot be acted
+on is a support burden with no action attached, and nobody needs to be told their
+Mac is missing an editor they never wanted. `isInstalled` asks LaunchServices
+first, so an editor in `~/Applications` or on a second volume counts, and falls
+back to the config directory for the two clients that are a command rather than
+an app.
+
+`list_clients` filters the same way and then says what it left out:
+
+```json
+{
+  "clients": [{ "id": "claude-code", "installed": true, "status": "configured" }],
+  "not_installed": ["cursor", "windsurf"],
+  "note": "Not on this Mac, so not listed: Cursor, Windsurf. Bastion can still wire any of them; pass include_not_installed for their rows."
+}
+```
+
+Named rather than dropped, which is the one place this parts company with the
+sidebar. A window can afford to say nothing about an absent client, because the
+person reading it knows what they have installed. An agent does not, and one that
+cannot see `cursor` anywhere will report Bastion as unable to configure Cursor
+rather than reporting Cursor as absent. `include_not_installed` gives the full
+rows back.
+
+Neither filter narrows what can be wired. `wire_client` resolves against the
+whole list, so wiring a client before installing it works and writes the config
+it will read on first launch.
 
 ## What the client pane reports
 
