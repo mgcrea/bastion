@@ -57,7 +57,7 @@ than once when the entry is added, because a name that passed yesterday can
 resolve somewhere else today. `make remote-check` asserts all of it.
 
 Bastion curates lightly, and only to fill the first screen. The catalog seeds
-twenty entries — nine servers written here, and eleven endpoints their own
+twenty-one entries — ten servers written here, and eleven endpoints their own
 vendors operate — because a catalog that opens with nothing recognisable in it
 teaches nobody what the app is for. It is still not trying to be a directory:
 Docker MCP Toolkit ships hundreds of curated servers, Anthropic ships MCPB

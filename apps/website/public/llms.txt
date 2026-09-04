@@ -69,9 +69,9 @@ runs it.
 
 ## Servers
 
-Bastion ships with nothing installed. Twenty entries are in the catalog you install from. Nine are
+Bastion ships with nothing installed. Twenty-one entries are in the catalog you install from. Ten are
 servers written here and run as child processes — App Store Connect, Reddit, X, UniFi Protect, UniFi
-Network, Shopify, OVHcloud, Keycloak and npm — and eleven are https endpoints their own vendors
+Network, Shopify, OVHcloud, Keycloak, npm and iOS Device — and eleven are https endpoints their own vendors
 operate: Stripe, GitHub, Notion, Linear, Sentry, Atlassian, Figma, Vercel and three Cloudflare
 endpoints. Anything else on npm can be added by package name, or by URL for a remote server. Eight
 of the nine children sit behind a write gate and Shopify is read-only; a remote server has no
