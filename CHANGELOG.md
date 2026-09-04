@@ -4,10 +4,10 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.6.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.7.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.7.0] - 2026-09-04
 
 ### Added
 
@@ -41,6 +41,28 @@ are taken from this file, which is the curated summary.
   `nextCursor` to the end — under a facade a tool reachable only through the dispatcher is a tool
   that has silently ceased to exist if page two goes missing. The badge on the profile row carries
   both figures, "0.4k of 26.2k", rather than replacing the measurement with the saving.
+
+### Internal
+
+- **The facade has checks on both sides of the app.** `make facade` drives it end to end against a
+  running Debug build — the saving, the way in, the audit, the gate — and `make unit` gained the
+  routing half, which needs no app and no network. The end-to-end half is what asserts the claim
+  that matters and cannot be made without a process: that `bastion_call_tool` is opened back into
+  the real `tools/call` _before_ the audit chain and the write gate see it. A facade that only
+  routed correctly in a unit test would still be able to launder every call through one name.
+
+- **The site's buttons no longer flash blue on first paint.** Colour utilities are references, not
+  literals — `color: var(--color-fg)`. The palette sat in a `:root` block appended after Tailwind's
+  output, so the literals landed in the last ~13% of the bundle while the utilities reading them
+  sat a third of the way in; a browser painting from a partially parsed stylesheet resolved every
+  one to invalid-at-computed-value-time and fell back to the UA link blue. The tokens moved into
+  `tokens.css` ahead of the utilities, and `public/_headers` now serves `/_astro/*` as `immutable`
+  — those filenames carry a content hash, and Workers Assets had been putting a conditional request
+  on the render-blocking stylesheet on every refresh, which is the round-trip that opened the
+  window.
+
+- **The Apple mark on the Download buttons.** It says what "Download for macOS" says, in the space
+  before the words. The sibling sites carry the same glyph on the same button.
 
 ## [1.6.0] - 2026-09-04
 
