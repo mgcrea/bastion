@@ -13,6 +13,7 @@
  * commits, and a marketing page is the last place it should be restated.
  */
 import { DOCS, PRICE, REPO_URL, SHIPPED, TRIAL } from "../config";
+import AppleGlyph from "./AppleGlyph.astro";
 import Button from "./Button.astro";
 import SectionHeader from "./SectionHeader.astro";
 
@@ -127,6 +128,7 @@ const INCLUDED = [
                   Buy a licence
                 </Button>
                 <Button href="/download" variant="secondary" size="lg">
+                  <AppleGlyph size={16} />
                   Download for macOS
                 </Button>
               </>

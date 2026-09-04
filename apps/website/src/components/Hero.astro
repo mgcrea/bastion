@@ -1,5 +1,6 @@
 ---
 import { APP_VERSION, COUNTS, GATEWAY, PRICE, REQUIRES, SHIPPED, TRIAL } from "../config";
+import AppleGlyph from "./AppleGlyph.astro";
 import Button from "./Button.astro";
 import Logo from "./Logo.astro";
 
@@ -115,6 +116,7 @@ const CALLS = [
           SHIPPED ? (
             <>
               <Button href="/download" size="lg">
+                <AppleGlyph size={16} />
                 Download for macOS
               </Button>
               <Button href="#how" variant="secondary" size="lg">

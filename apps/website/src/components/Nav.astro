@@ -1,5 +1,6 @@
 ---
 import { APP_VERSION, DOCS, PRICE, REPO_URL, SHIPPED } from "../config";
+import AppleGlyph from "./AppleGlyph.astro";
 import Button from "./Button.astro";
 import Logo from "./Logo.astro";
 
@@ -91,6 +92,7 @@ const LINKS = [
             </span>
             <span class="hidden sm:block">
               <Button href="/download" variant="secondary" size="sm">
+                <AppleGlyph size={13} />
                 Download
               </Button>
             </span>
