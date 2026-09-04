@@ -221,11 +221,25 @@ jobs:
       # on the Mac that made it and nowhere else.
       - name: Audit export signing 🔍
         run: make audit-check
+      # Unsigned, because the runner has no Developer ID certificate in its
+      # keychain and never will until one is imported from secrets: a signing
+      # build dies in `BastionBridge` with `No signing certificate "Mac
+      # Development" found ... team ID "75QE9PRT3V"`, which is how this job
+      # failed on every run from the day it was written until 1.5.0.
+      #
+      # This is not a weaker build. `bundle` takes the same two flags before
+      # `make sign` signs the staged bundle, so what CI compiles is what a
+      # release compiles — minus a signature CI cannot produce and no check
+      # below reads.
       - name: Build 📦
-        run: make app
+        run: make app XCARGS="CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO"
       # The security claim, checked. This needs no credentials and no profile —
       # it launches the built bundle, reads what it is listening on, and asserts
       # the Origin and Host refusals. `make smoke` is deliberately NOT here: it
       # needs a real Shopify profile, so it is a developer's check, not CI's.
+      #
+      # The flags are repeated rather than inherited: `audit` has `app` as a
+      # prerequisite, so without them make rebuilds it signed and fails here
+      # instead, one step after the build succeeded.
       - name: Audit the listener 🔍
-        run: make audit
+        run: make audit XCARGS="CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO"
