@@ -4,12 +4,27 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.5.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.6.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.6.0] - 2026-09-04
 
 ### Added
+
+- **Eleven more servers in the catalog.** MongoDB, DBHub, Kubernetes, Context7, Firecrawl, Exa,
+  Tavily, Playwright, Supabase, Netlify and Apify. These are the first entries published by their
+  own maintainers rather than by mgcrea, so each row now says whose it is.
+
+  The write gate had to learn two things to hold across them. MongoDB, DBHub and Kubernetes name
+  their switch as the thing it disables rather than the thing it allows, so a profile's write
+  toggle is resolved against each server's own polarity instead of one assumed for all. Playwright,
+  Supabase, Netlify and Apify take no argv at all, which leaves no variable for Bastion to set:
+  those are gated by tool name instead, and the question of whether a server has a write path now
+  reads both mechanisms rather than one.
+
+  Their protocol dialect is measured rather than declared. A live handshake asking for 2026-07-28
+  makes each server answer with its own newest, where asking for 2025-06-18 would only have echoed
+  the request back; all eleven land on 2025-11-25.
 
 - **An update path on Bastion's own server.** The window has had one since the catalog became
   editable — Check for updates, then Update to _x_ — and an agent driving Bastion through
@@ -38,6 +53,26 @@ are taken from this file, which is the curated summary.
   the build under test failed to bind, every assertion landed on the other copy, and the run failed
   reporting that its own fixture profiles did not exist. `audit-listener.sh` had already been fixed
   for this; this is the same one line.
+
+### Internal
+
+- `scripts/discover-servers.mjs` enumerates what npm has that the catalog does not, ranked by
+  last-month downloads with deprecated packages dropped, so the catalog has a way to notice what
+  it is missing without somebody doing it by hand.
+
+- A release job in CI. Everything below `make build-release` — build, sign, notarize, checksum,
+  sign the update, create the release and attach its three assets — was run by hand on a
+  developer's Mac through 1.5.0. The job follows Cupertino's, diverging in three places noted
+  where they occur: the checksum is the bare digest because the website serves `/checksum` raw,
+  the release body is the top section of this file rather than generated notes, and there is no
+  Homebrew cask because there is no tap.
+
+  It gains a version gate Cupertino has no need for. Bastion keeps four hand-edited copies of the
+  version — both `project.pbxproj` configurations, the website's `APP_VERSION`, the first section
+  of this file and the intro line naming the newest tag — and CI had never seen any of them. All
+  four are checked against the tag, so a release commit that missed one is refused while the fix
+  is still a commit and a re-tag. `DemoSeed.version` is deliberately not checked: it is the number
+  the marketing captures show and is allowed to lag.
 
 ## [1.5.0] - 2026-09-04
 
