@@ -103,7 +103,14 @@ pkill -f "$BIN" 2>/dev/null || true
 sleep 1
 # Deliberately NOT `--trial`. The licence carve-out is one of the things under
 # test, and arming a trial would hide it.
-"$BIN" >/tmp/bastion-builtin.log 2>&1 &
+#
+# `-gatewayPort` goes in as a launch argument, the same way `audit-listener.sh`
+# passes it and for the same reason: without it, BASTION_PORT=8799 moves only
+# the curl below, the build under test still tries 8720, fails to bind beside a
+# Bastion someone is working in, and every assertion lands on that other copy —
+# which answers about ITS servers and ITS profiles, so the whole run fails
+# saying the fixture profiles do not exist.
+"$BIN" -gatewayPort "$PORT" >/tmp/bastion-builtin.log 2>&1 &
 APP=$!
 for _ in $(seq 1 40); do nc -z 127.0.0.1 "$PORT" 2>/dev/null && break; sleep 0.25; done
 sleep 1
@@ -256,7 +263,7 @@ wait "$APP" 2>/dev/null || true
 sleep 1
 defaults write "$BUNDLE" auditEnabled -bool true
 defaults write "$BUNDLE" auditPayloads -bool true
-"$BIN" >>/tmp/bastion-builtin.log 2>&1 &
+"$BIN" -gatewayPort "$PORT" >>/tmp/bastion-builtin.log 2>&1 &
 APP=$!
 for _ in $(seq 1 40); do nc -z 127.0.0.1 "$PORT" 2>/dev/null && break; sleep 0.25; done
 sleep 1
@@ -317,7 +324,7 @@ echo "Disabling"
 kill "$APP" 2>/dev/null || true
 wait "$APP" 2>/dev/null || true
 sleep 1
-"$BIN" --trial >>/tmp/bastion-builtin.log 2>&1 &
+"$BIN" --trial -gatewayPort "$PORT" >>/tmp/bastion-builtin.log 2>&1 &
 APP=$!
 for _ in $(seq 1 40); do nc -z 127.0.0.1 "$PORT" 2>/dev/null && break; sleep 0.25; done
 sleep 1

@@ -7,6 +7,16 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.5.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Fixed
+
+- **`scripts/builtin-check.sh` honours `BASTION_PORT`.** It read the variable for its own requests
+  and never passed `-gatewayPort` to the build it launched, so on a machine already running Bastion
+  the build under test failed to bind, every assertion landed on the other copy, and the run failed
+  reporting that its own fixture profiles did not exist. `audit-listener.sh` had already been fixed
+  for this; this is the same one line.
+
 ## [1.5.0] - 2026-09-04
 
 ### Added
