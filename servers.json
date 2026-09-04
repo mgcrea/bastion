@@ -177,15 +177,21 @@
         {
           "id": "inline-key",
           "displayName": "Inline private key",
-          "env": ["APP_STORE_CONNECT_P8"]
+          "env": [
+            "APP_STORE_CONNECT_P8"
+          ]
         },
         {
           "id": "key-file",
           "displayName": "Private key file",
-          "env": ["APP_STORE_CONNECT_P8_PATH"]
+          "env": [
+            "APP_STORE_CONNECT_P8_PATH"
+          ]
         }
       ],
-      "stateEnv": ["APP_STORE_CONNECT_CONFIG"],
+      "stateEnv": [
+        "APP_STORE_CONNECT_CONFIG"
+      ],
       "callbackEnv": [],
       "env": [
         {
@@ -239,6 +245,91 @@
       ]
     },
     {
+      "id": "cloudkit",
+      "displayName": "CloudKit",
+      "summary": "CloudKit management API: container schema — record types, fields, Development/Production diff and deploy.",
+      "transport": {
+        "kind": "child",
+        "npmName": "@mgcrea/mcp-cloudkit",
+        "binName": "cloudkit-mcp",
+        "distribution": "local",
+        "localPath": "mcp-cloudkit"
+      },
+      "docsUrl": null,
+      "dialect": "2025-11-25",
+      "writeGate": "CLOUDKIT_ALLOW_WRITES",
+      "gateBypass": [],
+      "authModes": [],
+      "stateEnv": [
+        "CLOUDKIT_CONFIG"
+      ],
+      "callbackEnv": [],
+      "env": [
+        {
+          "name": "CLOUDKIT_MANAGEMENT_TOKEN",
+          "required": true,
+          "secret": true,
+          "description": "CloudKit management token, from icloud.developer.apple.com/dashboard/account/tokens — CloudKit Management Tokens. Can rewrite the container's schema; scope it and revoke when done."
+        },
+        {
+          "name": "CLOUDKIT_TEAM_ID",
+          "required": true,
+          "secret": false,
+          "description": "10-character Apple Developer team id, e.g. 75QE9PRT3V. Also in the app's exportOptions.plist."
+        },
+        {
+          "name": "CLOUDKIT_CONTAINER_ID",
+          "required": false,
+          "secret": false,
+          "description": "Default container, e.g. iCloud.io.mgcrea.Balise, so it need not be passed on every call. cloudkit_list_containers finds it if unset."
+        },
+        {
+          "name": "CLOUDKIT_CONFIG",
+          "required": false,
+          "secret": false,
+          "description": "Config file path. Bastion points this at the profile's own directory."
+        },
+        {
+          "name": "CLOUDKIT_MAX_RETRIES",
+          "required": false,
+          "secret": false,
+          "description": "Retry budget for 429/5xx responses. Defaults to 3."
+        },
+        {
+          "name": "CLOUDKIT_ALLOW_WRITES",
+          "required": false,
+          "secret": false,
+          "description": "Enables cloudkit_deploy_schema and cloudkit_import_schema. Both additionally require confirm: true on every call."
+        }
+      ],
+      "notes": [
+        "A separate service from App Store Connect, not a feature of it: different",
+        "host (api.icloud.apple.com), different credential (a static management",
+        "token, not a minted JWT), no field in common. An App Store Connect key",
+        "gives no access here and this token gives no access there — which is",
+        "the whole reason this is its own server rather than folded into",
+        "appstore-connect, where it lived for one commit before the split.",
+        "",
+        "The API is undocumented. Every route was read out of the `cktool` binary",
+        "Xcode ships (`strings $(xcrun -f cktool)`); cloudkit_request is a",
+        "GET-by-default escape hatch for whatever that reading got wrong. The one",
+        "route it refuses even with writes on is the container's environment",
+        "reset — wipes all Development data — which is deliberately not a tool",
+        "at all, so exposing it through the escape hatch would defeat the point",
+        "of leaving it out.",
+        "",
+        "cloudkit_deploy_schema always fetches and returns the pending diff before",
+        "promoting Development to Production, and refuses when there is nothing",
+        "to deploy. Production is additive-only forever once first deployed — a",
+        "field can be added, never removed, renamed or retyped — so that diff is",
+        "the one thing worth reading before confirm: true.",
+        "",
+        "Local until published — npm 404s on @mgcrea/mcp-cloudkit today, so this",
+        "entry only resolves against a checkout under MCP_ROOT. docsUrl is null",
+        "for the same reason: the GitHub repo does not exist yet."
+      ]
+    },
+    {
       "id": "reddit",
       "displayName": "Reddit",
       "summary": "Reddit API: subreddits, posts, comments, search, and the user's own history.",
@@ -264,9 +355,14 @@
           "env": []
         }
       ],
-      "stateEnv": ["REDDIT_TOKEN_PATH"],
+      "stateEnv": [
+        "REDDIT_TOKEN_PATH"
+      ],
       "callbackEnv": [
-        { "name": "REDDIT_REDIRECT_URI", "format": "http://127.0.0.1:{port}/callback" }
+        {
+          "name": "REDDIT_REDIRECT_URI",
+          "format": "http://127.0.0.1:{port}/callback"
+        }
       ],
       "env": [
         {
@@ -331,16 +427,28 @@
         {
           "id": "bearer",
           "displayName": "App-only bearer token",
-          "env": ["X_BEARER_TOKEN"]
+          "env": [
+            "X_BEARER_TOKEN"
+          ]
         },
         {
           "id": "oauth2",
           "displayName": "OAuth2 user context",
-          "env": ["X_CLIENT_ID"]
+          "env": [
+            "X_CLIENT_ID"
+          ]
         }
       ],
-      "stateEnv": ["X_CONFIG", "X_TOKEN_FILE"],
-      "callbackEnv": [{ "name": "X_REDIRECT_URI", "format": "http://127.0.0.1:{port}/callback" }],
+      "stateEnv": [
+        "X_CONFIG",
+        "X_TOKEN_FILE"
+      ],
+      "callbackEnv": [
+        {
+          "name": "X_REDIRECT_URI",
+          "format": "http://127.0.0.1:{port}/callback"
+        }
+      ],
       "env": [
         {
           "name": "X_BEARER_TOKEN",
@@ -394,14 +502,18 @@
           "name": "X_ADS_ENABLED",
           "required": false,
           "secret": false,
-          "boolean": { "default": false },
+          "boolean": {
+            "default": false
+          },
           "description": "Registers the Ads API tools. Needs a user context."
         },
         {
           "name": "X_ADS_ALLOW_WRITES",
           "required": false,
           "secret": false,
-          "boolean": { "default": false },
+          "boolean": {
+            "default": false
+          },
           "description": "Enables campaign mutations. No effect without X_ADS_ENABLED."
         }
       ],
@@ -434,12 +546,19 @@
         {
           "id": "cloud",
           "displayName": "Cloud API key",
-          "env": ["UNIFI_PROTECT_API_KEY", "UNIFI_PROTECT_CONSOLE_ID"]
+          "env": [
+            "UNIFI_PROTECT_API_KEY",
+            "UNIFI_PROTECT_CONSOLE_ID"
+          ]
         },
         {
           "id": "local",
           "displayName": "Local account",
-          "env": ["UNIFI_PROTECT_HOST", "UNIFI_PROTECT_USERNAME", "UNIFI_PROTECT_PASSWORD"]
+          "env": [
+            "UNIFI_PROTECT_HOST",
+            "UNIFI_PROTECT_USERNAME",
+            "UNIFI_PROTECT_PASSWORD"
+          ]
         }
       ],
       "stateEnv": [
@@ -495,7 +614,9 @@
           "name": "UNIFI_PROTECT_VERIFY_TLS",
           "required": false,
           "secret": false,
-          "boolean": { "default": true },
+          "boolean": {
+            "default": true
+          },
           "description": "Verify the console certificate. Needs a hostname, not an IP."
         },
         {
@@ -572,20 +693,32 @@
         {
           "id": "console",
           "displayName": "Console API key",
-          "env": ["UNIFI_HOST", "UNIFI_API_KEY"]
+          "env": [
+            "UNIFI_HOST",
+            "UNIFI_API_KEY"
+          ]
         },
         {
           "id": "cloud",
           "displayName": "Cloud API key",
-          "env": ["UNIFI_API_KEY", "UNIFI_CONSOLE_ID"]
+          "env": [
+            "UNIFI_API_KEY",
+            "UNIFI_CONSOLE_ID"
+          ]
         },
         {
           "id": "legacy",
           "displayName": "Local admin account",
-          "env": ["UNIFI_HOST", "UNIFI_USERNAME", "UNIFI_PASSWORD"]
+          "env": [
+            "UNIFI_HOST",
+            "UNIFI_USERNAME",
+            "UNIFI_PASSWORD"
+          ]
         }
       ],
-      "stateEnv": ["UNIFI_CONFIG"],
+      "stateEnv": [
+        "UNIFI_CONFIG"
+      ],
       "callbackEnv": [],
       "env": [
         {
@@ -634,14 +767,18 @@
           "name": "UNIFI_INSECURE_TLS",
           "required": false,
           "secret": false,
-          "boolean": { "default": false },
+          "boolean": {
+            "default": false
+          },
           "description": "Disable certificate verification, for this server only."
         },
         {
           "name": "UNIFI_ENABLE_LEGACY",
           "required": false,
           "secret": false,
-          "boolean": { "default": false },
+          "boolean": {
+            "default": false
+          },
           "description": "Registers the unifi_legacy_* tools."
         },
         {
@@ -698,7 +835,11 @@
       "docsUrl": "https://docs.stripe.com/mcp",
       "dialect": "2025-03-26",
       "writeGate": null,
-      "writeTools": ["stripe_api_write", "create_refund", "stripe_report"],
+      "writeTools": [
+        "stripe_api_write",
+        "create_refund",
+        "stripe_report"
+      ],
       "gateBypass": [],
       "authModes": [
         {
@@ -710,7 +851,9 @@
         {
           "id": "bearer",
           "displayName": "Restricted API key",
-          "env": ["STRIPE_SECRET_KEY"]
+          "env": [
+            "STRIPE_SECRET_KEY"
+          ]
         }
       ],
       "stateEnv": [],
@@ -849,17 +992,26 @@
         {
           "id": "oauth2",
           "displayName": "OAuth2 service account",
-          "env": ["OVH_CLIENT_ID", "OVH_CLIENT_SECRET"]
+          "env": [
+            "OVH_CLIENT_ID",
+            "OVH_CLIENT_SECRET"
+          ]
         },
         {
           "id": "signature",
           "displayName": "Application key triplet",
-          "env": ["OVH_APPLICATION_KEY", "OVH_APPLICATION_SECRET", "OVH_CONSUMER_KEY"]
+          "env": [
+            "OVH_APPLICATION_KEY",
+            "OVH_APPLICATION_SECRET",
+            "OVH_CONSUMER_KEY"
+          ]
         },
         {
           "id": "accessToken",
           "displayName": "Access token",
-          "env": ["OVH_ACCESS_TOKEN"]
+          "env": [
+            "OVH_ACCESS_TOKEN"
+          ]
         }
       ],
       "stateEnv": [],
@@ -951,12 +1103,17 @@
         {
           "id": "client_credentials",
           "displayName": "Client credentials",
-          "env": ["KEYCLOAK_CLIENT_SECRET"]
+          "env": [
+            "KEYCLOAK_CLIENT_SECRET"
+          ]
         },
         {
           "id": "password",
           "displayName": "Username and password",
-          "env": ["KEYCLOAK_USERNAME", "KEYCLOAK_PASSWORD"]
+          "env": [
+            "KEYCLOAK_USERNAME",
+            "KEYCLOAK_PASSWORD"
+          ]
         }
       ],
       "stateEnv": [],
@@ -1033,7 +1190,10 @@
       "writeGate": "NPM_ALLOW_WRITES",
       "gateBypass": [],
       "authModes": [],
-      "stateEnv": ["NPM_CONFIG_USERCONFIG", "NPM_MCP_CONFIG"],
+      "stateEnv": [
+        "NPM_CONFIG_USERCONFIG",
+        "NPM_MCP_CONFIG"
+      ],
       "callbackEnv": [],
       "env": [
         {
@@ -1076,7 +1236,9 @@
           "name": "NPM_AUTO_OPEN_BROWSER",
           "required": false,
           "secret": false,
-          "boolean": { "default": true },
+          "boolean": {
+            "default": true
+          },
           "description": "Whether the one-time-password flow launches a browser, or only prints the authorization URL."
         },
         {
@@ -1165,7 +1327,9 @@
         {
           "id": "pat",
           "displayName": "Personal access token",
-          "env": ["GITHUB_TOKEN"]
+          "env": [
+            "GITHUB_TOKEN"
+          ]
         }
       ],
       "stateEnv": [],
@@ -1228,7 +1392,9 @@
         {
           "id": "token",
           "displayName": "Integration token",
-          "env": ["NOTION_TOKEN"]
+          "env": [
+            "NOTION_TOKEN"
+          ]
         }
       ],
       "stateEnv": [],
@@ -1286,7 +1452,9 @@
         {
           "id": "api-key",
           "displayName": "API key",
-          "env": ["LINEAR_API_KEY"]
+          "env": [
+            "LINEAR_API_KEY"
+          ]
         }
       ],
       "stateEnv": [],
@@ -1349,7 +1517,9 @@
         {
           "id": "token",
           "displayName": "User auth token",
-          "env": ["SENTRY_ACCESS_TOKEN"]
+          "env": [
+            "SENTRY_ACCESS_TOKEN"
+          ]
         }
       ],
       "stateEnv": [],
@@ -1406,7 +1576,9 @@
         {
           "id": "api-key",
           "displayName": "Service account API key",
-          "env": ["ATLASSIAN_API_KEY"]
+          "env": [
+            "ATLASSIAN_API_KEY"
+          ]
         }
       ],
       "stateEnv": [],
@@ -1469,7 +1641,9 @@
         {
           "id": "token",
           "displayName": "Personal access token",
-          "env": ["FIGMA_ACCESS_TOKEN"]
+          "env": [
+            "FIGMA_ACCESS_TOKEN"
+          ]
         }
       ],
       "stateEnv": [],
@@ -1542,7 +1716,9 @@
         {
           "id": "token",
           "displayName": "Access token",
-          "env": ["VERCEL_TOKEN"]
+          "env": [
+            "VERCEL_TOKEN"
+          ]
         }
       ],
       "stateEnv": [],
@@ -1613,7 +1789,9 @@
         {
           "id": "api-token",
           "displayName": "API token",
-          "env": ["CLOUDFLARE_API_TOKEN"]
+          "env": [
+            "CLOUDFLARE_API_TOKEN"
+          ]
         }
       ],
       "stateEnv": [],
@@ -1726,7 +1904,9 @@
         {
           "id": "api-token",
           "displayName": "API token",
-          "env": ["CLOUDFLARE_OBSERVABILITY_TOKEN"]
+          "env": [
+            "CLOUDFLARE_OBSERVABILITY_TOKEN"
+          ]
         }
       ],
       "stateEnv": [],
@@ -1778,7 +1958,9 @@
       "writeGate": "IOS_DEVICE_ALLOW_WRITES",
       "gateBypass": [],
       "authModes": [],
-      "stateEnv": ["IOS_DEVICE_OUTPUT_DIR"],
+      "stateEnv": [
+        "IOS_DEVICE_OUTPUT_DIR"
+      ],
       "callbackEnv": [],
       "env": [
         {

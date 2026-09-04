@@ -154,6 +154,7 @@ asserts both eras against a running build.
 | Server | Id | Binary | Source | Write gate | Secrets |
 | --- | --- | --- | --- | --- | --- |
 | [App Store Connect](https://github.com/mgcrea/mcp-appstore-connect) | `appstore-connect` | `appstore-connect-mcp` | `@mgcrea/mcp-appstore-connect` (npm) | `APP_STORE_CONNECT_ALLOW_WRITES` | 1 |
+| CloudKit | `cloudkit` | `cloudkit-mcp` | `mcp-cloudkit` (local) | `CLOUDKIT_ALLOW_WRITES` | 1 |
 | [Reddit](https://github.com/mgcrea/mcp-reddit) | `reddit` | `reddit-mcp` | `@mgcrea/mcp-reddit` (npm) | `REDDIT_ALLOW_WRITES` | 1 |
 | [X](https://github.com/mgcrea/mcp-x) | `x` | `x-mcp` | `@mgcrea/mcp-x` (npm) | `X_ALLOW_WRITES` | 2 |
 | [UniFi Protect](https://github.com/mgcrea/mcp-unifi-protect) | `unifi-protect` | `unifi-protect-mcp` | `@mgcrea/mcp-unifi-protect` (npm) | `UNIFI_PROTECT_ALLOW_WRITES` | 3 |
@@ -197,6 +198,46 @@ task in the build order.
 Satisfy exactly one of: **Inline private key** (`APP_STORE_CONNECT_P8`), **Private key file** (`APP_STORE_CONNECT_P8_PATH`)
 
 Per-profile state: `APP_STORE_CONNECT_CONFIG`
+
+### CloudKit
+
+CloudKit management API: container schema — record types, fields, Development/Production diff and deploy.
+
+A separate service from App Store Connect, not a feature of it: different
+host (api.icloud.apple.com), different credential (a static management
+token, not a minted JWT), no field in common. An App Store Connect key
+gives no access here and this token gives no access there — which is
+the whole reason this is its own server rather than folded into
+appstore-connect, where it lived for one commit before the split.
+
+The API is undocumented. Every route was read out of the `cktool` binary
+Xcode ships (`strings $(xcrun -f cktool)`); cloudkit_request is a
+GET-by-default escape hatch for whatever that reading got wrong. The one
+route it refuses even with writes on is the container's environment
+reset — wipes all Development data — which is deliberately not a tool
+at all, so exposing it through the escape hatch would defeat the point
+of leaving it out.
+
+cloudkit_deploy_schema always fetches and returns the pending diff before
+promoting Development to Production, and refuses when there is nothing
+to deploy. Production is additive-only forever once first deployed — a
+field can be added, never removed, renamed or retyped — so that diff is
+the one thing worth reading before confirm: true.
+
+Local until published — npm 404s on @mgcrea/mcp-cloudkit today, so this
+entry only resolves against a checkout under MCP_ROOT. docsUrl is null
+for the same reason: the GitHub repo does not exist yet.
+
+| Variable | Required | Secret | Meaning |
+| --- | --- | --- | --- |
+| `CLOUDKIT_MANAGEMENT_TOKEN` | yes | yes | CloudKit management token, from icloud.developer.apple.com/dashboard/account/tokens — CloudKit Management Tokens. Can rewrite the container's schema; scope it and revoke when done. |
+| `CLOUDKIT_TEAM_ID` | yes | — | 10-character Apple Developer team id, e.g. 75QE9PRT3V. Also in the app's exportOptions.plist. |
+| `CLOUDKIT_CONTAINER_ID` | — | — | Default container, e.g. iCloud.io.mgcrea.Balise, so it need not be passed on every call. cloudkit_list_containers finds it if unset. |
+| `CLOUDKIT_CONFIG` | — | — | Config file path. Bastion points this at the profile's own directory. |
+| `CLOUDKIT_MAX_RETRIES` | — | — | Retry budget for 429/5xx responses. Defaults to 3. |
+| `CLOUDKIT_ALLOW_WRITES` | — | — | Enables cloudkit_deploy_schema and cloudkit_import_schema. Both additionally require confirm: true on every call. |
+
+Per-profile state: `CLOUDKIT_CONFIG`
 
 ### Reddit
 

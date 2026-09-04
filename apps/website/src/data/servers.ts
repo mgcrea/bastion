@@ -48,6 +48,14 @@ export const SERVERS: Server[] = [
     dialect: "2025-11-25",
   },
   {
+    id: "cloudkit",
+    displayName: "CloudKit",
+    summary: "CloudKit management API: container schema — record types, fields, Development/Production diff and deploy.",
+    writeGate: "CLOUDKIT_ALLOW_WRITES",
+    transport: "child",
+    dialect: "2025-11-25",
+  },
+  {
     id: "reddit",
     displayName: "Reddit",
     summary: "Reddit API: subreddits, posts, comments, search, and the user's own history.",
