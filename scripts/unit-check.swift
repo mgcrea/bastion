@@ -241,7 +241,9 @@ struct UnitCheck {
       (value.map { request(["accept": $0]) } ?? request([:])).acceptsEventStream
     }
     check("the media type on its own", accepts("text/event-stream"))
-    check("alongside json, as every MCP client sends it", accepts("application/json, text/event-stream"))
+    check(
+      "alongside json, as every MCP client sends it", accepts("application/json, text/event-stream")
+    )
     check("case-insensitively", accepts("TEXT/EVENT-STREAM"))
     check("with a q-value attached", accepts("text/event-stream;q=0.9"))
     check("with spaces around it", accepts("  application/json ,  text/event-stream  "))
@@ -266,7 +268,9 @@ struct UnitCheck {
       var out = Data()
       var chunk = [UInt8](repeating: 0, count: 4096)
       while true {
-        let n = chunk.withUnsafeMutableBufferPointer { Darwin.read(fds[0], $0.baseAddress, $0.count) }
+        let n = chunk.withUnsafeMutableBufferPointer {
+          Darwin.read(fds[0], $0.baseAddress, $0.count)
+        }
         if n <= 0 { break }
         out.append(contentsOf: chunk[0..<n])
       }
@@ -320,7 +324,12 @@ struct UnitCheck {
     let inert = HTTPStream(fd: -1, armed: false)
     check("an unarmed stream sends nothing", !inert.send(Data("{}".utf8)))
     check("and never reports itself open", !inert.isOpen)
-    check("so a finish on it writes nothing", { inert.finish(with: HTTPResponse(json: [:])); return !inert.isOpen }())
+    check(
+      "so a finish on it writes nothing",
+      {
+        inert.finish(with: HTTPResponse(json: [:]))
+        return !inert.isOpen
+      }())
 
     // A dead socket must not leave the stream looking usable: a well-formed
     // event appended after a truncated one parses cleanly and says something
@@ -441,14 +450,21 @@ struct UnitCheck {
       "method": "notifications/progress",
       "params": ["progressToken": 7, "progress": 30],
     ]
-    check("a request's token is read from _meta", Dialect.requestedProgressToken(in: asked) as? Int == 7)
-    check("and is not mistaken for a notification's", Dialect.notifiedProgressToken(in: asked) == nil)
-    check("a notification's token is read from params", Dialect.notifiedProgressToken(in: told) as? Int == 7)
+    check(
+      "a request's token is read from _meta", Dialect.requestedProgressToken(in: asked) as? Int == 7
+    )
+    check(
+      "and is not mistaken for a notification's", Dialect.notifiedProgressToken(in: asked) == nil)
+    check(
+      "a notification's token is read from params",
+      Dialect.notifiedProgressToken(in: told) as? Int == 7)
     check("and is not mistaken for a request's", Dialect.requestedProgressToken(in: told) == nil)
     check(
       "a request that asked for nothing has none",
       Dialect.requestedProgressToken(in: ["params": ["name": "x"]]) == nil)
-    check("a frame with no params at all has none", Dialect.requestedProgressToken(in: ["id": 1]) == nil)
+    check(
+      "a frame with no params at all has none", Dialect.requestedProgressToken(in: ["id": 1]) == nil
+    )
     // JSONSerialization turns a JSON null into NSNull, which is not a token.
     check(
       "an explicit null is not a token",
@@ -476,11 +492,13 @@ struct UnitCheck {
     for client in [7 as Any, "abc" as Any] {
       let minted = Dialect.mintedProgressToken(for: 99, like: client)
       let outbound = Dialect.rewriting(progressToken: minted, in: asked, at: .requestMeta)
-      let sameID = Dialect.internalID(
-        fromProgressToken: Dialect.requestedProgressToken(in: outbound) ?? 0) == 99
+      let sameID =
+        Dialect.internalID(
+          fromProgressToken: Dialect.requestedProgressToken(in: outbound) ?? 0) == 99
       let restored = Dialect.rewriting(progressToken: client, in: told, at: .notificationParams)
       let back = Dialect.notifiedProgressToken(in: restored)
-      let same = (back as? Int).map { $0 == client as? Int } ?? ((back as? String) == client as? String)
+      let same =
+        (back as? Int).map { $0 == client as? Int } ?? ((back as? String) == client as? String)
       check("a \(client) token survives the round trip", sameID && same == true)
     }
     check(

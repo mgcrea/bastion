@@ -35,8 +35,8 @@ const GAPS = [
     v: "A remote server's rate limit is shared. Behind one profile every client spends one budget upstream, so a client in a loop can exhaust it for the rest.",
   },
   {
-    k: "No streaming",
-    v: "Responses are a single JSON object, never an SSE stream: no notifications/progress on a long call.",
+    k: "list_changed",
+    v: "A call that asks for progress is answered with an SSE stream, so notifications/progress reaches the client that asked. list_changed and subscriptions/listen still cannot: they name no request, and a shared instance has no one client to send them to.",
   },
   {
     k: "Mcp-Param-*",

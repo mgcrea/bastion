@@ -309,9 +309,9 @@ console.log("Streaming a reply (inbound SSE)");
 // they are the ones that matter — they pin the promise that nothing about a
 // call that did not ask for a stream has changed.
 {
-  const withToken = (token = "check-1") => ({
+  const withToken = (progressToken = "check-1") => ({
     ...meta(),
-    progressToken: token,
+    progressToken,
   });
   // `tools/list` by default, because every server has one and no server emits
   // progress for it — which makes the gate checks below universal and the shape

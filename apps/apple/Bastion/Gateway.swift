@@ -362,7 +362,8 @@ nonisolated final class Gateway: Sendable {
       hostLog(
         "gateway", .info,
         "streamed \(counts.sent) frames to \(request.path)"
-          + (counts.dropped > 0 ? ", dropping \(counts.dropped) the client could not keep up with" : ""))
+          + (counts.dropped > 0
+            ? ", dropping \(counts.dropped) the client could not keep up with" : ""))
     } else {
       respond(client, response)
     }

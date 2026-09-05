@@ -370,7 +370,9 @@ final class Exchange: NSObject, URLSessionDataDelegate {
     }
   }
 
-  func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
+  func urlSession(
+    _ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?
+  ) {
     defer { inFlight.leave() }
 
     if let error {

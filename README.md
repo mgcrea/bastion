@@ -268,27 +268,27 @@ audit asserts the setting is absent rather than empty.
 
 Built and verified:
 
-|                         |                                                                                     |
-| ----------------------- | ----------------------------------------------------------------------------------- |
-| **Gateway**             | loopback HTTP, `Origin` / `Host` / bearer, hand-written so the checks are auditable |
-| **Supervisor**          | one child per profile, id remapping, backoff, circuit breaker, idle stop            |
-| **Dialect**             | dual-era: modern 2026-07-28 and legacy `initialize`, onto legacy children           |
-| **Catalog**             | thirty-three seeded servers, a generator, and a CI drift check                      |
-| **Server store**        | the user's own list, on-demand npm install, add, remove, and a per-server switch    |
-| **Remote servers**      | an https endpoint fronted like any other server — eleven of them in the catalog     |
-| **OAuth 2.1**           | discovery, dynamic registration, PKCE and refresh — one consent, every client       |
-| **Bastion's server**    | Bastion as one of its own servers, so an agent can manage it — off by default       |
-| **Keychain**            | per-profile credentials, per-client tokens                                          |
-| **Activity window**     | what is running, who is attached, and every tool call with its arguments, live      |
-| **`bastion-bridge`**    | stdio hosts reach the gateway over HTTP; starts Bastion if it is not up             |
-| **Migration**           | four `.mcp.json` credential sets moved into the Keychain, configs repointed         |
-| **`make smoke`**        | four concurrent clients, colliding ids, exactly one child, `kill -9` recovery       |
-| **`make audit`**        | the five security rules, against the real bundle                                    |
-| **`make dialect`**      | 24 conformance checks across both eras                                              |
-| **`make builtin`**      | the write gate hides the write tools, and no tool returns a secret                  |
-| **`make unit`**         | dialect, HTTP parser, call capture and the audit chain — 183 checks                 |
-| **`make audit-check`**  | an export signature through a round trip, key loss included — 18 checks             |
-| **`make remote-check`** | where a remote server may live, the SSE collapse, and the OAuth client — 79 checks  |
+|                         |                                                                                       |
+| ----------------------- | ------------------------------------------------------------------------------------- |
+| **Gateway**             | loopback HTTP, `Origin` / `Host` / bearer, hand-written so the checks are auditable   |
+| **Supervisor**          | one child per profile, id remapping, backoff, circuit breaker, idle stop              |
+| **Dialect**             | dual-era: modern 2026-07-28 and legacy `initialize`, onto legacy children             |
+| **Catalog**             | thirty-three seeded servers, a generator, and a CI drift check                        |
+| **Server store**        | the user's own list, on-demand npm install, add, remove, and a per-server switch      |
+| **Remote servers**      | an https endpoint fronted like any other server — eleven of them in the catalog       |
+| **OAuth 2.1**           | discovery, dynamic registration, PKCE and refresh — one consent, every client         |
+| **Bastion's server**    | Bastion as one of its own servers, so an agent can manage it — off by default         |
+| **Keychain**            | per-profile credentials, per-client tokens                                            |
+| **Activity window**     | what is running, who is attached, and every tool call with its arguments, live        |
+| **`bastion-bridge`**    | stdio hosts reach the gateway over HTTP; starts Bastion if it is not up               |
+| **Migration**           | four `.mcp.json` credential sets moved into the Keychain, configs repointed           |
+| **`make smoke`**        | four concurrent clients, colliding ids, exactly one child, `kill -9` recovery         |
+| **`make audit`**        | the five security rules, against the real bundle                                      |
+| **`make dialect`**      | 24 conformance checks across both eras                                                |
+| **`make builtin`**      | the write gate hides the write tools, and no tool returns a secret                    |
+| **`make unit`**         | dialect, HTTP parser, streamed replies, call capture and the audit chain — 513 checks |
+| **`make audit-check`**  | an export signature through a round trip, key loss included — 18 checks               |
+| **`make remote-check`** | where a remote server may live, the SSE reader, and the OAuth client — 100 checks     |
 
 Bastion is what the 2026-07-28 spec calls a **dual-era server**. A modern client declares its
 protocol version, identity and capabilities in each request's `_meta` and needs no handshake at
@@ -356,9 +356,16 @@ Seven limitations worth knowing now:
   in the catalog uses any of the three, so the full MRTR resume path is unbuilt rather than broken —
   though a server somebody _adds_ could use one, which is the first thing the open list makes
   reachable that the closed one did not.
-- **Responses are a single JSON object, never an SSE stream.** That means no
-  `notifications/progress` on a long call and no `subscriptions/listen`. Both are optional in the
-  spec, and both are real gaps.
+- **`subscriptions/listen` and `list_changed` have nowhere to go.** A POST that asked for progress
+  is now answered with an SSE stream, so `notifications/progress` from a child reaches the client
+  that asked for it — a request must carry a `progressToken` and an `Accept: text/event-stream`, and
+  anything else is answered exactly as before. That is a per-REQUEST channel, though, and the two
+  remaining gaps need a per-client one: a `list_changed` names no request, so on a shared instance
+  there is no client it belongs to, and `subscriptions/listen` needs a channel outliving a request,
+  which is the GET stream the 2026-07-28 revision removed. Both are optional in the spec, and both
+  are still real gaps. A remote server's stream is also still collapsed rather than forwarded, for
+  a reason that is not about routing: `RemoteEndpoint.verify` refuses a rebinding answer only
+  because the body is buffered until the addresses are known.
 - **`Mcp-Param-*` headers are forwarded but not validated.** Doing it needs a cached per-profile
   tool list to read `x-mcp-header` annotations from. No server in the catalog annotates a parameter,
   so it is unreachable with the seeded list and reachable with a server you add.
@@ -376,7 +383,7 @@ make audit          # assert the listener is loopback-only and refuses foreign O
 make dialect        # assert both protocol eras against a running build
 make builtin        # assert Bastion's own server: the write gate, and the secrets wall
 make unit           # assert the dialect translation and the HTTP parser
-make remote-check   # assert the endpoint rules, the SSE collapse, and the OAuth client
+make remote-check   # assert the endpoint rules, the SSE reader, and the OAuth client
 make remote-live-check  # assert the remote transport against two real servers: Stripe's 401, Cloudflare Docs' tools/list
 make install        # install the Debug build to /Applications
 

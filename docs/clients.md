@@ -159,6 +159,12 @@ Claude Desktop gets `bastion-bridge` instead, spawned per server:
    Anthropic's public IP ranges. `http://127.0.0.1:8720` is unreachable by
    construction.
 
+The bridge is not a lesser door for it. A host that sends a `progressToken` gets
+`notifications/progress` as they happen either way: Bastion answers the POST
+with an SSE stream, and the bridge writes each frame to stdout as its own line,
+which is exactly the shape a stdio host already reads. Nothing about a call that
+did not ask for progress changes shape.
+
 So the bridge is not the current best option for Claude Desktop pending better
 support upstream. It is the **only** option, and door 2 is the one that keeps it
 that way regardless of what Claude Desktop adds next: Bastion's gateway is

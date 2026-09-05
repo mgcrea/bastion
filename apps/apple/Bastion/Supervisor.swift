@@ -1,7 +1,6 @@
 import Foundation
 import os
 
-
 /// Where one client's progress frames go, already encoded and already carrying
 /// that client's own token.
 ///

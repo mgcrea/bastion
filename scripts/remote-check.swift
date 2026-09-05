@@ -205,7 +205,9 @@ struct RemoteCheck {
     // The half-frame case, stated on its own because it is the bug the type
     // exists to prevent rather than a property of it.
     var partial = ServerSentEvents.Parser()
-    check("a frame with no terminator yet yields nothing", partial.feed(Data("data: {\"id\"".utf8)).isEmpty)
+    check(
+      "a frame with no terminator yet yields nothing",
+      partial.feed(Data("data: {\"id\"".utf8)).isEmpty)
     check(
       "and arrives whole once the blank line does",
       partial.feed(Data(":1}\n\n".utf8)).map { String(decoding: $0, as: UTF8.self) }
@@ -213,7 +215,9 @@ struct RemoteCheck {
     var straddling = ServerSentEvents.Parser()
     // A CRLF terminator split down the middle: the \r arrives in one read and
     // the \n in the next, so a boundary search that ran per-chunk would miss it.
-    check("a terminator split across reads yields nothing yet", straddling.feed(Data("data: a\r\n\r".utf8)).isEmpty)
+    check(
+      "a terminator split across reads yields nothing yet",
+      straddling.feed(Data("data: a\r\n\r".utf8)).isEmpty)
     check(
       "and is found when the rest lands",
       straddling.feed(Data("\n".utf8)).map { String(decoding: $0, as: UTF8.self) } == ["a"])
