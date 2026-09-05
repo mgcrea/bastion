@@ -258,7 +258,7 @@ export const TRIAL = {
  * is a claim about a build that exists — so it moves in the release commit, not
  * before it. Nothing enforces the mirror.
  */
-export const APP_VERSION = "1.7.0";
+export const APP_VERSION = "1.8.0";
 
 /**
  * The MCP clients Bastion can wire in one click.

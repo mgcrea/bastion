@@ -4,10 +4,38 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.7.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.8.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.8.0] - 2026-09-05
+
+### Added
+
+- **Load tools on demand, app-wide and per server.** 1.7.0 kept the answer on the profile, which
+  is where it belongs and not where anybody makes it: a saving reachable only by editing profiles
+  one at a time is a saving nobody finds. Two more places to set it, and neither stores a second
+  answer of its own.
+
+  Settings › General now carries the default every profile follows. `Profile.lazyTools` goes
+  tri-state — no value means "follow the app-wide switch" — so a profile that has disagreed keeps
+  its override through an unrelated edit, instead of having the current default frozen into it by
+  the next save.
+
+  The server pane carries the tier between the two, under the profile rows it applies to, because
+  the decision is almost always about one server: `appstore-connect` is 85 tools and 26.2k tokens,
+  `reddit` is 14 and 3.3k, and nobody wants the same answer for both. It writes through to every
+  profile of that server rather than storing a third answer — the absent value included, so
+  **Default** there still means "follow the app-wide switch" rather than freezing today's answer
+  into four rows. Profiles that already disagree read **Mixed**, which is a state somebody arrived
+  at from the profile editor and not one to round off; a control that quietly read "Off" there
+  would hide the profile that is on. Its caption quotes the measurement one of those profiles
+  actually took, so the saving on offer is this server's own rather than the one from the
+  changelog.
+
+  Still off by default, and Settings names the client it is wrong for. That matters more than it
+  did per profile, because the switch now moves every profile at once and Claude Code is the
+  client most people are running — it defers tool schemas by itself, so a profile wired to it
+  gains nothing here and still pays the coarser approval rule.
 
 ### Fixed
 
@@ -22,6 +50,28 @@ are taken from this file, which is the curated summary.
   The index was the only way in, so a query that came back empty sent the model to the full listing
   the feature exists to avoid sending.
 
+### Internal
+
+- **The site measures what a connect costs.** The 67× saving was reachable only from this file. A
+  section between _How it works_ and _Audit_ now shows what `prod/appstore-connect` costs a client
+  on connect, what the three tools cut it to and what that trades away, with one more line in the
+  status list. Its figures sit in `config.ts` beside a note naming the files that are the
+  authority, and the ratio is quoted from the unrounded totals rather than recomputed from the two
+  rounded figures printed next to it — a reader who does that division and gets a third number
+  stops believing both.
+
+- **The hero shows the wiring as a diff.** It was two lines under the caption "no secret in it",
+  asking a first-time reader to take on faith that a secret had ever been there. It now strikes out
+  `mcp-shopify`'s real invocation and its environment variables and adds the gateway URL in their
+  place, so the page shows what wiring removes instead of asserting it.
+
+- **The facade checks cover the tri-state.** `make facade` sets the app-wide switch on and gives
+  its three scratch profiles one state each — one following the default, one overriding to off, one
+  overriding to on — so every assertion it makes about the facade is also an assertion that the
+  app-wide default reaches a profile at all. A default nothing reads is a switch that silently does
+  nothing, and it is the one failure the per-profile version could not have had. `make unit` gained
+  the search cases behind the fix above.
+
 ## [1.7.0] - 2026-09-04
 
 ### Added
@@ -30,9 +80,8 @@ are taken from this file, which is the curated summary.
   `bastion_search_tools`, `bastion_describe_tool`, `bastion_call_tool` — instead of every tool its
   server exposes. `prod/appstore-connect` goes from 85 tool definitions and about 26.2k tokens on
   every connect to three and about 0.4k, a 67x cut, with the full searchable index costing 3.2k
-  only if something asks for it. One switch in Settings › General moves every profile at once; a
-  profile can override it either way in its own sheet, and `upsert_profile` takes `lazy_tools`.
-  Off by default.
+  only if something asks for it. Off by default, per profile, in the profile editor under Context
+  and on `upsert_profile` as `lazy_tools`.
 
   MCP has no method for fetching a tool's schema later. `inputSchema` is required in a `tools/list`
   entry and clients validate it, so a name-only listing is not a cheap server, it is an empty one.
@@ -46,13 +95,11 @@ are taken from this file, which is the curated summary.
   real tool. A facade bought as a server cannot do that, and flattens a supervised gateway into a
   bag of anonymous calls.
 
-  The cost is on the client's side and the switch says so: every call reaches the editor as
+  The cost is on the client's side and the toggle says so: every call reaches the editor as
   `bastion_call_tool`, so one approval rule there now covers every tool on that server. This is the
-  first setting in the app that trades rather than tightens, which is why it is off by default and
-  why a profile can still disagree with the app-wide answer — a profile wired to Claude Code, which
-  defers tool schemas by itself, gains nothing here and pays the whole cost. It is app-wide first
-  because the answer is usually the same for every profile on a machine, and a saving reachable
-  only by editing profiles one at a time is a saving nobody finds.
+  first switch in the app that trades rather than tightens, which is also why it is per profile —
+  a profile feeding Claude Code, which already defers tool schemas by itself, should leave it off
+  and lose nothing; a profile feeding a client that cannot has no other way to stop paying.
 
   On all three transports, because a behaviour that appears on two and not the third is worse than
   one that appears on none. A child's catalog is fetched once and held for the process, following
