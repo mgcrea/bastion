@@ -84,10 +84,14 @@ nonisolated enum Dialect {
     "tools/list", "prompts/list", "resources/list", "resources/templates/list",
   ]
 
-  /// `private`, because a Bastion listing is per-PROFILE rather than per-server:
-  /// `allowWrites` decides which tools are returned, so two profiles on one
-  /// server legitimately see different lists. A shared cache would be free to
-  /// serve the read-only profile's answer to the writing one, or the reverse.
+  /// `private`, because a Bastion listing is per-PROFILE and per-CLIENT rather
+  /// than per-server. `allowWrites` decides which tools are returned, so two
+  /// profiles on one server legitimately see different lists; and
+  /// `ToolFacade.clientDefersSchemas` decides whether the facade applies, so two
+  /// CLIENTS on one profile legitimately see different lists too. Both terms
+  /// matter — a shared cache would be free to serve the read-only profile's
+  /// answer to the writing one, or Claude Code's real listing to a client that
+  /// asked to be fronted.
   static let listCacheScope = "private"
 
   /// Sixty seconds. This is a real interval and not a hint, because Bastion

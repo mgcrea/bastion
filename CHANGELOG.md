@@ -9,6 +9,38 @@ are taken from this file, which is the curated summary.
 
 ## [Unreleased]
 
+### Changed
+
+- **A client that already defers tool schemas is never fronted.** "Load tools on demand" was a
+  decision about a profile alone, and a profile feeds every client wired to it at once. Claude
+  Code has loaded MCP schemas on demand by itself since 2.1.191, so turning the facade on for a
+  profile it reads spends the whole cost and buys back only the tool _names_ — and it does worse
+  than nothing besides: the host's own tool search then indexes Bastion's three generic entries
+  instead of the server's eighty-five, so `app_store_connect_list_builds` stops being reachable by
+  keyword at the client layer even though `bastion_search_tools` still is. The comment in
+  `ToolFacade` has said so since 1.7.0 and nothing acted on it, which left `ServerDetail` quoting a
+  67x saving to the one client it was not delivering to.
+
+  The decision is now two switches and an `and`, not one: the profile answers _is this listing big
+  enough to be worth the trade_, and the client answers _does this client need the help at all_.
+  They are resolved independently and nobody fills in a grid — the gateway already knows which
+  client is asking, because the bearer token identifies it, so the second term is a set lookup at
+  the line that was already comparing that same string.
+
+  Which clients defer is an allowlist backed by evidence rather than a capability field, and it has
+  one entry. An unrecognised client does not defer: the client axis is an exception to something
+  the user asked for, and an exception with no evidence behind it is not an exception. Being wrong
+  in this direction shows up as a listing that shrank and is one click from fixed; being wrong in
+  the other would make a switch somebody turned on quietly do nothing, with no symptom naming the
+  cause.
+
+  It is an allowlist rather than a fact because Bastion cannot see the thing that decides it —
+  `ENABLE_TOOL_SEARCH=false`, a custom `ANTHROPIC_BASE_URL` or an older build all turn native
+  deferral off, and the token only says which config file it was written into. So each client
+  carries the same three positions the rest of the app uses, in the Clients pane, and the escape
+  hatch has to live there rather than on the profile: overriding a profile to get Claude Code
+  fronted again would drag Claude Desktop along with it.
+
 ### Internal
 
 - **`make dialect` can no longer grade the wrong binary.** `dialect-check.sh` read `BASTION_PORT`

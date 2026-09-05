@@ -743,8 +743,17 @@ nonisolated extension Supervisor {
       // and the deep check reports what the server exposes; both would otherwise
       // be told this server has three tools, and the check sheet would say so on
       // screen.
+      //
+      // And never for a client that defers schemas itself, whatever the profile
+      // says — the `and` `ToolFacade.clientDefersSchemas` documents. That term
+      // costs a set lookup on a string this line was already comparing: `client`
+      // is the Keychain account the presented token was issued to, so the
+      // gateway knows who is asking before it knows what they asked for. Three
+      // conjuncts rather than one predicate, each naming its own reason.
       var facade = FacadeOutcome.passThrough
-      if profile.loadsToolsOnDemand, client != ServerCheck.client {
+      if profile.loadsToolsOnDemand, !ToolFacade.clientDefersSchemas(client),
+        client != ServerCheck.client
+      {
         facade = try facadeOutcome(for: frame, method: method, clientID: clientID)
         if case .rewritten(let rewritten) = facade { frame = rewritten }
       }

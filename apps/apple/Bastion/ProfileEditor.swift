@@ -395,12 +395,13 @@ struct ProfileEditor: View {
       )
       .font(.caption).foregroundStyle(.secondary)
 
-      // The override's whole purpose, said where somebody is deciding. The
-      // app-wide switch cannot know which client a profile is wired to; this
-      // is where that is known.
+      // What this switch does NOT decide, said where somebody is deciding. A
+      // profile feeds every client wired to it, so the answer for one of them
+      // was never expressible here — it lives per client, and the gateway
+      // resolves the two together.
       Text(
-        "Worth overriding to off for a profile wired to Claude Code, which already loads tool "
-          + "schemas on demand by itself — it gains nothing here and still pays the cost above."
+        "Clients that already load tool schemas on demand are exempt and get the real list — "
+          + "Claude Code is one. This is per client, in that client's own settings."
       )
       .font(.caption).foregroundStyle(.secondary)
     } header: {

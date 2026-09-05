@@ -211,13 +211,14 @@ private struct GeneralPane: View {
         )
         .font(.caption).foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
-        // Named here rather than only in the profile sheet: this switch moves
-        // every profile at once, and the client it is wrong for is the one
-        // most people are running.
+        // A statement, not advice. It used to say "override that profile to
+        // off", which is now wrong twice over: the gateway already skips these
+        // clients, and a profile feeds several at once, so overriding there
+        // would have moved the ones that do need fronting.
         Text(
-          "Claude Code already loads tool schemas on demand by itself. A profile wired to it "
-            + "gains nothing here and still pays the cost above — override that profile to off "
-            + "in its own settings."
+          "Clients that load tool schemas on demand themselves are never fronted, whatever a "
+            + "profile says — Claude Code is one, and gets the real list. Each client's own "
+            + "settings say which, and can override it."
         )
         .font(.caption).foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)

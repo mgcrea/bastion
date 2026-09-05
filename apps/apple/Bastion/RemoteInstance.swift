@@ -193,9 +193,11 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     // gate on purpose: `bastion_call_tool` is rewritten into the `tools/call` it
     // stood for, so the audit row, `CallCapture` and the write gate all name the
     // real tool. Never for Bastion's own callers, which budget and report over
-    // the real list.
+    // the real list. Never for a client that
+    // defers schemas itself either, whatever the profile says; see `ToolFacade`.
     var facadeAnswer: [String: Any]?
-    if profile.loadsToolsOnDemand, client != ServerCheck.client,
+    if profile.loadsToolsOnDemand, !ToolFacade.clientDefersSchemas(client),
+      client != ServerCheck.client,
       ToolFacade.handles(method: method, params: frame["params"] as? [String: Any])
     {
       _ = try ensureHandshake()

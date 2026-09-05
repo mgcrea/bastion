@@ -1682,6 +1682,36 @@ struct UnitCheck {
     check(
       "every facade name is namespaced", ToolFacade.names.allSatisfy { $0.hasPrefix("bastion_") })
 
+    print("\nTool facade: which clients need it")
+
+    // The second term of the gate. The profile says whether the listing is big
+    // enough to be worth the trade; this says whether the client needs the help
+    // at all, and the facade applies only when both agree.
+    func defers(_ client: String, _ override: Bool? = nil) -> Bool {
+      ToolFacade.clientDefersSchemas(client, override: override)
+    }
+
+    check("Claude Code defers, so it is never fronted", defers("claude-code"))
+    check("Claude Desktop does not", !defers("claude-desktop"))
+    check("nor does Cursor", !defers("cursor"))
+    check("nor VS Code", !defers("vscode"))
+    check("nor Codex", !defers("codex"))
+    // The answer `scripts/facade-check.sh` depends on without saying so: its
+    // token is issued to whatever name a developer's `import.json` named, which
+    // is a faithful stand-in for every hand-minted one. An exception to
+    // something the user asked for needs evidence, and an unknown client is the
+    // absence of it.
+    check("an unrecognised client does not defer, so the facade still applies", !defers("acme"))
+    check("and neither does an empty name", !defers(""))
+    // Exact and case-sensitive, because the input is a Keychain account written
+    // from `client.id`. Leniency here should be a decision, not an accident.
+    check("the match is case-sensitive", !defers("Claude-Code"))
+    // The escape hatch, in both directions. It has to be per client: a profile
+    // feeds several at once, so overriding there would move all of them.
+    check("an override can front Claude Code anyway", !defers("claude-code", false))
+    check("and can exempt a client the table has never heard of", defers("acme", true))
+    check("no override falls back to the table", defers("claude-code", nil))
+
     print("\nTool facade: routing")
 
     func route(_ method: String, _ params: [String: Any]?) -> ToolFacade.Routing {

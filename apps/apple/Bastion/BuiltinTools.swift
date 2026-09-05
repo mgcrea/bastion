@@ -349,7 +349,8 @@ enum BuiltinTools {
           "Whether clients get three Bastion tools — search, describe, call — instead of every "
             + "tool this server exposes. Saves the listing's context at the cost of the client's "
             + "own per-tool approval rules. Overrides the app-wide setting for this profile; "
-            + "omit to leave the override as it is."),
+            + "omit to leave the override as it is. Clients that load schemas on demand "
+            + "themselves are never fronted whatever this says — see list_clients."),
       ],
       required: ["name", "server"], mutates: true),
 
@@ -714,6 +715,14 @@ enum BuiltinTools {
           "lazy_tools": profile.loadsToolsOnDemand,
           "values": profile.values,
         ]
+        // `lazy_tools` is the profile's resolved answer, and it is no longer the
+        // whole one: the facade applies only where the client cannot defer by
+        // itself. An array rather than a sentence, because the consumer is a
+        // model, and absent rather than empty so the common case adds nothing.
+        if profile.loadsToolsOnDemand {
+          let exempt = ClientWiring.all.filter { ToolFacade.clientDefersSchemas($0.id) }.map(\.id)
+          if !exempt.isEmpty { row["lazy_tools_exempt_clients"] = exempt }
+        }
         guard let server = ServerStore.shared.server(id: profile.serverID) else { return row }
         let stored = CredentialStore.storedVariables(
           in: accounts, profile: profile.name, server: profile.serverID)
@@ -757,6 +766,11 @@ enum BuiltinTools {
         // So a reader knows what it is about to open before it goes looking for
         // JSON and finds TOML.
         "format": client.format == .toml ? "toml" : "json",
+        // Whether this client loads a tool's schema when it needs one. A client
+        // that does is never fronted with the tool facade, whatever a profile's
+        // lazy_tools says. Its own key rather than folded into `note`, which
+        // already carries `client.caveat`.
+        "defers_tool_schemas": ToolFacade.clientDefersSchemas(client.id),
       ]
       if let caveat = client.caveat { row["note"] = caveat }
       return row
@@ -1213,8 +1227,14 @@ enum BuiltinTools {
       "allow_writes": profile.allowWrites,
       // The resolved answer, not the override: an agent asking what this
       // profile does needs what it DOES, and nil is not an answer to that.
+      // Resolved against the app-wide default only — the client axis is the
+      // sibling below, because it varies per caller and this key does not.
       "lazy_tools": profile.loadsToolsOnDemand,
     ]
+    if profile.loadsToolsOnDemand {
+      let exempt = ClientWiring.all.filter { ToolFacade.clientDefersSchemas($0.id) }.map(\.id)
+      if !exempt.isEmpty { out["lazy_tools_exempt_clients"] = exempt }
+    }
     let missing = ProfileEnvironment.missing(for: profile, server: server)
     if !missing.isEmpty { out["missing"] = missing }
     if !ignored.isEmpty {

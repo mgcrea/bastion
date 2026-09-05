@@ -155,10 +155,12 @@ nonisolated enum BuiltinServer {
     // mechanism, minus everything that only a real server needs.
     //
     // Before the log row, for the reason the other two state: the rewrite is
-    // what lets the audit go on naming the real tool.
+    // what lets the audit go on naming the real tool. Never for a client that
+    // defers schemas itself either, whatever the profile says; see `ToolFacade`.
     var frame = frame
     var facadeAnswer: [String: Any]?
-    if profile.loadsToolsOnDemand, client != ServerCheck.client,
+    if profile.loadsToolsOnDemand, !ToolFacade.clientDefersSchemas(client),
+      client != ServerCheck.client,
       ToolFacade.handles(method: method, params: frame["params"] as? [String: Any])
     {
       let catalog = onMain { BuiltinTools.declarations(allowWrites: profile.allowWrites) }

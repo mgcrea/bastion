@@ -67,6 +67,13 @@ until something reaches for it, so its window holds the names and almost nothing
 else. Claude Desktop, and most editors, do not — they take the whole listing on
 connect and there is nothing the user can do about it from that side.
 
+**Bastion never fronts a client that defers by itself**, whatever a profile says.
+That is not only because it would buy back the names and little else. It would
+take something away: the client's own search would then be indexing Bastion's
+three generic entries instead of the server's eighty-five, so
+`bastion_search_tools` stays findable by "app store connect" while
+`app_store_connect_list_builds` stops being findable by "testflight build".
+
 **Load tools on demand** (Settings › General, with a per-profile override under
 Context) is Bastion's answer for the clients that cannot. With it on, a client is
 served three tools instead of the server's own:
@@ -105,11 +112,27 @@ for a profile with writes off. But the editor's gate is coarser, which is why it
 is off by default.
 
 The switch is app-wide because the answer is usually the same for every profile
-on one machine. It is overridable per profile because it is not always: a profile
-wired to Claude Code should be set to off there, since Claude Code defers tool
-schemas by itself and so gains nothing while still paying the coarser approval
-rule. A profile that has expressed no preference follows the app-wide setting,
-which is the same tri-state **Record** uses one section further down.
+on one machine. It is overridable per profile because it is not always: a
+four-tool server is not worth the trade an eighty-five-tool one is. A profile that
+has expressed no preference follows the app-wide setting, which is the same
+tri-state **Record** uses one section further down.
+
+Which is one of two questions, and the profile only answers the first. _Is this
+listing big enough to be worth the trade_ is per profile; _does this client need
+the help at all_ is per client, and the facade applies where both say yes. The
+gateway knows which client is asking because the bearer token identifies it, so
+the two resolve together on every request — and a per-profile answer could never
+have expressed the second one anyway, since a profile feeds every client wired to
+it at once.
+
+The client half lives in that client's own pane, under Context, as the same
+tri-state. Its default is Bastion's list of clients known to defer, which has one
+entry and is a claim about evidence rather than a capability lookup: a client
+nobody has watched defer is treated as one that does not, so a switch somebody
+turned on cannot quietly do nothing. Override it to **No** if Claude Code is not
+actually deferring on this machine — `ENABLE_TOOL_SEARCH=false`, a custom
+`ANTHROPIC_BASE_URL`, or a build before 2.1.191 all turn it off, and none of the
+three is visible from Bastion's side.
 
 ## Why Claude Desktop gets a bridge
 

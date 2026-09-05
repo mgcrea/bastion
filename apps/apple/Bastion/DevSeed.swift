@@ -33,6 +33,17 @@
 
     private struct Document: Codable {
       var token: String?
+      /// Extra clients to mint a token for, each left in `dev-token-<client>`.
+      ///
+      /// Optional and additive, so every `import.json` that predates it still
+      /// decodes. It exists because `scripts/facade-check.sh` has to prove that
+      /// two clients on ONE profile are served differently, and bash has no
+      /// honest way to get a second token: minting one with `security` means
+      /// re-spelling `CredentialStore`'s service and account naming in shell,
+      /// and reading the developer's real Claude Code token would put a live
+      /// credential in a shell variable and make the check depend on whether
+      /// that client happens to be wired.
+      var tokens: [String]?
       var profiles: [Row]
 
       struct Row: Codable {
@@ -58,6 +69,24 @@
           try? FileManager.default.setAttributes(
             [.posixPermissions: 0o600], ofItemAtPath: tokenURL.path)
           hostLog("import", .info, "issued a gateway token for '\(client)' → dev-token")
+        } catch {
+          hostLog("import", .error, "could not issue a token: \(error.localizedDescription)")
+        }
+      }
+
+      // The same thing under a name that says which client it belongs to, so a
+      // script can hold several at once. Deliberately not merged with the
+      // primary above: `dev-token` is the path every existing script and every
+      // developer's muscle memory already knows.
+      for client in document.tokens ?? [] {
+        do {
+          let token = try GatewayToken.issue(to: client)
+          let url = AppSupport.directory.appendingPathComponent("dev-token-\(client)")
+          try Data("\(token)\n".utf8).write(to: url, options: .atomic)
+          try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o600], ofItemAtPath: url.path)
+          hostLog(
+            "import", .info, "issued a gateway token for '\(client)' → \(url.lastPathComponent)")
         } catch {
           hostLog("import", .error, "could not issue a token: \(error.localizedDescription)")
         }

@@ -22,18 +22,26 @@ import Foundation
 /// that, and turns a supervised gateway into a bag of anonymous calls.
 ///
 /// What it costs, which `ProfileEditor` has to say out loud: the HOST's own
-/// allowlist collapses. Every App Store Connect call reaches Claude Code as
-/// `mcp__appstore-connect__bastion_call_tool`, so one permission rule now covers
-/// all eighty-five. Bastion's audit stays exact; the editor's gate does not.
-/// This is the same shape of caveat as `WriteGate`'s "this filters Bastion, not
-/// the server", and it is why the switch is off by default and why a profile can
-/// still override the app-wide answer: a profile feeding Claude Code, which
-/// defers tool schemas by itself, gains nothing here and pays the whole cost.
+/// allowlist collapses. Every App Store Connect call reaches the editor as
+/// `bastion_call_tool`, so one permission rule now covers all eighty-five.
+/// Bastion's audit stays exact; the editor's gate does not. This is the same
+/// shape of caveat as `WriteGate`'s "this filters Bastion, not the server", and
+/// it is why the switch is off by default.
 ///
-/// Pure, and taking strings rather than a `BastionServer`, so `make unit` and
-/// `scripts/remote-check.swift` can compile it alone. The argument is
-/// `WriteGate`'s, for `WriteGate`'s reason: a rule with no test is a rule that
-/// gets re-derived somewhere else.
+/// And why it is not the whole decision. A client that defers schemas ITSELF
+/// gains almost nothing here and pays all of that: Claude Code has fetched a
+/// tool's schema on demand since 2.1.191, so fronting it buys back the names and
+/// nothing else. Worse, it takes something away — the host's own search then
+/// indexes these three generic entries instead of the server's eighty-five, so
+/// `bastion_search_tools` stays findable by "app store connect" while
+/// `app_store_connect_list_builds` stops being findable by "testflight build".
+/// `clientDefersSchemas` is that second term, and the gate is the `and` of the
+/// two: the profile answers whether the listing is big enough to be worth the
+/// trade, the client answers whether it needs the help at all.
+///
+/// Pure, and taking strings rather than a `BastionServer`, so `make unit` can
+/// compile it alone. The argument is `WriteGate`'s, for `WriteGate`'s reason: a
+/// rule with no test is a rule that gets re-derived somewhere else.
 nonisolated enum ToolFacade {
   // MARK: - Names
 
@@ -67,6 +75,66 @@ nonisolated enum ToolFacade {
   static let defaultsKey = "lazyToolsDefault"
 
   static var globalDefault: Bool { UserDefaults.standard.bool(forKey: defaultsKey) }
+
+  // MARK: - Which clients need this
+
+  /// The clients that load a tool's schema on demand by themselves.
+  ///
+  /// An ALLOWLIST BACKED BY EVIDENCE, not a capability field. Nothing derives
+  /// this from `ClientWiring` and adding a client there requires nothing here —
+  /// the entry is a claim that somebody watched that client defer, and a client
+  /// nobody has watched belongs outside the set rather than inside it on the
+  /// grounds that it probably does.
+  ///
+  /// One entry, and it should stay small. Claude Code is here for
+  /// `ENABLE_TOOL_SEARCH`, on by default since 2.1.191: schemas never reach the
+  /// model, only names do, and a search tool fetches the rest. Claude Desktop,
+  /// the editors and Codex are not here because no equivalent is documented for
+  /// any of them, which is the same answer `docs/clients.md` has always given.
+  ///
+  /// Matched exactly and case-sensitively against the Keychain account the
+  /// bearer token was issued to, which `ClientWiring.token(for:)` always writes
+  /// from `client.id` — lowercase kebab. A fuzzy identity test on a credential's
+  /// account name is worse than a strict one that is occasionally too narrow.
+  static let clientsDeferringSchemas: Set<String> = ["claude-code"]
+
+  /// Where one client's override lives, for `ClientDetail`'s picker and for the
+  /// read below. Per client rather than per profile because a profile feeds
+  /// several clients at once: overriding there to get one of them fronted again
+  /// would drag the others along with it.
+  static func clientOverrideKey(_ client: String) -> String {
+    "lazyToolsClient.\(client)"
+  }
+
+  /// Whether this client defers schemas itself, override resolved.
+  ///
+  /// The pure half, taking the override as an argument rather than reading it,
+  /// so `make unit` can pin the table and both directions of the override
+  /// without a defaults domain. Same split as `globalDefault` being a thin read
+  /// over a constant, and the same reason: the rule is the thing worth testing.
+  ///
+  /// An unrecognised client does NOT defer, so the facade applies to it. This
+  /// axis is an exception to something the user asked for, and an exception with
+  /// no evidence behind it is not an exception — defaulting the other way would
+  /// make a switch somebody turned on quietly do nothing for every client
+  /// Bastion has not been taught about, with no symptom naming the cause. Wrong
+  /// in this direction is a listing that visibly shrank and is one picker away
+  /// from fixed. `scripts/facade-check.sh`, whose token names an arbitrary
+  /// client, depends on this answer.
+  static func clientDefersSchemas(_ client: String, override: Bool?) -> Bool {
+    override ?? clientsDeferringSchemas.contains(client)
+  }
+
+  /// The same question against the stored override. The only form the gateway
+  /// reads, so a client that has expressed no preference cannot be mistaken for
+  /// one that said no.
+  static func clientDefersSchemas(_ client: String) -> Bool {
+    let stored = UserDefaults.standard.string(forKey: clientOverrideKey(client))
+    // "" is the Default tag and `Bool("")` is nil, so the empty position falls
+    // through to the table rather than reading as a no.
+    let override: Bool? = stored.flatMap { Bool($0) }
+    return clientDefersSchemas(client, override: override)
+  }
 
   // MARK: - Limits
 

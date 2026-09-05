@@ -21,6 +21,11 @@
 #   THE GATE    A profile with writes off never sees a mutating tool in the
 #               index and cannot reach one through the dispatcher either.
 #
+#   THE CLIENT  Two clients on ONE profile are served differently: the one that
+#               loads schemas on demand by itself gets the real list, the other
+#               gets the three. Only observable here — a unit test can pin the
+#               rule but not that the gateway consults it per caller.
+#
 # Runs against scratch profiles of Bastion's own server, so it needs no
 # credentials, no network and no installed package, and it removes them
 # afterwards. Same bargain `builtin-check.sh` makes, for the same reason.
@@ -39,17 +44,34 @@ bad() { printf '  \033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail + 1)); }
 check()  { case "$2" in *"$3"*) ok "$1" ;; *) bad "$1 — expected '$3' in: ${2:0:400}" ;; esac; }
 absent() { case "$2" in *"$3"*) bad "$1 — '$3' should not be there" ;; *) ok "$1" ;; esac; }
 
+# The two scratch clients THE CLIENT is about. Neither is a real
+# `ClientWiring` id, deliberately: minting a token to "claude-code" would
+# overwrite the developer's own and unwire their editor. The table itself is
+# pinned by `make unit`; what is provable only here is that the gateway asks
+# the question per caller at all, and the per-client override is what lets an
+# arbitrary id stand in for one that defers.
+PLAINCLIENT="facade-check"
+LAZYCLIENT="facade-check-defers"
+
 mkdir -p "$SUPPORT"
-for f in servers.json profiles.json; do
+for f in servers.json profiles.json import.json dev-token; do
   [ -f "$SUPPORT/$f" ] && cp "$SUPPORT/$f" "$SUPPORT/$f.facade-check-backup"
 done
 restore() {
   kill "${APP:-0}" 2>/dev/null || true
   wait "${APP:-0}" 2>/dev/null || true
-  for f in servers.json profiles.json; do
+  for f in servers.json profiles.json import.json dev-token; do
     [ -f "$SUPPORT/$f.facade-check-backup" ] && mv "$SUPPORT/$f.facade-check-backup" "$SUPPORT/$f"
   done
+  rm -f "$SUPPORT/dev-token-$LAZYCLIENT" "$SUPPORT/imported.json"
+  # The tokens too, not just the files holding them. A bearer token for a
+  # client that does not exist, left valid in the Keychain, is exactly what
+  # this app is for stopping.
+  for c in "$PLAINCLIENT" "$LAZYCLIENT"; do
+    security delete-generic-password -s "$BUNDLE.gateway" -a "$c" >/dev/null 2>&1 || true
+  done
   defaults delete "$BUNDLE" lazyToolsDefault 2>/dev/null || true
+  defaults delete "$BUNDLE" "lazyToolsClient.$LAZYCLIENT" 2>/dev/null || true
 }
 trap restore EXIT
 
@@ -58,6 +80,19 @@ trap restore EXIT
 # A setting whose default nothing reads is a setting that silently does nothing,
 # and that is precisely the bug a per-profile-only version would have had.
 defaults write "$BUNDLE" lazyToolsDefault -bool YES
+
+# One of the two clients loads schemas on demand. Set through the per-client
+# override rather than by naming a client in `ToolFacade`'s table, so this stays
+# true when the table changes and so no real client's token is touched.
+defaults write "$BUNDLE" "lazyToolsClient.$LAZYCLIENT" -string true
+
+# Both tokens minted by the app itself, through DevSeed, for the reason its
+# `tokens` field states: `security` here would mean re-spelling the Keychain
+# naming in shell. Empty `profiles`, because this script writes profiles.json
+# directly a few lines down and an import that also wrote it would race.
+cat > "$SUPPORT/import.json" <<JSON
+{"token": "$PLAINCLIENT", "tokens": ["$LAZYCLIENT"], "profiles": []}
+JSON
 
 python3 - "$SUPPORT" <<'PY'
 import json, os, sys
@@ -104,12 +139,23 @@ for _ in $(seq 1 40); do nc -z 127.0.0.1 "$PORT" 2>/dev/null && break; sleep 0.2
 sleep 1
 
 TOKEN="$(cat "$SUPPORT/dev-token" 2>/dev/null)"
-[ -n "$TOKEN" ] || { echo "no dev-token in $SUPPORT"; exit 2; }
+[ -n "$TOKEN" ] || { echo "no dev-token in $SUPPORT — did the app consume import.json?"; exit 2; }
+LAZYTOKEN="$(cat "$SUPPORT/dev-token-$LAZYCLIENT" 2>/dev/null)"
+[ -n "$LAZYTOKEN" ] || { echo "no dev-token-$LAZYCLIENT in $SUPPORT"; exit 2; }
 
-# `rpc <profile> <body>`
+# `rpc <profile> <body>` — as the client that does NOT defer, which is every
+# assertion in this file except the two under THE CLIENT.
 rpc() {
   curl -s --max-time 15 \
     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+    -d "$2" "http://127.0.0.1:$PORT/s/$1/bastion"
+}
+
+# The same call as the client that does. Same port, same profile, same body —
+# the token is the only thing that differs, which is the whole point.
+rpcLazyClient() {
+  curl -s --max-time 15 \
+    -H "Authorization: Bearer $LAZYTOKEN" -H 'Content-Type: application/json' \
     -d "$2" "http://127.0.0.1:$PORT/s/$1/bastion"
 }
 
@@ -212,6 +258,26 @@ check "a read tool is in the index" "$RO" "list_profiles"
 absent "a write tool is not" "$RO" "remove_profile"
 GATED="$(rpc facadero '{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"bastion_call_tool","arguments":{"name":"remove_profile","arguments":{"name":"facadeon","server":"bastion"}}}}')"
 absent "and the dispatcher will not run it" "$GATED" '"removed"'
+
+echo
+echo "The client"
+
+# One profile, two tokens. `facadeon` hands the ordinary client three tools —
+# asserted at the top of this file — and has to hand the deferring one all of
+# them, from the same process, in the same second. Anything that made the
+# gateway resolve the facade per profile alone would fail here and nowhere else.
+CLIENTLAZY="$(rpcLazyClient facadeon '{"jsonrpc":"2.0","id":12,"method":"tools/list"}')"
+CLIENTLAZY_N=$(printf '%s' "$CLIENTLAZY" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["result"]["tools"]))')
+
+[ "$CLIENTLAZY_N" = "$PLAIN_N" ] \
+  && ok "a client that defers schemas gets all $CLIENTLAZY_N from the same profile" \
+  || bad "a client that defers schemas gets the real list — got $CLIENTLAZY_N, expected $PLAIN_N"
+absent "and is never handed the dispatcher" "$CLIENTLAZY" "bastion_call_tool"
+# Said again here rather than assumed from the top of the file: the pair is the
+# claim, and half of it proves nothing.
+[ "$LAZY_N" = "3" ] \
+  && ok "while the other client, on that same profile, still gets three" \
+  || bad "the ordinary client stopped getting the facade — got $LAZY_N"
 
 echo
 echo "$pass/$((pass + fail)) passed"

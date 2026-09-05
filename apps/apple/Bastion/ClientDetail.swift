@@ -25,6 +25,17 @@ struct ClientDetail: View {
   /// Narrows the project list. Claude Code has ninety-eight folders in it.
   @State private var projectFilter = ""
 
+  /// This client's answer to "do you load tool schemas on demand", as the same
+  /// ""/"true"/"false" tag `ProfileEditor` and `ServerDetail` use for their
+  /// tri-states — `@AppStorage` has no clean binding for a `Bool?`, and the tag
+  /// vocabulary already exists in this app.
+  ///
+  /// Read through `ToolFacade.clientOverrideKey`, which is also what the gateway
+  /// reads, so there is one key rather than a constant here and a matching one
+  /// there. Not in `profiles.json`: it is a fact about this client, and a
+  /// profile feeds several at once.
+  @State private var defersOverride = ""
+
   /// Every profile, which is what the pane draws keys from — not what Configure
   /// writes. A profile whose server is switched off keeps its key, because the
   /// file may still hold an entry under it and this pane's job is to say what is
@@ -185,6 +196,7 @@ struct ClientDetail: View {
         header(snapshot)
         fileCard
         entriesCard(snapshot)
+        contextCard
         if !snapshot.others.isEmpty { othersCard(snapshot) }
         if !snapshot.projects.isEmpty { projectsCard(snapshot) }
         if let result {
@@ -331,6 +343,84 @@ struct ClientDetail: View {
         .fixedSize(horizontal: false, vertical: true)
       }
     }
+  }
+
+  // MARK: - Whether this client needs the tool facade
+
+  /// The second half of "load tools on demand", stated about the client rather
+  /// than about the facade.
+  ///
+  /// Phrased that way deliberately. "Send this client the three tools" would
+  /// read as overriding the profile, which it does not — the facade applies only
+  /// when the profile asks for it AND the client cannot defer by itself — while
+  /// a statement about the client makes that `and` self-evident.
+  ///
+  /// Shown for every client, not only the ones `ToolFacade` has an entry for. A
+  /// control that appeared only where the table already says yes would hide the
+  /// case it exists for in the other direction: a client that starts deferring
+  /// before Bastion learns it has.
+  private var contextCard: some View {
+    let key = ToolFacade.clientOverrideKey(client.id)
+    let table = ToolFacade.clientsDeferringSchemas.contains(client.id)
+    return Card(title: "Context") {
+      VStack(alignment: .leading, spacing: 6) {
+        Picker(
+          "Loads tool schemas on demand",
+          selection: Binding(
+            get: { defersOverride },
+            set: {
+              defersOverride = $0
+              // "" is Default, and it has to REMOVE the key rather than store an
+              // empty string: `ToolFacade` resolves an absent value to the table
+              // and would read a stored "" the same way, but a defaults domain
+              // full of empty strings is one somebody has to explain later.
+              if $0.isEmpty {
+                UserDefaults.standard.removeObject(forKey: key)
+              } else {
+                UserDefaults.standard.set($0, forKey: key)
+              }
+            })
+        ) {
+          Text("Default (\(table ? "yes" : "no"))").tag("")
+          Text("Yes").tag("true")
+          Text("No").tag("false")
+        }
+        .pickerStyle(.segmented)
+        .controlSize(.small)
+        .fixedSize()
+
+        Text(contextDetail)
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    // `initial: true` and keyed on the CLIENT, not just on appearing. The pane
+    // is one branch of a switch in `MainWindow`, so moving from Claude Code to
+    // Cursor reuses this view and its `@State` — an `onAppear` would not fire
+    // again and the picker would sit there showing the previous client's
+    // answer, which is the one kind of wrong a settings control must not be.
+    .onChange(of: client.id, initial: true) {
+      let stored = UserDefaults.standard.string(forKey: ToolFacade.clientOverrideKey(client.id))
+      defersOverride = stored ?? ""
+    }
+  }
+
+  private var contextDetail: String {
+    let base =
+      ToolFacade.clientDefersSchemas(client.id)
+      ? "\(client.displayName) fetches a tool's schema when it needs one, so Bastion serves it "
+        + "every tool a profile's server exposes even where 'Load tools on demand' is on. "
+        + "Fronting it there would buy back the names and take its own tool search with it."
+      : "\(client.displayName) is sent every tool definition a profile's server exposes, and "
+        + "holds them for the whole conversation. Profiles with 'Load tools on demand' turned on "
+        + "are fronted with Bastion's three tools instead."
+    // Only where Bastion claims the client defers. The escape hatch is for the
+    // things Bastion cannot see — the env var, the base URL, the version — and
+    // naming them under a client nobody claims defers would be noise.
+    guard ToolFacade.clientsDeferringSchemas.contains(client.id) else { return base }
+    return base
+      + " Set this to No if you have turned that off — ENABLE_TOOL_SEARCH=false, a custom "
+      + "ANTHROPIC_BASE_URL, or a version before 2.1.191."
   }
 
   // MARK: - What gets written

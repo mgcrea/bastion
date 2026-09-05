@@ -623,16 +623,21 @@ struct ServerDetail: View {
     let scope =
       profiles.count == 1
       ? "This server's profile" : "All \(profiles.count) of this server's profiles"
+    // Only where the facade is actually on for something here. Then it is a
+    // live fact about what those profiles do; under a picker sitting at Off it
+    // is a caveat about a feature nobody turned on, and the same sentence is
+    // already in Settings, in the profile sheet and in the client's own pane.
+    let exempt = profiles.contains(where: \.loadsToolsOnDemand) ? facadeExemptClause() : ""
     guard let measured = lazyToolsMeasurement else {
       return "\(scope). Clients get three Bastion tools — search, describe and call — instead of "
-        + "every tool \(server.displayName) exposes."
+        + "every tool \(server.displayName) exposes." + exempt
     }
     let facade = ToolFacade.declarationBytes(
       displayName: server.displayName, summary: server.summary, toolCount: measured.toolCount)
     return "\(scope). \(measured.toolCount) tools, "
       + "\(ToolCost.short(ToolCost.tokens(bytes: measured.bytes)))\(measured.partial ? "+" : "")"
       + " → \(ToolCost.short(ToolCost.tokens(bytes: facade))) tokens on every connect, with "
-      + "everything still reachable through the three."
+      + "everything still reachable through the three." + exempt
   }
 
   // MARK: - Profiles
@@ -775,6 +780,40 @@ struct ServerDetail: View {
 
 // MARK: - One profile
 
+/// The clients the tool facade will not apply to, by display name.
+///
+/// File scope rather than a member: `ServerDetail` writes the setting and
+/// `ProfileRow` renders the badge, and a copy in each is the thing `ToolFacade`
+/// exists to prevent. `@MainActor` because `ClientWiring.all` is — free here,
+/// since both callers are view bodies, and exactly why the rule ITSELF lives in
+/// `ToolFacade`, where the gateway's own thread can reach it.
+///
+/// The cheap question, and the one that is true. "Which clients are wired to
+/// this profile" is `ClientWiring.status(of:profiles:)`, which opens seven
+/// config files with no caching by design — per profile row, per redraw. This
+/// asks which clients are exempt at all: a defaults read and a set lookup.
+@MainActor private func facadeExemptClients() -> [String] {
+  ClientWiring.all.filter { ToolFacade.clientDefersSchemas($0.id) }.map(\.displayName)
+}
+
+/// " Claude Code loads schemas on demand and gets the real list." — and the
+/// empty string when nothing is exempt, so a caller can append it
+/// unconditionally.
+@MainActor private func facadeExemptClause() -> String {
+  let names = facadeExemptClients()
+  guard !names.isEmpty else { return "" }
+  let list =
+    names.count == 1
+    ? names[0]
+    : names.dropLast().joined(separator: ", ") + " and " + names[names.count - 1]
+  // Both verbs agree, not just the first. "Claude Code loads schemas on demand
+  // and get the real list" is the kind of sentence that reads as a bug in the
+  // app rather than as a caption.
+  let one = names.count == 1
+  return " \(list) \(one ? "loads" : "load") schemas on demand and "
+    + "\(one ? "gets" : "get") the real list."
+}
+
 private struct ProfileRow: View {
   let server: BastionServer
   let profile: Profile
@@ -903,7 +942,8 @@ private struct ProfileRow: View {
         "\(count) tool\(count == 1 ? "" : "s") behind three. Clients are sent "
           + ToolCost.phrase(bytes: facade) + " on connect instead of "
           + ToolCost.phrase(bytes: measured.bytes, partial: measured.partial)
-          + ", and fetch a schema when they need one. Measured \(when)."
+          + ", and fetch a schema when they need one." + facadeExemptClause()
+          + " Measured \(when)."
       )
     }
 
