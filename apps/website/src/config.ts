@@ -154,6 +154,11 @@ export const DIALECT = {
  * off by default because it is the one setting in the app that trades rather
  * than tightens, and `ToolFacade.defaultsKey` is the authority — if that ever
  * ships defaulting on, the sentence on the page has to move with it.
+ *
+ * `skips` is the second. Every figure above is what a client that takes the
+ * whole listing pays, and the page has to say so out loud, because the reader
+ * likeliest to arrive here is running the one client the switch is never
+ * applied to. `ToolFacade.clientsDeferringSchemas` is the authority.
  */
 export const CONTEXT = {
   profile: "prod/appstore-connect",
@@ -164,6 +169,8 @@ export const CONTEXT = {
   indexTokens: "3.2k",
   cut: "67×",
   off: true,
+  /** Clients that load a schema on demand themselves, and so are never fronted. */
+  skips: ["Claude Code"],
   /** The three tools a client is served instead, as the facade declares them. */
   facade: [
     {

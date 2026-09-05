@@ -71,6 +71,16 @@ const share = (parseFloat(CONTEXT.facadeTokens) / parseFloat(CONTEXT.tokens)) * 
         coarser one, which is why this ships off and why a profile can disagree with the app-wide
         answer.
       </p>
+      {/* Named on the page and not only in the app, because the reader likeliest
+          to be reading this is running the one client the figures above do not
+          describe. A number promised to somebody it will never reach is worse
+          than a number left out. */}
+      <p class="m-0 text-[13px] leading-[1.6] text-fg/45 text-pretty">
+        {CONTEXT.skips.join(" and ")} already {CONTEXT.skips.length === 1 ? "loads" : "load"} a tool's
+        schema on demand, so Bastion serves {CONTEXT.skips.length === 1 ? "it" : "them"} the real list
+        whatever a profile says — fronting a client that defers by itself would buy back the names and
+        take its own tool search with it. The figures above are what every other client pays.
+      </p>
       <p class="m-0 text-[13px] leading-[1.6] text-fg/45 text-pretty">
         MCP has no method for fetching a schema later — <code class="font-mono text-[12px]"
           >inputSchema</code
