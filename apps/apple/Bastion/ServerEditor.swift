@@ -58,6 +58,10 @@ struct ServerEditor: View {
   @State private var tab: Tab = .catalog
   @State private var draft = Draft()
   @State private var error: String?
+  /// Filters the catalog tab only, and survives a trip to Custom and back —
+  /// switching tabs to check a package name is not a reason to retype it.
+  @State private var catalogQuery = ""
+  @FocusState private var searchFocused: Bool
 
   private enum Tab: Hashable {
     case catalog
@@ -163,26 +167,94 @@ struct ServerEditor: View {
 
   // MARK: - Catalog
 
+  /// The catalog rows the query leaves standing.
+  ///
+  /// Over the package name and the summary as well as the title, because the
+  /// title is the one field someone searching may not know: "sentry" finds the
+  /// entry by name, "issues" finds it by what it does, and
+  /// `@sentry/mcp-server` finds it when the package is what was pasted in.
+  private func matches(in available: [BastionServer]) -> [BastionServer] {
+    let needle = catalogQuery.trimmed
+    guard !needle.isEmpty else { return available }
+    return available.filter { entry in
+      [
+        entry.id,
+        entry.displayName,
+        entry.summary,
+        entry.package?.npmName ?? "",
+        entry.endpoint?.absoluteString ?? "",
+      ]
+      .contains { $0.localizedCaseInsensitiveContains(needle) }
+    }
+  }
+
   private var catalogList: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 10) {
-        let available = ServerStore.shared.available
-        if available.isEmpty {
-          ContentUnavailableView(
-            "Everything in the catalog is installed",
-            systemImage: "checkmark.circle",
-            description: Text("Use Custom to add a server by npm package.")
-          )
-          .padding(.top, 40)
-        } else {
-          ForEach(available) { entry in
-            CatalogRow(entry: entry, add: { add(catalogEntry: entry) })
-            if entry.id != available.last?.id { Divider() }
+    let available = ServerStore.shared.available
+    let shown = matches(in: available)
+
+    return VStack(alignment: .leading, spacing: 0) {
+      if !available.isEmpty {
+        catalogSearch(showing: shown.count, of: available.count)
+        Divider()
+      }
+
+      ScrollView {
+        VStack(alignment: .leading, spacing: 10) {
+          if available.isEmpty {
+            ContentUnavailableView(
+              "Everything in the catalog is installed",
+              systemImage: "checkmark.circle",
+              description: Text("Use Custom to add a server by npm package.")
+            )
+            .padding(.top, 40)
+          } else if shown.isEmpty {
+            ContentUnavailableView.search(text: catalogQuery.trimmed)
+              .padding(.top, 40)
+          } else {
+            ForEach(shown) { entry in
+              CatalogRow(entry: entry, add: { add(catalogEntry: entry) })
+              if entry.id != shown.last?.id { Divider() }
+            }
           }
         }
+        .padding(16)
       }
-      .padding(16)
     }
+  }
+
+  /// Pinned above the list rather than scrolling with it: a field that leaves
+  /// the window as you look for the thing you are searching for is a field you
+  /// have to scroll back up to correct.
+  private func catalogSearch(showing: Int, of total: Int) -> some View {
+    HStack(spacing: 8) {
+      HStack(spacing: 4) {
+        Image(systemName: "magnifyingglass")
+          .foregroundStyle(.tertiary)
+          .font(.caption)
+        TextField("Search the catalog", text: $catalogQuery)
+          .textFieldStyle(.plain)
+          .focused($searchFocused)
+        if !catalogQuery.isEmpty {
+          Button {
+            catalogQuery = ""
+          } label: {
+            Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
+          }
+          .buttonStyle(.plain)
+          .help("Clear the search")
+        }
+      }
+      .padding(.horizontal, 6).padding(.vertical, 4)
+      .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: 6))
+
+      if !catalogQuery.trimmed.isEmpty {
+        Text("\(showing) of \(total)")
+          .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+      }
+    }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 10)
+    .onAppear { searchFocused = true }
   }
 
   private struct CatalogRow: View {
