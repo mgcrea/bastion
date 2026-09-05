@@ -300,15 +300,12 @@ func forward(_ line: Data) {
   request.httpMethod = "POST"
   request.httpBody = line
   request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-  // JSON only, and deliberately narrower than the spec allows a client to be.
-  //
-  // The gateway now streams to a client that says it reads one, and `forward`
-  // below buffers the whole body and emits it as a single stdout line — so a
-  // stream would reach a stdio host as a raw SSE body where a JSON-RPC frame
-  // should be, and it would fail to parse with nothing in the diff to blame.
-  // Asking for JSON is what makes that unreachable. Widen this again in the
-  // same change that teaches `forward` to read a stream, not before.
-  request.setValue("application/json", forHTTPHeaderField: "Accept")
+  // Both, because the spec requires a client to accept either shape and this
+  // one now genuinely reads both. A streamed reply arrives as several frames
+  // and each is written to stdout as its own line, which is exactly what a
+  // stdio host expects — so a progress notification reaches Claude Desktop the
+  // same way it reaches an editor holding a URL.
+  request.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept")
   request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
   if let version = modernVersion(of: frame) {
@@ -322,13 +319,69 @@ func forward(_ line: Data) {
   }
 
   inFlight.enter()
-  session.dataTask(with: request) { data, response, error in
+  let task = session.dataTask(with: request)
+  task.delegate = Exchange(id: id)
+  task.resume()
+}
+
+/// One request's reply, read as it arrives.
+///
+/// A completion handler would be shorter and would buffer, which was fine while
+/// every reply was a single JSON object. It is not fine now: Bastion answers a
+/// call that asked for progress with `text/event-stream`, and buffering that
+/// would hand the host one stdout line containing several `data:` frames —
+/// not JSON, not a frame, and a parse failure with nothing obvious to blame.
+///
+/// So the body is fed through `ServerSentEvents.Parser` and each payload is
+/// written as its own line. That is all a stdio host needs for progress to
+/// work, and it is why Claude Desktop — the one client that cannot be handed a
+/// URL — is not left out of this.
+final class Exchange: NSObject, URLSessionDataDelegate {
+  private let id: Any?
+  private var status = 0
+  private var streaming = false
+  private var parser = ServerSentEvents.Parser()
+  private var buffered = Data()
+  private var wrote = false
+
+  init(id: Any?) {
+    self.id = id
+    super.init()
+  }
+
+  func urlSession(
+    _ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse
+  ) async -> URLSession.ResponseDisposition {
+    status = (response as? HTTPURLResponse)?.statusCode ?? 0
+    let contentType =
+      (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type") ?? ""
+    streaming = contentType.lowercased().contains("text/event-stream")
+    return .allow
+  }
+
+  func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+    guard streaming else {
+      buffered.append(data)
+      return
+    }
+    for payload in parser.feed(data) where !payload.isEmpty {
+      wrote = true
+      emit(payload)
+    }
+  }
+
+  func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
     defer { inFlight.leave() }
 
     if let error {
       // A notification has no id, so there is nobody to tell. Log it and move
       // on rather than emitting an error frame with a null id, which a host has
       // no way to match to anything.
+      //
+      // Mid-stream this is a truncated reply, and the host is owed the same
+      // error it would get for a failed request — it has written nothing it can
+      // match to this id yet unless a progress frame already went out, and a
+      // progress frame is not an answer.
       if id == nil {
         warn("a notification could not be delivered: \(error.localizedDescription)")
       } else {
@@ -337,18 +390,30 @@ func forward(_ line: Data) {
       return
     }
 
-    let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+    if streaming {
+      // A stream that ended without its trailing blank line still dispatched
+      // its last event, which is where the response frame usually is.
+      for payload in parser.finish() where !payload.isEmpty {
+        wrote = true
+        emit(payload)
+      }
+      if !wrote, id != nil {
+        emitError(id: id, "Bastion streamed \(status) with no frames")
+      }
+      return
+    }
+
     // 202 with an empty body is the spec's answer to a notification. There is
     // nothing to write, and writing anything would be a response the host never
     // asked for.
     if status == 202 { return }
 
-    guard let data, !data.isEmpty else {
+    guard !buffered.isEmpty else {
       if id != nil { emitError(id: id, "Bastion returned \(status) with no body") }
       return
     }
-    emit(data)
-  }.resume()
+    emit(buffered)
+  }
 }
 
 // MARK: - stdin

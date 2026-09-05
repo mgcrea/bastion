@@ -64,6 +64,11 @@
 			path = Bastion;
 			sourceTree = "<group>";
 		};
+		0BA5710000000000000000A1 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -97,6 +102,7 @@
 			isa = PBXGroup;
 			children = (
 				09D8E51F304323C100C66A5A /* Bastion */,
+				0BA5710000000000000000A1 /* Shared */,
 				0BA571000000000000000024 /* Frameworks */,
 				0BA571000000000000000002 /* BastionBridge */,
 				09D8E51E304323C100C66A5A /* Products */,
@@ -128,6 +134,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				0BA571000000000000000002 /* BastionBridge */,
+				0BA5710000000000000000A1 /* Shared */,
 			);
 			name = BastionBridge;
 			packageProductDependencies = (
@@ -153,6 +160,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				09D8E51F304323C100C66A5A /* Bastion */,
+				0BA5710000000000000000A1 /* Shared */,
 			);
 			name = Bastion;
 			packageProductDependencies = (
