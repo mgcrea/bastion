@@ -99,7 +99,7 @@ jobs:
   # set: `secrets` cannot gate a job directly, and a job that fails for want of
   # a secret would keep CI red on every push until somebody added it. Without
   # the secret they are a no-op and the site and the Worker stay hand-deployed
-  # with `pnpm deploy` in each app, exactly as before.
+  # with `pnpm release` in each app, exactly as before.
   deploy-api:
     name: Deploy api
     needs: [manifest]
@@ -175,7 +175,7 @@ jobs:
         if: steps.token.outputs.present == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: pnpm --filter @mgcrea/bastion-website run deploy
+        run: pnpm --filter @mgcrea/bastion-website run release
       - name: Live 🩺
         if: steps.token.outputs.present == 'true'
         run: curl -fsS --max-time 20 -o /dev/null https://bastion.mgcrea.io/
