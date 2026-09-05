@@ -18,6 +18,73 @@ import Logo from "./Logo.astro";
 const CLIENTS = ["Claude Code", "Cursor", "VS Code", "Terminal"] as const;
 
 /**
+ * The entry, before and after — the same `shopify` block those four tabs hold,
+ * as it stands in an editor today and as one-click wiring leaves it.
+ *
+ * It used to show only the second half, over the caption "no secret in it",
+ * which asks a first-time reader to take on faith that there WAS one. The
+ * credentials are the whole reason this app exists and the page's first
+ * argument (`Problem.astro`) is about them, so the hero shows the thing being
+ * removed rather than describing the absence of it.
+ *
+ * A diff and not two panels: the two states are one file, at two moments, and
+ * a client wiring is literally this rewrite — every other entry in the file
+ * left byte-for-byte alone. Two panels side by side would say "here are two
+ * ways to configure a server", which is a choice nobody has to make.
+ *
+ * The `-` lines are `mcp-shopify`'s real invocation and its real variable
+ * names, from `servers.json` — the store domain, the client id and the client
+ * secret, which is the set a Shopify custom app actually needs. Inventing a
+ * plausible-looking `SHOPIFY_API_KEY` here would be a fake credential shape in
+ * the one place on the page a reader checks against their own file. The VALUES
+ * are fabricated and truncated, and have to stay that way: `shpss_` is the
+ * right prefix, and nothing after it is.
+ *
+ * `tone` marks the one line the eye is meant to land on. The rest of the
+ * removed block is dimmed — a diff where six lines shout is a diff nobody
+ * reads.
+ */
+interface ConfigLine {
+  /** `-` removed, `+` added, undefined for the untouched frame. */
+  mark?: "-" | "+";
+  /** Indent depth, three spaces to the level, as the file is pretty-printed. */
+  d: number;
+  text: string;
+  /** The quoted value, split out only when it is coloured apart from its key. */
+  val?: string;
+  tone?: string;
+}
+
+const CONFIG: ConfigLine[] = [
+  { d: 0, text: "{" },
+  { d: 1, text: '"mcpServers": {' },
+  { d: 2, text: '"shopify": {' },
+  { mark: "-", d: 3, text: '"command": ', val: '"npx",' },
+  { mark: "-", d: 3, text: '"args": ', val: '["-y", "@mgcrea/mcp-shopify"],' },
+  { mark: "-", d: 3, text: '"env": {' },
+  { mark: "-", d: 4, text: '"SHOPIFY_STORE_DOMAIN": ', val: '"acme.myshopify.com",' },
+  { mark: "-", d: 4, text: '"SHOPIFY_CLIENT_ID": ', val: '"8f2c1d94…",' },
+  {
+    mark: "-",
+    d: 4,
+    text: '"SHOPIFY_CLIENT_SECRET": ',
+    val: '"shpss_4b7e0a…"',
+    tone: "text-danger-ink",
+  },
+  { mark: "-", d: 3, text: "}" },
+  {
+    mark: "+",
+    d: 3,
+    text: '"url": ',
+    val: `"${GATEWAY.origin}/s/prod/shopify"`,
+    tone: "text-accent-hi",
+  },
+  { d: 2, text: "}" },
+  { d: 1, text: "}" },
+  { d: 0, text: "}" },
+];
+
+/**
  * The menu, as the app draws it. Five profiles across four states — running,
  * idle-stopped, writes off, writes on — because the states are the feature: a
  * profile is the unit that carries a credential set AND a write permission, and
@@ -162,20 +229,53 @@ const CALLS = [
             ))
           }
         </div>
-        <div class="flex flex-col gap-1 px-4 py-4 font-mono text-[12px] leading-[1.55]">
-          <span class="text-fg/40">{"{"}</span>
-          <span class="pl-3 text-fg/70">"mcpServers": {"{"}</span>
-          <span class="pl-6 text-fg/70">"shopify": {"{"}</span>
-          <span class="pl-9 break-all text-fg/70">
-            "url": <span class="text-accent-hi">"{GATEWAY.origin}/s/prod/shopify"</span>
-          </span>
-          <span class="pl-6 text-fg/40">{"}"}</span>
-          <span class="pl-3 text-fg/40">{"}"}</span>
-          <span class="text-fg/40">{"}"}</span>
+        {/* Indented with an inline `padding-left` rather than a `pl-*` class per
+            depth: the gutter column has to stay at x=0 for the marks to line up,
+            so the indent belongs to the text span, and five depths of Tailwind
+            class would be five strings saying `d * 11`. */}
+        <div class="flex flex-col py-3 font-mono text-[11.5px] leading-[1.75]">
+          {
+            CONFIG.map((l) => (
+              <div
+                class:list={[
+                  "flex gap-2 px-3.5",
+                  l.mark === "-" && "bg-danger/8",
+                  l.mark === "+" && "bg-ok/10",
+                ]}
+              >
+                <span
+                  class:list={[
+                    "w-2 shrink-0 select-none",
+                    l.mark === "-"
+                      ? "text-danger-ink/75"
+                      : l.mark === "+"
+                        ? "text-ok-ink/75"
+                        : "text-transparent",
+                  ]}
+                  aria-hidden="true"
+                >
+                  {l.mark ?? "·"}
+                </span>
+                <span class="min-w-0 break-all" style={`padding-left:${l.d * 11}px`}>
+                  <span class={l.mark === "-" ? "text-fg/38" : "text-fg/70"}>{l.text}</span>
+                  {l.val && (
+                    <span class={l.tone ?? (l.mark === "-" ? "text-fg/38" : "text-fg/55")}>
+                      {l.val}
+                    </span>
+                  )}
+                </span>
+              </div>
+            ))
+          }
         </div>
       </div>
+      <span class="sr-only">
+        The shopify entry in a client's mcp.json, before and after wiring: a command, its arguments
+        and three environment variables — a store domain, a client id and a Shopify client secret in
+        plaintext — all removed, and one url pointing at the Bastion gateway added in their place.
+      </span>
       <span class="font-mono text-[11px] text-fg-muted">
-        The same file in all {CLIENTS.length} · no secret in it
+        The same file in all {CLIENTS.length} · the credential moves out of it
       </span>
 
       <span class="self-center text-[15px] text-fg/30" aria-hidden="true">↓</span>
