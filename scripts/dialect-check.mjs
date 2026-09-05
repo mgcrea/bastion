@@ -296,6 +296,144 @@ for (const method of ["GET", "DELETE"]) {
 }
 
 console.log("");
+console.log("Streaming a reply (inbound SSE)");
+
+// Bastion may answer a POST with `text/event-stream` carrying the child's
+// `notifications/progress` ahead of the result. That is the CURRENT transport,
+// not the deprecated HTTP+SSE one: still one POST, one response, no session,
+// and GET/DELETE above are still 405 — which is why those checks stay where
+// they are rather than moving in here.
+//
+// It is opted into TWICE: `Accept` must name the media type AND the request
+// must carry a `progressToken`. The gate checks below are unconditional, and
+// they are the ones that matter — they pin the promise that nothing about a
+// call that did not ask for a stream has changed.
+{
+  const withToken = (token = "check-1") => ({
+    ...meta(),
+    progressToken: token,
+  });
+  // `tools/list` by default, because every server has one and no server emits
+  // progress for it — which makes the gate checks below universal and the shape
+  // check a skip. Point this at a call that DOES emit progress to run the shape
+  // check for real, e.g.
+  //
+  //   PROGRESS_TOOL=app_store_connect_get_analytics_status \
+  //   PROGRESS_ARGS='{"appId":"6761669031"}' \
+  //   PROFILE=prod SERVER=appstore-connect node scripts/dialect-check.mjs
+  const PROGRESS_TOOL = process.env.PROGRESS_TOOL;
+  const method = PROGRESS_TOOL ? "tools/call" : "tools/list";
+  const args = PROGRESS_TOOL
+    ? { name: PROGRESS_TOOL, arguments: JSON.parse(process.env.PROGRESS_ARGS ?? "{}") }
+    : {};
+  const call = (headers, _meta) =>
+    post(
+      {
+        jsonrpc: "2.0",
+        id: 60,
+        method,
+        params: { ...args, _meta: _meta ?? meta() },
+      },
+      {
+        headers: {
+          "MCP-Protocol-Version": MODERN,
+          "Mcp-Method": method,
+          ...(PROGRESS_TOOL ? { "Mcp-Name": PROGRESS_TOOL } : {}),
+          ...headers,
+        },
+      },
+    );
+
+  {
+    // The gate that keeps every existing client's every existing call exactly
+    // as it was: every conforming client already sends this Accept, so without
+    // the token requirement this would restyle the whole product overnight.
+    const { headers } = await call({}, meta());
+    check(
+      "no progress token means no stream, whatever Accept says",
+      headers.get("content-type")?.startsWith("application/json") === true,
+      headers.get("content-type"),
+    );
+  }
+
+  {
+    const { headers } = await call({ Accept: "application/json" }, withToken());
+    check(
+      "a client that only reads JSON is never sent a stream",
+      headers.get("content-type")?.startsWith("application/json") === true,
+      headers.get("content-type"),
+    );
+  }
+
+  {
+    // curl's default. A wildcard means "I'll take anything", not "I asked for a
+    // stream", and answering JSON to a client that would have read one is safe
+    // where the reverse is not.
+    const { headers } = await call({ Accept: "*/*" }, withToken());
+    check(
+      "a wildcard Accept is not an SSE Accept",
+      headers.get("content-type")?.startsWith("application/json") === true,
+      headers.get("content-type"),
+    );
+  }
+
+  {
+    const { status, headers, text } = await call({}, withToken("check-shape"));
+    const streamed = headers.get("content-type")?.startsWith("text/event-stream") === true;
+    if (!streamed) {
+      // Not a failure. Most servers emit no progress at all, and this suite has
+      // to run against whichever one the machine has installed. The framing and
+      // the token round trip are asserted without a server in `make unit`.
+      console.log(
+        `  \x1b[33mskip\x1b[0m  the stream shape — ${SERVER} sent no progress for ${method}`,
+      );
+    } else {
+      const events = text
+        .split(/\n\n/)
+        .map((block) =>
+          block
+            .split(/\n/)
+            .filter((l) => l.startsWith("data:"))
+            .map((l) => l.replace(/^data: ?/, ""))
+            .join("\n"),
+        )
+        .filter(Boolean)
+        .map((payload) => {
+          try {
+            return JSON.parse(payload);
+          } catch {
+            return null;
+          }
+        });
+      check("a streamed reply is still a 200", status === 200, status);
+      check("it carries no content-length", !headers.get("content-length"));
+      check("and mints no session id", !headers.get("mcp-session-id"));
+      check("no event carries an SSE id, which would invite Last-Event-ID", !/\nid:/.test(text));
+      check("every event parses as JSON", events.length > 0 && events.every(Boolean));
+      const last = events[events.length - 1];
+      check(
+        "the last event is the response, under the client's own id",
+        last?.id === 60 && (last?.result !== undefined || last?.error !== undefined),
+        JSON.stringify(last)?.slice(0, 120),
+      );
+      const progress = events.slice(0, -1);
+      check(
+        "everything before it is a progress notification",
+        progress.every((e) => e?.method === "notifications/progress"),
+      );
+      // The negative that catches a half-finished remap. Bastion rewrites the
+      // token on the way out so two clients cannot collide on a shared child,
+      // and the client must never see the id it minted.
+      check(
+        "each one carries the token the CLIENT chose, not Bastion's",
+        progress.every((e) => e?.params?.progressToken === "check-shape"),
+        JSON.stringify(progress.map((e) => e?.params?.progressToken)),
+      );
+    }
+  }
+}
+
+console.log("");
 console.log("Legacy era, still served");
 
 {

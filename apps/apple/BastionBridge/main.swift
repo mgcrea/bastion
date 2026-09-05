@@ -300,10 +300,15 @@ func forward(_ line: Data) {
   request.httpMethod = "POST"
   request.httpBody = line
   request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-  // Both, because the spec requires a client to accept either shape. Bastion
-  // answers with JSON today; saying so honestly costs nothing and stops this
-  // from being the thing that breaks when it starts streaming.
-  request.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept")
+  // JSON only, and deliberately narrower than the spec allows a client to be.
+  //
+  // The gateway now streams to a client that says it reads one, and `forward`
+  // below buffers the whole body and emits it as a single stdout line — so a
+  // stream would reach a stdio host as a raw SSE body where a JSON-RPC frame
+  // should be, and it would fail to parse with nothing in the diff to blame.
+  // Asking for JSON is what makes that unreachable. Widen this again in the
+  // same change that teaches `forward` to read a stream, not before.
+  request.setValue("application/json", forHTTPHeaderField: "Accept")
   request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
   if let version = modernVersion(of: frame) {

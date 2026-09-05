@@ -429,6 +429,69 @@ struct UnitCheck {
       "a frame with no params is returned unchanged",
       Dialect.stripModernMeta(from: ["method": "x"])["method"] as? String == "x")
 
+    print("\nDialect: progress tokens, and which field they live in")
+    // A request carries the token inside _meta; a notification carries it at
+    // the top level of params. One helper looking in both places would pass
+    // every test and match the wrong field on real traffic.
+    let asked: [String: Any] = [
+      "method": "tools/call", "id": 1,
+      "params": ["name": "x", "_meta": ["progressToken": 7]],
+    ]
+    let told: [String: Any] = [
+      "method": "notifications/progress",
+      "params": ["progressToken": 7, "progress": 30],
+    ]
+    check("a request's token is read from _meta", Dialect.requestedProgressToken(in: asked) as? Int == 7)
+    check("and is not mistaken for a notification's", Dialect.notifiedProgressToken(in: asked) == nil)
+    check("a notification's token is read from params", Dialect.notifiedProgressToken(in: told) as? Int == 7)
+    check("and is not mistaken for a request's", Dialect.requestedProgressToken(in: told) == nil)
+    check(
+      "a request that asked for nothing has none",
+      Dialect.requestedProgressToken(in: ["params": ["name": "x"]]) == nil)
+    check("a frame with no params at all has none", Dialect.requestedProgressToken(in: ["id": 1]) == nil)
+    // JSONSerialization turns a JSON null into NSNull, which is not a token.
+    check(
+      "an explicit null is not a token",
+      Dialect.requestedProgressToken(in: ["params": ["_meta": ["progressToken": NSNull()]]]) == nil)
+
+    // The token Bastion sends upstream IS the internal request id, so there is
+    // no second numbering to keep in step with the first. The client's own type
+    // survives the trip: a server that declared its token a string would choke
+    // on an integer.
+    check(
+      "a numeric token mints a bare id",
+      Dialect.mintedProgressToken(for: 42, like: 7) as? Int == 42)
+    check(
+      "a string token mints a prefixed one",
+      Dialect.mintedProgressToken(for: 42, like: "abc") as? String == "bastion-42")
+    check("a numeric mint reads back", Dialect.internalID(fromProgressToken: 42) == 42)
+    check("a string mint reads back", Dialect.internalID(fromProgressToken: "bastion-42") == 42)
+    // A child echoing its own unrelated token must not be routed anywhere.
+    check("a foreign string token is not ours", Dialect.internalID(fromProgressToken: "42") == nil)
+    check("nor a bare prefix", Dialect.internalID(fromProgressToken: "bastion-") == nil)
+    check("nor a prefix with junk", Dialect.internalID(fromProgressToken: "bastion-x") == nil)
+    check("nor an object", Dialect.internalID(fromProgressToken: ["a": 1]) == nil)
+
+    // The round trip a streamed call actually performs.
+    for client in [7 as Any, "abc" as Any] {
+      let minted = Dialect.mintedProgressToken(for: 99, like: client)
+      let outbound = Dialect.rewriting(progressToken: minted, in: asked, at: .requestMeta)
+      let sameID = Dialect.internalID(
+        fromProgressToken: Dialect.requestedProgressToken(in: outbound) ?? 0) == 99
+      let restored = Dialect.rewriting(progressToken: client, in: told, at: .notificationParams)
+      let back = Dialect.notifiedProgressToken(in: restored)
+      let same = (back as? Int).map { $0 == client as? Int } ?? ((back as? String) == client as? String)
+      check("a \(client) token survives the round trip", sameID && same == true)
+    }
+    check(
+      "rewriting a request leaves the rest of it alone",
+      (Dialect.rewriting(progressToken: 1, in: asked, at: .requestMeta)["params"]
+        as? [String: Any])?["name"] as? String == "x")
+    check(
+      "rewriting a notification leaves the rest of it alone",
+      (Dialect.rewriting(progressToken: 1, in: told, at: .notificationParams)["params"]
+        as? [String: Any])?["progress"] as? Int == 30)
+
     print("\nDialect: the Base64 header sentinel")
     // Case-sensitive and lowercase, per the spec. Comparing case-insensitively
     // would let `=?BASE64?` through as a literal that happens to look like a

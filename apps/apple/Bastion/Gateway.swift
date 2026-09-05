@@ -53,9 +53,17 @@ nonisolated final class Gateway: Sendable {
   ///
   /// Ten seconds is a thousand times what a full 32 MB body costs on loopback;
   /// there is no slow network on 127.0.0.1, so a request that has not arrived
-  /// in ten seconds is not arriving. The write side is the socket's own timeout,
-  /// since a response is one buffered write. Neither timer touches the wait on
-  /// a child, which sits between them and is bounded by the supervisor.
+  /// in ten seconds is not arriving. The write side is the socket's own
+  /// timeout, which bounds one `write(2)` and so bounds each frame of a
+  /// streamed reply as well as a buffered one. Neither timer touches the wait
+  /// on a child, which sits between them and is bounded by the supervisor.
+  ///
+  /// The cap is unchanged by streaming, and that is a fact rather than an
+  /// oversight: a streamed reply holds one connection and one thread for
+  /// exactly as long as the same call already held them, since the connection
+  /// already lived for the whole child wait. No new connections, nothing
+  /// long-lived — there is still no GET stream and no session — so 64 already
+  /// bounds concurrent streams too.
   static let maxConnections = 64
   static let requestDeadline: TimeInterval = 10
   static let writeTimeout: TimeInterval = 10
@@ -313,9 +321,16 @@ nonisolated final class Gateway: Sendable {
 
   /// The two timers bracket the child wait and neither applies to it: the
   /// deadline covers the request arriving, `SO_SNDTIMEO` covers the reply
-  /// draining, and what happens in between is the supervisor's to bound. A
-  /// streaming response would have to revisit the send timeout; there is none
-  /// today, every reply being one buffered write.
+  /// draining, and what happens in between is the supervisor's to bound.
+  ///
+  /// A streamed reply does not change either of them. `SO_SNDTIMEO` bounds one
+  /// `write(2)`, so it already bounds each frame; the idle time between frames
+  /// is not a write and stays bounded where it always was, by the supervisor's
+  /// call timeout. And the frames themselves never reach a blocking write at
+  /// all — `HTTPStream.send` uses `MSG_DONTWAIT` and drops a frame the socket
+  /// has no room for, because those writes happen on the child's reader thread,
+  /// which is shared by every client of that child. Only the final frame is
+  /// written here, on this thread, which exists to block.
   private func serve(_ client: Int32) {
     defer {
       close(client)
@@ -335,7 +350,22 @@ nonisolated final class Gateway: Sendable {
       }
       return
     }
-    respond(client, route(request))
+    let stream = HTTPStream(fd: client, armed: request.acceptsEventStream)
+    let response = route(request, stream: stream)
+    // `isOpen` is false unless a progress frame actually went out, so a call
+    // that streamed nothing is answered exactly as it was before streaming
+    // existed — same status code, same buffered body. That is what keeps the
+    // 404/-32601, the 400/-32020 and the 202 reachable.
+    if stream.isOpen {
+      stream.finish(with: response)
+      let counts = stream.counts
+      hostLog(
+        "gateway", .info,
+        "streamed \(counts.sent) frames to \(request.path)"
+          + (counts.dropped > 0 ? ", dropping \(counts.dropped) the client could not keep up with" : ""))
+    } else {
+      respond(client, response)
+    }
   }
 
   /// Rules 2, 3 and 4, in that order, before anything else happens.
@@ -345,7 +375,7 @@ nonisolated final class Gateway: Sendable {
   /// looked at, so that a rebinding attempt gets the same answer whether or not
   /// it also guessed a token — and so that the audit can check the refusal
   /// without holding a valid token at all.
-  private func route(_ request: HTTPRequest) -> HTTPResponse {
+  private func route(_ request: HTTPRequest, stream: HTTPStream? = nil) -> HTTPResponse {
     if let refusal = checkHost(request) { return refusal }
     if let refusal = checkOrigin(request) { return refusal }
 
@@ -414,7 +444,8 @@ nonisolated final class Gateway: Sendable {
                 + "\(Int(Trial.duration / 60))-minute trial.",
             ]))
       }
-      return handleRPC(profile: path[1], server: path[2], request: request, client: client)
+      return handleRPC(
+        profile: path[1], server: path[2], request: request, client: client, stream: stream)
 
     // 2026-07-28 removed the GET stream endpoint and protocol-level sessions.
     // The spec names the answer for a client still speaking an earlier
@@ -482,9 +513,9 @@ nonisolated final class Gateway: Sendable {
   /// Everything era-specific happens here, before the supervisor is reached:
   /// the supervisor talks to a legacy child and should not have to know which
   /// kind of client is on the other end.
-  private func handleRPC(profile: String, server: String, request: HTTPRequest, client: String)
-    -> HTTPResponse
-  {
+  private func handleRPC(
+    profile: String, server: String, request: HTTPRequest, client: String, stream: HTTPStream? = nil
+  ) -> HTTPResponse {
     guard !request.body.isEmpty else {
       return HTTPResponse(status: 400, message: "empty body")
     }
@@ -532,10 +563,27 @@ nonisolated final class Gateway: Sendable {
     // slot in a bounded pool. This used to hop through a `Task` and a
     // semaphore, which moved the blocking onto Swift's cooperative pool and
     // bought nothing for it.
+    // Streaming is opted into TWICE, and the second half is what makes this
+    // safe to ship. Every conforming MCP client sends `Accept: text/event-
+    // stream` unconditionally, so `Accept` alone would restyle every response
+    // in the product overnight for no gain on the calls that emit nothing.
+    // Requiring a `progressToken` means the shape follows something the client
+    // actually asked for.
+    //
+    // It also keeps the status codes intact. An unknown method carries no
+    // token, so it never streams, so `modernise` can still answer it 404 with
+    // -32601 — which `make dialect` asserts and a dual-era client branches on.
+    // A notification carries no id, so it still gets its 202 with an empty body.
+    var progress: ProgressSink?
+    if let stream, frame["id"] != nil, Dialect.requestedProgressToken(in: frame) != nil {
+      progress = { [stream] payload in stream.send(payload) }
+    }
+
     do {
       guard
         let data = try Supervisor.shared.call(
-          profile: profile, server: server, frame: frame, era: era, client: client)
+          profile: profile, server: server, frame: frame, era: era, client: client,
+          progress: progress)
       else {
         // A notification. The spec is exact here: "the server MUST return HTTP
         // status code 202 Accepted with no body." An empty body, not a JSON

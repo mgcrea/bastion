@@ -177,6 +177,11 @@ nonisolated enum Dialect {
   /// reporting on every modern request, which is the kind of bug that presents
   /// as "the new protocol feels slower".
   ///
+  /// That precaution is now load-bearing rather than defensive: the token this
+  /// preserves is what `Supervisor.awaitReply` rewrites, and it is what lets a
+  /// child's `notifications/progress` be routed back to the one client that
+  /// asked for it. See `requestedProgressToken` below.
+  ///
   /// `_meta` itself is removed only when nothing else was in it, so a legacy
   /// server never sees an empty object where it expected none.
   static func stripModernMeta(from frame: [String: Any]) -> [String: Any] {
@@ -196,6 +201,76 @@ nonisolated enum Dialect {
     }
     out["params"] = params
     return out
+  }
+
+  // MARK: - Progress tokens
+
+  /// Where a REQUEST asks for progress: `params._meta.progressToken`.
+  ///
+  /// Deliberately not the same function as `notifiedProgressToken`. A request
+  /// carries the token inside `_meta`; a notification carries it at the top
+  /// level of `params`. One "find the token" helper looking in both places
+  /// would pass every test and quietly match the wrong field on real traffic,
+  /// which is the bug this split exists to prevent.
+  static func requestedProgressToken(in frame: [String: Any]) -> Any? {
+    guard let params = frame["params"] as? [String: Any],
+      let meta = params[metaKey] as? [String: Any]
+    else { return nil }
+    let token = meta["progressToken"]
+    return token is NSNull ? nil : token
+  }
+
+  /// Where a NOTIFICATION carries one: `params.progressToken`, top level.
+  static func notifiedProgressToken(in frame: [String: Any]) -> Any? {
+    guard let params = frame["params"] as? [String: Any] else { return nil }
+    let token = params["progressToken"]
+    return token is NSNull ? nil : token
+  }
+
+  /// Which of the two places a token is being written to.
+  enum TokenLocation {
+    case requestMeta
+    case notificationParams
+  }
+
+  /// Replace the progress token, leaving the rest of the frame alone.
+  static func rewriting(
+    progressToken token: Any, in frame: [String: Any], at location: TokenLocation
+  ) -> [String: Any] {
+    var out = frame
+    var params = frame["params"] as? [String: Any] ?? [:]
+    switch location {
+    case .requestMeta:
+      var meta = params[metaKey] as? [String: Any] ?? [:]
+      meta["progressToken"] = token
+      params[metaKey] = meta
+    case .notificationParams:
+      params["progressToken"] = token
+    }
+    out["params"] = params
+    return out
+  }
+
+  /// The prefix on a token Bastion minted for a client that used a string one.
+  static let mintedTokenPrefix = "bastion-"
+
+  /// The token to send upstream for an internal id, keeping the client's type.
+  ///
+  /// A server that declared its token a string would choke on an integer, so
+  /// the type survives the trip. The prefix on the string form is also what
+  /// stops a child's own unrelated token being mistaken for one of Bastion's.
+  static func mintedProgressToken(for internalID: Int, like clientToken: Any) -> Any {
+    clientToken is String ? "\(mintedTokenPrefix)\(internalID)" : internalID
+  }
+
+  /// The internal request id behind a token Bastion minted, or nil for one it
+  /// did not. The inverse of `mintedProgressToken`.
+  static func internalID(fromProgressToken token: Any) -> Int? {
+    if let number = token as? Int { return number }
+    if let text = token as? String, text.hasPrefix(mintedTokenPrefix) {
+      return Int(text.dropFirst(mintedTokenPrefix.count))
+    }
+    return nil
   }
 
   // MARK: - Legacy → modern
@@ -275,6 +350,17 @@ nonisolated enum Dialect {
   /// child's notifications on purpose: one supervised instance serves several
   /// clients, so there is no single client a `list_changed` belongs to.
   /// `resources.subscribe` is dropped for the same reason.
+  ///
+  /// Streaming a POST reply does NOT change this, and the distinction is worth
+  /// stating because this is where it will be re-litigated. A
+  /// `notifications/progress` is CORRELATED: it carries a token naming one
+  /// in-flight request from one client, so there is exactly one place to send
+  /// it. A `list_changed` is UNCORRELATED — a fact about the child, addressed
+  /// to everyone. What an SSE reply gives Bastion is a PER-REQUEST channel, not
+  /// a per-client one: a `list_changed` arriving while nobody is calling still
+  /// has nowhere to go, and delivering it to whichever calls happen to be open
+  /// would reach some clients and not others, at random. `subscriptions/listen`
+  /// needs a channel outliving a request, which is the GET stream, still a 405.
   ///
   /// What stands in for it is the TTL on list results — see `listCacheTTLMs`.
   /// The client re-lists on its own schedule instead of being told when to.

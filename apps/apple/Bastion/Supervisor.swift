@@ -1,6 +1,19 @@
 import Foundation
 import os
 
+
+/// Where one client's progress frames go, already encoded and already carrying
+/// that client's own token.
+///
+/// `Data` rather than a dictionary so a payload can be forwarded exactly as it
+/// arrived, without being re-serialised into somebody else's JSON — the same
+/// rule `filteredForWriteGate` states for results.
+///
+/// Nil for every request that did not ask for progress, and for every request
+/// Bastion makes on its own behalf. Called from the child's reader thread, so
+/// whatever is behind it must not block: see `HTTPStream.send`.
+typealias ProgressSink = @Sendable (Data) -> Void
+
 /// One supervised child per `(profile, server)`, many clients per child.
 ///
 /// This is the inversion. `cupertino/apps/apple/Cupertino/ServerHost.swift:16`
@@ -109,9 +122,13 @@ nonisolated final class Supervisor: @unchecked Sendable {
   /// the only identity here worth attributing anything to. The name a client
   /// reports in `clientInfo` is self-reported and, per the spec, explicitly not
   /// to be relied on; it is recorded beside this one, never instead of it.
+  /// `progress` is the one piece of per-call state here, and it is per-CALL
+  /// rather than per-client on purpose: it lives exactly as long as the request
+  /// that asked for it. Defaulted, so the callers that ask nothing of it — and
+  /// `ServerCheck` is one — do not mention it.
   func call(
     profile profileName: String, server serverID: String, frame: [String: Any], era: Dialect.Era,
-    client: String
+    client: String, progress: ProgressSink? = nil
   ) throws -> Data? {
     // The user's installed list, never the catalog. Resolving through the
     // catalog here would spawn a server nobody asked for, which is the one
@@ -148,12 +165,19 @@ nonisolated final class Supervisor: @unchecked Sendable {
       // Somebody else's server. Nothing is supervised, because nothing here is
       // running it; what Bastion still does is hold the credential, be the one
       // identity, and write the audit line.
+      //
+      // `progress` is not forwarded. A remote reply is buffered whole before it
+      // is looked at, and that is not an accident to be optimised away:
+      // `RemoteEndpoint.verify(connectedTo:)` refuses a rebinding answer in the
+      // completion handler, which it can only do because no byte has been handed
+      // back yet. Streaming that leg means moving the address check, which is a
+      // change to an anti-rebinding rule rather than to plumbing.
       let instance = try remoteInstanceFor(profile: profile, server: server)
       return try instance.handle(frame, era: era, client: client)
 
     case .child:
       let instance = try instanceFor(profile: profile, server: server)
-      return try instance.handle(frame, era: era, client: client)
+      return try instance.handle(frame, era: era, client: client, progress: progress)
     }
   }
 
@@ -326,6 +350,14 @@ nonisolated extension Supervisor {
       /// this is already the thing that knows which response answers which
       /// request, and a parallel map would be a second answer to that question.
       let logID: UUID?
+      /// The token the CLIENT chose, and where a frame carrying it goes.
+      ///
+      /// Here rather than in a table of its own, for the reason `logID` gives
+      /// above: `pending` already knows which frames belong to which request,
+      /// and it is already emptied on reply, on expiry, on child death and on
+      /// shutdown. A second map would be a second answer, with a fourth
+      /// lifetime to get wrong.
+      let progress: (clientToken: Any, sink: ProgressSink)?
       let resume: (Result<Data, Error>) -> Void
     }
 
@@ -630,7 +662,9 @@ nonisolated extension Supervisor {
     /// `era` decides what the client is owed. The child below is legacy either
     /// way — every server in the manifest is — so this is where the two eras
     /// stop being different.
-    func handle(_ incoming: [String: Any], era: Dialect.Era, client: String) throws -> Data? {
+    func handle(
+      _ incoming: [String: Any], era: Dialect.Era, client: String, progress: ProgressSink? = nil
+    ) throws -> Data? {
       var frame = incoming
       guard let method = frame["method"] as? String else {
         throw SupervisorError.malformedRequest("no method")
@@ -771,7 +805,8 @@ nonisolated extension Supervisor {
         return nil
       }
 
-      let data = try awaitReply(frame: frame, logID: logID, clientID: clientID)
+      let data = try awaitReply(
+        frame: frame, logID: logID, clientID: clientID, progress: progress)
       return filteredForWriteGate(data, method: method)
     }
 
@@ -785,8 +820,10 @@ nonisolated extension Supervisor {
     /// `clientID` and `logID` are carried rather than used: the reader attaches
     /// the reply to the right log row and answers under the id the CLIENT chose,
     /// and Bastion's own requests pass nil for both, which is what keeps them out
-    /// of the Activity window.
-    private func awaitReply(frame: [String: Any], logID: UUID?, clientID: Any?) throws -> Data {
+    /// of the Activity window. `progress` is carried the same way.
+    private func awaitReply(
+      frame: [String: Any], logID: UUID?, clientID: Any?, progress: ProgressSink? = nil
+    ) throws -> Data {
       var frame = frame
       let internalID = state.withLock { current -> Int in
         let next = current.nextID
@@ -795,12 +832,29 @@ nonisolated extension Supervisor {
       }
       frame["id"] = internalID
 
+      // The progress token gets the same treatment the id just got, for the
+      // same reason: one pipe carries every client of this child, and two
+      // clients are free to have picked token `1`. Sending both through
+      // unremapped would route one project's progress into another's call.
+      //
+      // The token sent upstream IS the internal id, so `pending` is the token
+      // table as well as the id table and there is no second numbering to keep
+      // in step with the first. `received` reverses it.
+      var carried: (clientToken: Any, sink: ProgressSink)?
+      if let progress, let clientToken = Dialect.requestedProgressToken(in: frame) {
+        carried = (clientToken, progress)
+        frame = Dialect.rewriting(
+          progressToken: Dialect.mintedProgressToken(for: internalID, like: clientToken),
+          in: frame, at: .requestMeta)
+      }
+
       let outcome = OSAllocatedUnfairLock<Result<Data, Error>?>(initialState: nil)
       let semaphore = DispatchSemaphore(value: 0)
       let waiter = Waiter(
         clientID: clientID,
         deadline: Date().addingTimeInterval(Self.callTimeout),
-        logID: logID
+        logID: logID,
+        progress: carried
       ) { result in
         // Exactly once. Three different threads can reach a waiter — the reader
         // when a response arrives, the reaper when it expires, and the exit
@@ -1058,9 +1112,9 @@ nonisolated extension Supervisor {
       let semaphore = DispatchSemaphore(value: 0)
       let outcome = OSAllocatedUnfairLock<Result<Data, Error>?>(initialState: nil)
       // The handshake is Bastion's own request, not a client's, so there is no
-      // log row for its reply to attach to.
+      // log row for its reply to attach to and no client to report progress to.
       let waiter = Waiter(
-        clientID: id, deadline: Date().addingTimeInterval(30), logID: nil
+        clientID: id, deadline: Date().addingTimeInterval(30), logID: nil, progress: nil
       ) { result in
         outcome.withLock { current in
           guard current == nil else { return }
@@ -1137,7 +1191,7 @@ nonisolated extension Supervisor {
       let allowWrites = profile.allowWrites
       let version = ServerInstaller.installedVersion(of: server)
       let waiter = Waiter(
-        clientID: nil, deadline: Date().addingTimeInterval(30), logID: nil
+        clientID: nil, deadline: Date().addingTimeInterval(30), logID: nil, progress: nil
       ) { [weak self] result in
         guard let data = try? result.get(),
           let frame = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -1202,10 +1256,33 @@ nonisolated extension Supervisor {
           ]
           try? write(refusal)
         }
-        // A notification from the child with no id. Nothing to correlate it to,
-        // so it is logged and dropped rather than broadcast — sending one
-        // client's progress notification to every client would be worse than
-        // sending it to none.
+        // A notification from the child with no id. Almost all of them have
+        // nothing to correlate them to, so they are dropped rather than
+        // broadcast — sending one client's `list_changed` to every client would
+        // be worse than sending it to none.
+        //
+        // `notifications/progress` is the exception, and it is an exception of
+        // kind rather than of degree: it carries a token, and the token names
+        // exactly one in-flight request from exactly one client. That is the
+        // whole difference. A frame whose token Bastion did not mint, or whose
+        // request has already been answered, finds no waiter and falls through
+        // to the same drop.
+        if frame["id"] == nil, method == "notifications/progress",
+          let token = Dialect.notifiedProgressToken(in: frame),
+          let requestID = Dialect.internalID(fromProgressToken: token),
+          // Read, never remove: progress does not complete a call.
+          let carried = state.withLock({ $0.pending[requestID]?.progress })
+        {
+          let restored = Dialect.rewriting(
+            progressToken: carried.clientToken, in: frame, at: .notificationParams)
+          if let payload = try? JSONSerialization.data(withJSONObject: restored) {
+            // Outside the lock, deliberately. This ends in a socket write, and
+            // `state` is contended by every other thread in this class — a
+            // syscall under it would serialise every client of this child
+            // behind whichever one is slowest to read.
+            carried.sink(payload)
+          }
+        }
         return
       }
 
