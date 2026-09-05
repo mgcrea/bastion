@@ -4,10 +4,10 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.8.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.9.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.9.0] - 2026-09-05
 
 ### Added
 
@@ -36,6 +36,51 @@ are taken from this file, which is the curated summary.
   Still gaps, and now for a sharper reason: `list_changed` and `subscriptions/listen` name no
   request, so a per-request channel cannot carry them. Remote servers still collapse their stream,
   because `RemoteEndpoint.verify` refuses a rebinding answer only while the body is buffered.
+
+- **A search field on the catalog tab.** Thirty-three entries had no way in but scrolling. It
+  filters over the id, the display name, the summary, the npm package and the endpoint, because the
+  title is the one field somebody searching may not know: `sentry` finds the entry by name,
+  `issues` finds it by what it does, and `@sentry/mcp-server` finds it when a package name is what
+  was pasted in. Pinned above the list rather than scrolling with it, and the text survives a trip
+  to the Custom tab and back — switching tabs to check a package name is not a reason to retype it.
+
+### Internal
+
+- **The three places that said Bastion never streams no longer say it.** The README, the website's
+  gap list and this file all claimed a response is a single JSON object and never a stream, which
+  the entry above makes false. What replaces it is narrower and still true: a POST carrying a
+  `progressToken` and an SSE `Accept` is answered with a stream, and what remains missing is
+  `list_changed` and `subscriptions/listen`, which name no request and so cannot travel a
+  per-request channel. A remote server's stream is still collapsed, and that gap now carries its
+  real reason — `RemoteEndpoint.verify` refuses a rebinding answer only while the body is buffered
+  — rather than the routing one it used to share. The README's `make unit` count was 183 against an
+  actual 467 before any of this, so both counts were re-derived rather than incremented.
+
+- **`ServerSentEvents.swift` moved to a `Shared` group both targets list**, so the bridge reads a
+  stream with the same parser the gateway writes one with, rather than a second copy of it. An
+  explicit `PBXBuildFile` pointing into the app's own synchronized group is accepted by the project
+  format and then silently ignored at build time, which presents as "cannot find ServerSentEvents
+  in scope" with the reference plainly there in the file.
+
+- **The website's Status section became Gaps.** Fourteen rows all tagged _built_ by 1.0.0 was a
+  build-order table standing next to four sections that already make the same claims with a demo
+  attached, and the nav had dropped it. Only the half with no other home survives: what the app
+  does not do yet. The anchor stays `#status`, because the footer and any external link already
+  point at it.
+
+- **Baseline security headers on every route.** `Strict-Transport-Security`,
+  `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` and `Permissions-Policy`, ahead of
+  the per-path caching rules already in `_headers`.
+
+- **Each app's `deploy` script is now `release`**, matching the vocabulary the rest of the repo
+  uses, and `ci.yml`'s two deploy jobs follow. The old name also collided with pnpm's own built-in
+  `deploy` command, so a hand-deploy needed `pnpm ... run deploy` to avoid
+  `ERR_PNPM_INVALID_DEPLOY_TARGET`; `pnpm --filter @mgcrea/bastion-website run release` has no such
+  twin.
+
+- Toolchain bumps: oxfmt 0.62.0 → 0.66.0, oxlint 1.77.0 → 1.81.0, and the Astro half — astro,
+  tailwindcss, wrangler, sharp and the `@astrojs/*` packages — to their latest patch and minor,
+  with `wrangler.jsonc`'s `compatibility_date` alongside.
 
 ## [1.8.0] - 2026-09-05
 
