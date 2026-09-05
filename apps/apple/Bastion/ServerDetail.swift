@@ -527,6 +527,114 @@ struct ServerDetail: View {
     }
   }
 
+  // MARK: - Load on demand, for every profile of this server
+
+  /// The third tier, and deliberately not a third *setting*.
+  ///
+  /// There is an app-wide default and there is a per-profile override, and the
+  /// gap between them is the common case: the decision is almost always about
+  /// one SERVER — `appstore-connect` is 85 tools and 26.2k tokens, `reddit` is
+  /// 14 and 3.3k, and nobody wants the same answer for both — while the app-wide
+  /// switch cannot express that and setting four profiles by hand is four trips
+  /// through a sheet.
+  ///
+  /// So this writes through to the profiles rather than storing anything of its
+  /// own. `Profile.lazyTools` stays the only place the answer is kept, and
+  /// `loadsToolsOnDemand` stays a two-term resolution somebody can hold in their
+  /// head. A stored value here would be a third term in that expression and a
+  /// second answer to the same question, and the two would disagree the first
+  /// time somebody opened the profile editor.
+  ///
+  /// It writes the RAW value, nil included, so "Default" here still means
+  /// "follow the app-wide switch" for every profile of this server rather than
+  /// freezing today's default into four rows.
+  private var lazyToolsSelection: String {
+    let raw = Set(profiles.map { $0.lazyTools.map(String.init) ?? "" })
+    // No profiles reads as Default rather than Mixed. Nothing renders this
+    // today — the control sits inside the branch that has rows — but a
+    // predicate that answers "mixed" for an empty set is one refactor away from
+    // showing a Mixed position over nothing at all.
+    guard raw.count != 1 else { return raw.first ?? "" }
+    return raw.isEmpty ? "" : "mixed"
+  }
+
+  /// The measurement to quote, from whichever profile has a current one.
+  ///
+  /// Any of them will do and none of them may have one. Two profiles of one
+  /// server can honestly disagree — `ToolCostStore` is keyed by profile for that
+  /// reason, and `mcp-stripe` varies its tools by auth mode — so this takes the
+  /// first rather than summing, and the sentence says "on every connect" rather
+  /// than claiming a total.
+  private var lazyToolsMeasurement: ToolCostStore.Measurement? {
+    profiles.compactMap { ToolCostStore.shared.current(for: $0, server: server) }.first
+  }
+
+  private func setLazyTools(_ raw: String) {
+    guard raw != "mixed" else { return }
+    let wanted = Bool(raw)
+    do {
+      // Only the rows that would move. `upsert` rewrites the whole file each
+      // time, and writing a row back to the value it already holds is a change
+      // somebody's backup will notice for no reason.
+      for profile in profiles where profile.lazyTools != wanted {
+        var updated = profile
+        updated.lazyTools = wanted
+        try ProfileStore.shared.upsert(updated)
+      }
+    } catch {
+      lastError = error.localizedDescription
+    }
+  }
+
+  /// The control, under the profiles it applies to.
+  ///
+  /// Below the list rather than in the header, because it is a statement about
+  /// the rows above it — and the same three positions the profile sheet offers,
+  /// because a control that means one thing in one place and another somewhere
+  /// else is worse than one more click.
+  ///
+  /// Mixed is shown rather than rounded off. A server with one profile on and
+  /// two off is a real state somebody arrived at from the profile editor, and a
+  /// control that quietly read "Off" there would hide the profile it is on.
+  @ViewBuilder private var lazyToolsControl: some View {
+    let selection = lazyToolsSelection
+    VStack(alignment: .leading, spacing: 6) {
+      Picker(
+        "Load tools on demand",
+        selection: Binding(get: { selection }, set: { setLazyTools($0) })
+      ) {
+        if selection == "mixed" { Text("Mixed").tag("mixed") }
+        Text("Default (\(ToolFacade.globalDefault ? "on" : "off"))").tag("")
+        Text("On").tag("true")
+        Text("Off").tag("false")
+      }
+      .pickerStyle(.segmented)
+      .controlSize(.small)
+      .fixedSize()
+
+      Text(lazyToolsDetail)
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .padding(.top, 2)
+  }
+
+  private var lazyToolsDetail: String {
+    let scope =
+      profiles.count == 1
+      ? "This server's profile" : "All \(profiles.count) of this server's profiles"
+    guard let measured = lazyToolsMeasurement else {
+      return "\(scope). Clients get three Bastion tools — search, describe and call — instead of "
+        + "every tool \(server.displayName) exposes."
+    }
+    let facade = ToolFacade.declarationBytes(
+      displayName: server.displayName, summary: server.summary, toolCount: measured.toolCount)
+    return "\(scope). \(measured.toolCount) tools, "
+      + "\(ToolCost.short(ToolCost.tokens(bytes: measured.bytes)))\(measured.partial ? "+" : "")"
+      + " → \(ToolCost.short(ToolCost.tokens(bytes: facade))) tokens on every connect, with "
+      + "everything still reachable through the three."
+  }
+
   // MARK: - Profiles
 
   private var profilesCard: some View {
@@ -553,6 +661,9 @@ struct ServerDetail: View {
               report: { lastError = $0 })
             if profile.id != profiles.last?.id { Divider() }
           }
+
+          Divider()
+          lazyToolsControl
         }
 
         HStack(spacing: 8) {
