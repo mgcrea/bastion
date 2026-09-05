@@ -88,6 +88,18 @@ nonisolated enum ToolFacade {
   /// full would spend more than the listing this replaces.
   static let indexLimit = 200
 
+  /// Rows returned when nothing matched the whole query.
+  ///
+  /// Tighter than `searchLimit` on purpose; see `find`.
+  static let partialLimit = 10
+
+  /// The shortest query word that is allowed to mean anything.
+  ///
+  /// Two characters of raw substring match half of everything, and since the
+  /// count of matched words now decides which tools come back, a stray "of"
+  /// inflates every tier equally except the one it was supposed to narrow.
+  static let shortestTerm = 3
+
   // MARK: - The declarations
 
   /// The three entries a client sees in place of the real list.
@@ -113,7 +125,8 @@ nonisolated enum ToolFacade {
             "query": [
               "type": "string",
               "description":
-                "Words to match against tool names and summaries. Empty lists everything.",
+                "Words to match against tool names and descriptions. If no tool carries all of "
+                + "them, the closest are returned. Empty lists everything.",
             ]
           ],
         ],
@@ -187,57 +200,200 @@ nonisolated enum ToolFacade {
     let summary: String
   }
 
+  /// What a search found, with enough of its arithmetic kept for the text to be
+  /// honest about it.
+  struct Outcome {
+    let rows: [Row]
+    /// Entries in the tier `rows` was taken from, before the cap.
+    let matches: Int
+    /// Words of the query the returned rows carry, of `words`. Fewer means the
+    /// rows are the closest thing to an answer rather than an answer.
+    let matchedWords: Int
+    /// Words in the query, after `queryTerms` deduplicated and pruned it.
+    let words: Int
+    /// The query's words no tool in the catalog carried at all, in the order
+    /// typed. Can be empty while `matchedWords < words`, when two tools each
+    /// carried a different word and neither carried both.
+    let missed: [String]
+  }
+
+  /// Where one term hit, worst last.
+  ///
+  /// Summed across the query's terms, not minimised. Taking the best single
+  /// term made a two-word query rank on its luckiest word alone: "list version"
+  /// tied `list_versions` with `list_apps` on "list" and then broke the tie
+  /// alphabetically, handing back the tool that matches one word ahead of the
+  /// one that matches both. Adding the ranks makes matching more of the query
+  /// worth something.
+  ///
+  /// The bottom two rungs are what pays for searching a whole description: a
+  /// word in the name is an advertisement, a word in the summary is a
+  /// description, and a word forty lines down next to an enum of error codes is
+  /// a coincidence. One monotone axis — how prominently does this tool announce
+  /// this word — rather than a second score to weigh against the first.
+  private enum Hit: Int {
+    case exactName = 0
+    case namePrefix = 1
+    case nameSubstring = 2
+    case summary = 3
+    case tail = 4
+    case missing = 5
+  }
+
+  /// The query as the words that will be matched.
+  ///
+  /// Deduplicated, and short words dropped, both because how MUCH of the query
+  /// a tool matched now decides which tools are returned at all. Undeduplicated,
+  /// "version version submission" lets a repeated word outweigh a tool that
+  /// carried two distinct concepts. And a model that pastes a sentence rather
+  /// than keywords contributes "a", "to", "of", which as raw substrings hit
+  /// almost every description ever written.
+  static func queryTerms(in query: String) -> [String] {
+    var seen = Set<String>()
+    return query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+      .filter { $0.count >= shortestTerm && seen.insert($0).inserted }
+  }
+
+  /// A term retried without its plural `s`, or nil when there is nothing safe to
+  /// drop.
+  ///
+  /// This is the whole reason the feature was reported broken: a model searched
+  /// "version builds submission" against App Store Connect and was told no tool
+  /// matched, because the one that does says "its build and metadata" and
+  /// "builds" is not a substring of "build". The other direction already works,
+  /// since "build" IS a substring of "builds".
+  ///
+  /// The regular plural only — "capabilities" and "matches" still miss, and the
+  /// comment says so rather than claiming to handle plurals. Longer than three
+  /// characters so "ios" does not become "io", and never after "ss" or "us",
+  /// because "status", "process", "class" and "focus" would fold into stems
+  /// that match by accident. That guard matters more than it looks: a fold is
+  /// only tried when the exact term missed, which is exactly the case where an
+  /// accidental hit becomes the best tier and hides the real answer.
+  static func singular(_ term: String) -> String? {
+    guard term.count > 3, term.hasSuffix("s"), !term.hasSuffix("ss"), !term.hasSuffix("us")
+    else { return nil }
+    return String(term.dropLast())
+  }
+
   /// The tools matching `query`, best first.
   ///
-  /// Every term has to appear somewhere in the tool's name or summary, and the
-  /// rank is then how well they hit the NAME — because a model searching
+  /// The rank is how well the terms hit the NAME — because a model searching
   /// "version" wants `list_versions` above the six tools whose prose happens to
   /// mention a version. Ties break on the name so the output of two identical
   /// searches is two identical strings, which is what makes this testable at
   /// all.
-  static func search(catalog: [[String: Any]], query: String, limit: Int? = nil) -> [Row] {
-    let terms = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
-    let cap = limit ?? (terms.isEmpty ? indexLimit : searchLimit)
+  ///
+  /// Not every term has to appear. Entries are grouped by how many of them they
+  /// matched and only the best group is returned, which is the same thing as
+  /// requiring all of them whenever some tool carries all of them, and is an
+  /// answer rather than silence when none does. Strict matching failed badly in
+  /// the only way that costs anything here: one unlucky word threw away the
+  /// tools that matched every other one, and a model told "no tool matches" has
+  /// no reason to think the tool exists. Its only recourse was the empty query,
+  /// which spends the whole index this feature exists to avoid sending.
+  ///
+  /// One consequence worth stating: a result is now a property of the query AND
+  /// the catalog, not of a tool on its own, since the tier is a maximum taken
+  /// across every entry. Adding a tool to a server can change the rows an
+  /// unrelated query returns, so nothing may cache this keyed on the query.
+  static func find(catalog: [[String: Any]], query: String, limit: Int? = nil) -> Outcome {
+    let terms = queryTerms(in: query)
 
     // The empty query is the full index, and it comes back in the server's own
     // order rather than sorted. Servers group related tools and put the ones
     // they expect you to reach for first; alphabetising that throws away a
     // judgement the author made and Bastion cannot reconstruct.
     guard !terms.isEmpty else {
-      return catalog.prefix(cap).compactMap { entry in
+      let rows = catalog.prefix(limit ?? indexLimit).compactMap { entry -> Row? in
         guard let name = entry["name"] as? String else { return nil }
         return Row(name: name, summary: shorten(description(of: entry)))
       }
+      return Outcome(rows: rows, matches: rows.count, matchedWords: 0, words: 0, missed: [])
     }
 
-    let scored = catalog.compactMap { entry -> (rank: Int, row: Row)? in
-      guard let name = entry["name"] as? String else { return nil }
-      let summary = shorten(description(of: entry))
+    var scored: [(matched: Int, rank: Int, row: Row)] = []
+    var carried = [Bool](repeating: false, count: terms.count)
+
+    for entry in catalog {
+      guard let name = entry["name"] as? String else { continue }
+      let full = description(of: entry)
+      let summary = shorten(full)
 
       let lowerName = name.lowercased()
-      let haystack = "\(lowerName) \(summary.lowercased())"
-      guard terms.allSatisfy({ haystack.contains($0) }) else { return nil }
+      // Two haystacks: the whole description decides WHETHER a term matched,
+      // the shortened summary decides how well. Searching only the summary
+      // meant everything past `summaryLimit` was unreachable — App Store
+      // Connect's `list_builds` ends "the latest VALID build for TestFlight"
+      // past the cut, so searching "testflight build" could not find it.
+      let head = "\(lowerName) \(summary.lowercased())"
+      let whole = "\(lowerName) \(full.lowercased())"
 
-      // Summed, not minimised. Taking the best single term made a two-word
-      // query rank on its luckiest word alone: "list version" tied
-      // `list_versions` with `list_apps` on "list" and then broke the tie
-      // alphabetically, handing back the tool that matches one word ahead of
-      // the one that matches both. Adding the ranks makes matching more of the
-      // query worth something.
-      let rank = terms.reduce(0) { running, term in
-        if lowerName == term { return running }
-        if lowerName.hasPrefix(term) { return running + 1 }
-        if lowerName.contains(term) { return running + 2 }
-        return running + 3
+      var matched = 0
+      var rank = 0
+      for (index, term) in terms.enumerated() {
+        // Resolved per entry rather than once per query: "builds" can hit a
+        // tool that spells it out and need the fold on the next one, and the
+        // rank has to score whichever form actually matched, or a fold that
+        // landed in the NAME is filed as a passing mention in the prose.
+        var effective: String?
+        if whole.contains(term) {
+          effective = term
+        } else if let folded = singular(term), whole.contains(folded) {
+          effective = folded
+        }
+
+        guard let effective else {
+          rank += Hit.missing.rawValue
+          continue
+        }
+
+        let hit: Hit
+        if lowerName == effective {
+          hit = .exactName
+        } else if lowerName.hasPrefix(effective) {
+          hit = .namePrefix
+        } else if lowerName.contains(effective) {
+          hit = .nameSubstring
+        } else if head.contains(effective) {
+          hit = .summary
+        } else {
+          hit = .tail
+        }
+        rank += hit.rawValue
+        matched += 1
+        carried[index] = true
       }
-      return (rank: rank, row: Row(name: name, summary: summary))
+      scored.append((matched: matched, rank: rank, row: Row(name: name, summary: summary)))
     }
 
-    return
-      scored
-      .sorted { ($0.rank, $0.row.name) < ($1.rank, $1.row.name) }
-      .prefix(cap)
+    // A total miss is still a miss. Without this guard every entry ties at zero
+    // and the "best" tier is the entire catalog — the one bug in this function
+    // that would be worse than the one it fixes.
+    guard let best = scored.map(\.matched).max(), best > 0 else {
+      return Outcome(rows: [], matches: 0, matchedWords: 0, words: terms.count, missed: terms)
+    }
+
+    // A tier that matched two words of three is low-precision by construction,
+    // and a long low-precision list is the expensive failure: a model handed
+    // twenty-five plausible names picks a plausible one rather than the right
+    // one. Show fewer of them than of a full match.
+    let cap = limit ?? (best == terms.count ? searchLimit : partialLimit)
+    let tier = scored.filter { $0.matched == best }
+    let rows = tier.sorted { ($0.rank, $0.row.name) < ($1.rank, $1.row.name) }.prefix(cap)
       .map(\.row)
+    // Filtered out of the ordered terms, never collected into a Set: Swift
+    // randomises Set iteration per process, and two identical searches have to
+    // be two identical strings.
+    let missed = terms.enumerated().filter { !carried[$0.offset] }.map(\.element)
+    return Outcome(
+      rows: Array(rows), matches: tier.count, matchedWords: best, words: terms.count,
+      missed: missed)
+  }
+
+  /// The rows alone, for callers that do not need the arithmetic.
+  static func search(catalog: [[String: Any]], query: String, limit: Int? = nil) -> [Row] {
+    find(catalog: catalog, query: query, limit: limit).rows
   }
 
   /// The search result as the text a model reads.
@@ -246,18 +402,58 @@ nonisolated enum ToolFacade {
   /// `app_store_connect_list_versions` has a name and no way to know it may not
   /// call it directly. Naming the next two tools every time costs a line and
   /// saves a failed call.
+  ///
+  /// A partial match says so FIRST, and names the words that missed rather than
+  /// the ones that hit. A caveat printed under ten rows is a caveat nobody
+  /// reads, and a partial list that reads like a full one is worse than the
+  /// silence it replaced — the model needs to know it should re-word before it
+  /// starts trusting the names. The missing word is the one it has to change.
+  ///
+  /// It never hints that the write gate hid something. `catalog` arrives
+  /// pre-filtered, and taking the tier over what is left is correct; saying so
+  /// would leak the gate's state to a client that is not supposed to see it.
   static func searchText(catalog: [[String: Any]], query: String, limit: Int? = nil) -> String {
-    let rows = search(catalog: catalog, query: query, limit: limit)
-    guard !rows.isEmpty else {
+    let found = find(catalog: catalog, query: query, limit: limit)
+    guard !found.rows.isEmpty else {
       return "No tool matches '\(query)'. Call \(searchName) with an empty query to see all "
         + "\(catalog.count)."
     }
-    let listing = rows.map { $0.summary.isEmpty ? $0.name : "\($0.name) — \($0.summary)" }
+
+    // Taken from the tier the rows came from, not from `missed`, which is a
+    // weaker claim: two tools can each carry a different word, leaving nothing
+    // unmatched by the catalog while no single tool matched the whole query.
+    let partial = found.matchedWords < found.words
+    var notice = ""
+    if partial {
+      notice =
+        "Nothing matches all of '\(query)'. These match \(found.matchedWords) of \(found.words)"
+      if found.missed.isEmpty {
+        notice += " words.\n\n"
+      } else {
+        let quoted = found.missed.map { "\"\($0)\"" }.joined(separator: ", ")
+        notice += " — no tool mentions \(quoted).\n\n"
+      }
+    }
+
+    let listing = found.rows.map { $0.summary.isEmpty ? $0.name : "\($0.name) — \($0.summary)" }
       .joined(separator: "\n")
-    let shown =
-      rows.count < catalog.count
-      ? "\(rows.count) of \(catalog.count) tools" : "all \(catalog.count) tools"
-    return listing + "\n\n\(shown). Read a schema with \(describeName), then run it with "
+
+    // Shown, matched and total are three different numbers and were being
+    // reported as two. A capped tier read "25 of 85 tools", which a model takes
+    // as "25 matched"; and a word common enough to hit everything could print
+    // "all 85 tools" directly beneath a partial-match warning.
+    let shown: String
+    if found.rows.count < found.matches {
+      shown =
+        "Showing \(found.rows.count) of \(found.matches) matches, out of \(catalog.count) "
+        + "tools"
+    } else if found.matches == catalog.count && !partial {
+      shown = "all \(catalog.count) tools"
+    } else {
+      shown = "\(found.matches) of \(catalog.count) tools"
+    }
+
+    return notice + listing + "\n\n\(shown). Read a schema with \(describeName), then run it with "
       + "\(callName)."
   }
 

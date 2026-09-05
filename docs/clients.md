@@ -71,16 +71,23 @@ connect and there is nothing the user can do about it from that side.
 Context) is Bastion's answer for the clients that cannot. With it on, a client is
 served three tools instead of the server's own:
 
-| Tool                    | What it does                                                              |
-| ----------------------- | ------------------------------------------------------------------------- |
-| `bastion_search_tools`  | Names and one-line summaries, filtered by a query; empty lists everything |
-| `bastion_describe_tool` | One tool's full input schema, by exact name                               |
-| `bastion_call_tool`     | Runs one, by name and arguments                                           |
+| Tool                    | What it does                                                     |
+| ----------------------- | ---------------------------------------------------------------- |
+| `bastion_search_tools`  | Names and one-line summaries for a query; empty lists everything |
+| `bastion_describe_tool` | One tool's full input schema, by exact name                      |
+| `bastion_call_tool`     | Runs one, by name and arguments                                  |
 
 `prod/appstore-connect` becomes three tools and about 0.4k tokens on connect,
 with the full index costing about 3.2k only if something asks for it. Nothing
 becomes unreachable, and a client still holding a pre-toggle list keeps working:
 a real tool name is forwarded as it always was.
+
+The search is deliberately forgiving, because the index is the only way in and a
+query that comes back empty sends the model to the full listing this exists to
+avoid. It matches whole descriptions rather than the one-line summary it prints,
+it folds a plural onto the singular a description happens to use, and when no
+tool carries every word it returns the ones that carried the most and says so —
+naming the word that missed, so the next query can drop it.
 
 MCP has no method for fetching a schema later — `inputSchema` is required in a
 `tools/list` entry — so an index and a dispatcher is the only shape lazy

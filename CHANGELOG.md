@@ -7,6 +7,21 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.7.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Fixed
+
+- **`bastion_search_tools` no longer answers "no tool matches" when one does.** A model searching
+  `prod/appstore-connect` for `version builds submission` was told nothing matched, out of 85
+  tools, because the one that does says "its build and metadata" and the query said "builds".
+  Three things were wrong with the matching and all three are fixed: a plural now folds onto the
+  singular a description happens to use; a word no tool carries no longer empties the result, which
+  instead falls back to the tools that matched the most of the query and says which word missed;
+  and matching reads the whole description rather than the 160-character summary it prints, so
+  `testflight build` finds `list_builds`, whose description mentions TestFlight only past the cut.
+  The index was the only way in, so a query that came back empty sent the model to the full listing
+  the feature exists to avoid sending.
+
 ## [1.7.0] - 2026-09-04
 
 ### Added

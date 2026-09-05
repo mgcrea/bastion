@@ -1261,9 +1261,20 @@ struct UnitCheck {
     check("a name match outranks a description match", versions.first?.name == "get_version")
     check(
       "but the description match is still returned", versions.contains { $0.name == "list_apps" })
+    // Was: a word nothing carries emptied the whole result. That is what told a
+    // model searching "version builds submission" against App Store Connect
+    // that no tool matched, when one matched everything but the plural.
     check(
-      "every term has to appear somewhere",
-      ToolFacade.search(catalog: tools, query: "version nothing").isEmpty)
+      "a word nothing carries no longer empties the result",
+      ToolFacade.search(catalog: tools, query: "version nothing").map(\.name)
+        == ["get_version", "list_versions", "list_apps"])
+    check(
+      "and the text names the word that missed",
+      ToolFacade.searchText(catalog: tools, query: "version nothing").contains("\"nothing\""))
+    check(
+      "and says it is not a full match",
+      ToolFacade.searchText(catalog: tools, query: "version nothing")
+        .hasPrefix("Nothing matches all of"))
     // Both `list_versions` and `list_apps` carry "list" and "version" somewhere,
     // so both are hits — the name match is what decides which comes first.
     check(
@@ -1273,6 +1284,13 @@ struct UnitCheck {
     check(
       "and the name match leads",
       ToolFacade.search(catalog: tools, query: "list version").first?.name == "list_versions")
+    // The other half of that rule, and the one the tier filter exists for:
+    // `get_version` carries "version" but not "list", so a tool matching one
+    // word of two is dropped as long as something matched both.
+    check(
+      "a partial match is dropped when a full one exists",
+      !ToolFacade.search(catalog: tools, query: "list version")
+        .contains { $0.name == "get_version" })
     check(
       "an exact name wins outright",
       ToolFacade.search(catalog: tools, query: "list_apps").first?.name == "list_apps")
@@ -1286,8 +1304,129 @@ struct UnitCheck {
       "the order is stable",
       ToolFacade.search(catalog: tools, query: "list").map(\.name)
         == ToolFacade.search(catalog: tools, query: "list").map(\.name))
+    // Stronger than comparing a query to itself, which can only catch genuine
+    // nondeterminism. Far more entries tie on rank now, so the name is what
+    // keeps two catalogs holding the same tools answering the same way.
+    check(
+      "ties break on the name, not on the catalog's order",
+      ToolFacade.search(catalog: tools.reversed(), query: "version").map(\.name)
+        == ToolFacade.search(catalog: tools, query: "version").map(\.name))
     check(
       "the limit is honoured", ToolFacade.search(catalog: tools, query: "", limit: 2).count == 2)
+
+    print("\nTool facade: matching what the model meant")
+
+    // The real App Store Connect entries behind the bug this section exists for.
+    // Their exact wording is the test: `list_builds` says "TestFlight" only
+    // past `summaryLimit`, and `remove_version_from_submission` says "build"
+    // where a model searching for it typed "builds".
+    let asc: [[String: Any]] = [
+      [
+        "name": "app_store_connect_list_builds",
+        "description":
+          "List builds uploaded for an app (version, upload date, processing state, expiry). "
+          + "Filter by version string or processing state to find e.g. the latest VALID build "
+          + "for TestFlight.",
+      ],
+      [
+        "name": "app_store_connect_remove_version_from_submission",
+        "description":
+          "Take a version back off this app's un-submitted draft review submission, returning "
+          + "it to PREPARE_FOR_SUBMISSION so its build and metadata can be changed again.",
+      ],
+      [
+        "name": "app_store_connect_create_beta_group",
+        "description":
+          "Create a TestFlight beta group for an app — the container builds are distributed "
+          + "through.",
+      ],
+      [
+        "name": "app_store_connect_set_version_build",
+        "description":
+          "Attach a build to an App Store version — the last step before submitting. Pass "
+          + "detach: true instead of a buildId to remove the currently attached build.",
+      ],
+    ]
+
+    // The report, verbatim: this returned "No tool matches" against all 85.
+    check(
+      "the query that started this finds its one tool",
+      ToolFacade.search(catalog: asc, query: "version builds submission").map(\.name)
+        == ["app_store_connect_remove_version_from_submission"])
+    check(
+      "and it is a full match, so nothing is hedged",
+      !ToolFacade.searchText(catalog: asc, query: "version builds submission")
+        .contains("Nothing matches all of"))
+    check(
+      "a plural still finds the tool that spells it singular",
+      ToolFacade.search(catalog: asc, query: "builds")
+        .contains { $0.name == "app_store_connect_remove_version_from_submission" })
+
+    // The fold is only ever tried after the exact term missed, so a stem that
+    // matches by accident does not merely add noise — it defines the top tier
+    // and hides the answer. These four are the guard.
+    check("a plural folds", ToolFacade.singular("builds") == "build")
+    check("a short word does not, or \"ios\" becomes \"io\"", ToolFacade.singular("ios") == nil)
+    check("nor does \"us\", or \"status\" becomes \"statu\"", ToolFacade.singular("status") == nil)
+    check("nor \"ss\", or \"class\" becomes \"clas\"", ToolFacade.singular("class") == nil)
+
+    // Searching the whole description, showing the shortened summary. "VALID"
+    // is past the cut in `list_builds`, so this found nothing before.
+    let valid = ToolFacade.search(catalog: asc, query: "valid")
+    check(
+      "a word past the summary cut is still searchable",
+      valid.map(\.name) == ["app_store_connect_list_builds"])
+    check(
+      "but the row still shows the shortened summary",
+      (valid.first?.summary.count ?? 0) <= ToolFacade.summaryLimit + 1
+        && valid.first?.summary.lowercased().contains("valid") == false)
+    check(
+      "and a word in the tail of one tool still finds the tool that leads with it",
+      ToolFacade.search(catalog: asc, query: "testflight build")
+        .contains { $0.name == "app_store_connect_list_builds" })
+
+    // How much of the query matched is what picks the tier, so a repeated word
+    // must not count twice and a preposition must not count at all.
+    check(
+      "a repeated word is counted once",
+      ToolFacade.queryTerms(in: "version version submission") == ["version", "submission"])
+    check(
+      "words too short to mean anything are dropped",
+      ToolFacade.queryTerms(in: "a to of version") == ["version"])
+    check(
+      "and a query of nothing but those is an empty query",
+      ToolFacade.queryTerms(in: "a to of").isEmpty)
+
+    // A partial tier is low-precision by construction and must not be allowed
+    // to fill the window with plausible names.
+    let many = (1...15).map { index -> [String: Any] in
+      ["name": "tool_\(index)", "description": "Does something with a version."]
+    }
+    check(
+      "a partial match returns fewer rows than a full one",
+      ToolFacade.search(catalog: many, query: "version kubernetes").count
+        == ToolFacade.partialLimit)
+    check(
+      "and the text says how much of the query it managed",
+      ToolFacade.searchText(catalog: many, query: "version kubernetes")
+        .contains("These match 1 of 2"))
+
+    // The partial notice is taken from the tier, not from the words nothing
+    // carried — here every word is carried by SOME tool and still no tool
+    // carries both, so a notice derived from the misses would have claimed a
+    // full match.
+    let halves: [[String: Any]] = [
+      ["name": "alpha_tool", "description": "Handles the version."],
+      ["name": "beta_tool", "description": "Handles the submission."],
+    ]
+    check(
+      "two tools splitting the query between them is still a partial match",
+      ToolFacade.searchText(catalog: halves, query: "version submission")
+        .hasPrefix("Nothing matches all of 'version submission'. These match 1 of 2 words."))
+    check(
+      "and it names no missing word, because there is none",
+      !ToolFacade.searchText(catalog: halves, query: "version submission")
+        .contains("no tool mentions"))
 
     print("\nTool facade: summaries stay short")
 

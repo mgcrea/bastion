@@ -153,6 +153,15 @@ SEARCH="$(rpc facadeon '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{
 check "search finds a real tool" "$SEARCH" "list_profiles"
 check "and says how to reach it" "$SEARCH" "bastion_describe_tool"
 
+# A word nothing carries used to empty the whole result, which is what told a
+# model searching App Store Connect for "version builds submission" that no such
+# tool existed. It must come back with the tools that matched the rest, and it
+# must say plainly that it did not match everything.
+PARTIAL="$(rpc facadeon '{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"bastion_search_tools","arguments":{"query":"profiles kubernetes"}}}')"
+check "a word that matches nothing does not empty the result" "$PARTIAL" "list_profiles"
+check "and the miss is admitted, not hidden" "$PARTIAL" "Nothing matches all of"
+check "and the word that missed is named" "$PARTIAL" "kubernetes"
+
 INDEX="$(rpc facadeon '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"bastion_search_tools","arguments":{"query":""}}}')"
 check "an empty query lists everything" "$INDEX" "list_clients"
 
