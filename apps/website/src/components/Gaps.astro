@@ -1,0 +1,86 @@
+---
+import SectionHeader from "./SectionHeader.astro";
+import { DOCS } from "../config";
+
+/**
+ * This was a build-order table — fourteen rows, each tagged `built` or `green`
+ * — written when half of them were not built yet. By 1.0.0 every row read
+ * `built`, which made it a feature list standing next to four sections that
+ * make the same claims with a demo attached; the nav had already dropped it
+ * when the container narrowed to 1240.
+ *
+ * What survived the cut is the half with no other home on the site: the gaps.
+ * The root README is still the authority — if the two disagree the README is
+ * right and this is stale — and /checked covers a different kind of limit, what
+ * the checks do not prove rather than what the app does not do.
+ *
+ * The first one bites today. It is a consequence of the migration having
+ * already happened, not a future risk.
+ */
+const GAPS = [
+  {
+    k: "Login item",
+    v: "The repointed repos need Bastion running: four .mcp.json files now call the gateway instead of spawning anything, and nothing starts it at login yet.",
+  },
+  {
+    k: "Server-initiated",
+    v: "Sampling, elicitation and roots are refused with an explanatory error, not routed — a shared instance has no single client to ask.",
+  },
+  {
+    k: "Write gate",
+    v: "A remote server's write gate is a filter, not a boundary: Bastion refuses to forward the named tools, but anyone holding the credential can call the same API directly. Its own scopes are the real limit.",
+  },
+  {
+    k: "Rate limits",
+    v: "A remote server's rate limit is shared. Behind one profile every client spends one budget upstream, so a client in a loop can exhaust it for the rest.",
+  },
+  {
+    k: "No streaming",
+    v: "Responses are a single JSON object, never an SSE stream: no notifications/progress on a long call.",
+  },
+  {
+    k: "Mcp-Param-*",
+    v: "Headers are forwarded but not validated; no server in the manifest annotates a parameter yet.",
+  },
+] as const;
+---
+
+{/* The anchor stays `#status` although the section no longer is one: it is the
+    id this section has had since the site went up, the footer links it, and an
+    external link to it costs nothing to keep working. */}
+<section id="status" class="wrap scroll-mt-20 py-[96px]">
+  <div class="flex flex-wrap items-start gap-16">
+    <SectionHeader eyebrow="Known gaps" heading="What it does not do yet.">
+      <p class="m-0 text-[15px] leading-[1.6] text-fg/55 text-pretty">
+        Everything above this line is built and runs today — the <a
+          href={DOCS.readme}
+          target="_blank"
+          rel="noopener"
+          class="text-accent-hi underline decoration-accent/30 underline-offset-2">README</a
+        > lists it row by row. This is the other column, and it is here rather than
+        somewhere you find out after paying.
+      </p>
+      <p class="m-0 text-[13px] leading-[1.55] text-fg/40 text-pretty">
+        A different kind of limit — what the checks themselves do not prove — is on <a
+          href="/checked"
+          class="text-fg/60 underline decoration-fg/20 underline-offset-2">the checked page</a
+        >.
+      </p>
+    </SectionHeader>
+
+    <dl class="m-0 flex min-w-[min(380px,100%)] flex-1 basis-[480px] flex-col">
+      {
+        GAPS.map((g) => (
+          <div class="flex flex-wrap items-baseline gap-x-6.5 gap-y-1 border-b border-rule py-4">
+            <dt class="basis-[170px] shrink-0 font-mono text-[14px] leading-[1.5] font-medium">
+              {g.k}
+            </dt>
+            <dd class="m-0 flex-1 basis-[240px] text-[14px] leading-[1.55] text-fg-dim text-pretty">
+              {g.v}
+            </dd>
+          </div>
+        ))
+      }
+    </dl>
+  </div>
+</section>
