@@ -1,0 +1,167 @@
+---
+import { CONTEXT } from "../config";
+import SectionHeader from "./SectionHeader.astro";
+
+/**
+ * What a connect costs, and the one setting that changes it.
+ *
+ * This section exists because the saving is the largest number on the whole
+ * site and it was reachable only from the CHANGELOG. Nothing here is Bastion's
+ * argument for itself in the abstract — every figure is measured by the app's
+ * own _Test_ step, from the listing as it arrived on the wire, and the profile
+ * that carries them is named so a reader can check it against their own.
+ *
+ * It sits after `HowItWorks` and before `Audit`: the runtime section has just
+ * finished saying that a client points at a URL and gets one child, and this is
+ * the next thing that happens on that connection. Put after `Audit` it would
+ * separate the record from the window that shows it.
+ *
+ * The honest half is not an afterthought paragraph, it is the reason the switch
+ * ships off: a saving whose cost is only in the CHANGELOG is a saving somebody
+ * turns on and then discovers.
+ */
+
+/**
+ * The small bar, as a share of the large one.
+ *
+ * Derived rather than typed, and typed nowhere: `0.4k` against `26.2k` is about
+ * 1.5%, which is a sliver — that IS the picture, and a bar rounded up to
+ * something comfortable would be drawing a different claim than the figure
+ * beside it. Both strings carry the same `k`, so the units cancel and
+ * `parseFloat` is enough; `max()` keeps the sliver from disappearing entirely
+ * on a narrow column.
+ */
+const share = (parseFloat(CONTEXT.facadeTokens) / parseFloat(CONTEXT.tokens)) * 100;
+---
+
+<section class="wrap py-[96px]">
+  <div class="flex flex-wrap items-start gap-16">
+    {/* The count is read from the constant, not typed into the heading: it is
+        the same figure the bar beside it carries, and a heading is the last
+        place anybody thinks to update. Past thirty it is a digit — `SPELLED`
+        stops there on purpose. */}
+    <SectionHeader
+      eyebrow="The context cost"
+      heading={`${CONTEXT.tools} tool definitions, on every connect.`}
+    >
+      <p class="m-0 text-[16px] leading-[1.6] text-fg-dim text-pretty">
+        Every client wired to a profile is sent every tool definition that profile's server exposes
+        before it can call one, and holds them for the whole conversation. That is the largest fixed
+        charge a shared gateway imposes: <code class="font-mono text-[14.5px]">{CONTEXT.profile}</code
+        > is {CONTEXT.tools} tools and about {CONTEXT.tokens} tokens, in every editor that opens it, every
+        time one starts.
+      </p>
+      <p class="m-0 text-[15px] leading-[1.6] text-fg/55 text-pretty">
+        <strong class="font-semibold text-fg/80">Load tools on demand</strong> serves {
+          CONTEXT.facadeTools
+        } tools in their place — a search, a describe and a call — and the same profile connects at
+        about {CONTEXT.facadeTokens}. The full searchable index costs {CONTEXT.indexTokens}, and only
+        if something asks for it. Nothing becomes unreachable, and Bastion measures both numbers itself:
+        the profile row carries the figure rather than leaving it to be inferred.
+      </p>
+
+      {/* The trade, in the same accent-rule treatment `HowItWorks` gives the
+          thing it admits to giving up. It is not a caveat in small print for
+          the same reason it is off by default. */}
+      <p class="m-0 border-l-2 border-accent pl-4 text-[14.5px] leading-[1.6] text-fg/70 text-pretty">
+        What it costs is on the client's side, and the switch says so: every call reaches the editor
+        as <code class="font-mono text-[13.5px]">bastion_call_tool</code>, so one approval rule there
+        now covers every tool on that server. Bastion's own write gate is unaffected — a write tool
+        is still absent from the index and still refused by the dispatcher. The editor's gate is the
+        coarser one, which is why this ships off and why a profile can disagree with the app-wide
+        answer.
+      </p>
+      <p class="m-0 text-[13px] leading-[1.6] text-fg/45 text-pretty">
+        MCP has no method for fetching a schema later — <code class="font-mono text-[12px]"
+          >inputSchema</code
+        > is required in a <code class="font-mono text-[12px]">tools/list</code> entry — so an index and
+        a dispatcher is the only shape lazy discovery can take. Doing it in the gateway is what keeps
+        it honest: the call is opened back up into the ordinary <code class="font-mono text-[12px]"
+          >tools/call</code
+        > it stands for before the audit chain, the Activity window or the write gate sees the frame,
+        so all three go on naming the real tool. A facade bought as a server cannot do that.
+      </p>
+    </SectionHeader>
+
+    <div class="flex min-w-[min(420px,100%)] flex-1 basis-[520px] flex-col gap-4">
+      <div class="reveal flex flex-col gap-6 rounded-lg border border-white/9 bg-white/3 p-8">
+        {/* The profile is NOT inside the eyebrow: `.eyebrow` uppercases, and a
+            server id typed back in caps is an id nobody can match against their
+            own config. */}
+        <div class="flex flex-wrap items-baseline justify-between gap-3">
+          <h3 class="eyebrow m-0 text-fg-muted">On connect</h3>
+          <span class="font-mono text-[12px] text-fg-dim">{CONTEXT.profile}</span>
+        </div>
+
+        <div class="flex flex-col gap-5">
+          <div class="flex flex-col gap-2.5">
+            <div class="flex flex-wrap items-baseline justify-between gap-2">
+              <span class="text-[13.5px] font-medium">Every tool, as any gateway serves it</span>
+              <span class="font-mono text-[12px] text-danger-ink">
+                {CONTEXT.tools} tools · ~{CONTEXT.tokens}
+              </span>
+            </div>
+            <div class="h-2.5 w-full rounded-full bg-danger/45"></div>
+          </div>
+
+          <div class="flex flex-col gap-2.5">
+            <div class="flex flex-wrap items-baseline justify-between gap-2">
+              <span class="text-[13.5px] font-medium">Tools on demand</span>
+              <span class="font-mono text-[12px] text-ok-ink">
+                {CONTEXT.facadeTools} tools · ~{CONTEXT.facadeTokens}
+              </span>
+            </div>
+            <div class="h-2.5 w-full rounded-full bg-white/6">
+              <div
+                class="h-2.5 rounded-full bg-ok"
+                style={`width:max(${share.toFixed(1)}%,5px)`}
+              >
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-baseline gap-3.5 border-t border-white/8 pt-5">
+          <span
+            class="font-display text-[44px] leading-none font-semibold tracking-[-0.03em] text-accent"
+          >
+            {CONTEXT.cut}
+          </span>
+          <span class="text-[13.5px] leading-[1.5] text-fg-dim text-pretty">
+            fewer tokens to hand a client the same server. The index it can ask for costs {
+              CONTEXT.indexTokens
+            }.
+          </span>
+        </div>
+
+        <p class="m-0 font-mono text-[11px] leading-[1.6] text-fg/38 text-pretty">
+          Counted from the listing as it arrived on the wire, at four bytes to the token, with the
+          profile's write gate already applied.
+        </p>
+      </div>
+
+      <div class="flex flex-col gap-4 rounded-lg border border-white/9 bg-white/[2.5%] p-8">
+        <h3 class="eyebrow m-0 text-fg-muted">What the client is served instead</h3>
+        <dl class="m-0 flex flex-col">
+          {
+            CONTEXT.facade.map((t) => (
+              <div class="flex flex-wrap items-baseline gap-x-5 gap-y-1 border-b border-rule py-3.5 last:border-b-0 last:pb-0">
+                <dt class="basis-[172px] shrink-0 font-mono text-[12.5px] text-accent-hi">
+                  {t.name}
+                </dt>
+                <dd class="m-0 flex-1 basis-[220px] text-[13.5px] leading-[1.55] text-fg-dim text-pretty">
+                  {t.v}
+                </dd>
+              </div>
+            ))
+          }
+        </dl>
+        <p class="m-0 text-[13px] leading-[1.6] text-fg/45 text-pretty">
+          One switch in Settings moves every profile at once; a profile that disagrees — one wired to
+          a client that already defers tool schemas by itself, and so gains nothing here — overrides
+          it in its own sheet.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>

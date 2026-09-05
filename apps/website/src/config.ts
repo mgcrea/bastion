@@ -136,6 +136,46 @@ export const DIALECT = {
 } as const;
 
 /**
+ * What a client pays to be wired at all, and what serving it an index instead
+ * cuts that to.
+ *
+ * Every figure is Bastion's own, measured by _Test_ from the listing as it
+ * arrived on the wire at four bytes to the token, with the profile's write gate
+ * already applied — which is why the profile is named rather than left as "a
+ * big server". CHANGELOG 1.7.0 and docs/clients.md are the authority; if this
+ * disagrees with either, they are right.
+ *
+ * `cut` is not derived from the two rounded figures on purpose. 26.2 over 0.4
+ * divides to 65.5, and a reader who does that division and gets a different
+ * number than the one printed beside it stops believing both. The ratio is
+ * computed from the unrounded totals, so it is quoted, not recomputed here.
+ *
+ * `off` is the fact this section is likeliest to get wrong first. The switch is
+ * off by default because it is the one setting in the app that trades rather
+ * than tightens, and `ToolFacade.defaultsKey` is the authority — if that ever
+ * ships defaulting on, the sentence on the page has to move with it.
+ */
+export const CONTEXT = {
+  profile: "prod/appstore-connect",
+  tools: 85,
+  tokens: "26.2k",
+  facadeTools: 3,
+  facadeTokens: "0.4k",
+  indexTokens: "3.2k",
+  cut: "67×",
+  off: true,
+  /** The three tools a client is served instead, as the facade declares them. */
+  facade: [
+    {
+      name: "bastion_search_tools",
+      v: "Names and one-line summaries, filtered by a query. An empty query lists everything.",
+    },
+    { name: "bastion_describe_tool", v: "One tool's full input schema, by exact name." },
+    { name: "bastion_call_tool", v: "Runs one, by name and arguments." },
+  ],
+} as const;
+
+/**
  * False until there is something to download.
  *
  * It gates the CTA, and it does not gate everything: any string outside a

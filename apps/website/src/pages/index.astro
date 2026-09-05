@@ -1,5 +1,6 @@
 ---
 import Audit from "../components/Audit.astro";
+import Context from "../components/Context.astro";
 import Cta from "../components/Cta.astro";
 import Footer from "../components/Footer.astro";
 import Hero from "../components/Hero.astro";
@@ -113,6 +114,10 @@ const schema = {
     <ServerPane />
     <Problem />
     <HowItWorks />
+    {/* Between the runtime and the record: the runtime section ends on a client
+        pointing at a URL, and what that connection costs is the next thing that
+        happens on it. */}
+    <Context />
     <Audit />
     {/* After the record section and before the light Rules plate: Audit makes
         the claim in prose, this shows the window making it, and Rules then
