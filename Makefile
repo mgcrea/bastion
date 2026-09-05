@@ -536,6 +536,8 @@ unit: ## Assert the translation, the parser, call capture, the audit chain, the 
 		apps/apple/Bastion/Dialect.swift \
 		apps/apple/Bastion/ServerCatalog.swift \
 		apps/apple/Bastion/HTTP.swift \
+		apps/apple/Bastion/EventStream.swift \
+		apps/apple/Bastion/ServerSentEvents.swift \
 		apps/apple/Bastion/CallCapture.swift \
 		apps/apple/Bastion/ToolReply.swift \
 		apps/apple/Bastion/AuditChain.swift \

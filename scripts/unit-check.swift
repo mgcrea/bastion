@@ -236,6 +236,99 @@ struct UnitCheck {
     // the failure would look like a wrong token rather than a parsing bug.
     check("only the first space splits", bearer("Bearer a b") == "a b")
 
+    print("\nHTTP: what the client says it will accept")
+    func accepts(_ value: String?) -> Bool {
+      (value.map { request(["accept": $0]) } ?? request([:])).acceptsEventStream
+    }
+    check("the media type on its own", accepts("text/event-stream"))
+    check("alongside json, as every MCP client sends it", accepts("application/json, text/event-stream"))
+    check("case-insensitively", accepts("TEXT/EVENT-STREAM"))
+    check("with a q-value attached", accepts("text/event-stream;q=0.9"))
+    check("with spaces around it", accepts("  application/json ,  text/event-stream  "))
+    check("json alone does not", !accepts("application/json"))
+    check("no header at all does not", !accepts(nil))
+    // The asymmetry that decides this: answering JSON to a client that would
+    // have read a stream is safe, the reverse breaks the call. curl sends */*
+    // by default and someone piping this to jq should keep getting one object.
+    check("a wildcard does not, though it would match anything", !accepts("*/*"))
+    // A substring match would pass this, and a substring match is the bug.
+    check("a longer type that merely starts the same does not", !accepts("text/event-streamx"))
+    check("nor one it merely ends with", !accepts("application/text/event-stream"))
+
+    print("\nHTTP: a streamed reply")
+    /// Runs `body` against one end of a socketpair and returns what came out
+    /// the other. The real fd path, for the reason `parse` uses one.
+    func streamed(armed: Bool = true, _ body: (HTTPStream) -> Void) -> String {
+      var fds: [Int32] = [0, 0]
+      guard socketpair(AF_UNIX, SOCK_STREAM, 0, &fds) == 0 else { return "" }
+      body(HTTPStream(fd: fds[1], armed: armed))
+      close(fds[1])
+      var out = Data()
+      var chunk = [UInt8](repeating: 0, count: 4096)
+      while true {
+        let n = chunk.withUnsafeMutableBufferPointer { Darwin.read(fds[0], $0.baseAddress, $0.count) }
+        if n <= 0 { break }
+        out.append(contentsOf: chunk[0..<n])
+      }
+      close(fds[0])
+      return String(decoding: out, as: UTF8.self)
+    }
+
+    let stream = streamed { $0.send(Data("{\"a\":1}".utf8)) }
+    check("the head says event-stream", stream.contains("Content-Type: text/event-stream\r\n"))
+    check("it is a 200", stream.hasPrefix("HTTP/1.1 200 OK\r\n"))
+    // The body is delimited by the close, which is the framing this server
+    // already uses. A length it cannot know would be worse than none.
+    check("there is no content-length", !stream.lowercased().contains("content-length"))
+    check("and no chunked encoding either", !stream.lowercased().contains("transfer-encoding"))
+    check("it still closes", stream.contains("Connection: close\r\n"))
+    check("nosniff survives", stream.contains("X-Content-Type-Options: nosniff\r\n"))
+    check("no-store survives", stream.contains("Cache-Control: no-store\r\n"))
+    // An `id:` is what invites a client back with Last-Event-ID, and there is
+    // no session and no replay buffer behind it.
+    check("no event carries an id", !stream.contains("\nid:"))
+    check("the payload arrives as one data line", stream.hasSuffix("data: {\"a\":1}\n\n"))
+
+    // A payload with newlines in it: one `data:` line each, which is what
+    // ServerSentEvents.dataPayloads joins back together.
+    let multi = streamed { $0.send(Data("{\n  \"a\": 1\n}".utf8)) }
+    check(
+      "a multi-line payload becomes several data lines",
+      multi.hasSuffix("data: {\ndata:   \"a\": 1\ndata: }\n\n"))
+    let bodyOnly = multi.components(separatedBy: "\r\n\r\n").dropFirst().joined(
+      separator: "\r\n\r\n")
+    check(
+      "and round-trips through the reader",
+      ServerSentEvents.dataPayloads(in: Data(bodyOnly.utf8)).first.map {
+        String(decoding: $0, as: UTF8.self)
+      } == "{\n  \"a\": 1\n}")
+
+    // Two frames then the result, which is the whole shape of a streamed call.
+    let full = streamed { out in
+      out.send(Data("{\"m\":\"p\",\"n\":1}".utf8))
+      out.send(Data("{\"m\":\"p\",\"n\":2}".utf8))
+      out.finish(with: HTTPResponse(json: ["id": 7, "result": [:]]))
+    }
+    check(
+      "progress frames precede the result",
+      ServerSentEvents.dataPayloads(
+        in: Data(full.components(separatedBy: "\r\n\r\n").dropFirst().joined().utf8)
+      ).count == 3)
+
+    // Not armed: nothing is written and the caller falls back to a normal
+    // buffered response, which is what keeps today's behaviour today's.
+    let inert = HTTPStream(fd: -1, armed: false)
+    check("an unarmed stream sends nothing", !inert.send(Data("{}".utf8)))
+    check("and never reports itself open", !inert.isOpen)
+    check("so a finish on it writes nothing", { inert.finish(with: HTTPResponse(json: [:])); return !inert.isOpen }())
+
+    // A dead socket must not leave the stream looking usable: a well-formed
+    // event appended after a truncated one parses cleanly and says something
+    // false.
+    let dead = HTTPStream(fd: -1, armed: true)
+    check("a send to a dead fd fails", !dead.send(Data("{}".utf8)))
+    check("and every later send is refused", !dead.send(Data("{}".utf8)))
+
     print("\nHTTP: the JSON-RPC id, which an error is returned against")
     // An error carrying the wrong id is worse than no error: the client matches
     // it to nothing and waits out its own timeout on a request already failed.

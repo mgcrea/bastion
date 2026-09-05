@@ -48,6 +48,33 @@ nonisolated struct HTTPRequest {
     return parts[1].trimmingCharacters(in: .whitespaces)
   }
 
+  /// Whether `Accept` names a media type, matched as a whole token rather than
+  /// as a substring.
+  ///
+  /// `*/*` does NOT count, and neither does an absent header. A wildcard means
+  /// "I will take anything", not "I asked for a stream", and the risk here is
+  /// asymmetric: answering JSON to a client that would have read a stream is
+  /// always safe, while answering a stream to one that cannot parse it breaks
+  /// the call. `curl` sends `*/*` by default, and someone piping this to `jq`
+  /// should keep getting one JSON object.
+  ///
+  /// q-values are cut off and ignored, so `;q=0` reads as "accepted" — wrong by
+  /// the letter of RFC 9110, and with no caller that can reach it: no MCP client
+  /// sends one, and every client that matters sends the media type outright.
+  func accepts(_ mediaType: String) -> Bool {
+    guard let value = header("accept") else { return false }
+    return value.split(separator: ",").contains { part in
+      let token = part.split(separator: ";", maxSplits: 1).first ?? part
+      return token.trimmingCharacters(in: .whitespaces).lowercased() == mediaType
+    }
+  }
+
+  /// Whether the caller said it can read an SSE stream.
+  ///
+  /// One half of the two conditions that turn a reply into a stream; the other
+  /// is a `progressToken` on the request. See `Gateway.handleRPC`.
+  var acceptsEventStream: Bool { accepts("text/event-stream") }
+
   /// The `id` of a JSON-RPC frame, so an error can be returned against it.
   ///
   /// A JSON-RPC error with the wrong id is worse than no error: the client

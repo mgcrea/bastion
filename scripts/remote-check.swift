@@ -161,6 +161,70 @@ struct RemoteCheck {
     check("an empty body yields nothing", payloads("").isEmpty)
     check("a body with no data lines yields nothing", payloads("event: ping\n\n").isEmpty)
 
+    print("\nReading a stream as it arrives")
+    // The buffered reader above treats the end of its input as the end of an
+    // event, which is right for a complete body and wrong for one still
+    // arriving: fed half a frame it would dispatch half a frame. `Parser` holds
+    // the tail back until a blank line proves the event ended.
+    func incremental(_ text: String, chunk size: Int) -> [String] {
+      var parser = ServerSentEvents.Parser()
+      var out: [Data] = []
+      let bytes = Array(text.utf8)
+      var index = 0
+      while index < bytes.count {
+        let end = min(index + size, bytes.count)
+        out += parser.feed(Data(bytes[index..<end]))
+        index = end
+      }
+      out += parser.finish()
+      return out.map { String(decoding: $0, as: UTF8.self) }
+    }
+    // The property worth having, and the reason this is testable at all: for
+    // ANY chunking of ANY body, reading it incrementally is the same as reading
+    // it whole. A byte at a time is the worst case and the one a real socket
+    // eventually produces.
+    let bodies = [
+      "data: {\"id\":1}\n\n",
+      "data: {\"id\":1}\r\n\r\n",
+      "data: one\n\ndata: two\n\ndata: three\n\n",
+      "data: {\ndata: \"id\":1}\n\n",
+      ": ping\n\ndata: {\"id\":1}\n\n",
+      "event: message\ndata: a\n\ndata: b",
+      "data: trailing-no-blank-line",
+      "",
+    ]
+    var equivalent = true
+    for body in bodies {
+      for size in [1, 2, 3, 7, 64, 4096] where !(incremental(body, chunk: size) == payloads(body)) {
+        equivalent = false
+        print("       \(size)-byte chunks disagree on: \(body.debugDescription)")
+      }
+    }
+    check("any chunking reads the same as the whole body", equivalent)
+
+    // The half-frame case, stated on its own because it is the bug the type
+    // exists to prevent rather than a property of it.
+    var partial = ServerSentEvents.Parser()
+    check("a frame with no terminator yet yields nothing", partial.feed(Data("data: {\"id\"".utf8)).isEmpty)
+    check(
+      "and arrives whole once the blank line does",
+      partial.feed(Data(":1}\n\n".utf8)).map { String(decoding: $0, as: UTF8.self) }
+        == ["{\"id\":1}"])
+    var straddling = ServerSentEvents.Parser()
+    // A CRLF terminator split down the middle: the \r arrives in one read and
+    // the \n in the next, so a boundary search that ran per-chunk would miss it.
+    check("a terminator split across reads yields nothing yet", straddling.feed(Data("data: a\r\n\r".utf8)).isEmpty)
+    check(
+      "and is found when the rest lands",
+      straddling.feed(Data("\n".utf8)).map { String(decoding: $0, as: UTF8.self) } == ["a"])
+    var complete = ServerSentEvents.Parser()
+    check(
+      "two whole events and a partial third yield exactly two",
+      complete.feed(Data("data: a\n\ndata: b\n\ndata: c".utf8)).count == 2)
+    check(
+      "and the third on finish",
+      complete.finish().map { String(decoding: $0, as: UTF8.self) } == ["c"])
+
     print("\nOAuth: finding the authorization server")
     // Parsed from the 401, never guessed. A server is entitled to put its
     // metadata anywhere and say so here.

@@ -3,12 +3,16 @@ import Foundation
 /// The `data:` payloads of a `text/event-stream` body, in order.
 ///
 /// A Streamable HTTP server may answer a single POST with an SSE stream rather
-/// than one JSON object, so Bastion has to be able to read one even though it
-/// never emits one. Everything the stream carries beyond the response itself —
-/// `notifications/progress`, log messages — is dropped, because Bastion's own
-/// front door answers with a single JSON object and there is nowhere to forward
-/// them to. That is the limitation the README already states for the child
-/// case, reaching a second transport rather than becoming a new one.
+/// than one JSON object, and Bastion is now on both ends of that: it reads one
+/// from a remote server, and it emits one to a client that asked for progress
+/// (`EventStream.swift`). The two uses share this parser and nothing else.
+///
+/// The remote leg still collapses what it reads to the frame carrying an id and
+/// drops the rest — see `RemoteInstance.Response.jsonRPC()`. That is not the
+/// same limitation it used to be: the obstacle is no longer "nowhere to forward
+/// them to" but `RemoteEndpoint.verify(connectedTo:)`, which refuses a
+/// rebinding answer only because the body is buffered until the addresses are
+/// known.
 ///
 /// Its own file so `scripts/remote-check.swift` can compile it alone. A parser
 /// nobody can run is a parser nobody has checked, and this one has to be right
@@ -68,5 +72,55 @@ nonisolated enum ServerSentEvents {
     // last event as far as anyone reading it is concerned.
     flush()
     return out
+  }
+
+  /// The index just past the last event terminator in `body`, or nil when no
+  /// event has ended yet.
+  ///
+  /// A terminator is a blank line: `\n\n` on an LF stream and `\n\r\n` on a
+  /// CRLF one. Those two cover `\r\n\r\n` as well, since it contains the
+  /// second. Bytes rather than Characters, for the reason in the header above.
+  private static func lastEventBoundary(in body: Data) -> Data.Index? {
+    let lf = body.range(of: Data([newline, newline]), options: .backwards)?.upperBound
+    let crlf = body.range(
+      of: Data([newline, carriageReturn, newline]), options: .backwards)?.upperBound
+    switch (lf, crlf) {
+    case let (first?, second?): return max(first, second)
+    case let (first?, nil): return first
+    case let (nil, second?): return second
+    case (nil, nil): return nil
+    }
+  }
+
+  /// An incremental reader, for a stream that is still arriving.
+  ///
+  /// `dataPayloads` treats the end of its input as the end of an event, which is
+  /// right for a body that is complete and wrong for one that is not: handed a
+  /// half-received frame it would dispatch half a frame. `Parser` holds the
+  /// partial tail back until a blank line proves the event ended.
+  ///
+  /// The property worth testing, and the one `remote-check` asserts: for any
+  /// body cut into any sequence of chunks, the payloads from `feed` over those
+  /// chunks followed by `finish` equal `dataPayloads(in:)` of the whole body.
+  struct Parser {
+    private var buffer = Data()
+
+    init() {}
+
+    /// Every complete event at the front of what has been fed so far.
+    mutating func feed(_ bytes: Data) -> [Data] {
+      buffer.append(bytes)
+      guard let cut = lastEventBoundary(in: buffer) else { return [] }
+      let complete = Data(buffer[..<cut])
+      buffer = Data(buffer[cut...])
+      return dataPayloads(in: complete)
+    }
+
+    /// Whatever is left when the stream ends, dispatched the way
+    /// `dataPayloads` dispatches a body with no trailing blank line.
+    mutating func finish() -> [Data] {
+      defer { buffer = Data() }
+      return dataPayloads(in: buffer)
+    }
   }
 }
