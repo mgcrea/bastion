@@ -4,10 +4,10 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.9.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.10.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.10.0] - 2026-09-06
 
 ### Changed
 
@@ -42,6 +42,14 @@ are taken from this file, which is the curated summary.
   fronted again would drag Claude Desktop along with it.
 
 ### Internal
+
+- **The website's context-cost section now names the client its figures do not describe.** The 67×
+  cut and the token counts beside it are what a client that takes the whole listing pays, and the
+  reader likeliest to arrive on that page is running the one client that is never fronted. A number
+  promised to somebody it will never reach is worse than a number left out. The paragraph reads
+  `CONTEXT.skips` rather than spelling the name out, so the page follows the allowlist when it
+  grows instead of depending on somebody remembering this sentence exists, and the config names
+  `ToolFacade.clientsDeferringSchemas` as the authority the way it already does for the default.
 
 - **`make dialect` can no longer grade the wrong binary.** `dialect-check.sh` read `BASTION_PORT`
   for its readiness probe and passed it to the checks, but launched the app without
