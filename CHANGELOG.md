@@ -7,6 +7,19 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.9.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Internal
+
+- **`make dialect` can no longer grade the wrong binary.** `dialect-check.sh` read `BASTION_PORT`
+  for its readiness probe and passed it to the checks, but launched the app without
+  `-gatewayPort`. So a non-default port could not work at all — nothing ever bound it — and at the
+  default the build under test failed to bind against a Bastion running from `/Applications`,
+  leaving every check to quietly run against **that** copy and report on its dialect instead. It
+  now passes the flag the way `audit-listener.sh` always has, and asserts the listener on the port
+  belongs to the pid it just started, refusing with the fix rather than producing a full page of
+  passes about someone else's build.
+
 ## [1.9.0] - 2026-09-05
 
 ### Added
