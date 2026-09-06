@@ -41,6 +41,25 @@ are taken from this file, which is the curated summary.
   hatch has to live there rather than on the profile: overriding a profile to get Claude Code
   fronted again would drag Claude Desktop along with it.
 
+- **Every client now says what it is actually being sent.** Each server pane already quoted its
+  own figure and each one looks survivable alone; a client wired to five of them pays the sum on
+  every connect, and nothing in the app added them up. The Clients pane does now, under Context,
+  and it resolves both axes into the one number that matters: a server loading on demand counts as
+  its three or four declarations rather than its full listing, and a client that defers schemas is
+  told it is sent everything but holds only the names — no alarm, and no false comfort either.
+
+  It says "measured", and names how many of the wired profiles have a figure, because
+  `tool-costs.json` holds one only for a profile something has actually listed. The total is a
+  floor, and a floor that says so.
+
+- **The cost figure stopped rounding in its own favour.** A measurement now records how many of
+  its tools Bastion could tell were writes, so a view can distinguish "no writes here" from
+  "Bastion cannot tell". Without it `ServerDetail` had no way to see a server that classifies by
+  annotation alone — the manifest is all a view has — and understated the facade by the fourth
+  declaration on every one of them. The same figure drives a new caveat: where load-on-demand is
+  on and Bastion could classify nothing, the pane says so, because that is the case where one
+  approval rule in the editor still covers every call including the writes.
+
 - **The writes get their own dispatcher, so an editor's approval rule stops collapsing.** The
   facade's one real cost was that every call reached the client as `bastion_call_tool`, so a rule
   covering `app_store_connect_list_builds` ended up covering `..._update_app` too. A profile whose
