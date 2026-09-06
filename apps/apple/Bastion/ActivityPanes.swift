@@ -491,17 +491,31 @@ struct SectionLabel: View {
 /// Every detail pane in this window is a stack of these, which is what keeps
 /// three separately-written screens looking like one app. Doing it by hand is
 /// how they end up with three different paddings and two different corner radii.
-struct Card<Content: View>: View {
+struct Card<Content: View, Accessory: View>: View {
   let title: String
+  @ViewBuilder let accessory: () -> Accessory
   @ViewBuilder let content: () -> Content
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      SectionLabel(title)
+      // The title line doubles as the card's toolbar. A card whose one action
+      // lives at the bottom, under whatever the card happens to say last, makes
+      // the reader work out for themselves which block that button belongs to.
+      HStack(spacing: 8) {
+        SectionLabel(title)
+        Spacer()
+        accessory()
+      }
       content()
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(12)
     .background(.quaternary.opacity(0.35), in: .rect(cornerRadius: 10))
+  }
+}
+
+extension Card where Accessory == EmptyView {
+  init(title: String, @ViewBuilder content: @escaping () -> Content) {
+    self.init(title: title, accessory: { EmptyView() }, content: content)
   }
 }

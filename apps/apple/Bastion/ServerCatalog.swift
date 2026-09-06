@@ -148,6 +148,28 @@ nonisolated struct BastionServer: Identifiable, Hashable {
   /// which is far too much to mean "not right now".
   var isEnabled: Bool = true
 
+  /// Whether clients are served `ToolFacade`'s three tools instead of this
+  /// server's own. `nil` follows the app-wide default.
+  ///
+  /// A property of the install, like `isEnabled`, and here for the same reason:
+  /// the gateway reads servers off a lock-free snapshot rather than off the
+  /// store, so the answer has to travel with the definition.
+  ///
+  /// On the SERVER and no longer on the profile, which is where it started. The
+  /// question this answers is "is this listing big enough to be worth the
+  /// trade", and a listing is a property of the server — two profiles of one
+  /// server differ in credentials and in `allowWrites`, not in whether
+  /// eighty-five tools is a lot. The disagreement that used to justify a
+  /// per-profile override was "this profile feeds Claude Code, which defers by
+  /// itself", and that is now `ToolFacade.clientDefersSchemas`, answered per
+  /// client where a profile feeding two of them can be answered honestly.
+  var lazyTools: Bool?
+
+  /// Whether this server actually fronts its tools, default resolved. The only
+  /// form the gateway reads, so a server that has expressed no preference
+  /// cannot be mistaken for one that said no.
+  var loadsToolsOnDemand: Bool { lazyTools ?? ToolFacade.globalDefault }
+
   /// The package, or `nil` when there is nothing to install.
   ///
   /// The one unwrap a child-only path needs, so that "what does this do for a

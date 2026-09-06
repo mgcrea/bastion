@@ -32,30 +32,10 @@ nonisolated struct Profile: Identifiable, Hashable {
   /// profile worth watching closely and a `prod` one worth watching quietly
   /// is a sane setup, and one global switch makes it unexpressible.
   var captureMode: CallCapture.Mode?
-  /// Whether this profile hands its clients `ToolFacade`'s three tools instead
-  /// of the server's own, or nil to follow the app-wide default.
-  ///
-  /// Tri-state for `captureMode`'s reason, one line down: the answer is usually
-  /// the same for every profile on the machine, so making it a per-profile
-  /// setting alone buried the feature in a sheet — but it is not ALWAYS the
-  /// same, so a profile has to be able to disagree. This one is a trade rather
-  /// than a tightening: it buys back the whole tool listing, about 26.2k tokens
-  /// on `prod/appstore-connect`, and spends the host's own allowlist to do it
-  /// because every call arrives as `bastion_call_tool`. A profile feeding Claude
-  /// Code, which defers tool schemas by itself, gains nothing and pays all of
-  /// that — which is exactly the disagreement the override exists for.
-  var lazyTools: Bool?
-
   var id: String { "\(name)/\(serverID)" }
 
   /// What this profile actually records, default resolved.
   var capture: CallCapture.Mode { captureMode ?? CallCapture.globalDefault }
-
-  /// Whether this profile actually fronts its server with `ToolFacade`, default
-  /// resolved. The only form the gateway ever reads — nothing branches on
-  /// `lazyTools` directly, so a profile that has expressed no preference cannot
-  /// be mistaken for one that said no.
-  var loadsToolsOnDemand: Bool { lazyTools ?? ToolFacade.globalDefault }
 
   static func isValidName(_ name: String) -> Bool {
     !name.isEmpty && name.count <= 64
@@ -155,6 +135,18 @@ final class ProfileStore {
     /// app-wide default": a `profiles.json` written before the facade existed
     /// describes profiles that expressed no preference, which is exactly what
     /// nil says.
+    /// Retired from the runtime `Profile` — the answer lives on the server now,
+    /// as `BastionServer.lazyTools`, and `ServerStore.adoptLegacyLazyTools`
+    /// carries a value written here onto the server once, reading this file
+    /// directly rather than through this type.
+    ///
+    /// Kept HERE, in the stored shape, so the file still DECODES — a field
+    /// this struct does not know about is a decode failure, and that would lose
+    /// every profile on the machine rather than one setting. It is not written
+    /// back: `save()` builds a row from a `Profile`, which no longer carries
+    /// it, so the key leaves the file on the first save after the migration.
+    /// That is the intended one-way move, not an oversight. Never make it
+    /// required and never rename it.
     var lazyTools: Bool?
   }
 
@@ -209,7 +201,7 @@ final class ProfileStore {
       }
       return Profile(
         name: row.name, serverID: row.server, values: values, allowWrites: row.allowWrites,
-        captureMode: row.captureMode, lazyTools: row.lazyTools)
+        captureMode: row.captureMode)
     }
     refreshSnapshot()
   }
@@ -222,7 +214,7 @@ final class ProfileStore {
       profiles.map {
         Stored(
           name: $0.name, server: $0.serverID, values: $0.values, allowWrites: $0.allowWrites,
-          captureMode: $0.captureMode, lazyTools: $0.lazyTools)
+          captureMode: $0.captureMode)
       } + orphaned
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -254,11 +246,12 @@ final class ProfileStore {
     if let index = profiles.firstIndex(where: { $0.id == profile.id }) {
       let previous = profiles[index]
       profiles[index] = profile
-      // `lazyTools` is deliberately NOT in this condition. The facade is applied
-      // to a reply on its way out, from a catalog the instance already holds, so
-      // it changes what clients are sent without changing anything the child was
-      // spawned with. Killing a warm process to flip a switch it cannot observe
-      // would cost the next caller a whole spawn and handshake for nothing.
+      // `captureMode` is deliberately not in this condition, and neither was
+      // `lazyTools` before it moved to the server: both change what a reply
+      // looks like on its way out, not anything the child was spawned with.
+      // Killing a warm process to flip a switch it cannot observe would cost
+      // the next caller a whole spawn and handshake for nothing. See
+      // `ServerStore.setLazyTools`, which makes the same call.
       if previous.values != profile.values || previous.allowWrites != profile.allowWrites {
         Supervisor.shared.stop(profile: profile.name, server: profile.serverID)
         ServerCheck.shared.forget(profile.id)

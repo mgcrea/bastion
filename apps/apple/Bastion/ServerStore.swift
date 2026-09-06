@@ -97,6 +97,10 @@ final class ServerStore {
     var id: String
     var definition: Definition?
     var enabled: Bool?
+    /// Optional for the additive reason `enabled` states, with `nil` meaning
+    /// "follow the app-wide default". Never make this required and never
+    /// rename it.
+    var lazyTools: Bool?
   }
 
   /// A custom server, as typed. Deliberately not `Codable` on `BastionServer`
@@ -222,6 +226,9 @@ final class ServerStore {
     if !seen.contains(BuiltinServer.id) {
       servers.insert(BuiltinServer.definition, at: 0)
     }
+    // Before the snapshot, so the first request after launch already sees the
+    // adopted value rather than the app-wide default for one refresh.
+    adoptLegacyLazyTools()
     sort()
     refreshSnapshot()
   }
@@ -237,6 +244,7 @@ final class ServerStore {
     if row.id == BuiltinServer.id {
       var builtin = BuiltinServer.definition
       builtin.isEnabled = row.enabled ?? false
+      builtin.lazyTools = row.lazyTools
       return builtin
     }
     guard let definition = row.definition else {
@@ -248,10 +256,12 @@ final class ServerStore {
       }
       var resolved = entry
       resolved.isEnabled = row.enabled ?? true
+      resolved.lazyTools = row.lazyTools
       return resolved
     }
     var resolved = make(id: row.id, from: definition)
     resolved.isEnabled = row.enabled ?? true
+    resolved.lazyTools = row.lazyTools
     return resolved
   }
 
@@ -315,9 +325,13 @@ final class ServerStore {
       // A built-in row carries nothing but its id and its switch. Writing a
       // definition would freeze this build's idea of it into the file.
       case .catalog, .builtin:
-        Stored(id: server.id, definition: nil, enabled: server.isEnabled)
+        Stored(
+          id: server.id, definition: nil, enabled: server.isEnabled,
+          lazyTools: server.lazyTools)
       case .custom:
-        Stored(id: server.id, definition: Self.definition(of: server), enabled: server.isEnabled)
+        Stored(
+          id: server.id, definition: Self.definition(of: server), enabled: server.isEnabled,
+          lazyTools: server.lazyTools)
       }
     }
     let encoder = JSONEncoder()
@@ -596,6 +610,76 @@ final class ServerStore {
     }
     try save()
     hostLog("servers", .info, "\(enabled ? "enabled" : "disabled") '\(id)'")
+  }
+
+  /// Move the facade switch, without restarting anything.
+  ///
+  /// No stop, unlike `setEnabled`. The facade is resolved per request from the
+  /// snapshot, so a running child is already serving the new answer by the time
+  /// the next `tools/list` arrives — and killing a child to change what its
+  /// listing looks like would drop every in-flight call on the other profiles
+  /// sharing it. `ProfileStore.upsert` made the same call for the same reason
+  /// when this lived on the profile.
+  func setLazyTools(_ lazyTools: Bool?, for id: String) throws {
+    guard let index = servers.firstIndex(where: { $0.id == id }) else {
+      throw StoreError.notInList(id)
+    }
+    guard servers[index].lazyTools != lazyTools else { return }
+    servers[index].lazyTools = lazyTools
+    try save()
+    let what = lazyTools.map { $0 ? "on" : "off" } ?? "default"
+    hostLog("servers", .info, "load tools on demand: \(what) for '\(id)'")
+  }
+
+  /// One-shot: adopt a `lazyTools` that used to live on the profiles.
+  ///
+  /// The setting moved from the profile to the server, and a machine upgrading
+  /// into that must not silently lose a switch somebody turned on. Read
+  /// straight off `profiles.json` rather than through `ProfileStore`, so this
+  /// does not depend on which store loaded first — the ordering between them is
+  /// exactly the kind of thing that works until somebody moves an `init`.
+  ///
+  /// A profile that said ON wins over one that said nothing: the old per-server
+  /// control wrote every profile of a server at once, so a genuine disagreement
+  /// is rare, and of the two ways to be wrong, carrying a saving forward is the
+  /// one the user can see and undo.
+  ///
+  /// Guarded by its own flag rather than by "the server has no value yet", so
+  /// setting a server back to Default does not resurrect the old answer on the
+  /// next launch.
+  private static let migrationKey = "lazyToolsMovedToServers"
+
+  private func adoptLegacyLazyTools() {
+    let defaults = UserDefaults.standard
+    guard !defaults.bool(forKey: Self.migrationKey) else { return }
+    defer { defaults.set(true, forKey: Self.migrationKey) }
+
+    struct LegacyRow: Codable {
+      var server: String
+      var lazyTools: Bool?
+    }
+    let profilesURL = AppSupport.directory.appendingPathComponent("profiles.json")
+    guard let data = try? Data(contentsOf: profilesURL),
+      let rows = try? JSONDecoder().decode([LegacyRow].self, from: data)
+    else { return }
+
+    var wanted: [String: Bool] = [:]
+    for row in rows {
+      guard let value = row.lazyTools else { continue }
+      wanted[row.server] = (wanted[row.server] ?? false) || value
+    }
+    guard !wanted.isEmpty else { return }
+
+    var moved = 0
+    for (id, value) in wanted {
+      guard let index = servers.firstIndex(where: { $0.id == id }) else { continue }
+      guard servers[index].lazyTools == nil else { continue }
+      servers[index].lazyTools = value
+      moved += 1
+    }
+    guard moved > 0 else { return }
+    try? save()
+    hostLog("servers", .info, "moved 'load tools on demand' onto \(moved) server(s)")
   }
 
   /// Re-read `profiles.json` so profiles waiting on a server just added come

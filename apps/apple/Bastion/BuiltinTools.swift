@@ -348,9 +348,10 @@ enum BuiltinTools {
           "boolean",
           "Whether clients get three Bastion tools — search, describe, call — instead of every "
             + "tool this server exposes. Saves the listing's context at the cost of the client's "
-            + "own per-tool approval rules. Overrides the app-wide setting for this profile; "
-            + "omit to leave the override as it is. Clients that load schemas on demand "
-            + "themselves are never fronted whatever this says — see list_clients."),
+            + "own per-tool approval rules. This is a SERVER-WIDE setting: it moves every "
+            + "profile of this server, not just this one. Overrides the app-wide setting; omit "
+            + "to leave it as it is. Clients that load schemas on demand themselves are never "
+            + "fronted whatever this says — see list_clients."),
       ],
       required: ["name", "server"], mutates: true),
 
@@ -474,6 +475,7 @@ enum BuiltinTools {
         "summary": server.summary,
         "origin": describe(server.origin),
         "enabled": server.isEnabled,
+        "lazy_tools": server.loadsToolsOnDemand,
         "profiles": profiles.filter { $0.serverID == server.id }.count,
         "running": running.filter { $0.id.hasSuffix("/\(server.id)") }.count,
       ]
@@ -509,6 +511,7 @@ enum BuiltinTools {
       "summary": server.summary,
       "origin": describe(server.origin),
       "enabled": server.isEnabled,
+      "lazy_tools": server.loadsToolsOnDemand,
       "dialect": server.dialect.rawValue,
       "env": server.env.map {
         [
@@ -712,14 +715,15 @@ enum BuiltinTools {
           "server": profile.serverID,
           "endpoint": "/s/\(profile.name)/\(profile.serverID)",
           "allow_writes": profile.allowWrites,
-          "lazy_tools": profile.loadsToolsOnDemand,
+          "lazy_tools": ServerStore.shared.server(id: profile.serverID)?.loadsToolsOnDemand
+            ?? ToolFacade.globalDefault,
           "values": profile.values,
         ]
-        // `lazy_tools` is the profile's resolved answer, and it is no longer the
-        // whole one: the facade applies only where the client cannot defer by
-        // itself. An array rather than a sentence, because the consumer is a
-        // model, and absent rather than empty so the common case adds nothing.
-        if profile.loadsToolsOnDemand {
+        // `lazy_tools` is the server's resolved answer, and it is not the whole
+        // one: the facade applies only where the client cannot defer by itself.
+        // An array rather than a sentence, because the consumer is a model, and
+        // absent rather than empty so the common case adds nothing.
+        if row["lazy_tools"] as? Bool == true {
           let exempt = ClientWiring.all.filter { ToolFacade.clientDefersSchemas($0.id) }.map(\.id)
           if !exempt.isEmpty { row["lazy_tools_exempt_clients"] = exempt }
         }
@@ -1212,13 +1216,23 @@ enum BuiltinTools {
       // above. This tool takes no capture argument, so rebuilding the profile
       // without it would let an agent editing an unrelated field silently
       // reset a choice the person made in the window.
-      captureMode: existing?.captureMode,
-      // Absent means "leave the override alone", never "set it to the app-wide
-      // default" — the same carry-over `captureMode` gets above, and the same
-      // hazard: an agent editing a credential must not silently reset a
-      // decision somebody made in the window.
-      lazyTools: arguments["lazy_tools"] as? Bool ?? existing?.lazyTools)
+      captureMode: existing?.captureMode)
     try ProfileStore.shared.upsert(profile)
+
+    // The setting moved to the server, and this argument did not move with it:
+    // an agent that learned to pass `lazy_tools` here would otherwise start
+    // being silently ignored, which is worse than a rename. So it is still
+    // accepted and written THROUGH — and it now moves the answer for every
+    // profile of the server, which the schema says out loud.
+    //
+    // Absent means "leave it alone", never "set it to the app-wide default":
+    // the same carry-over `captureMode` gets above, and the same hazard, an
+    // agent editing a credential resetting a decision somebody made in the
+    // window.
+    if let wanted = arguments["lazy_tools"] as? Bool {
+      try ServerStore.shared.setLazyTools(wanted, for: serverID)
+    }
+    let lazyServer = ServerStore.shared.server(id: serverID) ?? server
 
     var out: [String: Any] = [
       "name": name, "server": serverID,
@@ -1227,11 +1241,13 @@ enum BuiltinTools {
       "allow_writes": profile.allowWrites,
       // The resolved answer, not the override: an agent asking what this
       // profile does needs what it DOES, and nil is not an answer to that.
-      // Resolved against the app-wide default only — the client axis is the
-      // sibling below, because it varies per caller and this key does not.
-      "lazy_tools": profile.loadsToolsOnDemand,
+      // The SERVER's answer now, and reported on a profile anyway because that
+      // is where an agent is standing when it asks. Resolved against the
+      // app-wide default only — the client axis is the sibling below, because
+      // it varies per caller and this key does not.
+      "lazy_tools": lazyServer.loadsToolsOnDemand,
     ]
-    if profile.loadsToolsOnDemand {
+    if lazyServer.loadsToolsOnDemand {
       let exempt = ClientWiring.all.filter { ToolFacade.clientDefersSchemas($0.id) }.map(\.id)
       if !exempt.isEmpty { out["lazy_tools_exempt_clients"] = exempt }
     }

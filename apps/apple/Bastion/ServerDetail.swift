@@ -527,60 +527,41 @@ struct ServerDetail: View {
     }
   }
 
-  // MARK: - Load on demand, for every profile of this server
+  // MARK: - Load on demand
 
-  /// The third tier, and deliberately not a third *setting*.
+  /// Where the facade switch actually lives.
   ///
-  /// There is an app-wide default and there is a per-profile override, and the
-  /// gap between them is the common case: the decision is almost always about
-  /// one SERVER — `appstore-connect` is 85 tools and 26.2k tokens, `reddit` is
-  /// 14 and 3.3k, and nobody wants the same answer for both — while the app-wide
-  /// switch cannot express that and setting four profiles by hand is four trips
-  /// through a sheet.
+  /// It used to be stored per profile, with this control writing through to
+  /// every row of the server — which is why it needed a "Mixed" position at
+  /// all. Mixed was never a state anybody meant to reach; it was the shape of
+  /// the storage showing through the UI.
   ///
-  /// So this writes through to the profiles rather than storing anything of its
-  /// own. `Profile.lazyTools` stays the only place the answer is kept, and
-  /// `loadsToolsOnDemand` stays a two-term resolution somebody can hold in their
-  /// head. A stored value here would be a third term in that expression and a
-  /// second answer to the same question, and the two would disagree the first
-  /// time somebody opened the profile editor.
-  ///
-  /// It writes the RAW value, nil included, so "Default" here still means
-  /// "follow the app-wide switch" for every profile of this server rather than
-  /// freezing today's default into four rows.
+  /// The question this answers is "is this listing big enough to be worth the
+  /// trade", and that is a property of the SERVER: `appstore-connect` is 85
+  /// tools and 26.2k tokens, `reddit` is 14 and 3.3k, and nobody wants the same
+  /// answer for both. Two profiles of one server differ in credentials and in
+  /// `allowWrites`, not in whether eighty-five is a lot. The disagreement that
+  /// used to justify a per-profile override — "this profile feeds Claude Code,
+  /// which defers by itself" — is now `ToolFacade.clientDefersSchemas`, per
+  /// client, where a profile feeding two of them can be answered honestly.
   private var lazyToolsSelection: String {
-    let raw = Set(profiles.map { $0.lazyTools.map(String.init) ?? "" })
-    // No profiles reads as Default rather than Mixed. Nothing renders this
-    // today — the control sits inside the branch that has rows — but a
-    // predicate that answers "mixed" for an empty set is one refactor away from
-    // showing a Mixed position over nothing at all.
-    guard raw.count != 1 else { return raw.first ?? "" }
-    return raw.isEmpty ? "" : "mixed"
+    server.lazyTools.map(String.init) ?? ""
   }
 
   /// The measurement to quote, from whichever profile has a current one.
   ///
-  /// Any of them will do and none of them may have one. Two profiles of one
-  /// server can honestly disagree — `ToolCostStore` is keyed by profile for that
-  /// reason, and `mcp-stripe` varies its tools by auth mode — so this takes the
-  /// first rather than summing, and the sentence says "on every connect" rather
-  /// than claiming a total.
+  /// Still keyed by profile, and deliberately: the SETTING is per server but the
+  /// COST is not. `allowWrites` filters the catalog, and `mcp-stripe` varies its
+  /// tools by auth mode, so two profiles of one server can honestly disagree
+  /// about the number. This takes the first rather than summing, and the
+  /// sentence says "on every connect" rather than claiming a total.
   private var lazyToolsMeasurement: ToolCostStore.Measurement? {
     profiles.compactMap { ToolCostStore.shared.current(for: $0, server: server) }.first
   }
 
   private func setLazyTools(_ raw: String) {
-    guard raw != "mixed" else { return }
-    let wanted = Bool(raw)
     do {
-      // Only the rows that would move. `upsert` rewrites the whole file each
-      // time, and writing a row back to the value it already holds is a change
-      // somebody's backup will notice for no reason.
-      for profile in profiles where profile.lazyTools != wanted {
-        var updated = profile
-        updated.lazyTools = wanted
-        try ProfileStore.shared.upsert(updated)
-      }
+      try ServerStore.shared.setLazyTools(Bool(raw), for: server.id)
     } catch {
       lastError = error.localizedDescription
     }
@@ -588,14 +569,10 @@ struct ServerDetail: View {
 
   /// The control, under the profiles it applies to.
   ///
-  /// Below the list rather than in the header, because it is a statement about
-  /// the rows above it — and the same three positions the profile sheet offers,
-  /// because a control that means one thing in one place and another somewhere
-  /// else is worse than one more click.
-  ///
-  /// Mixed is shown rather than rounded off. A server with one profile on and
-  /// two off is a real state somebody arrived at from the profile editor, and a
-  /// control that quietly read "Off" there would hide the profile it is on.
+  /// Below the list rather than in the header, because what it changes is what
+  /// those rows are sent — and the same three positions the rest of the app
+  /// uses, because a control that means one thing in one place and another
+  /// somewhere else is worse than one more click.
   @ViewBuilder private var lazyToolsControl: some View {
     let selection = lazyToolsSelection
     VStack(alignment: .leading, spacing: 6) {
@@ -603,7 +580,6 @@ struct ServerDetail: View {
         "Load tools on demand",
         selection: Binding(get: { selection }, set: { setLazyTools($0) })
       ) {
-        if selection == "mixed" { Text("Mixed").tag("mixed") }
         Text("Default (\(ToolFacade.globalDefault ? "on" : "off"))").tag("")
         Text("On").tag("true")
         Text("Off").tag("false")
@@ -627,23 +603,65 @@ struct ServerDetail: View {
     // live fact about what those profiles do; under a picker sitting at Off it
     // is a caveat about a feature nobody turned on, and the same sentence is
     // already in Settings, in the profile sheet and in the client's own pane.
-    let exempt = profiles.contains(where: \.loadsToolsOnDemand) ? facadeExemptClause() : ""
+    let exempt = server.loadsToolsOnDemand ? facadeExemptClause() : ""
     guard let measured = lazyToolsMeasurement else {
       return "\(scope). Clients get three Bastion tools — search, describe and call — instead of "
         + "every tool \(server.displayName) exposes." + exempt
     }
+    // From the MEASUREMENT rather than from the manifest. `writeToolCount` is
+    // both of `WriteGate`'s sources counted at the moment the list was taken,
+    // which is the only place a view can learn about a server that classifies by
+    // annotation alone — `ToolCost` is the one thing in the app that must not
+    // round in its own favour, and reading `server.writeTools` here understated
+    // every such server by the fourth declaration.
     let facade = ToolFacade.declarationBytes(
-      displayName: server.displayName, summary: server.summary, toolCount: measured.toolCount)
+      displayName: server.displayName, summary: server.summary, toolCount: measured.toolCount,
+      hasWriteDispatcher: (measured.writeToolCount ?? 0) > 0)
     return "\(scope). \(measured.toolCount) tools, "
       + "\(ToolCost.short(ToolCost.tokens(bytes: measured.bytes)))\(measured.partial ? "+" : "")"
       + " → \(ToolCost.short(ToolCost.tokens(bytes: facade))) tokens on every connect, with "
-      + "everything still reachable through the three." + exempt
+      + "everything still reachable through the three." + exempt + unclassifiedClause(measured)
+  }
+
+  /// The caveat for a server Bastion cannot tell reads from writes on.
+  ///
+  /// Where it CAN, `bastion_call_tool` refuses the writes and they go through
+  /// `bastion_call_write_tool`, so an approval rule in an editor still has a
+  /// boundary to sit on. Where it cannot, there is one dispatcher and one rule
+  /// covering every call on the server, which is the version of this trade
+  /// people should be told about rather than left to discover.
+  ///
+  /// Only when the facade is actually on and only when something has been
+  /// measured: `nil` means nobody has looked, which is not the same claim as
+  /// zero and must not be rendered as one.
+  private func unclassifiedClause(_ measured: ToolCostStore.Measurement) -> String {
+    guard server.loadsToolsOnDemand, measured.writeToolCount == 0 else { return "" }
+    return
+      " Bastion cannot tell this server's writes from its reads — it declares none and annotates "
+      + "none — so there is one dispatcher and one approval rule in the editor covering every "
+      + "call, writes included."
   }
 
   // MARK: - Profiles
 
   private var profilesCard: some View {
-    Card(title: "Profiles") {
+    Card(
+      title: "Profiles",
+      // Only once there is a list for it to sit above. With no profile yet the
+      // one thing to do here is not a header affordance, it is the next step,
+      // and the empty state below says so in a control nobody can miss.
+      accessory: {
+        if !profiles.isEmpty {
+          Button {
+            editing = .new
+          } label: {
+            Label("Add profile…", systemImage: "plus")
+          }
+          .buttonStyle(.borderless)
+          .font(.caption)
+        }
+      }
+    ) {
       VStack(alignment: .leading, spacing: 10) {
         if profiles.isEmpty {
           Text(
@@ -653,6 +671,13 @@ struct ServerDetail: View {
           .font(.callout)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
+
+          Button {
+            editing = .new
+          } label: {
+            Label("Add profile…", systemImage: "plus")
+          }
+          .buttonStyle(.borderedProminent)
         } else {
           ForEach(profiles) { profile in
             ProfileRow(
@@ -670,12 +695,6 @@ struct ServerDetail: View {
           Divider()
           lazyToolsControl
         }
-
-        HStack(spacing: 8) {
-          Button("Add profile…") { editing = .new }
-          Spacer()
-        }
-        .padding(.top, 2)
 
         if let lastError {
           Text(lastError)
@@ -870,10 +889,17 @@ private struct ProfileRow: View {
 
       Spacer()
 
-      VStack(alignment: .trailing, spacing: 4) {
-        Button("Test") { check() }
-          .help("Start this server, complete the handshake, and list its tools.")
-          .disabled(ServerCheck.shared.isRunning(profile))
+      // One row rather than a column of four. Stacked, the verbs pushed the row
+      // taller than the text beside them and read as a menu; side by side they
+      // read as what they are, four things you can do to this profile.
+      HStack(spacing: 8) {
+        Button {
+          check()
+        } label: {
+          Label("Test", systemImage: "stethoscope")
+        }
+        .help("Start this server, complete the handshake, and list its tools.")
+        .disabled(ServerCheck.shared.isRunning(profile))
         // Two verbs, and the division between them is the point: Test proves
         // this server answers, Chat proves the credential behind it actually
         // works upstream. The second question is the one somebody has just
@@ -885,13 +911,25 @@ private struct ProfileRow: View {
         // dead control next to a live one reads as something broken, and the
         // pane itself already carries the explanation for anyone who looks.
         if ToolProbe.isAvailable {
-          Button("Chat…") { chat() }
-            .help("Ask the on-device model something using this profile's tools.")
+          // The same glyph the sidebar uses for the pane this opens.
+          Button {
+            chat()
+          } label: {
+            Label("Chat…", systemImage: "bubble.left.and.text.bubble.right")
+          }
+          .help("Ask the on-device model something using this profile's tools.")
         }
-        Button("Edit…") { edit() }
-        Button("Remove") { confirmingRemoval = true }
-          .font(.caption)
-          .buttonStyle(.borderless)
+        Button {
+          edit()
+        } label: {
+          Label("Edit…", systemImage: "pencil")
+        }
+        Button {
+          confirmingRemoval = true
+        } label: {
+          Label("Remove", systemImage: "trash")
+        }
+        .buttonStyle(.borderless)
       }
     }
     .confirmationDialog(
@@ -934,9 +972,10 @@ private struct ProfileRow: View {
     // the saving legible. What the client is actually sent is the three
     // declarations, so the badge carries both and neither number is a claim the
     // other contradicts.
-    if profile.loadsToolsOnDemand {
+    if server.loadsToolsOnDemand {
       let facade = ToolFacade.declarationBytes(
-        displayName: server.displayName, summary: server.summary, toolCount: count)
+        displayName: server.displayName, summary: server.summary, toolCount: count,
+        hasWriteDispatcher: (measured.writeToolCount ?? 0) > 0)
       return (
         "\(ToolCost.short(ToolCost.tokens(bytes: facade))) of \(tokens)\(measured.partial ? "+" : "") tokens",
         "\(count) tool\(count == 1 ? "" : "s") behind three. Clients are sent "
