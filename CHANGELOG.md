@@ -7,6 +7,37 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.11.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Changed
+
+- **A listing too small to be worth searching is no longer fronted, whatever the switch says.**
+  Loading tools on demand now resolves a third term beside the server's switch and the client's
+  own deferral, and this one is measured rather than configured: a listing is fronted only when it
+  has at least twice as many tools as the facade would send in its place, and costs at least twice
+  as many tokens. Both have to hold.
+
+  The count is the term that decides the real cases, and it is not a proxy for the bytes. What
+  this feature sells is not compression, it is selection — eighty-five schemas go unsent because
+  an agent needed two of them. A server exposing three tools offers no selection to make, so the
+  index costs two round trips to learn what one listing already said.
+
+  That is most of the remote catalog's shape. Cloudflare's hosted endpoint exposes `search`,
+  `execute` and `docs`; Stripe ships a read and a write dispatcher beside its own search. They are
+  already this design, and their listings are not small in bytes — Cloudflare's three descriptions
+  measure about 1.7k tokens — so a floor counting bytes alone would front them and buy nothing.
+  Nor can Bastion recover what a vendor's dispatcher already took away: the real tool name
+  upstream _is_ `execute`, so the audit row says `execute` either way, and the one advantage of
+  doing this in the gateway does not apply.
+
+  Measured rather than listed, deliberately. A set of vendors known to front their own tools would
+  rot the first time one unpacked its dispatcher, and would do nothing for the small child server
+  with the same problem and no vendor to name. Where the floor holds, the server's card says which
+  half held instead of rendering a saving of nothing, the client's context bill counts the real
+  listing, and `get_server` reports it as `lazy_tools_note`. It governs what is ADVERTISED only —
+  a client still holding a fronted list goes on calling through it, which is the rule a pre-toggle
+  tool name has always followed.
+
 ## [1.11.0] - 2026-09-06
 
 ### Added

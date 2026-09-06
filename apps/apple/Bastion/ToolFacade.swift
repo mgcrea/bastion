@@ -331,6 +331,116 @@ nonisolated enum ToolFacade {
     .reduce(0) { $0 + ToolCost.bytes(of: $1) }
   }
 
+  // MARK: - The floor
+
+  /// How much smaller the facade has to be before fronting a listing is worth
+  /// it: the real list must be at least this many times the declarations, in
+  /// entries and in bytes both.
+  ///
+  /// A RATIO rather than a token count, because the thing being traded away
+  /// scales with neither. What a fronted server costs — the host's own per-tool
+  /// approval collapsing onto one dispatcher, its tool search indexing three
+  /// generic entries — is a fixed price, paid in full whether the listing was
+  /// eighty-five tools or three. So the saving has to be worth a fixed price,
+  /// and "halves it" is the smallest claim that plainly is.
+  ///
+  /// Two rather than 1.0 for a reason worth stating: at parity the facade is not
+  /// neutral, it is a loss. The declarations replace the schemas with a promise
+  /// that they can be fetched, so a client that actually uses the server pays
+  /// the listing AND the round trips.
+  static let savingFactor = 2
+
+  /// Why a listing is not worth fronting, or nil when it is.
+  ///
+  /// Two terms, and the first is the one that matters — see `worthFronting`.
+  enum Floor: Equatable {
+    /// Fewer tools than a search index is worth building over.
+    case tooFewTools
+    /// Enough tools, but the declarations cost about what they would replace.
+    case notCheaper
+  }
+
+  /// What a whole `tools/list` costs the client that receives it.
+  ///
+  /// The same sum `ToolCost` bills a profile for, so the floor is decided on the
+  /// number the app puts on screen rather than on a second estimate that could
+  /// disagree with it.
+  static func listingBytes(_ catalog: [[String: Any]]) -> Int {
+    catalog.reduce(0) { $0 + ToolCost.bytes(of: $1) }
+  }
+
+  /// The floor: whether fronting this listing buys anything, as the arithmetic
+  /// alone.
+  ///
+  /// The third term of the gate, and the only one that needed no new switch. The
+  /// server axis asks whether somebody turned this on, the client axis asks
+  /// whether the client needs the help — and both can be satisfied by a server
+  /// there is nothing to save on.
+  ///
+  /// **The count is the term that decides the real cases, and it is not a proxy
+  /// for the bytes.** What this feature sells is not compression, it is
+  /// SELECTION: eighty-five schemas go unsent because an agent needed two of
+  /// them. A server exposing three tools offers no selection to make — an agent
+  /// reaching for it needs all three — so the index costs two round trips to
+  /// learn what one listing already said, and the search that was supposed to
+  /// find things has three entries to find. An index over a handful is not an
+  /// index. Cloudflare's hosted endpoint is the case in hand: `search`,
+  /// `execute` and `docs`, which is ALREADY this design, at 1.7k tokens of
+  /// deliberately verbose descriptions. It clears the byte term comfortably and
+  /// should still never be fronted, which is exactly the mistake a bytes-only
+  /// floor makes.
+  ///
+  /// Measured rather than listed. The alternative was a set of vendors known to
+  /// front their own tools, which is the shape `clientsDeferringSchemas` takes
+  /// and is wrong here: that set is a claim about a client's behaviour nothing
+  /// inside Bastion can measure, where this is a claim about two integers. A
+  /// list would also rot silently the first time a vendor unpacked its
+  /// dispatcher, and it would do nothing for the small CHILD server that has the
+  /// same problem and no vendor to name.
+  ///
+  /// An empty catalog comes out `tooFewTools`, which is right and not
+  /// incidental: three tools that can reach nothing are worse than an honest
+  /// empty list.
+  static func floor(
+    listingBytes: Int, listingCount: Int, facadeBytes: Int, facadeCount: Int
+  ) -> Floor? {
+    if listingCount < facadeCount * savingFactor { return .tooFewTools }
+    if listingBytes < facadeBytes * savingFactor { return .notCheaper }
+    return nil
+  }
+
+  static func worthFronting(
+    listingBytes: Int, listingCount: Int, facadeBytes: Int, facadeCount: Int
+  ) -> Bool {
+    floor(
+      listingBytes: listingBytes, listingCount: listingCount, facadeBytes: facadeBytes,
+      facadeCount: facadeCount) == nil
+  }
+
+  /// How many entries the facade sends in a listing's place: three, or four for
+  /// a server Bastion can tell writes from reads on.
+  static func declarationCount(hasWriteDispatcher: Bool) -> Int { hasWriteDispatcher ? 4 : 3 }
+
+  /// The same question against a catalog, for the two wirings that hold one.
+  static func floor(
+    catalog: [[String: Any]], displayName: String, summary: String, hasWriteDispatcher: Bool
+  ) -> Floor? {
+    floor(
+      listingBytes: listingBytes(catalog), listingCount: catalog.count,
+      facadeBytes: declarationBytes(
+        displayName: displayName, summary: summary, toolCount: catalog.count,
+        hasWriteDispatcher: hasWriteDispatcher),
+      facadeCount: declarationCount(hasWriteDispatcher: hasWriteDispatcher))
+  }
+
+  static func worthFronting(
+    catalog: [[String: Any]], displayName: String, summary: String, hasWriteDispatcher: Bool
+  ) -> Bool {
+    floor(
+      catalog: catalog, displayName: displayName, summary: summary,
+      hasWriteDispatcher: hasWriteDispatcher) == nil
+  }
+
   // MARK: - Search
 
   /// One row of the index.

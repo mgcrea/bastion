@@ -122,9 +122,8 @@ for a profile with writes off. But the editor's gate is coarser, which is why it
 is off by default.
 
 The switch is app-wide because the answer is usually the same for every server
-on one machine. It is overridable per server because it is not always: a
-four-tool server is not worth the trade an eighty-five-tool one is. A server that
-has expressed no preference follows the app-wide setting, which is the same
+on one machine. It is overridable per server because it is not always. A server
+that has expressed no preference follows the app-wide setting, which is the same
 tri-state **Record** uses one section further down.
 
 Per server, and not per profile, because the listing is the server's: two
@@ -133,13 +132,42 @@ whether eighty-five tools is a lot. It was stored per profile until 1.11, and a
 value written there is carried onto its server on the first launch after
 upgrading.
 
-Which is one of two questions, and the profile only answers the first. _Is this
-listing big enough to be worth the trade_ is per profile; _does this client need
-the help at all_ is per client, and the facade applies where both say yes. The
-gateway knows which client is asking because the bearer token identifies it, so
-the two resolve together on every request — and a per-profile answer could never
-have expressed the second one anyway, since a profile feeds every client wired to
-it at once.
+Which is one of three questions, and the switch only answers the first. _Did
+somebody ask for this_ is per server; _does this client need the help at all_ is
+per client; and _would fronting this listing actually buy anything_ is neither —
+it is measured. The facade applies where all three say yes. The gateway knows
+which client is asking because the bearer token identifies it, so the first two
+resolve together on every request — and a per-profile answer could never have
+expressed the client one anyway, since a profile feeds every client wired to it
+at once.
+
+**The third is a floor, and it is the reason a small server is left alone even
+with the switch on.** A listing is fronted only when it has at least twice as
+many tools as the facade would send in its place, and costs at least twice as
+many tokens. Both terms have to hold, and the first is the one that decides the
+real cases: what this feature sells is not compression but SELECTION —
+eighty-five schemas go unsent because an agent needed two of them. A server
+exposing three tools offers no selection to make, so the index costs two round
+trips to learn what one listing already said, and the search has three entries to
+search.
+
+That matters most for the remote servers in the catalog, several of which are
+already this design. Cloudflare's hosted endpoint exposes `search`, `execute` and
+`docs`; Stripe ships a read and a write dispatcher beside its own search. Those
+listings are not small in bytes — Cloudflare's three descriptions measure about
+1.7k tokens — so a floor counting bytes alone would happily front them and buy
+nothing. Bastion cannot recover what a vendor's own dispatcher already took away
+either: the real tool name upstream _is_ `execute`, so the audit row says
+`execute` whether Bastion fronts it or not, and the one advantage of doing this
+in the gateway does not apply.
+
+The floor is measured rather than listed on purpose. A set of vendors known to
+front their own tools would rot the first time one of them unpacked its
+dispatcher, and it would do nothing for the small child server that has the same
+problem and no vendor to name. Where it holds, the server's card says so instead
+of showing a saving of nothing, and `get_server` reports it as
+`lazy_tools_note`. It governs what is ADVERTISED only: a client still holding a
+fronted list can go on calling through it.
 
 The client half lives in that client's own pane, under Context, as the same
 tri-state. Its default is Bastion's list of clients known to defer, which has one

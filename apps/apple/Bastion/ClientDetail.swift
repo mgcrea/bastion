@@ -472,10 +472,22 @@ struct ClientDetail: View {
       // What THIS client is sent, which is the whole point of putting the
       // figure here: the facade applies only where the server asked for it and
       // the client cannot defer by itself, so the two axes land in one number.
-      if server.loadsToolsOnDemand, !defers {
-        fronted += ToolFacade.declarationBytes(
-          displayName: server.displayName, summary: server.summary, toolCount: cost.toolCount,
-          hasWriteDispatcher: (cost.writeToolCount ?? 0) > 0)
+      let facade = ToolFacade.declarationBytes(
+        displayName: server.displayName, summary: server.summary, toolCount: cost.toolCount,
+        hasWriteDispatcher: (cost.writeToolCount ?? 0) > 0)
+      // Three axes now, and the third is measured rather than configured: a
+      // listing the declarations would not meaningfully shrink is forwarded
+      // whole, so counting the facade for it would understate what this client
+      // is actually sent. `partial` counts as fronted — the gateway decides on
+      // the whole list, and this figure stopped at page one.
+      if server.loadsToolsOnDemand, !defers,
+        cost.partial
+          || ToolFacade.worthFronting(
+            listingBytes: cost.bytes, listingCount: cost.toolCount, facadeBytes: facade,
+            facadeCount: ToolFacade.declarationCount(
+              hasWriteDispatcher: (cost.writeToolCount ?? 0) > 0))
+      {
+        fronted += facade
       } else {
         fronted += cost.bytes
       }

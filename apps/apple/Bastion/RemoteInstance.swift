@@ -202,14 +202,36 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     {
       _ = try ensureHandshake()
       let catalog = try facadeCatalog()
-      switch ToolFacade.route(
-        method: method, params: frame["params"] as? [String: Any], catalog: catalog,
-        writeTools: facadeWriteTools(in: catalog),
-        displayName: server.displayName, summary: server.summary)
+      let writeTools = facadeWriteTools(in: catalog)
+      // The floor, and only on `tools/list`, exactly as in
+      // `Supervisor.Instance.facadeOutcome` — a listing the declarations would
+      // not meaningfully shrink is forwarded whole. It earns its keep here more
+      // than anywhere: several of the remote entries in `servers.json` already
+      // front their own tools, and `search`/`execute`/`docs` behind three more
+      // declarations is a trade with nothing on the other side of it.
+      //
+      // Advertising only. A client still holding a fronted list has to go on
+      // being able to call through it; see the note there.
+      if method == "tools/list",
+        let floor = ToolFacade.floor(
+          catalog: catalog, displayName: server.displayName, summary: server.summary,
+          hasWriteDispatcher: !writeTools.isEmpty)
       {
-      case .answer(let result): facadeAnswer = result
-      case .rewrite(let params): frame["params"] = params
-      case .passThrough: break
+        hostLog(
+          key, .info,
+          floor == .tooFewTools
+            ? "not fronting \(catalog.count) tool(s): too few to be worth searching"
+            : "not fronting \(catalog.count) tool(s): the facade would cost as much as the list")
+      } else {
+        switch ToolFacade.route(
+          method: method, params: frame["params"] as? [String: Any], catalog: catalog,
+          writeTools: writeTools,
+          displayName: server.displayName, summary: server.summary)
+        {
+        case .answer(let result): facadeAnswer = result
+        case .rewrite(let params): frame["params"] = params
+        case .passThrough: break
+        }
       }
     }
 

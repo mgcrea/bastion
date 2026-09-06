@@ -565,6 +565,32 @@ enum BuiltinTools {
         ]
       }
     }
+    // The third axis of the facade, and the only one an agent cannot work out
+    // from `lazy_tools`: a listing the three declarations would not
+    // meaningfully shrink is forwarded whole however the switch is set. Said
+    // only when something has been measured and the floor actually holds, so
+    // the common case adds no key — and taken from the first measured profile,
+    // which is `ServerDetail`'s rule and its reason: a server can vary its
+    // tools by auth mode, so there is no single figure to claim.
+    if server.loadsToolsOnDemand,
+      let measured = ProfileStore.shared.profiles.filter({ $0.serverID == server.id })
+        .compactMap({ ToolCostStore.shared.current(for: $0, server: server) }).first,
+      !measured.partial,
+      let floor = ToolFacade.floor(
+        listingBytes: measured.bytes, listingCount: measured.toolCount,
+        facadeBytes: ToolFacade.declarationBytes(
+          displayName: server.displayName, summary: server.summary, toolCount: measured.toolCount,
+          hasWriteDispatcher: (measured.writeToolCount ?? 0) > 0),
+        facadeCount: ToolFacade.declarationCount(
+          hasWriteDispatcher: (measured.writeToolCount ?? 0) > 0))
+    {
+      out["lazy_tools_note"] =
+        "On, but not applied: "
+        + (floor == .tooFewTools
+          ? "\(measured.toolCount) tools is too few to be worth searching, "
+          : "the tools that would replace this listing cost about what it costs, ")
+        + "so clients are sent the real list."
+    }
     if let gate = server.writeGate { out["write_gate"] = gate }
     if let docs = server.docsURL { out["docs_url"] = docs.absoluteString }
     if !server.stateEnv.isEmpty { out["state_env"] = server.stateEnv }

@@ -1051,9 +1051,33 @@ nonisolated extension Supervisor {
       guard ToolFacade.handles(method: method, params: params) else { return .passThrough }
 
       let catalog = try facadeCatalog()
+      let writeTools = facadeWriteTools(in: catalog)
+
+      // The floor, and only on `tools/list`. A listing the declarations would
+      // not meaningfully shrink is forwarded whole — see `ToolFacade`.
+      //
+      // ADVERTISING ONLY, deliberately asymmetric with the dispatch below. If a
+      // client holds a fronted list from before this server grew a dispatcher of
+      // its own, or from before its tool surface shrank, its next
+      // `bastion_call_tool` still has to work; refusing it would break a live
+      // session to buy nothing, which is the argument `route` already makes for
+      // letting a real tool name pass through.
+      if method == "tools/list",
+        let floor = ToolFacade.floor(
+          catalog: catalog, displayName: server.displayName, summary: server.summary,
+          hasWriteDispatcher: !writeTools.isEmpty)
+      {
+        hostLog(
+          key, .info,
+          floor == .tooFewTools
+            ? "not fronting \(catalog.count) tool(s): too few to be worth searching"
+            : "not fronting \(catalog.count) tool(s): the facade would cost as much as the list")
+        return .passThrough
+      }
+
       switch ToolFacade.route(
         method: method, params: params, catalog: catalog,
-        writeTools: facadeWriteTools(in: catalog),
+        writeTools: writeTools,
         displayName: server.displayName, summary: server.summary)
       {
       case .answer(let result):

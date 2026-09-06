@@ -1685,6 +1685,123 @@ struct UnitCheck {
     check(
       "every facade name is namespaced", ToolFacade.names.allSatisfy { $0.hasPrefix("bastion_") })
 
+    print("\nTool facade: the floor")
+
+    // The third term of the gate, and the only one that is measured rather than
+    // configured. What a fronted server costs — the host's own per-tool approval
+    // collapsing onto one dispatcher, its tool search indexing three generic
+    // entries — is a fixed price, so a listing that does not pay it back is
+    // forwarded whole however the switch is set.
+
+    func floorOf(_ catalog: [[String: Any]], _ name: String = "A Server") -> ToolFacade.Floor? {
+      ToolFacade.floor(
+        catalog: catalog, displayName: name, summary: "Something.", hasWriteDispatcher: false)
+    }
+
+    // The arithmetic first, each term at its own boundary.
+    check(
+      "six tools clear the count with three declarations",
+      ToolFacade.floor(listingBytes: 99_999, listingCount: 6, facadeBytes: 1_500, facadeCount: 3)
+        == nil)
+    check(
+      "five do not",
+      ToolFacade.floor(listingBytes: 99_999, listingCount: 5, facadeBytes: 1_500, facadeCount: 3)
+        == .tooFewTools)
+    check(
+      "a fourth declaration raises the bar it has to clear",
+      ToolFacade.floor(listingBytes: 99_999, listingCount: 7, facadeBytes: 2_200, facadeCount: 4)
+        == .tooFewTools)
+    check(
+      "and eight clears it",
+      ToolFacade.floor(listingBytes: 99_999, listingCount: 8, facadeBytes: 2_200, facadeCount: 4)
+        == nil)
+    // The byte term, on a listing with tools enough to pass the first.
+    check(
+      "parity is not a saving",
+      ToolFacade.floor(listingBytes: 1_500, listingCount: 20, facadeBytes: 1_500, facadeCount: 3)
+        == .notCheaper)
+    check(
+      "one byte short of the factor is not either",
+      ToolFacade.floor(listingBytes: 2_999, listingCount: 20, facadeBytes: 1_500, facadeCount: 3)
+        == .notCheaper)
+    check(
+      "halving the bill is the smallest one that counts",
+      ToolFacade.floor(listingBytes: 3_000, listingCount: 20, facadeBytes: 1_500, facadeCount: 3)
+        == nil)
+    // Order matters for the caption, not for the verdict: a listing failing both
+    // is reported as the permanent reason rather than the one that moves.
+    check(
+      "failing both reads as too few",
+      ToolFacade.floor(listingBytes: 10, listingCount: 2, facadeBytes: 1_500, facadeCount: 3)
+        == .tooFewTools)
+
+    // A server with nothing on it. Three tools that can reach nothing are worse
+    // than an honest empty list, so this has to come out as a floor rather than
+    // as an infinite saving over a listing of zero.
+    check("an empty catalog is never fronted", floorOf([]) == .tooFewTools)
+
+    // THE CASE THIS EXISTS FOR, and the reason the count term is not a proxy for
+    // the bytes. Cloudflare's hosted endpoint exposes a search, a dispatcher and
+    // a docs lookup — it already IS this design — and its three descriptions
+    // were MEASURED at 6,740 bytes through a live gateway on 2026-09-06. That
+    // clears the byte term against ~1.5k of declarations and must still not be
+    // fronted: an agent reaching for this server needs all three tools, so the
+    // index buys nothing and costs two round trips.
+    let selfFronted = (1...3).map { index -> [String: Any] in
+      ["name": "t\(index)", "description": String(repeating: "x", count: 2_240)]
+    }
+    check(
+      "a self-fronting server clears the byte term",
+      ToolFacade.listingBytes(selfFronted)
+        >= ToolFacade.declarationBytes(
+          displayName: "Cloudflare", summary: "Something.", toolCount: 3) * ToolFacade.savingFactor)
+    check("and is left alone anyway", floorOf(selfFronted, "Cloudflare") == .tooFewTools)
+
+    // And the other direction, on the listing the feature was built for: real
+    // App Store Connect entries, repeated to the eighty-five it really exposes.
+    let wholeListing = (0..<21).flatMap { round in
+      asc.map { entry -> [String: Any] in
+        var copy = entry
+        copy["name"] = "\((entry["name"] as? String) ?? "t")_\(round)"
+        return copy
+      }
+    }
+    check(
+      "the listing the feature was built for clears both terms",
+      floorOf(wholeListing, "App Store Connect") == nil)
+    check(
+      "and clears the bytes by much more than the factor",
+      ToolFacade.listingBytes(wholeListing)
+        >= ToolFacade.declarationBytes(
+          displayName: "App Store Connect", summary: "Something.", toolCount: wholeListing.count)
+        * ToolFacade.savingFactor * 4)
+
+    // The floor is decided on the same sum the app bills a profile for. Two
+    // estimates that could disagree would put a badge reading "26.2k → 1.1k"
+    // above a gateway that quietly forwarded all 26.2k.
+    check(
+      "it bills the listing the way ToolCost does",
+      ToolFacade.listingBytes(tools) == tools.reduce(0) { $0 + ToolCost.bytes(of: $1) })
+    check(
+      "and counts the declarations the way declarations() emits them",
+      ToolFacade.declarationCount(hasWriteDispatcher: false)
+        == ToolFacade.declarations(displayName: "x", summary: "y", toolCount: 9).count
+        && ToolFacade.declarationCount(hasWriteDispatcher: true)
+          == ToolFacade.declarations(
+            displayName: "x", summary: "y", toolCount: 9, hasWriteDispatcher: true
+          ).count
+    )
+
+    // ADVERTISING ONLY. `route` goes on dispatching whatever the floor says,
+    // because a client holding a list from before the server shrank still has to
+    // be able to call through it.
+    check(
+      "the floor does not reach the dispatcher",
+      ToolFacade.route(
+        method: "tools/call",
+        params: ["name": ToolFacade.searchName, "arguments": ["query": ""]],
+        catalog: selfFronted, displayName: "Cloudflare", summary: "Something.") != .passThrough)
+
     print("\nTool facade: which clients need it")
 
     // The second term of the gate. The profile says whether the listing is big

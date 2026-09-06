@@ -617,6 +617,43 @@ struct ServerDetail: View {
     let facade = ToolFacade.declarationBytes(
       displayName: server.displayName, summary: server.summary, toolCount: measured.toolCount,
       hasWriteDispatcher: (measured.writeToolCount ?? 0) > 0)
+    // The floor, said out loud rather than rendered as a saving of nothing.
+    // A listing the three declarations would not meaningfully shrink is
+    // forwarded whole by the gateway whatever this picker says, and a caption
+    // claiming "26.2k → 1.1k" for a server whose real numbers are "1.4k → 1.2k"
+    // is the one sentence here that could sell the trade on arithmetic that
+    // does not hold.
+    //
+    // Only where the figure is whole. `partial` means `measured.bytes` is a
+    // lower bound and the gateway decides on the WHOLE list it walked, so a
+    // paginated listing under the bar here may be well over it there — and a
+    // paginated listing is a big one, which is the case this never fires on.
+    if !measured.partial,
+      let floor = ToolFacade.floor(
+        listingBytes: measured.bytes, listingCount: measured.toolCount, facadeBytes: facade,
+        facadeCount: ToolFacade.declarationCount(
+          hasWriteDispatcher: (measured.writeToolCount ?? 0) > 0))
+    {
+      let outcome =
+        server.loadsToolsOnDemand
+        ? "Bastion is sending the real list anyway."
+        : "turning this on would change nothing here."
+      // The term that actually held, named. "Too small to be worth searching"
+      // and "the three cost what the list costs" are different facts about a
+      // server and lead somewhere different — the first is permanent, the
+      // second moves the next time the server grows.
+      switch floor {
+      case .tooFewTools:
+        return "\(scope). \(measured.toolCount) tools, which is not enough to search: an agent "
+          + "reaching for this server needs most of them, and finding them through Bastion's "
+          + "own tools would cost more round trips than reading the list. So \(outcome)"
+      case .notCheaper:
+        let full = ToolCost.short(ToolCost.tokens(bytes: measured.bytes))
+        let three = ToolCost.short(ToolCost.tokens(bytes: facade))
+        return "\(scope). \(measured.toolCount) tools, \(full) tokens — and the Bastion tools "
+          + "that would replace them cost \(three) of that, so \(outcome)"
+      }
+    }
     return "\(scope). \(measured.toolCount) tools, "
       + "\(ToolCost.short(ToolCost.tokens(bytes: measured.bytes)))\(measured.partial ? "+" : "")"
       + " → \(ToolCost.short(ToolCost.tokens(bytes: facade))) tokens on every connect, with "
@@ -978,10 +1015,21 @@ private struct ProfileRow: View {
     // the saving legible. What the client is actually sent is the three
     // declarations, so the badge carries both and neither number is a claim the
     // other contradicts.
-    if server.loadsToolsOnDemand {
-      let facade = ToolFacade.declarationBytes(
-        displayName: server.displayName, summary: server.summary, toolCount: count,
-        hasWriteDispatcher: (measured.writeToolCount ?? 0) > 0)
+    // The same floor the gateway applies, so a badge never advertises a saving
+    // that will not happen. `partial` is inconclusive rather than false: the
+    // gateway walks the whole list and this figure stops at page one.
+    let facadeBytes = ToolFacade.declarationBytes(
+      displayName: server.displayName, summary: server.summary, toolCount: count,
+      hasWriteDispatcher: (measured.writeToolCount ?? 0) > 0)
+    let fronted =
+      measured.partial
+      || ToolFacade.worthFronting(
+        listingBytes: measured.bytes, listingCount: count, facadeBytes: facadeBytes,
+        facadeCount: ToolFacade.declarationCount(
+          hasWriteDispatcher: (measured.writeToolCount ?? 0) > 0))
+
+    if server.loadsToolsOnDemand, fronted {
+      let facade = facadeBytes
       return (
         "\(ToolCost.short(ToolCost.tokens(bytes: facade))) of \(tokens)\(measured.partial ? "+" : "") tokens",
         "\(count) tool\(count == 1 ? "" : "s") behind three. Clients are sent "
@@ -998,7 +1046,15 @@ private struct ProfileRow: View {
       "\(tokens)\(measured.partial ? "+" : "") tokens",
       "\(count) tool\(count == 1 ? "" : "s"), "
         + ToolCost.phrase(bytes: measured.bytes, partial: measured.partial)
-        + " of a client's context window on every connect. Measured \(when)."
+        + " of a client's context window on every connect."
+        // Only under a picker sitting at On, where it explains a badge that
+        // shows no saving. Off, this is the ordinary bill and the floor is not
+        // what makes it one.
+        + (server.loadsToolsOnDemand
+          ? " Loading on demand is on and not applied: this listing is too small to be worth "
+            + "putting a search in front of, so the real one is sent."
+          : "")
+        + " Measured \(when)."
     )
   }
 
