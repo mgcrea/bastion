@@ -55,8 +55,23 @@ nonisolated enum ToolFacade {
   static let describeName = "bastion_describe_tool"
   static let callName = "bastion_call_tool"
 
+  /// The dispatcher for the tools Bastion knows to mutate.
+  ///
+  /// The facade's one real cost is that the HOST's per-tool approval collapses:
+  /// every call reaches the editor as one name, so a rule covering
+  /// `app_store_connect_list_builds` ends up covering `..._update_app` too.
+  /// Splitting the dispatcher does not give per-tool rules back, but it gives
+  /// back the boundary that the rules were mostly there to protect — a person
+  /// can allowlist `bastion_call_tool` and still be asked about every write.
+  ///
+  /// ENFORCED rather than annotated, which is the whole point. `callName`
+  /// refuses a known write and names this instead, so allowlisting it cannot
+  /// run one; that is a property Bastion holds up, not a hint it asserts and
+  /// hopes the host respects.
+  static let callWriteName = "bastion_call_write_tool"
+
   /// Membership test for the dispatch branch in `Supervisor.Instance.handle`.
-  static let names: Set<String> = [searchName, describeName, callName]
+  static let names: Set<String> = [searchName, describeName, callName, callWriteName]
 
   // MARK: - Settings
 
@@ -176,8 +191,9 @@ nonisolated enum ToolFacade {
   /// both, so the model knows what it is searching before it searches — without
   /// them `bastion_search_tools` is a tool with no subject and a model will not
   /// reach for it. `toolCount` is the honest scale of what is behind the door.
-  static func declarations(displayName: String, summary: String, toolCount: Int) -> [[String: Any]]
-  {
+  static func declarations(
+    displayName: String, summary: String, toolCount: Int, hasWriteDispatcher: Bool = false
+  ) -> [[String: Any]] {
     let subject = summary.isEmpty ? displayName : "\(displayName) — \(summary)"
     return [
       [
@@ -221,7 +237,11 @@ nonisolated enum ToolFacade {
         "description":
           "Call one of \(displayName)'s tools. Look the name up with \(searchName) and read its "
           + "schema with \(describeName) first: arguments are checked by \(displayName), not by "
-          + "Bastion, and a guessed argument name comes back as that server's own error.",
+          + "Bastion, and a guessed argument name comes back as that server's own error."
+          + (hasWriteDispatcher
+            ? " This will not run a tool Bastion knows to change things — those go through "
+              + "\(callWriteName)."
+            : ""),
         "inputSchema": [
           "type": "object",
           "properties": [
@@ -233,16 +253,58 @@ nonisolated enum ToolFacade {
           ],
           "required": ["name"],
         ],
-        // NO annotations, deliberately. This dispatches to anything, so the
-        // truthful `readOnlyHint` is the one belonging to whatever it is asked
-        // to call, which is unknowable here. `MCPTool.readOnlyHint` sets the
-        // house rule for the gap: a missing mark is never read as a yes. Claiming
-        // `readOnlyHint: true` would be a lie that relaxes a host's own
-        // confirmation prompt for every write on the server, and claiming
-        // `false` would feed `WriteGate.annotatedWriteTools` a name that gates
-        // the dispatcher itself, taking the reads down with it.
+        // STILL no annotations, even now that this refuses known writes.
+        //
+        // It is tempting to claim `readOnlyHint: true` here — it would let a
+        // host stop prompting for the reads, which is the whole point of the
+        // split. It would also be a lie. A tool that is neither in the
+        // manifest's `writeTools` nor annotated by the server is UNCLASSIFIED,
+        // and `WriteGate`'s stated doctrine is that silence is not a "no".
+        // Bastion already bets that way for its own gating, but that bet only
+        // decides Bastion's refusal; putting it in this annotation moves it
+        // into the EDITOR's confirmation prompt, where being wrong means a
+        // mutation nobody was asked about. Refusing the writes it knows is
+        // honest and checkable. Claiming to be read-only is neither.
+        //
+        // `false` is no better than it was: it would feed
+        // `WriteGate.annotatedWriteTools` this dispatcher's own name and gate
+        // the reads with it.
       ],
     ]
+      + (hasWriteDispatcher
+        ? [
+          [
+            "name": callWriteName,
+            "description":
+              "Call one of \(displayName)'s tools that CHANGES something — creating, updating, "
+              + "deleting. Same arguments as \(callName), which will not run these. Look the "
+              + "name up with \(searchName) and read its schema with \(describeName) first.",
+            "inputSchema": [
+              "type": "object",
+              "properties": [
+                "name": ["type": "string", "description": "The exact tool name."],
+                "arguments": [
+                  "type": "object",
+                  "description":
+                    "The tool's own arguments, matching the schema \(describeName) gave.",
+                ],
+              ],
+              "required": ["name"],
+            ],
+            // Honest in both directions, unlike the dispatcher above: this one
+            // reaches only tools Bastion has positive evidence are mutating, so
+            // `readOnlyHint: false` is a fact rather than a guess. The point of
+            // saying it is that a host reads it and keeps asking.
+            //
+            // No `destructiveHint`. "Changes something" and "destroys something"
+            // are different claims and `WriteGate` merges them on the way in —
+            // `readOnlyHint: false` alone puts a tool in the write set — so
+            // asserting the stronger one here would over-claim for every update
+            // that deletes nothing.
+            "annotations": ["readOnlyHint": false],
+          ]
+        ]
+        : [])
   }
 
   /// What the three declarations cost the client that receives them.
@@ -255,9 +317,18 @@ nonisolated enum ToolFacade {
   /// Computed rather than stored: the declarations are a pure function of three
   /// values the caller already has, so there is nothing here that can go stale
   /// the way `ToolCostStore`'s measurement can.
-  static func declarationBytes(displayName: String, summary: String, toolCount: Int) -> Int {
-    declarations(displayName: displayName, summary: summary, toolCount: toolCount)
-      .reduce(0) { $0 + ToolCost.bytes(of: $1) }
+  /// What the declarations cost, taking the FLAG rather than the set: a view
+  /// asking this has a stored measurement, not a catalog, and the fourth
+  /// declaration's text names no tool of the server's, so its size does not
+  /// depend on which tools are in the set.
+  static func declarationBytes(
+    displayName: String, summary: String, toolCount: Int, hasWriteDispatcher: Bool = false
+  ) -> Int {
+    declarations(
+      displayName: displayName, summary: summary, toolCount: toolCount,
+      hasWriteDispatcher: hasWriteDispatcher
+    )
+    .reduce(0) { $0 + ToolCost.bytes(of: $1) }
   }
 
   // MARK: - Search
@@ -608,13 +679,14 @@ nonisolated enum ToolFacade {
   /// a tool this profile will then refuse wastes a turn to teach nothing, which
   /// is `WriteGate.visibleTools`'s own argument for hiding rather than refusing.
   static func route(
-    method: String, params: [String: Any]?, catalog: [[String: Any]], displayName: String,
-    summary: String
+    method: String, params: [String: Any]?, catalog: [[String: Any]],
+    writeTools: Set<String> = [], displayName: String, summary: String
   ) -> Routing {
     if method == "tools/list" {
       return .answer([
         "tools": declarations(
-          displayName: displayName, summary: summary, toolCount: catalog.count)
+          displayName: displayName, summary: summary, toolCount: catalog.count,
+          hasWriteDispatcher: !writeTools.isEmpty)
       ])
     }
     guard method == "tools/call", let params, let name = params["name"] as? String,
@@ -641,7 +713,7 @@ nonisolated enum ToolFacade {
 
     default:
       guard let unwrapped = unwrap(params: params) else {
-        return .answer(content("\(callName) needs the name of the tool to call.", isError: true))
+        return .answer(content("\(name) needs the name of the tool to call.", isError: true))
       }
       // A name the model invented, or one the write gate is hiding. Answered
       // here rather than forwarded: the server would reject an unknown tool with
@@ -649,6 +721,24 @@ nonisolated enum ToolFacade {
       // near misses and the next call succeeds.
       guard catalog.contains(where: { $0["name"] as? String == unwrapped.name }) else {
         return .answer(content(describeText(catalog: catalog, name: unwrapped.name), isError: true))
+      }
+      // The split, enforced. Refused rather than quietly forwarded, and refused
+      // in BOTH directions so the two dispatchers stay disjoint: the value of
+      // "`bastion_call_tool` cannot run a write" is exactly that nothing has to
+      // be trusted to check it a second time. The message names the other one,
+      // because a refusal a model cannot act on costs a whole turn.
+      let isWrite = writeTools.contains(unwrapped.name)
+      if isWrite, name == callName {
+        return .answer(
+          content(
+            "\(unwrapped.name) changes things, so \(callName) will not run it. Call it through "
+              + "\(callWriteName) instead, with the same arguments.", isError: true))
+      }
+      if !isWrite, name == callWriteName {
+        return .answer(
+          content(
+            "\(unwrapped.name) does not change anything, so \(callWriteName) will not run it. "
+              + "Call it through \(callName) instead, with the same arguments.", isError: true))
       }
       return .rewrite(["name": unwrapped.name, "arguments": unwrapped.arguments])
     }

@@ -751,7 +751,7 @@ nonisolated extension Supervisor {
       // gateway knows who is asking before it knows what they asked for. Three
       // conjuncts rather than one predicate, each naming its own reason.
       var facade = FacadeOutcome.passThrough
-      if profile.loadsToolsOnDemand, !ToolFacade.clientDefersSchemas(client),
+      if server.loadsToolsOnDemand, !ToolFacade.clientDefersSchemas(client),
         client != ServerCheck.client
       {
         facade = try facadeOutcome(for: frame, method: method, clientID: clientID)
@@ -1021,6 +1021,24 @@ nonisolated extension Supervisor {
         allowWrites: profile.allowWrites)
     }
 
+    /// The catalog entries Bastion has positive evidence will change something.
+    ///
+    /// Both of `WriteGate`'s sources, ORed, then intersected with what is
+    /// actually in the catalog — which is what makes a writes-off profile come
+    /// out empty and get no write dispatcher at all: `facadeCatalog` has already
+    /// removed those tools, so there is nothing left to dispatch to.
+    ///
+    /// Empty also when Bastion simply does not know. A server with no
+    /// `writeTools` in the manifest and no annotations of its own classifies
+    /// nothing, so it keeps exactly the three tools it had before the split
+    /// rather than gaining a fourth that would be a guess.
+    private func facadeWriteTools(in catalog: [[String: Any]]) -> Set<String> {
+      let present = Set(catalog.compactMap { $0["name"] as? String })
+      return Set(server.writeTools)
+        .union(WriteGate.annotatedWriteTools(in: catalog))
+        .intersection(present)
+    }
+
     /// `ToolFacade.route`, wired to this child.
     ///
     /// The fetch is behind `handles` so the catalog walk happens on the frames
@@ -1032,8 +1050,10 @@ nonisolated extension Supervisor {
       let params = frame["params"] as? [String: Any]
       guard ToolFacade.handles(method: method, params: params) else { return .passThrough }
 
+      let catalog = try facadeCatalog()
       switch ToolFacade.route(
-        method: method, params: params, catalog: try facadeCatalog(),
+        method: method, params: params, catalog: catalog,
+        writeTools: facadeWriteTools(in: catalog),
         displayName: server.displayName, summary: server.summary)
       {
       case .answer(let result):
@@ -1198,6 +1218,7 @@ nonisolated extension Supervisor {
       let profileID = profile.id
       let allowWrites = profile.allowWrites
       let version = ServerInstaller.installedVersion(of: server)
+      let declaredWrites = server.writeTools
       let waiter = Waiter(
         clientID: nil, deadline: Date().addingTimeInterval(30), logID: nil, progress: nil
       ) { [weak self] result in
@@ -1216,10 +1237,14 @@ nonisolated extension Supervisor {
           self?.state.withLock { $0.toolCatalog = entries }
         }
         let bytes = entries.reduce(0) { $0 + ToolCost.bytes(of: $1) }
+        // Both of `WriteGate`'s sources, so a view can later tell "no writes
+        // here" from "Bastion cannot tell" — see `ToolCostStore.Measurement`.
+        let writes = Set(declaredWrites).union(WriteGate.annotatedWriteTools(in: entries)).count
         Task { @MainActor in
           ToolCostStore.shared.record(
             profileID: profileID, bytes: bytes, toolCount: entries.count,
-            partial: payload["nextCursor"] != nil, version: version, allowWrites: allowWrites)
+            partial: payload["nextCursor"] != nil, version: version, allowWrites: allowWrites,
+            writeToolCount: writes)
         }
       }
       state.withLock { $0.pending[id] = waiter }

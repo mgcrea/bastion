@@ -196,13 +196,15 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     // the real list. Never for a client that
     // defers schemas itself either, whatever the profile says; see `ToolFacade`.
     var facadeAnswer: [String: Any]?
-    if profile.loadsToolsOnDemand, !ToolFacade.clientDefersSchemas(client),
+    if server.loadsToolsOnDemand, !ToolFacade.clientDefersSchemas(client),
       client != ServerCheck.client,
       ToolFacade.handles(method: method, params: frame["params"] as? [String: Any])
     {
       _ = try ensureHandshake()
+      let catalog = try facadeCatalog()
       switch ToolFacade.route(
-        method: method, params: frame["params"] as? [String: Any], catalog: try facadeCatalog(),
+        method: method, params: frame["params"] as? [String: Any], catalog: catalog,
+        writeTools: facadeWriteTools(in: catalog),
         displayName: server.displayName, summary: server.summary)
       {
       case .answer(let result): facadeAnswer = result
@@ -372,6 +374,24 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
   /// After the gate rather than before, which is the rule
   /// `filteredForWriteGate` already states: the figure has to be the list this
   /// profile's gate produces, not the one upstream sent.
+  /// The catalog entries Bastion has positive evidence will change something.
+  ///
+  /// Both of `WriteGate`'s sources, ORed, then intersected with what is actually
+  /// in the catalog — which is what makes a writes-off profile come out empty
+  /// and get no write dispatcher at all: `facadeCatalog` has already removed
+  /// those tools, so there is nothing left to dispatch to.
+  ///
+  /// Empty also when Bastion simply does not know. A server with no `writeTools`
+  /// in the manifest and no annotations of its own classifies nothing, so it
+  /// keeps exactly the three tools it had before the split rather than gaining a
+  /// fourth that would be a guess.
+  private func facadeWriteTools(in catalog: [[String: Any]]) -> Set<String> {
+    let present = Set(catalog.compactMap { $0["name"] as? String })
+    return Set(server.writeTools)
+      .union(WriteGate.annotatedWriteTools(in: catalog))
+      .intersection(present)
+  }
+
   private func facadeCatalog() throws -> [[String: Any]] {
     let catalog = try ensureCatalog()
     let learned = WriteGate.annotatedWriteTools(in: catalog)
@@ -384,10 +404,14 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     let profileID = profile.id
     let allowWrites = profile.allowWrites
     let count = visible.count
+    // Counted over what is VISIBLE, which is what the client is served and so
+    // what the figure beside it describes. For a writes-off profile the gate has
+    // already removed them and this is legitimately zero.
+    let writes = facadeWriteTools(in: visible).count
     Task { @MainActor in
       ToolCostStore.shared.record(
         profileID: profileID, bytes: bytes, toolCount: count, partial: false, version: nil,
-        allowWrites: allowWrites)
+        allowWrites: allowWrites, writeToolCount: writes)
     }
     return visible
   }
@@ -497,10 +521,11 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
       let partial = result["nextCursor"] != nil
       let profileID = profile.id
       let allowWrites = profile.allowWrites
+      let writes = facadeWriteTools(in: entries).count
       Task { @MainActor in
         ToolCostStore.shared.record(
           profileID: profileID, bytes: bytes, toolCount: entries.count, partial: partial,
-          version: nil, allowWrites: allowWrites)
+          version: nil, allowWrites: allowWrites, writeToolCount: writes)
       }
     }
     return response

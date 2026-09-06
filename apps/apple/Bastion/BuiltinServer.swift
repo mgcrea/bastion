@@ -159,13 +159,22 @@ nonisolated enum BuiltinServer {
     // defers schemas itself either, whatever the profile says; see `ToolFacade`.
     var frame = frame
     var facadeAnswer: [String: Any]?
-    if profile.loadsToolsOnDemand, !ToolFacade.clientDefersSchemas(client),
+    // Off the snapshot rather than off `definition`, which is this build's
+    // static copy and carries no user setting. `lookup` is nonisolated and
+    // lock-free, which is what lets it be read from this thread at all.
+    let stored = ServerStore.lookup(id)
+    if stored?.loadsToolsOnDemand ?? ToolFacade.globalDefault,
+      !ToolFacade.clientDefersSchemas(client),
       client != ServerCheck.client,
       ToolFacade.handles(method: method, params: frame["params"] as? [String: Any])
     {
       let catalog = onMain { BuiltinTools.declarations(allowWrites: profile.allowWrites) }
+      // No manifest list to OR in: `BuiltinTools` annotates every declaration
+      // from its own `mutates` flag, so the learned half is the whole answer
+      // here and is exact rather than best-effort.
       switch ToolFacade.route(
         method: method, params: frame["params"] as? [String: Any], catalog: catalog,
+        writeTools: WriteGate.annotatedWriteTools(in: catalog),
         displayName: definition.displayName, summary: definition.summary)
       {
       case .answer(let result): facadeAnswer = result

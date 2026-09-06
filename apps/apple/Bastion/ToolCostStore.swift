@@ -31,6 +31,20 @@ final class ToolCostStore {
     var version: String?
     var allowWrites: Bool
     var measuredAt: Date
+    /// How many of the measured tools Bastion could tell were writes, and `nil`
+    /// for a figure taken before this was recorded.
+    ///
+    /// Here because a VIEW cannot work it out. `WriteGate`'s two sources are the
+    /// manifest, which a view has, and the server's own annotations, which live
+    /// only in a catalog the gateway holds — so without this, `ServerDetail`
+    /// either understates the facade by the fourth declaration or warns about an
+    /// unclassifiable server that annotates everything it exposes. Both were
+    /// happening.
+    ///
+    /// Optional for the additive reason `version` is: a `tool-costs.json`
+    /// written before the split decodes unchanged, and `nil` reads as "not
+    /// known" rather than as zero, which is a different claim.
+    var writeToolCount: Int?
   }
 
   private(set) var measurements: [String: Measurement] = [:]
@@ -58,11 +72,11 @@ final class ToolCostStore {
 
   func record(
     profileID: String, bytes: Int, toolCount: Int, partial: Bool, version: String?,
-    allowWrites: Bool
+    allowWrites: Bool, writeToolCount: Int? = nil
   ) {
     measurements[profileID] = Measurement(
       bytes: bytes, toolCount: toolCount, partial: partial, version: version,
-      allowWrites: allowWrites, measuredAt: Date())
+      allowWrites: allowWrites, measuredAt: Date(), writeToolCount: writeToolCount)
     save()
   }
 

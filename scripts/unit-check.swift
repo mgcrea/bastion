@@ -1655,9 +1655,12 @@ struct UnitCheck {
     let declared = ToolFacade.declarations(
       displayName: "App Store Connect", summary: "Apple's store.", toolCount: 85)
     check("there are exactly three", declared.count == 3)
+    // A subset, not an equality: `names` also carries `bastion_call_write_tool`,
+    // which is declared only for a server Bastion can classify. The equality is
+    // asserted where that case is built, further down.
     check(
-      "they are the three names the router dispatches on",
-      Set(declared.compactMap { $0["name"] as? String }) == ToolFacade.names)
+      "and every one is a name the router dispatches on",
+      Set(declared.compactMap { $0["name"] as? String }).isSubset(of: ToolFacade.names))
     check("the count is stated", (declared[0]["description"] as? String)?.contains("85") == true)
     check(
       "and the server is named",
@@ -1802,12 +1805,105 @@ struct UnitCheck {
         catalog: gated, displayName: "App Store Connect", summary: "Apple's store.")
         != .rewrite(["name": "update_app", "arguments": [:]]))
     check(
-      "with writes on it is reachable again",
+      "with writes on, and nothing classified, it is reachable again",
       ToolFacade.route(
         method: "tools/call",
         params: ["name": ToolFacade.callName, "arguments": ["name": "update_app"]],
         catalog: tools, displayName: "App Store Connect", summary: "Apple's store.")
         == .rewrite(["name": "update_app", "arguments": [:]]))
+
+    print("\nTool facade: the writes get their own dispatcher")
+
+    // The one real cost of the facade is that the HOST's per-tool approval
+    // collapses into one rule. This does not give per-tool rules back; it gives
+    // back the boundary they were mostly protecting, and Bastion ENFORCES it
+    // rather than annotating it — which is the only reason allowlisting
+    // `bastion_call_tool` is safe to do.
+    let writes = WriteGate.annotatedWriteTools(in: tools)
+    check("the fixture classifies exactly one write", writes == ["update_app"])
+
+    func viaFacade(_ dispatcher: String, _ tool: String) -> ToolFacade.Routing {
+      ToolFacade.route(
+        method: "tools/call",
+        params: ["name": dispatcher, "arguments": ["name": tool]],
+        catalog: tools, writeTools: writes, displayName: "App Store Connect",
+        summary: "Apple's store.")
+    }
+
+    check(
+      "the read dispatcher refuses a known write",
+      viaFacade(ToolFacade.callName, "update_app")
+        != .rewrite(["name": "update_app", "arguments": [:]]))
+    if case .answer(let refusal) = viaFacade(ToolFacade.callName, "update_app") {
+      check("and marks it an error", refusal["isError"] as? Bool == true)
+      // A refusal a model cannot act on costs a whole turn, so it has to name
+      // the way through rather than only the way blocked.
+      let text = String(describing: refusal)
+      check("and names the dispatcher that will run it", text.contains(ToolFacade.callWriteName))
+    } else {
+      check("the read dispatcher answers rather than forwards", false)
+      check("and names the dispatcher that will run it", false)
+    }
+    check(
+      "the write dispatcher runs it",
+      viaFacade(ToolFacade.callWriteName, "update_app")
+        == .rewrite(["name": "update_app", "arguments": [:]]))
+    // Disjoint in both directions. The value of "the read dispatcher cannot run
+    // a write" is that nothing downstream has to check it a second time, and
+    // that only holds if the two never overlap.
+    check(
+      "and refuses a read, so the two stay disjoint",
+      viaFacade(ToolFacade.callWriteName, "list_apps")
+        != .rewrite(["name": "list_apps", "arguments": [:]]))
+    check(
+      "while the read dispatcher still runs reads",
+      viaFacade(ToolFacade.callName, "list_apps")
+        == .rewrite(["name": "list_apps", "arguments": [:]]))
+
+    // Declared only where there is something to dispatch to. A server Bastion
+    // cannot classify keeps the three it had rather than gaining a fourth that
+    // would be a guess.
+    let withWrites = ToolFacade.declarations(
+      displayName: "App Store Connect", summary: "Apple's store.", toolCount: 85,
+      hasWriteDispatcher: true)
+    let withoutWrites = ToolFacade.declarations(
+      displayName: "App Store Connect", summary: "Apple's store.", toolCount: 85)
+    check("a classified server is served four tools", withWrites.count == 4)
+    check("an unclassified one is served three", withoutWrites.count == 3)
+    // The flag and the set have to agree, or `ServerDetail` quotes one shape
+    // while the gateway serves the other — which is exactly the understatement
+    // `Measurement.writeToolCount` was added to end.
+    check(
+      "the flag produces what the set produces",
+      ToolFacade.declarations(
+        displayName: "App Store Connect", summary: "Apple's store.", toolCount: 85,
+        hasWriteDispatcher: true
+      ).count
+        == withWrites.count)
+    check(
+      "and the fourth declaration is not free",
+      ToolFacade.declarationBytes(
+        displayName: "App Store Connect", summary: "Apple's store.", toolCount: 85,
+        hasWriteDispatcher: true)
+        > ToolFacade.declarationBytes(
+          displayName: "App Store Connect", summary: "Apple's store.", toolCount: 85))
+    check(
+      "the fourth is the write dispatcher",
+      withWrites.last?["name"] as? String == ToolFacade.callWriteName)
+    // The equality the three-tool case cannot assert: with a write dispatcher
+    // in it, the declarations are exactly the names the router dispatches on.
+    check(
+      "and the four are exactly what the router dispatches on",
+      Set(withWrites.compactMap { $0["name"] as? String }) == ToolFacade.names)
+    // Honest in a direction the read dispatcher cannot be: this one reaches
+    // only tools there is positive evidence about.
+    check(
+      "and says it is not read-only",
+      ((withWrites.last?["annotations"] as? [String: Any])?["readOnlyHint"] as? Bool) == false)
+    check(
+      "while the read dispatcher still claims nothing",
+      withWrites.first(where: { $0["name"] as? String == ToolFacade.callName })?["annotations"]
+        == nil)
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 {

@@ -312,10 +312,13 @@ final class ServerCheck {
       // nothing measured it and no spawn is coming.
       let version = ServerInstaller.installedVersion(of: server)
       let (profileID, allowWrites) = (profile.id, profile.allowWrites)
+      // Off the raw entries, not the parsed `MCPTool`s: `WriteGate` reads the
+      // annotations as they arrived, which is the same bytes the gateway sees.
+      let writes = Set(server.writeTools).union(WriteGate.annotatedWriteTools(in: entries)).count
       Task { @MainActor in
         ToolCostStore.shared.record(
           profileID: profileID, bytes: bytes, toolCount: tools.count, partial: partial,
-          version: version, allowWrites: allowWrites)
+          version: version, allowWrites: allowWrites, writeToolCount: writes)
       }
     }
 
