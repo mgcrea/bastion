@@ -78,11 +78,12 @@ three generic entries instead of the server's eighty-five, so
 Context) is Bastion's answer for the clients that cannot. With it on, a client is
 served three tools instead of the server's own:
 
-| Tool                    | What it does                                                     |
-| ----------------------- | ---------------------------------------------------------------- |
-| `bastion_search_tools`  | Names and one-line summaries for a query; empty lists everything |
-| `bastion_describe_tool` | One tool's full input schema, by exact name                      |
-| `bastion_call_tool`     | Runs one, by name and arguments                                  |
+| Tool                      | What it does                                                     |
+| ------------------------- | ---------------------------------------------------------------- |
+| `bastion_search_tools`    | Names and one-line summaries for a query; empty lists everything |
+| `bastion_describe_tool`   | One tool's full input schema, by exact name                      |
+| `bastion_call_tool`       | Runs one, by name and arguments — never a known write            |
+| `bastion_call_write_tool` | Runs a mutating one; present only where Bastion can classify     |
 
 `prod/appstore-connect` becomes three tools and about 0.4k tokens on connect,
 with the full index costing about 3.2k only if something asks for it. Nothing
@@ -104,18 +105,33 @@ is what keeps it honest: Bastion opens `bastion_call_tool` back up into the
 write gate sees the frame, so all three go on naming the real tool.
 
 **What it costs is on the client's side.** Every call arrives at the editor as
-`bastion_call_tool`, so a per-tool approval rule there — Claude Code's
+one of the two dispatchers, so a per-tool approval rule there — Claude Code's
 `mcp__appstore-connect__app_store_connect_update_app`, say — collapses into one
-rule covering every tool on that server. Bastion's own gate is unaffected: a
+rule covering every tool of that KIND on that server.
+
+The split is what keeps that survivable. Where Bastion can tell reads from
+writes, `bastion_call_tool` refuses anything mutating and points at
+`bastion_call_write_tool`, so allowlisting the first one cannot run a write. It
+is enforced rather than annotated: `bastion_call_tool` still carries no
+`readOnlyHint`, because a tool in neither the manifest's `writeTools` nor the
+server's own annotations is unclassified, and claiming read-only for it would
+move a guess into the editor's confirmation prompt. A server Bastion cannot
+classify keeps the three tools and the old, coarser bargain. Bastion's own gate is unaffected: a
 write tool is still absent from the index and still refused by the dispatcher
 for a profile with writes off. But the editor's gate is coarser, which is why it
 is off by default.
 
-The switch is app-wide because the answer is usually the same for every profile
-on one machine. It is overridable per profile because it is not always: a
-four-tool server is not worth the trade an eighty-five-tool one is. A profile that
+The switch is app-wide because the answer is usually the same for every server
+on one machine. It is overridable per server because it is not always: a
+four-tool server is not worth the trade an eighty-five-tool one is. A server that
 has expressed no preference follows the app-wide setting, which is the same
 tri-state **Record** uses one section further down.
+
+Per server, and not per profile, because the listing is the server's: two
+profiles of one server differ in credentials and in the write gate, not in
+whether eighty-five tools is a lot. It was stored per profile until 1.10, and a
+value written there is carried onto its server on the first launch after
+upgrading.
 
 Which is one of two questions, and the profile only answers the first. _Is this
 listing big enough to be worth the trade_ is per profile; _does this client need
