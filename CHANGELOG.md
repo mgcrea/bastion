@@ -4,8 +4,91 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.10.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.11.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
+
+## [1.11.0] - 2026-09-06
+
+### Added
+
+- **The writes get their own dispatcher, so an editor's approval rule stops collapsing.** The
+  facade's one real cost was that every call reached the client as `bastion_call_tool`, so a rule
+  covering `app_store_connect_list_builds` ended up covering `..._update_app` too. A profile whose
+  server Bastion can classify is now served a fourth tool, `bastion_call_write_tool`, and the
+  ordinary dispatcher REFUSES anything Bastion knows to mutate — naming the other one, so the next
+  call succeeds. Allowlisting `bastion_call_tool` in an editor can no longer run a write, and that
+  is a property Bastion holds up rather than a hint it asserts and hopes the host respects. The
+  two are disjoint in both directions, so nothing downstream has to check the split twice.
+
+  `bastion_call_tool` still carries no `readOnlyHint`, and that is deliberate. A tool in neither
+  the manifest's `writeTools` nor the server's own annotations is UNCLASSIFIED, and the house rule
+  is that silence is not a no. Bastion already bets that way for its own gating, but that bet only
+  decides Bastion's refusal; putting it in an annotation moves it into the editor's confirmation
+  prompt, where being wrong means a mutation nobody was asked about. Refusing the writes it knows
+  is honest and checkable. Claiming to be read-only would be neither.
+
+  Classification comes from the manifest's `writeTools` ORed with what the server annotates, so a
+  server that says nothing either way keeps exactly the three tools it had rather than gaining a
+  fourth that would be a guess — and a profile with writes off has nothing to dispatch to, so it
+  keeps three as well. Seven catalog entries declare `writeTools` today; Bastion's own server
+  annotates every tool it exposes.
+
+- **Every client now says what it is actually being sent.** Each server pane already quoted its
+  own figure and each one looks survivable alone; a client wired to five of them pays the sum on
+  every connect, and nothing in the app added them up. The Clients pane does now, under Context,
+  and it resolves both axes into the one number that matters: a server loading on demand counts as
+  its three or four declarations rather than its full listing, and a client that defers schemas is
+  told it is sent everything but holds only the names — no alarm, and no false comfort either.
+
+  It says "measured", and names how many of the wired profiles have a figure, because
+  `tool-costs.json` holds one only for a profile something has actually listed. The total is a
+  floor, and a floor that says so.
+
+### Changed
+
+- **"Load tools on demand" moved from the profile to the server.** It was stored per profile,
+  with the control on a server writing through to every one of its rows — which is why that
+  control needed a "Mixed" position at all. Mixed was never a state anybody set out to reach; it
+  was the shape of the storage showing through the window.
+
+  The question the switch answers is _is this listing big enough to be worth the trade_, and a
+  listing is a property of the server: `appstore-connect` is 85 tools, `reddit` is 14, and two
+  profiles of one server differ in credentials and in the write gate rather than in whether
+  eighty-five is a lot. The one disagreement that genuinely was per profile — "this one feeds
+  Claude Code, which defers by itself" — is the client axis above, where a profile feeding two
+  clients can be answered honestly instead of averaged.
+
+  A `lazyTools` already written on a profile is carried onto its server once, on the first launch
+  after upgrading, and the key then leaves `profiles.json` on the next save. `upsert_profile`
+  still accepts `lazy_tools` and now writes it through to the server: an argument that starts
+  being silently ignored is worse than one that was renamed, and the schema says out loud that it
+  moves every profile of that server. `list_servers` and `get_server` report it, which is where it
+  lives now.
+
+### Fixed
+
+- **The cost figure stopped rounding in its own favour.** A measurement now records how many of
+  its tools Bastion could tell were writes, so a view can distinguish "no writes here" from
+  "Bastion cannot tell". Without it `ServerDetail` had no way to see a server that classifies by
+  annotation alone — the manifest is all a view has — and understated the facade by the fourth
+  declaration on every one of them. The same figure drives a new caveat: where load-on-demand is
+  on and Bastion could classify nothing, the pane says so, because that is the case where one
+  approval rule in the editor still covers every call including the writes.
+
+### Internal
+
+- **`make facade` now covers the dispatcher split and the migration under it.** The gate asserted
+  three tools and a single dispatcher, so both of this release's changes would have passed it
+  without noticing them. It counts four where Bastion can classify the server, drives an
+  `upsert_profile` through `bastion_call_write_tool` to exercise the write path end to end, and
+  reads `servers.json` back to confirm a `lazyTools` left on a profile was carried onto its server
+  row. That carry is the migration's only input and it runs once, so a check that skipped it would
+  have had nothing to fail on the second launch.
+
+- **The client guide describes the fourth tool and where the switch now lives.** `docs/clients.md`
+  listed three facade tools and located "load tools on demand" on the profile, which is the
+  bargain the previous release struck rather than this one. Both are rewritten, including why
+  `bastion_call_tool` still carries no `readOnlyHint`.
 
 ## [1.10.0] - 2026-09-06
 
@@ -40,66 +123,6 @@ are taken from this file, which is the curated summary.
   carries the same three positions the rest of the app uses, in the Clients pane, and the escape
   hatch has to live there rather than on the profile: overriding a profile to get Claude Code
   fronted again would drag Claude Desktop along with it.
-
-- **Every client now says what it is actually being sent.** Each server pane already quoted its
-  own figure and each one looks survivable alone; a client wired to five of them pays the sum on
-  every connect, and nothing in the app added them up. The Clients pane does now, under Context,
-  and it resolves both axes into the one number that matters: a server loading on demand counts as
-  its three or four declarations rather than its full listing, and a client that defers schemas is
-  told it is sent everything but holds only the names — no alarm, and no false comfort either.
-
-  It says "measured", and names how many of the wired profiles have a figure, because
-  `tool-costs.json` holds one only for a profile something has actually listed. The total is a
-  floor, and a floor that says so.
-
-- **The cost figure stopped rounding in its own favour.** A measurement now records how many of
-  its tools Bastion could tell were writes, so a view can distinguish "no writes here" from
-  "Bastion cannot tell". Without it `ServerDetail` had no way to see a server that classifies by
-  annotation alone — the manifest is all a view has — and understated the facade by the fourth
-  declaration on every one of them. The same figure drives a new caveat: where load-on-demand is
-  on and Bastion could classify nothing, the pane says so, because that is the case where one
-  approval rule in the editor still covers every call including the writes.
-
-- **The writes get their own dispatcher, so an editor's approval rule stops collapsing.** The
-  facade's one real cost was that every call reached the client as `bastion_call_tool`, so a rule
-  covering `app_store_connect_list_builds` ended up covering `..._update_app` too. A profile whose
-  server Bastion can classify is now served a fourth tool, `bastion_call_write_tool`, and the
-  ordinary dispatcher REFUSES anything Bastion knows to mutate — naming the other one, so the next
-  call succeeds. Allowlisting `bastion_call_tool` in an editor can no longer run a write, and that
-  is a property Bastion holds up rather than a hint it asserts and hopes the host respects. The
-  two are disjoint in both directions, so nothing downstream has to check the split twice.
-
-  `bastion_call_tool` still carries no `readOnlyHint`, and that is deliberate. A tool in neither
-  the manifest's `writeTools` nor the server's own annotations is UNCLASSIFIED, and the house rule
-  is that silence is not a no. Bastion already bets that way for its own gating, but that bet only
-  decides Bastion's refusal; putting it in an annotation moves it into the editor's confirmation
-  prompt, where being wrong means a mutation nobody was asked about. Refusing the writes it knows
-  is honest and checkable. Claiming to be read-only would be neither.
-
-  Classification comes from the manifest's `writeTools` ORed with what the server annotates, so a
-  server that says nothing either way keeps exactly the three tools it had rather than gaining a
-  fourth that would be a guess — and a profile with writes off has nothing to dispatch to, so it
-  keeps three as well. Seven catalog entries declare `writeTools` today; Bastion's own server
-  annotates every tool it exposes.
-
-- **"Load tools on demand" moved from the profile to the server.** It was stored per profile,
-  with the control on a server writing through to every one of its rows — which is why that
-  control needed a "Mixed" position at all. Mixed was never a state anybody set out to reach; it
-  was the shape of the storage showing through the window.
-
-  The question the switch answers is _is this listing big enough to be worth the trade_, and a
-  listing is a property of the server: `appstore-connect` is 85 tools, `reddit` is 14, and two
-  profiles of one server differ in credentials and in the write gate rather than in whether
-  eighty-five is a lot. The one disagreement that genuinely was per profile — "this one feeds
-  Claude Code, which defers by itself" — is the client axis above, where a profile feeding two
-  clients can be answered honestly instead of averaged.
-
-  A `lazyTools` already written on a profile is carried onto its server once, on the first launch
-  after upgrading, and the key then leaves `profiles.json` on the next save. `upsert_profile`
-  still accepts `lazy_tools` and now writes it through to the server: an argument that starts
-  being silently ignored is worse than one that was renamed, and the schema says out loud that it
-  moves every profile of that server. `list_servers` and `get_server` report it, which is where it
-  lives now.
 
 ### Internal
 

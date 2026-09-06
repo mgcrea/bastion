@@ -129,7 +129,7 @@ tri-state **Record** uses one section further down.
 
 Per server, and not per profile, because the listing is the server's: two
 profiles of one server differ in credentials and in the write gate, not in
-whether eighty-five tools is a lot. It was stored per profile until 1.10, and a
+whether eighty-five tools is a lot. It was stored per profile until 1.11, and a
 value written there is carried onto its server on the first launch after
 upgrading.
 
