@@ -21,6 +21,11 @@
 #   THE GATE    A profile with writes off never sees a mutating tool in the
 #               index and cannot reach one through the dispatcher either.
 #
+#   THE WRITES  A profile with writes ON gets a SECOND dispatcher, and the
+#               first one refuses to run anything mutating. This is what makes
+#               allowlisting `bastion_call_tool` in an editor safe: Bastion
+#               enforces the boundary rather than annotating it and hoping.
+#
 #   THE CLIENT  Two clients on ONE profile are served differently: the one that
 #               loads schemas on demand by itself gets the real list, the other
 #               gets the three. Only observable here — a unit test can pin the
@@ -71,15 +76,21 @@ restore() {
     security delete-generic-password -s "$BUNDLE.gateway" -a "$c" >/dev/null 2>&1 || true
   done
   defaults delete "$BUNDLE" lazyToolsDefault 2>/dev/null || true
+  defaults delete "$BUNDLE" lazyToolsMovedToServers 2>/dev/null || true
   defaults delete "$BUNDLE" "lazyToolsClient.$LAZYCLIENT" 2>/dev/null || true
 }
 trap restore EXIT
 
-# The app-wide switch ON, so the three profiles below cover all three states of
-# the tri-state: one following it, one overriding to off, one overriding to on.
-# A setting whose default nothing reads is a setting that silently does nothing,
-# and that is precisely the bug a per-profile-only version would have had.
+# The app-wide switch ON, and the scratch server below carries NO override, so
+# every assertion about the facade is also an assertion that the app-wide
+# default actually reaches a server. A setting whose default nothing reads is a
+# setting that silently does nothing.
 defaults write "$BUNDLE" lazyToolsDefault -bool YES
+
+# The one-shot has to be able to run. It is guarded by its own flag rather than
+# by "the server has no value yet", so a previous run of this script would
+# otherwise leave it permanently done.
+defaults delete "$BUNDLE" lazyToolsMovedToServers 2>/dev/null || true
 
 # One of the two clients loads schemas on demand. Set through the per-client
 # override rather than by naming a client in `ToolFacade`'s table, so this stays
@@ -104,6 +115,9 @@ def load(name, default):
     except Exception:
         return default
 
+# No `lazyTools` key: the server expresses no preference, so it follows the
+# app-wide switch set above. THE SERVER is where the override lives now, and
+# THE SERVER below moves it through `upsert_profile` and reads the effect.
 servers = [r for r in load("servers.json", []) if r.get("id") != "bastion"]
 servers.insert(0, {"id": "bastion", "enabled": True})
 json.dump(servers, open(os.path.join(support, "servers.json"), "w"), indent=2)
@@ -113,15 +127,16 @@ profiles = [
     p for p in load("profiles.json", [])
     if not (p.get("server") == "bastion" and p.get("name") in scratch)
 ]
-# Three profiles of one server, one per state of the tri-state. The pair is the
-# measurement — same tools, same process, one number each — and the third is the
-# write gate under a facade.
+# Two profiles of one server, differing only in the write gate. There used to
+# be three, one per position of a per-profile tri-state; that setting moved to
+# the server, so the third had nothing left to say. What replaces it as the
+# source of an UNFRONTED listing is the deferring client, which is the path
+# that now matters most anyway.
 #
-# `facadeon` carries NO lazyTools key on purpose: it is the profile that has
-# expressed no preference, so every assertion about the facade below is also an
-# assertion that the app-wide default actually reaches a profile.
-profiles.append({"name": "facadeoff", "server": "bastion", "values": {}, "allowWrites": True,
-                 "lazyTools": False})
+# `facadero` carries the RETIRED `lazyTools` key, which is the migration's only
+# input: THE SERVER below asserts it was carried onto the server row. A
+# migration that silently does nothing loses a setting somebody turned on, and
+# the symptom is a listing that quietly grew back.
 profiles.append({"name": "facadeon", "server": "bastion", "values": {}, "allowWrites": True})
 profiles.append({"name": "facadero", "server": "bastion", "values": {}, "allowWrites": False,
                  "lazyTools": True})
@@ -162,7 +177,11 @@ rpcLazyClient() {
 echo
 echo "The saving"
 
-PLAIN="$(rpc facadeoff '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')"
+# One profile, two tokens. The unfronted listing comes from the client that
+# defers schemas itself — same profile, same process, same second — which is
+# both a tighter comparison than two profiles ever were and the thing that
+# would break first if the client axis stopped being consulted.
+PLAIN="$(rpcLazyClient facadeon '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')"
 LAZY="$(rpc facadeon  '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')"
 
 PLAIN_N=$(printf '%s' "$PLAIN" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["result"]["tools"]))')
@@ -170,10 +189,13 @@ LAZY_N=$(printf '%s' "$LAZY" | python3 -c 'import json,sys; print(len(json.load(
 PLAIN_B=${#PLAIN}
 LAZY_B=${#LAZY}
 
-[ "$LAZY_N" = "3" ] && ok "a profile following the app-wide default gets three tools" \
-  || bad "a profile following the app-wide default gets three tools — got $LAZY_N"
-[ "$PLAIN_N" != "3" ] && ok "and a profile overriding it to off gets all $PLAIN_N" \
-  || bad "a profile overriding to off still got the facade"
+# Four, not three: `facadeon` allows writes, Bastion's own server annotates
+# every declaration, so a write dispatcher is declared beside the other three.
+# `facadero` below is the three-tool case.
+[ "$LAZY_N" = "4" ] && ok "a server following the app-wide default gets four tools" \
+  || bad "a server following the app-wide default gets four tools — got $LAZY_N"
+[ "$PLAIN_N" -gt 10 ] && ok "and a client that defers gets all $PLAIN_N" \
+  || bad "a client that defers still got the facade — got $PLAIN_N"
 [ "$PLAIN_N" -gt 10 ] && ok "the server itself lists $PLAIN_N" \
   || bad "the server itself lists more than ten — got $PLAIN_N"
 [ "$LAZY_B" -lt "$((PLAIN_B / 4))" ] \
@@ -218,7 +240,10 @@ TYPO="$(rpc facadeon '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"n
 check "a mistyped name suggests the real one" "$TYPO" "list_profiles"
 
 CALL="$(rpc facadeon '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"bastion_call_tool","arguments":{"name":"list_profiles","arguments":{}}}}')"
-DIRECT="$(rpc facadeoff '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"list_profiles","arguments":{}}}')"
+# The undispatched answer, as the client that is not fronted. Same profile as
+# the dispatched one now, which makes the comparison stricter than it was: the
+# two differ only in how the tool was named.
+DIRECT="$(rpcLazyClient facadeon '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"list_profiles","arguments":{}}}')"
 check "the dispatcher runs the real tool" "$CALL" "facadeon"
 # Compared as parsed results, not as bytes: `JSONSerialization` does not fix a
 # dictionary's key order, so two identical answers are routinely two different
@@ -232,10 +257,6 @@ else
   echo "        direct:     ${DIRECT:0:400}"
 fi
 
-INVENTED="$(rpc facadeon '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"bastion_call_tool","arguments":{"name":"list_profilez","arguments":{}}}}')"
-check "an invented name comes back with the near miss" "$INVENTED" "list_profiles"
-check "and is marked an error" "$INVENTED" '"isError"'
-
 # The rule that keeps a live session working when the toggle moves: a client
 # still inside the 60s ttlMs is calling names from the list it already has.
 STALE="$(rpc facadeon '{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"list_profiles","arguments":{}}}')"
@@ -244,11 +265,27 @@ check "a pre-toggle tool name still works" "$STALE" "facadeon"
 echo
 echo "The audit"
 
-# The claim the whole design rests on. `recent_activity` is read from a THIRD
-# profile so the reading is not itself the thing being read.
-ACT="$(rpc facadeoff '{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"recent_activity","arguments":{"limit":50}}}')"
+# The claim the whole design rests on. Read as the client that is NOT fronted,
+# so the reading is not itself a dispatch — it used to be a third profile, and
+# the requirement was always "by a path that is not the one under test".
+ACT="$(rpcLazyClient facadeon '{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"recent_activity","arguments":{"limit":50}}}')"
 check "the log names the real tool" "$ACT" "list_profiles"
 absent "and never the dispatcher it arrived through" "$ACT" "bastion_call_tool"
+
+# Deliberately after the audit read, and this is not cosmetic. A dispatch the
+# facade ANSWERS rather than rewrites — an invented name — is genuinely a
+# `bastion_call_tool` call, because there is no real tool behind it to name, so
+# the log is right to record it that way. Run before the read, it lands in the
+# window and the assertion above fails for a reason that has nothing to do with
+# the claim it is making.
+#
+# The read is scoped to the caller's own profile (`recentActivity` filters on
+# `entry.origin == caller`), which is why this ordering matters at all: it used
+# to be read from a THIRD profile, and a caller-scoped read from a profile that
+# never used the facade cannot see the dispatch it was supposed to be checking.
+INVENTED="$(rpc facadeon '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"bastion_call_tool","arguments":{"name":"list_profilez","arguments":{}}}}')"
+check "an invented name comes back with the near miss" "$INVENTED" "list_profiles"
+check "and is marked an error" "$INVENTED" '"isError"'
 
 echo
 echo "The gate"
@@ -258,6 +295,44 @@ check "a read tool is in the index" "$RO" "list_profiles"
 absent "a write tool is not" "$RO" "remove_profile"
 GATED="$(rpc facadero '{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"bastion_call_tool","arguments":{"name":"remove_profile","arguments":{"name":"facadeon","server":"bastion"}}}}')"
 absent "and the dispatcher will not run it" "$GATED" '"removed"'
+
+echo
+echo "The server"
+
+# Read off disk rather than inferred from a listing. The app-wide default is
+# also on, so a migrated `true` and a missing value produce the same three
+# tools — the file is the only place the two differ.
+MIGRATED="$(python3 -c 'import json,sys; rows=json.load(open(sys.argv[1])); print(next((r.get("lazyTools") for r in rows if r.get("id")=="bastion"), None))' "$SUPPORT/servers.json" 2>/dev/null)"
+[ "$MIGRATED" = "True" ] \
+  && ok "a lazyTools left on a profile was carried onto its server" \
+  || bad "the migration did not reach servers.json — got '$MIGRATED'"
+
+# The tier the setting moved to, moved through the surface an agent actually
+# has. `upsert_profile` still accepts `lazy_tools` — an argument that started
+# being silently ignored would be worse than one that was renamed — and it now
+# writes through to the server, so this asserts the write-through and the tier
+# in one call.
+# Through the WRITE dispatcher: `upsert_profile` mutates, and the read one now
+# refuses it. That refusal is the subject of THE WRITES below.
+OFF="$(rpc facadeon '{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"bastion_call_write_tool","arguments":{"name":"upsert_profile","arguments":{"name":"facadeon","server":"bastion","lazy_tools":false}}}}')"
+check "upsert_profile still takes lazy_tools" "$OFF" 'lazy_tools'
+
+AFTER="$(rpc facadeon '{"jsonrpc":"2.0","id":21,"method":"tools/list"}')"
+AFTER_N=$(printf '%s' "$AFTER" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["result"]["tools"]))')
+[ "$AFTER_N" = "$PLAIN_N" ] \
+  && ok "turning it off on the server gives every client all $AFTER_N" \
+  || bad "the server override did not reach the listing — got $AFTER_N, expected $PLAIN_N"
+
+# And the other profile of that server moves with it, which is the whole
+# difference between a server setting and the per-profile one it replaced.
+RO_AFTER="$(rpc facadero '{"jsonrpc":"2.0","id":22,"method":"tools/list"}')"
+absent "and the server's OTHER profile moved with it" "$RO_AFTER" "bastion_search_tools"
+
+BACK="$(rpc facadeon '{"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"upsert_profile","arguments":{"name":"facadeon","server":"bastion","lazy_tools":true}}}')"
+RESTORED="$(rpc facadeon '{"jsonrpc":"2.0","id":24,"method":"tools/list"}')"
+RESTORED_N=$(printf '%s' "$RESTORED" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["result"]["tools"]))')
+[ "$RESTORED_N" = "4" ] && ok "and turning it back on restores the facade" \
+  || bad "turning it back on restores the facade — got $RESTORED_N"
 
 echo
 echo "The client"
@@ -275,9 +350,50 @@ CLIENTLAZY_N=$(printf '%s' "$CLIENTLAZY" | python3 -c 'import json,sys; print(le
 absent "and is never handed the dispatcher" "$CLIENTLAZY" "bastion_call_tool"
 # Said again here rather than assumed from the top of the file: the pair is the
 # claim, and half of it proves nothing.
-[ "$LAZY_N" = "3" ] \
-  && ok "while the other client, on that same profile, still gets three" \
+[ "$LAZY_N" = "4" ] \
+  && ok "while the other client, on that same profile, still gets the facade" \
   || bad "the ordinary client stopped getting the facade — got $LAZY_N"
+
+echo
+echo "The writes"
+
+# The boundary the split exists for, proved in both directions against a real
+# server. Bastion's own annotates every declaration from its `mutates` flag, so
+# the classification here is exact rather than best-effort.
+WRITELIST="$(rpc facadeon '{"jsonrpc":"2.0","id":30,"method":"tools/list"}')"
+check "a writes-on profile is given a write dispatcher" "$WRITELIST" "bastion_call_write_tool"
+
+# The audit first, and before any REFUSED call below, for the reason THE AUDIT
+# states: a dispatch the facade refuses is genuinely a call to the dispatcher —
+# there is no real tool behind it to name — so the log is right to record it
+# that way, and running a refusal first would put the name in the window and
+# fail the assertion for a reason unrelated to its claim.
+UPSERTED="$(rpc facadeon '{"jsonrpc":"2.0","id":35,"method":"tools/call","params":{"name":"bastion_call_write_tool","arguments":{"name":"upsert_profile","arguments":{"name":"facadero","server":"bastion","allow_writes":false}}}}')"
+check "the write dispatcher runs a write" "$UPSERTED" "facadero"
+WACT="$(rpcLazyClient facadeon '{"jsonrpc":"2.0","id":36,"method":"tools/call","params":{"name":"recent_activity","arguments":{"limit":50}}}')"
+check "and the log names the real tool" "$WACT" "upsert_profile"
+absent "never the write dispatcher it arrived through" "$WACT" "bastion_call_write_tool"
+
+# The claim that makes allowlisting the read dispatcher safe. Refused by
+# Bastion, not merely marked: `remove_profile` is a real, destructive tool on a
+# profile that IS allowed to call it, so nothing but the split is stopping this.
+REFUSED="$(rpc facadeon '{"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"bastion_call_tool","arguments":{"name":"remove_profile","arguments":{"name":"facadero","server":"bastion"}}}}')"
+check "the read dispatcher refuses a write" "$REFUSED" '"isError"'
+check "and names the one that will run it" "$REFUSED" "bastion_call_write_tool"
+STILL="$(rpc facadeon '{"jsonrpc":"2.0","id":33,"method":"tools/call","params":{"name":"bastion_call_tool","arguments":{"name":"list_profiles","arguments":{}}}}')"
+check "and the profile it was aimed at is still there" "$STILL" "facadero"
+
+# Disjoint the other way, so nothing downstream has to check the split twice.
+WRONGWAY="$(rpc facadeon '{"jsonrpc":"2.0","id":34,"method":"tools/call","params":{"name":"bastion_call_write_tool","arguments":{"name":"list_profiles","arguments":{}}}}')"
+check "the write dispatcher refuses a read" "$WRONGWAY" '"isError"'
+check "and names the one that will run it" "$WRONGWAY" "bastion_call_tool"
+
+# A writes-off profile has nothing to dispatch to, so it keeps the three.
+ROLIST="$(rpc facadero '{"jsonrpc":"2.0","id":37,"method":"tools/list"}')"
+RO_N=$(printf '%s' "$ROLIST" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["result"]["tools"]))')
+[ "$RO_N" = "3" ] && ok "and a writes-off profile is given only the three" \
+  || bad "a writes-off profile is given only the three — got $RO_N"
+absent "with no write dispatcher among them" "$ROLIST" "bastion_call_write_tool"
 
 echo
 echo "$pass/$((pass + fail)) passed"
