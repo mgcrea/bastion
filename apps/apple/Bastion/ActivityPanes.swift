@@ -456,19 +456,30 @@ struct Tally: View {
 
 struct Badge: View {
   let text: String
+  /// An SF Symbol drawn before the text, or nil for the plain pill every other
+  /// badge is. Optional and defaulted rather than a second view, because a
+  /// handful of badges are claims worth a glance of visual weight — provenance
+  /// among them — and the rest are not, and should not have to say so.
+  let systemImage: String?
   let tint: Color
 
-  init(_ text: String, tint: Color) {
+  init(_ text: String, systemImage: String? = nil, tint: Color) {
     self.text = text
+    self.systemImage = systemImage
     self.tint = tint
   }
 
   var body: some View {
-    Text(text)
-      .font(.caption2)
-      .padding(.horizontal, 6).padding(.vertical, 1)
-      .background(tint.opacity(0.15), in: Capsule())
-      .foregroundStyle(tint)
+    HStack(spacing: 3) {
+      if let systemImage {
+        Image(systemName: systemImage).font(.system(size: 9, weight: .semibold))
+      }
+      Text(text)
+    }
+    .font(.caption2)
+    .padding(.horizontal, 6).padding(.vertical, 1)
+    .background(tint.opacity(0.15), in: Capsule())
+    .foregroundStyle(tint)
   }
 }
 

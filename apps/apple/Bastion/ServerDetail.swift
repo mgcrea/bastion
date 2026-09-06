@@ -102,7 +102,7 @@ struct ServerDetail: View {
         // on two thirds of a catalog would be an accusation rather than a fact.
         // Absence here means "nothing to show", which is what it is.
         if server.package?.provenance == true {
-          Badge("provenance", tint: .teal)
+          Badge("provenance", systemImage: "checkmark.shield.fill", tint: .teal)
             .help(
               "npm holds a signed build attestation for the latest version of this package: "
                 + "GitHub Actions built it from the repository the Docs link points to. "

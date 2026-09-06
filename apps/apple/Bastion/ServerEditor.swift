@@ -280,7 +280,7 @@ struct ServerEditor: View {
             // detail pane: the question "which of these two should I install"
             // gets asked here, in a list, and nowhere else.
             if entry.package?.provenance == true {
-              Badge("provenance", tint: .teal)
+              Badge("provenance", systemImage: "checkmark.shield.fill", tint: .teal)
                 .help("npm holds a signed build attestation tying this package to its repository.")
             }
           }
