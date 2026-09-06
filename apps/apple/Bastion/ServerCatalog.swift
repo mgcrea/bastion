@@ -2621,6 +2621,93 @@ nonisolated enum ServerCatalog {
           isSecret: true,
           summary: "Apify API token."),
       ]),
+    // No credentials, so no auth modes, and unlike the device server there is
+    // barely any setup either. A simulator is local, needs no pairing and no
+    // Developer Mode toggle, so there is nothing for a profile to hold.
+    //
+    // Two lanes reach it and they fail independently. `xcrun simctl` covers app
+    // lifecycle, the staged environment, and the screen itself - `simctl io
+    // screenshot` needs no runner at all, which is the big difference from the
+    // device server, where seeing anything requires WebDriverAgent. Only the
+    // accessibility tree and synthetic touches go through the runner, reached
+    // over the HOST's loopback because a simulator shares the host network
+    // stack. ios_simulator_diagnostics reports both lanes separately.
+    //
+    // THIS SERVER DEFAULTS TO WRITES ON, and it is the only entry here that
+    // does. Its own reasoning is that a phone belongs to a real person while a
+    // simulator is disposable and holds nobody's data. That default is never
+    // reached under Bastion: `gateValue(allowWrites:)` writes "1" or "0"
+    // explicitly on every spawn, so the profile toggle is what decides, and a
+    // profile with writes off spawns a server that has not registered the
+    // driving tools. The gate still points the normal way - "1" is on - so
+    // writeGateSense stays at its default.
+    //
+    // IOS_SIMULATOR_WDA_PORT is declared even though it is rarely set, because
+    // getting it wrong is silent. Every runner binds the same host loopback,
+    // so a second simulator started on 8100 is driven by whichever runner
+    // answers first: taps land on the wrong device and nothing reports an
+    // error. The device server needs no equivalent, since CoreDevice gives
+    // each phone its own tunnel.
+    //
+    // Published 2026-09-06 at 0.1.1. There is no 0.0.0 placeholder below it,
+    // unlike mcp-ios-device - the name was claimed by the first real release.
+    //
+    // The package ships a second binary, ios-simulator-wda, which builds and
+    // starts the WebDriverAgent runner. Bastion does not run it. Unlike the
+    // device server, this one can also start the runner itself through
+    // ios_simulator_restart_wda once writes are on, and everything except
+    // ui_tree works before it has ever run.
+    BastionServer(
+      id: "ios-simulator",
+      displayName: "iOS Simulator",
+      summary: "Drive an iOS Simulator: screenshot, accessibility tree, tap, swipe, type, app lifecycle and device staging.",
+      transport: .child(
+        .init(
+          npmName: "@mgcrea/mcp-ios-simulator",
+          binName: "ios-simulator-mcp",
+          distribution: .npm,
+          localPath: "mcp-ios-simulator",
+          vendor: .mgcrea)),
+      docsURL: URL(string: "https://github.com/mgcrea/mcp-ios-simulator"),
+      dialect: .v2025_11_25,
+      writeGate: "IOS_SIMULATOR_ALLOW_WRITES",
+      writeTools: [],
+      gateBypass: [],
+      authModes: [],
+      stateEnv: ["IOS_SIMULATOR_OUTPUT_DIR"],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "IOS_SIMULATOR_ID",
+          isRequired: false,
+          isSecret: false,
+          summary: "UDID, name, or the literal `booted` of the simulator to drive. Unset uses the single booted simulator; two or more booted and no value is an error that names them, rather than the coin flip simctl's own `booted` performs."),
+        .init(
+          name: "IOS_SIMULATOR_WDA_URL",
+          isRequired: false,
+          isSecret: false,
+          summary: "Explicit WebDriverAgent URL. Unset builds one from IOS_SIMULATOR_WDA_PORT on the host's own loopback, which is the normal path."),
+        .init(
+          name: "IOS_SIMULATOR_WDA_PORT",
+          isRequired: false,
+          isSecret: false,
+          summary: "Port the runner was started on, default 8100, and it must match its USE_PORT. One port per simulator: they all bind the same host loopback, so two runners on one port drives the wrong simulator silently instead of colliding."),
+        .init(
+          name: "IOS_SIMULATOR_LAUNCH_ARGS",
+          isRequired: false,
+          isSecret: false,
+          summary: "Launch arguments applied when a launch passes none, e.g. -CanopyDemoMode to open fixtures instead of a real account."),
+        .init(
+          name: "IOS_SIMULATOR_OUTPUT_DIR",
+          isRequired: false,
+          isSecret: false,
+          summary: "Where saved screenshots, launch logs and the runner log land. Defaults to a directory under TMPDIR."),
+        .init(
+          name: "IOS_SIMULATOR_ALLOW_WRITES",
+          isRequired: false,
+          isSecret: false,
+          summary: "Enables the fourteen tools that drive the simulator: tap, tap_element, swipe, type, press_button, power, erase, install, launch, terminate, open_url, push, set_environment, restart_wda."),
+      ]),
   ]
   // </generated:servers>
 

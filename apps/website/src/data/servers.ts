@@ -41,6 +41,17 @@ export interface Server {
    * else's code with our name on it.
    */
   vendor: "mgcrea" | "third-party" | null;
+  /**
+   * Whether npm holds a SLSA build provenance attestation for the package's
+   * latest version, built by GitHub Actions from the repository the catalog
+   * entry links to — and `false` for a remote entry, which installs nothing.
+   *
+   * The repository half is what makes it worth printing. A bare attestation
+   * says some CI built the tarball; matching it against the linked repo is what
+   * a typosquat cannot reproduce. Verified against the registry by `make
+   * provenance-check`, never fetched at build time — see servers.json.
+   */
+  provenance: boolean;
   /** The newest protocol revision the server's SDK negotiates. */
   dialect: string;
 }
@@ -344,6 +355,15 @@ export const SERVERS: Server[] = [
     vendor: "third-party",
     dialect: "2025-11-25",
   },
+  {
+    id: "ios-simulator",
+    displayName: "iOS Simulator",
+    summary: "Drive an iOS Simulator: screenshot, accessibility tree, tap, swipe, type, app lifecycle and device staging.",
+    writeGate: "IOS_SIMULATOR_ALLOW_WRITES",
+    transport: "child",
+    vendor: "mgcrea",
+    dialect: "2025-11-25",
+  },
 ];
 // </generated:servers>
 
@@ -382,3 +402,14 @@ export const remote = SERVERS.filter((s) => s.transport === "remote");
  */
 export const ownChildren = children.filter((s) => s.vendor === "mgcrea");
 export const thirdPartyChildren = children.filter((s) => s.vendor === "third-party");
+
+/**
+ * Children whose latest published version npm can tie to the repository the
+ * catalog links to.
+ *
+ * Counted rather than asserted, because it is a fact about somebody else's
+ * release process and it moves. `make provenance-check` is what keeps the
+ * underlying flags true; this only reports what they currently say, so a
+ * sentence built on it stays correct the day a third party turns provenance on.
+ */
+export const provenanced = children.filter((s) => s.provenance);

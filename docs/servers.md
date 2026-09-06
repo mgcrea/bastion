@@ -225,6 +225,7 @@ asserts both eras against a running build.
 | [Supabase](https://github.com/supabase/mcp) | `supabase` | `mcp-server-supabase` | `@supabase/mcp-server-supabase` (npm) | `apply_migration`, `create_branch`, `create_project`, `delete_branch`, `deploy_edge_function`, `execute_sql`, `merge_branch`, `pause_project`, `rebase_branch`, `reset_branch`, `restore_project` (by name) | 1 |
 | [Netlify](https://github.com/netlify/netlify-mcp) | `netlify` | `netlify-mcp` | `@netlify/mcp` (npm) | `netlify-deploy-services-updater`, `netlify-extension-services-updater`, `netlify-project-services-updater` (by name) | 1 |
 | [Apify](https://github.com/apify/apify-mcp-server) | `apify` | `actors-mcp-server` | `@apify/actors-mcp-server` (npm) | `abort-actor-run`, `call-actor`, `report-problem` (by name) | 1 |
+| [iOS Simulator](https://github.com/mgcrea/mcp-ios-simulator) | `ios-simulator` | `ios-simulator-mcp` | `@mgcrea/mcp-ios-simulator` (npm) | `IOS_SIMULATOR_ALLOW_WRITES` | — |
 
 ### App Store Connect
 
@@ -1113,4 +1114,56 @@ DIALECT MEASURED. A live `initialize` that asks for 2026-07-28 - a revision no s
 | `APIFY_TOKEN` | yes | yes | Apify API token. |
 
 Hidden with writes off: `abort-actor-run`, `call-actor`, `report-problem` — and any tool the server annotates as not read-only. This filters what Bastion forwards; it does not bind the server, so the credential's own scopes remain the real boundary.
+
+### iOS Simulator
+
+Drive an iOS Simulator: screenshot, accessibility tree, tap, swipe, type, app lifecycle and device staging.
+
+No credentials, so no auth modes, and unlike the device server there is
+barely any setup either. A simulator is local, needs no pairing and no
+Developer Mode toggle, so there is nothing for a profile to hold.
+
+Two lanes reach it and they fail independently. `xcrun simctl` covers app
+lifecycle, the staged environment, and the screen itself - `simctl io
+screenshot` needs no runner at all, which is the big difference from the
+device server, where seeing anything requires WebDriverAgent. Only the
+accessibility tree and synthetic touches go through the runner, reached
+over the HOST's loopback because a simulator shares the host network
+stack. ios_simulator_diagnostics reports both lanes separately.
+
+THIS SERVER DEFAULTS TO WRITES ON, and it is the only entry here that
+does. Its own reasoning is that a phone belongs to a real person while a
+simulator is disposable and holds nobody's data. That default is never
+reached under Bastion: `gateValue(allowWrites:)` writes "1" or "0"
+explicitly on every spawn, so the profile toggle is what decides, and a
+profile with writes off spawns a server that has not registered the
+driving tools. The gate still points the normal way - "1" is on - so
+writeGateSense stays at its default.
+
+IOS_SIMULATOR_WDA_PORT is declared even though it is rarely set, because
+getting it wrong is silent. Every runner binds the same host loopback,
+so a second simulator started on 8100 is driven by whichever runner
+answers first: taps land on the wrong device and nothing reports an
+error. The device server needs no equivalent, since CoreDevice gives
+each phone its own tunnel.
+
+Published 2026-09-06 at 0.1.1. There is no 0.0.0 placeholder below it,
+unlike mcp-ios-device - the name was claimed by the first real release.
+
+The package ships a second binary, ios-simulator-wda, which builds and
+starts the WebDriverAgent runner. Bastion does not run it. Unlike the
+device server, this one can also start the runner itself through
+ios_simulator_restart_wda once writes are on, and everything except
+ui_tree works before it has ever run.
+
+| Variable | Required | Secret | Meaning |
+| --- | --- | --- | --- |
+| `IOS_SIMULATOR_ID` | — | — | UDID, name, or the literal `booted` of the simulator to drive. Unset uses the single booted simulator; two or more booted and no value is an error that names them, rather than the coin flip simctl's own `booted` performs. |
+| `IOS_SIMULATOR_WDA_URL` | — | — | Explicit WebDriverAgent URL. Unset builds one from IOS_SIMULATOR_WDA_PORT on the host's own loopback, which is the normal path. |
+| `IOS_SIMULATOR_WDA_PORT` | — | — | Port the runner was started on, default 8100, and it must match its USE_PORT. One port per simulator: they all bind the same host loopback, so two runners on one port drives the wrong simulator silently instead of colliding. |
+| `IOS_SIMULATOR_LAUNCH_ARGS` | — | — | Launch arguments applied when a launch passes none, e.g. -CanopyDemoMode to open fixtures instead of a real account. |
+| `IOS_SIMULATOR_OUTPUT_DIR` | — | — | Where saved screenshots, launch logs and the runner log land. Defaults to a directory under TMPDIR. |
+| `IOS_SIMULATOR_ALLOW_WRITES` | — | — | Enables the fourteen tools that drive the simulator: tap, tap_element, swipe, type, press_button, power, erase, install, launch, terminate, open_url, push, set_environment, restart_wda. |
+
+Per-profile state: `IOS_SIMULATOR_OUTPUT_DIR`
 <!-- </generated:servers> -->
