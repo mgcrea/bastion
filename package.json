@@ -23,7 +23,9 @@
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "servers": "node scripts/generate-servers.mjs",
-    "servers:check": "node scripts/generate-servers.mjs --check"
+    "servers:check": "node scripts/generate-servers.mjs --check",
+    "provenance": "node scripts/provenance-check.mjs",
+    "provenance:check": "node scripts/provenance-check.mjs --check"
   },
   "devDependencies": {
     "oxfmt": "^0.66.0",

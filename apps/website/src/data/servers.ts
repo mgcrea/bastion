@@ -65,6 +65,7 @@ export const SERVERS: Server[] = [
     writeGate: "APP_STORE_CONNECT_ALLOW_WRITES",
     transport: "child",
     vendor: "mgcrea",
+    provenance: true,
     dialect: "2025-11-25",
   },
   {
@@ -74,6 +75,7 @@ export const SERVERS: Server[] = [
     writeGate: "CLOUDKIT_ALLOW_WRITES",
     transport: "child",
     vendor: "mgcrea",
+    provenance: true,
     dialect: "2025-11-25",
   },
   {
@@ -83,6 +85,7 @@ export const SERVERS: Server[] = [
     writeGate: "REDDIT_ALLOW_WRITES",
     transport: "child",
     vendor: "mgcrea",
+    provenance: true,
     dialect: "2025-11-25",
   },
   {
@@ -92,6 +95,7 @@ export const SERVERS: Server[] = [
     writeGate: "X_ALLOW_WRITES",
     transport: "child",
     vendor: "mgcrea",
+    provenance: false,
     dialect: "2025-11-25",
   },
   {
@@ -101,6 +105,7 @@ export const SERVERS: Server[] = [
     writeGate: "UNIFI_PROTECT_ALLOW_WRITES",
     transport: "child",
     vendor: "mgcrea",
+    provenance: true,
     dialect: "2025-11-25",
   },
   {
@@ -110,6 +115,7 @@ export const SERVERS: Server[] = [
     writeGate: "UNIFI_ALLOW_WRITES",
     transport: "child",
     vendor: "mgcrea",
+    provenance: true,
     dialect: "2025-11-25",
   },
   {
@@ -119,6 +125,7 @@ export const SERVERS: Server[] = [
     writeGate: null,
     transport: "remote",
     vendor: null,
+    provenance: false,
     dialect: "2025-03-26",
   },
   {
@@ -128,6 +135,7 @@ export const SERVERS: Server[] = [
     writeGate: null,
     transport: "child",
     vendor: "mgcrea",
+    provenance: true,
     dialect: "2025-11-25",
   },
   {
@@ -137,6 +145,7 @@ export const SERVERS: Server[] = [
     writeGate: "OVH_ALLOW_WRITES",
     transport: "child",
     vendor: "mgcrea",
+    provenance: false,
     dialect: "2025-11-25",
   },
   {
@@ -146,6 +155,7 @@ export const SERVERS: Server[] = [
     writeGate: "KEYCLOAK_ALLOW_WRITES",
     transport: "child",
     vendor: "mgcrea",
+    provenance: true,
     dialect: "2025-11-25",
   },
   {
@@ -155,6 +165,7 @@ export const SERVERS: Server[] = [
     writeGate: "NPM_ALLOW_WRITES",
     transport: "child",
     vendor: "mgcrea",
+    provenance: true,
     dialect: "2025-11-25",
   },
   {
@@ -164,6 +175,7 @@ export const SERVERS: Server[] = [
     writeGate: null,
     transport: "remote",
     vendor: null,
+    provenance: false,
     dialect: "2025-11-25",
   },
   {
@@ -173,6 +185,7 @@ export const SERVERS: Server[] = [
     writeGate: null,
     transport: "remote",
     vendor: null,
+    provenance: false,
     dialect: "2025-11-25",
   },
   {
@@ -182,6 +195,7 @@ export const SERVERS: Server[] = [
     writeGate: null,
     transport: "remote",
     vendor: null,
+    provenance: false,
     dialect: "2025-11-25",
   },
   {
@@ -191,6 +205,7 @@ export const SERVERS: Server[] = [
     writeGate: null,
     transport: "remote",
     vendor: null,
+    provenance: false,
     dialect: "2025-11-25",
   },
   {
@@ -200,6 +215,7 @@ export const SERVERS: Server[] = [
     writeGate: null,
     transport: "remote",
     vendor: null,
+    provenance: false,
     dialect: "2025-11-25",
   },
   {
@@ -209,6 +225,7 @@ export const SERVERS: Server[] = [
     writeGate: null,
     transport: "remote",
     vendor: null,
+    provenance: false,
     dialect: "2025-11-25",
   },
   {
@@ -218,6 +235,7 @@ export const SERVERS: Server[] = [
     writeGate: null,
     transport: "remote",
     vendor: null,
+    provenance: false,
     dialect: "2025-11-25",
   },
   {
@@ -227,6 +245,7 @@ export const SERVERS: Server[] = [
     writeGate: null,
     transport: "remote",
     vendor: null,
+    provenance: false,
     dialect: "2025-11-25",
   },
   {
@@ -236,6 +255,7 @@ export const SERVERS: Server[] = [
     writeGate: null,
     transport: "remote",
     vendor: null,
+    provenance: false,
     dialect: "2025-11-25",
   },
   {
@@ -245,6 +265,7 @@ export const SERVERS: Server[] = [
     writeGate: null,
     transport: "remote",
     vendor: null,
+    provenance: false,
     dialect: "2025-11-25",
   },
   {
@@ -254,6 +275,7 @@ export const SERVERS: Server[] = [
     writeGate: "IOS_DEVICE_ALLOW_WRITES",
     transport: "child",
     vendor: "mgcrea",
+    provenance: true,
     dialect: "2025-11-25",
   },
   {
@@ -263,6 +285,7 @@ export const SERVERS: Server[] = [
     writeGate: "MDB_MCP_READ_ONLY",
     transport: "child",
     vendor: "third-party",
+    provenance: true,
     dialect: "2025-11-25",
   },
   {
@@ -272,6 +295,7 @@ export const SERVERS: Server[] = [
     writeGate: "READONLY",
     transport: "child",
     vendor: "third-party",
+    provenance: true,
     dialect: "2025-11-25",
   },
   {
@@ -281,6 +305,7 @@ export const SERVERS: Server[] = [
     writeGate: "ALLOW_ONLY_READONLY_TOOLS",
     transport: "child",
     vendor: "third-party",
+    provenance: true,
     dialect: "2025-11-25",
   },
   {
@@ -290,6 +315,7 @@ export const SERVERS: Server[] = [
     writeGate: null,
     transport: "child",
     vendor: "third-party",
+    provenance: false,
     dialect: "2025-11-25",
   },
   {
@@ -299,6 +325,7 @@ export const SERVERS: Server[] = [
     writeGate: null,
     transport: "child",
     vendor: "third-party",
+    provenance: false,
     dialect: "2025-11-25",
   },
   {
@@ -308,6 +335,7 @@ export const SERVERS: Server[] = [
     writeGate: null,
     transport: "child",
     vendor: "third-party",
+    provenance: true,
     dialect: "2025-11-25",
   },
   {
@@ -317,6 +345,7 @@ export const SERVERS: Server[] = [
     writeGate: null,
     transport: "child",
     vendor: "third-party",
+    provenance: false,
     dialect: "2025-11-25",
   },
   {
@@ -326,6 +355,7 @@ export const SERVERS: Server[] = [
     writeGate: null,
     transport: "child",
     vendor: "third-party",
+    provenance: false,
     dialect: "2025-11-25",
   },
   {
@@ -335,6 +365,7 @@ export const SERVERS: Server[] = [
     writeGate: null,
     transport: "child",
     vendor: "third-party",
+    provenance: true,
     dialect: "2025-11-25",
   },
   {
@@ -344,6 +375,7 @@ export const SERVERS: Server[] = [
     writeGate: null,
     transport: "child",
     vendor: "third-party",
+    provenance: false,
     dialect: "2025-11-25",
   },
   {
@@ -353,6 +385,7 @@ export const SERVERS: Server[] = [
     writeGate: null,
     transport: "child",
     vendor: "third-party",
+    provenance: true,
     dialect: "2025-11-25",
   },
   {
@@ -362,6 +395,7 @@ export const SERVERS: Server[] = [
     writeGate: "IOS_SIMULATOR_ALLOW_WRITES",
     transport: "child",
     vendor: "mgcrea",
+    provenance: true,
     dialect: "2025-11-25",
   },
 ];

@@ -87,8 +87,15 @@
                 "vendor": {
                   "enum": ["mgcrea", "third-party"],
                   "description": "Who publishes the package. Stated rather than inferred from the scope, because the typo most worth catching is a typo IN the scope: `@mgcre/mcp-reddit` fails a startsWith check and would be waved through as somebody else's package. `mgcrea` holds the entry to the naming rule (@mgcrea/mcp-<id>, <id>-mcp, mcp-<id>); `third-party` requires a published package, derives localPath from the package name, and is what ServerDetail keys its provenance copy on — silence must not read as \"ours\"."
+                },
+                "provenance": {
+                  "type": "boolean",
+                  "description": "Whether the latest published version carries a SLSA build provenance attestation from GitHub Actions, built from the repository this entry names in docsUrl. A bare attestation is not enough: provenance pointing at an unrelated repository is what a typosquat would also have. Stated rather than fetched, for the same reason vendor is — `make servers` has to stay offline and deterministic, because servers:check is a CI drift gate and somebody else publishing overnight must not turn an unrelated pull request red. `make provenance-check` is what keeps the claim honest: a stale true is a hard failure, because Bastion must never claim provenance it cannot show, while a stale false is only advice."
                 }
-              }
+              },
+              "if": { "properties": { "distribution": { "const": "npm" } } },
+              "then": { "required": ["provenance"] },
+              "else": { "not": { "required": ["provenance"] } }
             },
             {
               "type": "object",

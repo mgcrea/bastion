@@ -9,6 +9,36 @@ are taken from this file, which is the curated summary.
 
 ## [Unreleased]
 
+### Added
+
+- **Catalog entries say which packages npm can tie back to the repository they link to.** A
+  `provenance` badge now sits beside the package name in a server's pane and in the catalog list,
+  and the website marks the same entries. Sixteen of the twenty-three published packages carry a
+  SLSA build attestation from GitHub Actions; the seven that do not are not suspect, they publish
+  the older way, so the badge is only ever shown and never negated.
+
+  The claim is deliberately narrower than "attested". A bare attestation says some CI somewhere
+  built the tarball, which is a thing a typosquat of a popular package can have too. What is
+  checked is that the workflow's repository matches the `docsUrl` the entry already advertises, so
+  the badge means the bytes trace to the source the reader can go and look at. All sixteen match
+  today, which makes the check a drift detector rather than a one-off audit.
+
+  It is a smaller claim than a review, and it is placed to say so: under the paragraph in a
+  third-party server's Package card that finishes explaining nobody here read the code. Provenance
+  ties a package to a source; it does not vouch for what is in it.
+
+  `make provenance` prints what the registry currently holds, and `make provenance-check` fails
+  when a claim in `servers.json` no longer does. Neither runs in CI, and neither belongs to the
+  generator: it has to stay offline and deterministic because `servers-check` is a drift
+  gate, and somebody else publishing overnight must not turn an unrelated pull request red. The two
+  directions of drift are not treated alike — a stale `true` is a hard failure, because Bastion
+  must never claim provenance it cannot show to someone deciding whether to run code on their
+  machine, while a stale `false` is only advice, because a third party improving their release
+  process is good news and good news must not fail a build.
+
+  `list_catalog` returns the flag too, so a model choosing between two servers that do the same job
+  has one trust signal it can actually act on.
+
 ### Changed
 
 - **A listing too small to be worth searching is no longer fronted, whatever the switch says.**

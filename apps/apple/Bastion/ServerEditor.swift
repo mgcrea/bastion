@@ -275,6 +275,14 @@ struct ServerEditor: View {
             } else if entry.package?.distribution == .local {
               Badge("not published", tint: .orange)
             }
+            // The one place the difference is comparable across entries, which
+            // is the whole reason it is a badge and not only a sentence in the
+            // detail pane: the question "which of these two should I install"
+            // gets asked here, in a list, and nowhere else.
+            if entry.package?.provenance == true {
+              Badge("provenance", tint: .teal)
+                .help("npm holds a signed build attestation tying this package to its repository.")
+            }
           }
           Text(entry.summary)
             .font(.caption).foregroundStyle(.secondary)

@@ -1,7 +1,7 @@
 ---
 import SectionHeader from "./SectionHeader.astro";
 import { COUNTS, DIALECT, DOCS } from "../config";
-import { gated, SERVERS } from "../data/servers";
+import { gated, provenanced, SERVERS } from "../data/servers";
 
 /**
  * Every count on this page is derived from `data/servers.ts`, which `make
@@ -15,6 +15,7 @@ import { gated, SERVERS } from "../data/servers";
  * stuck with" is exactly the impression this section used to give on purpose.
  */
 const gateIds = new Set(gated.map((s) => s.id));
+const provenanceIds = new Set(provenanced.map((s) => s.id));
 ---
 
 <section id="servers" class="wrap scroll-mt-20 py-[96px]">
@@ -86,8 +87,17 @@ const gateIds = new Set(gated.map((s) => s.id));
         {
           SERVERS.map((s) => (
             <li class="flex items-center justify-between gap-2.5 rounded-[11px] border border-white/8 bg-white/3 px-3.5 py-3">
-              <span class="font-mono text-[12.5px] text-fg/82" title={s.summary}>
-                {s.id}
+              <span class="flex items-center gap-1.5 font-mono text-[12.5px] text-fg/82">
+                {provenanceIds.has(s.id) && (
+                  <span
+                    class="text-ok-ink"
+                    title="npm holds a signed build attestation tying this package to the repository it links to."
+                    aria-label="builds with provenance"
+                  >
+                    &#10003;
+                  </span>
+                )}
+                <span title={s.summary}>{s.id}</span>
               </span>
               <span
                 class:list={[
@@ -101,6 +111,14 @@ const gateIds = new Set(gated.map((s) => s.id));
           ))
         }
       </ul>
+
+      <p class="m-0 text-[13px] leading-[1.6] text-fg-muted text-pretty">
+        <span class="text-ok-ink">&#10003;</span> marks the {COUNTS.provenancedWord} packages npm can
+        tie to the repository they link to: a signed attestation says GitHub Actions built that exact
+        version from that exact source. It is a smaller claim than a review — nobody here read the
+        code — but it is the one claim a typosquat cannot copy, and it is checked against the
+        registry rather than typed. The rest are not suspect; they publish the older way.
+      </p>
 
       <p class="m-0 text-[13px] leading-[1.6] text-fg-muted text-pretty">
         None of the {COUNTS.serversWord} are modern. The {COUNTS.ownChildrenWord} children written

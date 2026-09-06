@@ -93,6 +93,21 @@ struct ServerDetail: View {
             }
           }
         }
+        // Said beside the package name, because it is a fact ABOUT that name:
+        // npm holds a signed statement that this package was built by GitHub
+        // Actions from the repository the Docs link goes to.
+        //
+        // Only ever shown, never negated. Most packages that lack it are not
+        // suspect, they simply publish the older way, and an "unverified" pill
+        // on two thirds of a catalog would be an accusation rather than a fact.
+        // Absence here means "nothing to show", which is what it is.
+        if server.package?.provenance == true {
+          Badge("provenance", tint: .teal)
+            .help(
+              "npm holds a signed build attestation for the latest version of this package: "
+                + "GitHub Actions built it from the repository the Docs link points to. "
+                + "Checked by `make provenance-check`, not by this window.")
+        }
         Badge(server.dialect.rawValue, tint: .secondary)
         if !server.hasWritePath {
           // Worth saying plainly. A server with no write path cannot be talked
@@ -305,6 +320,23 @@ struct ServerDetail: View {
           )
           .font(.callout)
           .fixedSize(horizontal: false, vertical: true)
+
+          // The one thing that CAN be said about somebody else's package, so it
+          // is said exactly here, under the paragraph that just finished saying
+          // nobody read the code. Provenance is not a review and must not be
+          // read as one — it says where the bytes came from, which is a smaller
+          // claim than "this is safe" and the only one npm can actually prove.
+          if server.package?.provenance == true, let docs = server.docsURL {
+            Text(
+              "It does publish with build provenance: npm holds a signed statement that the "
+                + "version you install was built by GitHub Actions from \(docs.host() ?? "the repository") "
+                + "\(docs.path().trimmingCharacters(in: CharacterSet(charactersIn: "/"))). "
+                + "That ties the package to the source, which is not the same as vouching for it."
+            )
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+          }
         }
 
         HStack(spacing: 8) {

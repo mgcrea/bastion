@@ -11,6 +11,7 @@ import {
   children,
   gated,
   ownChildren,
+  provenanced,
   readOnly,
   remote,
   SERVERS,
@@ -95,6 +96,7 @@ export const COUNTS = {
   remote: remote.length,
   gated: gated.length,
   readOnly: readOnly.length,
+  provenanced: provenanced.length,
   serversWord: spell(SERVERS.length),
   serversTitle: title(spell(SERVERS.length)),
   childrenWord: spell(children.length),
@@ -103,6 +105,7 @@ export const COUNTS = {
   remoteWord: spell(remote.length),
   gatedWord: spell(gated.length),
   readOnlyWord: spell(readOnly.length),
+  provenancedWord: spell(provenanced.length),
 } as const;
 
 /**

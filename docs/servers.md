@@ -192,17 +192,17 @@ asserts both eras against a running build.
 
 | Server | Id | Binary | Source | Write gate | Secrets |
 | --- | --- | --- | --- | --- | --- |
-| [App Store Connect](https://github.com/mgcrea/mcp-appstore-connect) | `appstore-connect` | `appstore-connect-mcp` | `@mgcrea/mcp-appstore-connect` (npm) | `APP_STORE_CONNECT_ALLOW_WRITES` | 1 |
-| [CloudKit](https://github.com/mgcrea/mcp-cloudkit) | `cloudkit` | `cloudkit-mcp` | `@mgcrea/mcp-cloudkit` (npm) | `CLOUDKIT_ALLOW_WRITES` | 1 |
-| [Reddit](https://github.com/mgcrea/mcp-reddit) | `reddit` | `reddit-mcp` | `@mgcrea/mcp-reddit` (npm) | `REDDIT_ALLOW_WRITES` | 1 |
+| [App Store Connect](https://github.com/mgcrea/mcp-appstore-connect) | `appstore-connect` | `appstore-connect-mcp` | `@mgcrea/mcp-appstore-connect` (npm, provenance) | `APP_STORE_CONNECT_ALLOW_WRITES` | 1 |
+| [CloudKit](https://github.com/mgcrea/mcp-cloudkit) | `cloudkit` | `cloudkit-mcp` | `@mgcrea/mcp-cloudkit` (npm, provenance) | `CLOUDKIT_ALLOW_WRITES` | 1 |
+| [Reddit](https://github.com/mgcrea/mcp-reddit) | `reddit` | `reddit-mcp` | `@mgcrea/mcp-reddit` (npm, provenance) | `REDDIT_ALLOW_WRITES` | 1 |
 | [X](https://github.com/mgcrea/mcp-x) | `x` | `x-mcp` | `@mgcrea/mcp-x` (npm) | `X_ALLOW_WRITES` | 2 |
-| [UniFi Protect](https://github.com/mgcrea/mcp-unifi-protect) | `unifi-protect` | `unifi-protect-mcp` | `@mgcrea/mcp-unifi-protect` (npm) | `UNIFI_PROTECT_ALLOW_WRITES` | 3 |
-| [UniFi Network](https://github.com/mgcrea/mcp-unifi-network) | `unifi-network` | `unifi-network-mcp` | `@mgcrea/mcp-unifi-network` (npm) | `UNIFI_ALLOW_WRITES` | 2 |
+| [UniFi Protect](https://github.com/mgcrea/mcp-unifi-protect) | `unifi-protect` | `unifi-protect-mcp` | `@mgcrea/mcp-unifi-protect` (npm, provenance) | `UNIFI_PROTECT_ALLOW_WRITES` | 3 |
+| [UniFi Network](https://github.com/mgcrea/mcp-unifi-network) | `unifi-network` | `unifi-network-mcp` | `@mgcrea/mcp-unifi-network` (npm, provenance) | `UNIFI_ALLOW_WRITES` | 2 |
 | [Stripe](https://docs.stripe.com/mcp) | `stripe` | — | `https://mcp.stripe.com` (remote) | `stripe_api_write`, `create_refund`, `stripe_report` (by name) | 1 |
-| [Shopify](https://github.com/mgcrea/mcp-shopify) | `shopify` | `shopify-mcp` | `@mgcrea/mcp-shopify` (npm) | read-only | 1 |
+| [Shopify](https://github.com/mgcrea/mcp-shopify) | `shopify` | `shopify-mcp` | `@mgcrea/mcp-shopify` (npm, provenance) | read-only | 1 |
 | [OVHcloud](https://github.com/mgcrea/mcp-ovh) | `ovh` | `ovh-mcp` | `@mgcrea/mcp-ovh` (npm) | `OVH_ALLOW_WRITES` | 4 |
-| [Keycloak](https://github.com/mgcrea/mcp-keycloak) | `keycloak` | `keycloak-mcp` | `@mgcrea/mcp-keycloak` (npm) | `KEYCLOAK_ALLOW_WRITES` | 2 |
-| [npm](https://github.com/mgcrea/mcp-npm) | `npm` | `npm-mcp` | `@mgcrea/mcp-npm` (npm) | `NPM_ALLOW_WRITES` | 2 |
+| [Keycloak](https://github.com/mgcrea/mcp-keycloak) | `keycloak` | `keycloak-mcp` | `@mgcrea/mcp-keycloak` (npm, provenance) | `KEYCLOAK_ALLOW_WRITES` | 2 |
+| [npm](https://github.com/mgcrea/mcp-npm) | `npm` | `npm-mcp` | `@mgcrea/mcp-npm` (npm, provenance) | `NPM_ALLOW_WRITES` | 2 |
 | [GitHub](https://github.com/github/github-mcp-server) | `github` | — | `https://api.githubcopilot.com/mcp/` (remote) | `actions_run_trigger`, `add_comment_to_pending_review`, `add_issue_comment`, `add_reply_to_pull_request_comment`, `assign_copilot_to_issue`, `assign_copilot_to_issue_with_intent`, `create_branch`, `create_gist`, `create_or_update_file`, `create_pull_request`, `create_pull_request_with_copilot`, `create_repository`, `delete_file`, `delete_repository`, `discussion_comment_write`, `dismiss_notification`, `fork_repository`, `issue_write`, `label_write`, `manage_notification_subscription`, `manage_repository_notification_subscription`, `mark_all_notifications_read`, `merge_pull_request`, `projects_write`, `pull_request_review_write`, `push_files`, `request_copilot_review`, `star_repository`, `sub_issue_write`, `unstar_repository`, `update_gist`, `update_pull_request`, `update_pull_request_branch` (by name) | 1 |
 | [Notion](https://developers.notion.com/docs/mcp) | `notion` | — | `https://mcp.notion.com/mcp` (remote) | read-only | 1 |
 | [Linear](https://linear.app/docs/mcp) | `linear` | — | `https://mcp.linear.app/mcp` (remote) | read-only | 1 |
@@ -213,19 +213,19 @@ asserts both eras against a running build.
 | [Cloudflare](https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/) | `cloudflare` | — | `https://mcp.cloudflare.com/mcp` (remote) | read-only | 1 |
 | [Cloudflare Docs](https://github.com/cloudflare/mcp-server-cloudflare/tree/main/apps/docs-ai-search) | `cloudflare-docs` | — | `https://docs.mcp.cloudflare.com/mcp` (remote) | read-only | 1 |
 | [Cloudflare Observability](https://github.com/cloudflare/mcp-server-cloudflare/tree/main/apps/workers-observability) | `cloudflare-observability` | — | `https://observability.mcp.cloudflare.com/mcp` (remote) | read-only | 1 |
-| [iOS Device](https://github.com/mgcrea/mcp-ios-device) | `ios-device` | `ios-device-mcp` | `@mgcrea/mcp-ios-device` (npm) | `IOS_DEVICE_ALLOW_WRITES` | — |
-| [MongoDB](https://github.com/mongodb-js/mongodb-mcp-server) | `mongodb` | `mongodb-mcp-server` | `mongodb-mcp-server` (npm) | `MDB_MCP_READ_ONLY` (inverted) | 2 |
-| [DBHub](https://github.com/bytebase/dbhub) | `dbhub` | `dbhub` | `@bytebase/dbhub` (npm) | `READONLY` (inverted) | 1 |
-| [Kubernetes](https://github.com/Flux159/mcp-server-kubernetes) | `kubernetes` | `mcp-server-kubernetes` | `mcp-server-kubernetes` (npm) | `ALLOW_ONLY_READONLY_TOOLS` (inverted) | 1 |
+| [iOS Device](https://github.com/mgcrea/mcp-ios-device) | `ios-device` | `ios-device-mcp` | `@mgcrea/mcp-ios-device` (npm, provenance) | `IOS_DEVICE_ALLOW_WRITES` | — |
+| [MongoDB](https://github.com/mongodb-js/mongodb-mcp-server) | `mongodb` | `mongodb-mcp-server` | `mongodb-mcp-server` (npm, provenance) | `MDB_MCP_READ_ONLY` (inverted) | 2 |
+| [DBHub](https://github.com/bytebase/dbhub) | `dbhub` | `dbhub` | `@bytebase/dbhub` (npm, provenance) | `READONLY` (inverted) | 1 |
+| [Kubernetes](https://github.com/Flux159/mcp-server-kubernetes) | `kubernetes` | `mcp-server-kubernetes` | `mcp-server-kubernetes` (npm, provenance) | `ALLOW_ONLY_READONLY_TOOLS` (inverted) | 1 |
 | [Context7](https://github.com/upstash/context7) | `context7` | `context7-mcp` | `@upstash/context7-mcp` (npm) | read-only | 1 |
 | [Firecrawl](https://github.com/firecrawl/firecrawl-mcp-server) | `firecrawl` | `firecrawl-mcp` | `firecrawl-mcp` (npm) | read-only | 1 |
-| [Exa](https://github.com/exa-labs/exa-mcp-server) | `exa` | `exa-mcp-server` | `exa-mcp-server` (npm) | read-only | 1 |
+| [Exa](https://github.com/exa-labs/exa-mcp-server) | `exa` | `exa-mcp-server` | `exa-mcp-server` (npm, provenance) | read-only | 1 |
 | [Tavily](https://github.com/tavily-ai/tavily-mcp) | `tavily` | `tavily-mcp` | `tavily-mcp` (npm) | read-only | 1 |
 | [Playwright](https://github.com/microsoft/playwright-mcp) | `playwright` | `playwright-mcp` | `@playwright/mcp` (npm) | `browser_click`, `browser_close`, `browser_drag`, `browser_drop`, `browser_evaluate`, `browser_file_upload`, `browser_fill_form`, `browser_handle_dialog`, `browser_hover`, `browser_navigate`, `browser_navigate_back`, `browser_press_key`, `browser_resize`, `browser_run_code_unsafe`, `browser_select_option`, `browser_tabs`, `browser_type` (by name) | — |
-| [Supabase](https://github.com/supabase/mcp) | `supabase` | `mcp-server-supabase` | `@supabase/mcp-server-supabase` (npm) | `apply_migration`, `create_branch`, `create_project`, `delete_branch`, `deploy_edge_function`, `execute_sql`, `merge_branch`, `pause_project`, `rebase_branch`, `reset_branch`, `restore_project` (by name) | 1 |
+| [Supabase](https://github.com/supabase/mcp) | `supabase` | `mcp-server-supabase` | `@supabase/mcp-server-supabase` (npm, provenance) | `apply_migration`, `create_branch`, `create_project`, `delete_branch`, `deploy_edge_function`, `execute_sql`, `merge_branch`, `pause_project`, `rebase_branch`, `reset_branch`, `restore_project` (by name) | 1 |
 | [Netlify](https://github.com/netlify/netlify-mcp) | `netlify` | `netlify-mcp` | `@netlify/mcp` (npm) | `netlify-deploy-services-updater`, `netlify-extension-services-updater`, `netlify-project-services-updater` (by name) | 1 |
-| [Apify](https://github.com/apify/apify-mcp-server) | `apify` | `actors-mcp-server` | `@apify/actors-mcp-server` (npm) | `abort-actor-run`, `call-actor`, `report-problem` (by name) | 1 |
-| [iOS Simulator](https://github.com/mgcrea/mcp-ios-simulator) | `ios-simulator` | `ios-simulator-mcp` | `@mgcrea/mcp-ios-simulator` (npm) | `IOS_SIMULATOR_ALLOW_WRITES` | — |
+| [Apify](https://github.com/apify/apify-mcp-server) | `apify` | `actors-mcp-server` | `@apify/actors-mcp-server` (npm, provenance) | `abort-actor-run`, `call-actor`, `report-problem` (by name) | 1 |
+| [iOS Simulator](https://github.com/mgcrea/mcp-ios-simulator) | `ios-simulator` | `ios-simulator-mcp` | `@mgcrea/mcp-ios-simulator` (npm, provenance) | `IOS_SIMULATOR_ALLOW_WRITES` | — |
 
 ### App Store Connect
 

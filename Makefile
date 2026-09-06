@@ -600,6 +600,22 @@ servers-check: ## Fail if any generated copy has drifted from servers.json
 catalog-check: ## Fail if servers.json disagrees with the servers it describes
 	@MCP_ROOT="$(MCP_ROOT)" node scripts/catalog-check.mjs --strict
 
+# The `provenance` flags, against the registry that issued them. Deliberately
+# NOT in CI and deliberately not part of `make servers`: the generator has to
+# stay offline and deterministic, because servers-check is a drift gate, and
+# somebody else publishing a new version overnight must not turn an unrelated
+# pull request red. Run it before a release, and when adding a catalog entry.
+provenance: ## Show which catalog packages build with provenance, and from where
+	@node scripts/provenance-check.mjs
+
+# The two directions are not symmetric, which is the whole design. A stale
+# `true` fails, because Bastion must never claim provenance it cannot show to
+# somebody deciding whether to run the code; a stale `false` is only advice,
+# because a third party improving their release process is good news and good
+# news must not fail a build. `--strict` promotes the advice, for a release.
+provenance-check: ## Fail if a provenance claim in servers.json no longer holds
+	@node scripts/provenance-check.mjs --check
+
 # The other other direction: what is NOT in the catalog. Never run by CI and it
 # fails nothing — the catalog is a starting point rather than a closed list, and
 # that only stays true if somebody occasionally looks at what has been published

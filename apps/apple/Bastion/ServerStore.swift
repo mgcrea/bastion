@@ -170,7 +170,13 @@ final class ServerStore {
         .init(
           npmName: npmName ?? "", binName: binName ?? "", distribution: .npm,
           localPath: "mcp-custom",
-          vendor: .inferred(fromPackage: npmName ?? "")))
+          vendor: .inferred(fromPackage: npmName ?? ""),
+          // Never claimed for a custom entry. Provenance here is a checked
+          // fact, verified against the registry by `make provenance-check`
+          // before it is written into the manifest, and nothing has run that
+          // check for a package the user typed in a minute ago. False means
+          // "nothing to show", which is exactly true.
+          provenance: false))
     }
   }
 
@@ -294,7 +300,10 @@ final class ServerStore {
           .init(
             npmName: definition.npmName ?? "", binName: definition.binName ?? "",
             distribution: .npm, localPath: "mcp-\(id)",
-            vendor: .inferred(fromPackage: definition.npmName ?? "")))
+            vendor: .inferred(fromPackage: definition.npmName ?? ""),
+            // See above: a custom entry has been through no check, so it makes
+            // no claim.
+            provenance: false))
         : definition.transport,
       docsURL: definition.docsUrl.flatMap(URL.init(string:)),
       dialect: BastionServer.Dialect(rawValue: definition.dialect) ?? .v2025_11_25,

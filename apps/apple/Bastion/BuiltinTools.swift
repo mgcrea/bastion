@@ -709,6 +709,12 @@ enum BuiltinTools {
         row["transport"] = "child"
         row["npm_name"] = package.npmName
         row["published"] = package.distribution == .npm
+        // One bool, and it is the only trust signal in this listing a model can
+        // act on: told which of two servers does the same job, it can prefer the
+        // one whose bytes are tied to the repository it claims. Emitted for
+        // children only — a remote entry installs nothing, so `false` there
+        // would read as a mark against it rather than as "not applicable".
+        row["provenance"] = package.provenance
       case .remote(let endpoint):
         row["transport"] = "remote"
         row["url"] = endpoint.absoluteString

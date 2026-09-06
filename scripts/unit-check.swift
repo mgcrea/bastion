@@ -628,7 +628,9 @@ struct UnitCheck {
     func server(
       writeGate: String? = nil, writeTools: [String] = [],
       transport: BastionServer.Transport = .child(
-        .init(npmName: "@a/b", binName: "b", distribution: .npm, localPath: "b", vendor: .mgcrea))
+        .init(
+          npmName: "@a/b", binName: "b", distribution: .npm, localPath: "b", vendor: .mgcrea,
+          provenance: false))
     ) -> BastionServer {
       BastionServer(
         id: "x", displayName: "X", summary: "", transport: transport, docsURL: nil,
@@ -667,7 +669,9 @@ struct UnitCheck {
       BastionServer(
         id: "x", displayName: "X", summary: "",
         transport: .child(
-          .init(npmName: "@a/b", binName: "b", distribution: .npm, localPath: "b", vendor: .mgcrea)),
+          .init(
+            npmName: "@a/b", binName: "b", distribution: .npm, localPath: "b", vendor: .mgcrea,
+            provenance: false)),
         docsURL: nil, dialect: .v2025_11_25, writeGate: gate, writeTools: [], gateBypass: [],
         authModes: [], stateEnv: [], callbackEnv: [],
         env: names.map { .init(name: $0, isRequired: false, isSecret: false, summary: "") })
@@ -782,6 +786,37 @@ struct UnitCheck {
     check(
       "and an unscoped package is not",
       BastionServer.Vendor.inferred(fromPackage: "mongodb-mcp-server") == .thirdParty)
+
+    print("\nBuild provenance, as the catalog claims it")
+    // These assert the manifest is COHERENT, not that npm still agrees — that
+    // question needs the network and belongs to `make provenance-check`, which
+    // is deliberately not in CI so that somebody else's release cannot turn an
+    // unrelated pull request red. What is checked here is the part that must
+    // hold with no network at all: that the claim is only ever made where it
+    // could be true.
+    //
+    // Only a published package has a tarball for npm to have attested. A
+    // `local` entry resolves against a checkout, and a remote entry installs
+    // nothing at all, so neither can carry the claim.
+    check(
+      "only a published package claims provenance",
+      children.allSatisfy { $0.1.distribution == .npm || !$0.1.provenance })
+    // A regression guard on the emitter rather than on the manifest. The flag
+    // has to be stated per entry, so a bug that wrote `false` everywhere would
+    // leave every file consistent and every other check green — and a catalog
+    // that silently stops claiming what it can prove is still a catalog saying
+    // something untrue.
+    let attested = children.filter { $0.1.provenance }
+    check(
+      "the catalog still claims provenance for somebody",
+      !attested.isEmpty)
+    // The claim is "built from the repo this entry links to", so an entry that
+    // makes it must link a repo for `make provenance-check` to check against.
+    // Without this, a `docsUrl` edited to null would turn a checkable claim into
+    // an unfalsifiable one and nothing offline would notice.
+    check(
+      "and every entry that claims it links a GitHub repo to check against",
+      attested.allSatisfy { $0.0.docsURL?.host() == "github.com" })
 
     print("\nA child gated by tool name rather than by a variable")
     // The shape that exists because Bastion passes no argv: a server whose own

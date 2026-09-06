@@ -101,9 +101,31 @@ const validate = (servers) => {
       }
       if (localPaths.has(t.localPath)) p(`transport.localPath ${t.localPath} is already taken`);
       localPaths.add(t.localPath);
+
+      // Required, and deliberately not defaulted — the same argument as vendor.
+      // A missing flag defaulting to false would be a quiet downgrade nobody
+      // notices; defaulting to true would claim provenance for a package that
+      // has none, to somebody deciding whether to run it. Both are worse than
+      // being made to say which.
+      //
+      // Only a published package can carry one. `local` resolves against a
+      // checkout, so there is no tarball for npm to have attested, and a remote
+      // endpoint has no package at all.
+      if (t.distribution === "npm") {
+        if (typeof t.provenance !== "boolean") {
+          p("transport.provenance is required on a published child — true or false, never absent");
+        }
+      } else if (t.provenance !== undefined) {
+        p(
+          "transport.provenance needs a published package — a local child has no tarball to attest",
+        );
+      }
     }
     if (isRemote && t.vendor !== undefined) {
       p("transport.vendor is child-only — nothing is installed for a remote endpoint");
+    }
+    if (isRemote && t.provenance !== undefined) {
+      p("transport.provenance is child-only — nothing is installed for a remote endpoint");
     }
 
     if (isRemote) {
@@ -516,7 +538,8 @@ const swiftTransport = (t) =>
         `          binName: ${swiftString(t.binName)},`,
         `          distribution: .${t.distribution},`,
         `          localPath: ${swiftString(t.localPath)},`,
-        `          vendor: .${t.vendor === "third-party" ? "thirdParty" : "mgcrea"})),`,
+        `          vendor: .${t.vendor === "third-party" ? "thirdParty" : "mgcrea"},`,
+        `          provenance: ${t.provenance === true})),`,
       ].join("\n")
     : `      transport: .remote(endpoint: URL(string: ${swiftString(t.url)})!),`;
 
@@ -578,7 +601,7 @@ const mdRow = (s) =>
     s.transport.kind === "remote"
       ? `${mdCode(s.transport.url)} (remote)`
       : s.transport.distribution === "npm"
-        ? `${mdCode(s.transport.npmName)} (npm)`
+        ? `${mdCode(s.transport.npmName)} (npm${s.transport.provenance ? ", provenance" : ""})`
         : `${mdCode(s.transport.localPath)} (local)`,
     s.writeGate !== null
       ? s.writeGateSense === "disables"
@@ -702,6 +725,7 @@ const tsServer = (s) =>
     `    writeGate: ${tsOptionalString(s.writeGate)},`,
     `    transport: ${tsString(s.transport.kind)},`,
     `    vendor: ${tsString(s.transport.vendor ?? null)},`,
+    `    provenance: ${s.transport.provenance === true},`,
     `    dialect: ${tsString(s.dialect)},`,
     "  },",
   ].join("\n");
