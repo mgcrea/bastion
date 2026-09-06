@@ -4,12 +4,35 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.11.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.12.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.12.0] - 2026-09-06
 
 ### Added
+
+- **The iOS Simulator joins the catalog.** Thirty-four entries now, twenty-three children and
+  eleven remote. It drives a booted simulator — screenshots, the accessibility tree, taps, swipes,
+  typing, app lifecycle and the staged environment — and installs from `@mgcrea/mcp-ios-simulator`.
+
+  Two lanes reach it and they fail independently. `xcrun simctl` covers app lifecycle, the staged
+  environment and the screen itself; only the accessibility tree and synthetic touches go through a
+  WebDriverAgent runner, reached over the HOST's own loopback because a simulator shares the host
+  network stack. That split is the real difference from the iOS Device server, where seeing
+  anything at all requires the runner: here `simctl io screenshot` needs none, so everything except
+  `ui_tree` works before one has ever started — and once writes are on, the server can start the
+  runner itself. `ios_simulator_diagnostics` reports the two lanes separately.
+
+  It takes no credentials, so it has no auth modes, and unlike the device server there is barely
+  any setup either: a simulator needs no pairing and no Developer Mode toggle, so there is nothing
+  for a profile to hold. `IOS_SIMULATOR_ALLOW_WRITES` gates the fourteen tools that actually drive
+  it.
+
+  The package itself defaults writes ON, the only entry here that does, reasoning that a phone
+  belongs to a real person while a simulator is disposable and holds nobody's data. That default is
+  never reached under Bastion, which writes the gate value explicitly on every spawn: the profile
+  toggle is what decides, and a profile with writes off spawns a server that has not registered the
+  driving tools at all.
 
 - **Catalog entries say which packages npm can tie back to the repository they link to.** A
   `provenance` badge now sits beside the package name in a server's pane and in the catalog list,
