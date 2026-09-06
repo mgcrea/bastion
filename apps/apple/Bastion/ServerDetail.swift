@@ -660,50 +660,56 @@ struct ServerDetail: View {
           .buttonStyle(.borderless)
           .font(.caption)
         }
-      }
-    ) {
-      VStack(alignment: .leading, spacing: 10) {
-        if profiles.isEmpty {
-          Text(
-            "No profile yet. This server cannot start without one — a profile is the credential "
-              + "set a client's request runs as."
-          )
-          .font(.callout)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-
-          Button {
-            editing = .new
-          } label: {
-            Label("Add profile…", systemImage: "plus")
-          }
-          .buttonStyle(.borderedProminent)
-        } else {
-          ForEach(profiles) { profile in
-            ProfileRow(
-              server: server, profile: profile,
-              edit: { editing = .existing(profile) },
-              check: {
-                ServerCheck.shared.start(profile: profile, server: server)
-                checking = profile
-              },
-              chat: { ChatRequest.present(profile: profile, server: server) },
-              report: { lastError = $0 })
-            if profile.id != profiles.last?.id { Divider() }
-          }
-
-          Divider()
-          lazyToolsControl
-        }
-
-        if let lastError {
-          Text(lastError)
-            .font(.caption).foregroundStyle(.red)
-            .textSelection(.enabled)
+      },
+      // Named rather than trailing, and only here: `Card` takes two view
+      // builders, and mixing a labelled one with a trailing closure trips
+      // swift-format's OnlyOneTrailingClosureArgument. It was the one violation
+      // in the Swift half and it reported only intermittently under `--parallel`,
+      // which is why it survived this long.
+      content: {
+        VStack(alignment: .leading, spacing: 10) {
+          if profiles.isEmpty {
+            Text(
+              "No profile yet. This server cannot start without one — a profile is the credential "
+                + "set a client's request runs as."
+            )
+            .font(.callout)
+            .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+              editing = .new
+            } label: {
+              Label("Add profile…", systemImage: "plus")
+            }
+            .buttonStyle(.borderedProminent)
+          } else {
+            ForEach(profiles) { profile in
+              ProfileRow(
+                server: server, profile: profile,
+                edit: { editing = .existing(profile) },
+                check: {
+                  ServerCheck.shared.start(profile: profile, server: server)
+                  checking = profile
+                },
+                chat: { ChatRequest.present(profile: profile, server: server) },
+                report: { lastError = $0 })
+              if profile.id != profiles.last?.id { Divider() }
+            }
+
+            Divider()
+            lazyToolsControl
+          }
+
+          if let lastError {
+            Text(lastError)
+              .font(.caption).foregroundStyle(.red)
+              .textSelection(.enabled)
+              .fixedSize(horizontal: false, vertical: true)
+          }
         }
       }
-    }
+    )
   }
 
   // MARK: - Environment
