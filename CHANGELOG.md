@@ -41,6 +41,47 @@ are taken from this file, which is the curated summary.
   hatch has to live there rather than on the profile: overriding a profile to get Claude Code
   fronted again would drag Claude Desktop along with it.
 
+- **The writes get their own dispatcher, so an editor's approval rule stops collapsing.** The
+  facade's one real cost was that every call reached the client as `bastion_call_tool`, so a rule
+  covering `app_store_connect_list_builds` ended up covering `..._update_app` too. A profile whose
+  server Bastion can classify is now served a fourth tool, `bastion_call_write_tool`, and the
+  ordinary dispatcher REFUSES anything Bastion knows to mutate — naming the other one, so the next
+  call succeeds. Allowlisting `bastion_call_tool` in an editor can no longer run a write, and that
+  is a property Bastion holds up rather than a hint it asserts and hopes the host respects. The
+  two are disjoint in both directions, so nothing downstream has to check the split twice.
+
+  `bastion_call_tool` still carries no `readOnlyHint`, and that is deliberate. A tool in neither
+  the manifest's `writeTools` nor the server's own annotations is UNCLASSIFIED, and the house rule
+  is that silence is not a no. Bastion already bets that way for its own gating, but that bet only
+  decides Bastion's refusal; putting it in an annotation moves it into the editor's confirmation
+  prompt, where being wrong means a mutation nobody was asked about. Refusing the writes it knows
+  is honest and checkable. Claiming to be read-only would be neither.
+
+  Classification comes from the manifest's `writeTools` ORed with what the server annotates, so a
+  server that says nothing either way keeps exactly the three tools it had rather than gaining a
+  fourth that would be a guess — and a profile with writes off has nothing to dispatch to, so it
+  keeps three as well. Seven catalog entries declare `writeTools` today; Bastion's own server
+  annotates every tool it exposes.
+
+- **"Load tools on demand" moved from the profile to the server.** It was stored per profile,
+  with the control on a server writing through to every one of its rows — which is why that
+  control needed a "Mixed" position at all. Mixed was never a state anybody set out to reach; it
+  was the shape of the storage showing through the window.
+
+  The question the switch answers is _is this listing big enough to be worth the trade_, and a
+  listing is a property of the server: `appstore-connect` is 85 tools, `reddit` is 14, and two
+  profiles of one server differ in credentials and in the write gate rather than in whether
+  eighty-five is a lot. The one disagreement that genuinely was per profile — "this one feeds
+  Claude Code, which defers by itself" — is the client axis above, where a profile feeding two
+  clients can be answered honestly instead of averaged.
+
+  A `lazyTools` already written on a profile is carried onto its server once, on the first launch
+  after upgrading, and the key then leaves `profiles.json` on the next save. `upsert_profile`
+  still accepts `lazy_tools` and now writes it through to the server: an argument that starts
+  being silently ignored is worse than one that was renamed, and the schema says out loud that it
+  moves every profile of that server. `list_servers` and `get_server` report it, which is where it
+  lives now.
+
 ### Internal
 
 - **The website's context-cost section now names the client its figures do not describe.** The 67×
