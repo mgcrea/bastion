@@ -196,7 +196,7 @@ struct ClientDetail: View {
         header(snapshot)
         fileCard
         entriesCard(snapshot)
-        contextCard
+        contextCard(snapshot)
         if !snapshot.others.isEmpty { othersCard(snapshot) }
         if !snapshot.projects.isEmpty { projectsCard(snapshot) }
         if let result {
@@ -359,13 +359,23 @@ struct ClientDetail: View {
   /// control that appeared only where the table already says yes would hide the
   /// case it exists for in the other direction: a client that starts deferring
   /// before Bastion learns it has.
-  private var contextCard: some View {
+  private func contextCard(_ snapshot: Snapshot) -> some View {
     let key = ToolFacade.clientOverrideKey(client.id)
     let table = ToolFacade.clientsDeferringSchemas.contains(client.id)
+    // Resolved from the @State tag rather than re-read from the defaults
+    // domain, so the verdict below moves with the picker in the same frame the
+    // user clicks it. `Bool("")` is nil, which is the Default position falling
+    // through to the table — the same resolution the gateway performs.
+    let defers = ToolFacade.clientDefersSchemas(client.id, override: Bool(defersOverride))
     return Card(title: "Context") {
       VStack(alignment: .leading, spacing: 6) {
+        // NOT "Loads tool schemas on demand". That was one word away from the
+        // profile switch's "Load tools on demand" and meant close to the
+        // opposite at the point of use — there it says Bastion fronts the
+        // server, here it says Bastion does not have to. The first person to
+        // read it took it the wrong way round.
         Picker(
-          "Loads tool schemas on demand",
+          "Fetches tool schemas itself",
           selection: Binding(
             get: { defersOverride },
             set: {
@@ -389,7 +399,21 @@ struct ClientDetail: View {
         .controlSize(.small)
         .fixedSize()
 
-        Text(contextDetail)
+        // The consequence, on its own line and in the body font. It was a
+        // clause in the middle of the caption below, which is where nobody
+        // read it: the setting states a fact about the client, and what
+        // somebody actually came here to learn is what Bastion does about it.
+        Text(contextVerdict(defers))
+          .font(.callout)
+          .fixedSize(horizontal: false, vertical: true)
+
+        if let bill = contextBill(snapshot, defers: defers) {
+          Text(bill)
+            .font(.caption).foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+
+        Text(contextDetail(defers))
           .font(.caption).foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       }
@@ -405,15 +429,92 @@ struct ClientDetail: View {
     }
   }
 
-  private var contextDetail: String {
+  /// What Bastion does about it, which is the whole reason to open this card.
+  private func contextVerdict(_ defers: Bool) -> String {
+    defers
+      ? "Bastion serves \(client.displayName) the real list — it is never fronted."
+      : "Profiles with 'Load tools on demand' on are fronted with Bastion's three tools."
+  }
+
+  /// Why, and how to disagree. The verdict above carries the answer, so this is
+  /// free to be the smaller print it looks like.
+  /// What this client is actually sent, added up across the entries above.
+  ///
+  /// The number nobody could see. Every server pane already quotes its own
+  /// figure and each one looks survivable alone; a client wired to five of them
+  /// pays the sum, on every connect, and nothing in the app added them up. This
+  /// is the pane that can: the rows are already read, so it costs a dictionary
+  /// lookup each and no extra IO — `ClientWiring.status(of:profiles:)` opens
+  /// seven config files with no caching, which is why this belongs here and not
+  /// on a server row that redraws.
+  ///
+  /// Only the entries actually written into the file, and only those whose
+  /// server is on: a row Bastion WOULD write is not a row this client is being
+  /// sent anything for.
+  ///
+  /// Says "measured" rather than implying completeness. `ToolCostStore` holds a
+  /// figure only for a profile something has actually listed, so a client wired
+  /// to a server that has never started contributes nothing and the total is a
+  /// floor. Naming the count is what keeps that honest.
+  private func contextBill(_ snapshot: Snapshot, defers: Bool) -> String? {
+    let live = snapshot.rows.filter { $0.state == .matches && !$0.isDisabled && !$0.serverIsOff }
+    guard !live.isEmpty else { return nil }
+
+    var measured = 0
+    var full = 0
+    var fronted = 0
+    for row in live {
+      guard let server = ServerStore.shared.server(id: row.profile.serverID),
+        let cost = ToolCostStore.shared.current(for: row.profile, server: server)
+      else { continue }
+      measured += 1
+      full += cost.bytes
+      // What THIS client is sent, which is the whole point of putting the
+      // figure here: the facade applies only where the server asked for it and
+      // the client cannot defer by itself, so the two axes land in one number.
+      if server.loadsToolsOnDemand, !defers {
+        fronted += ToolFacade.declarationBytes(
+          displayName: server.displayName, summary: server.summary, toolCount: cost.toolCount,
+          hasWriteDispatcher: (cost.writeToolCount ?? 0) > 0)
+      } else {
+        fronted += cost.bytes
+      }
+    }
+    guard measured > 0 else { return nil }
+
+    let scope =
+      measured == live.count
+      ? "\(measured) wired profile\(measured == 1 ? "" : "s")"
+      : "\(measured) of \(live.count) wired profiles measured so far"
+    let sent = ToolCost.short(ToolCost.tokens(bytes: fronted))
+
+    if defers {
+      // No alarm, and no false comfort either. A deferring client IS sent all of
+      // this; what it does not do is hold it in the model's context, and the
+      // distinction is the entire reason it is exempt from the facade.
+      return
+        "Across \(scope), \(client.displayName) is sent "
+        + "\(ToolCost.short(ToolCost.tokens(bytes: full))) tokens of tool definitions and loads "
+        + "each schema on demand, so its context holds the names."
+    }
+    guard fronted < full else {
+      return
+        "Across \(scope), \(client.displayName) is sent \(sent) tokens of tool definitions on "
+        + "every connect, and holds them for the whole conversation."
+    }
+    return
+      "Across \(scope), \(client.displayName) is sent \(sent) tokens of tool definitions on "
+      + "every connect, down from \(ToolCost.short(ToolCost.tokens(bytes: full))) — the servers "
+      + "loading on demand account for the difference."
+  }
+
+  private func contextDetail(_ defers: Bool) -> String {
     let base =
-      ToolFacade.clientDefersSchemas(client.id)
-      ? "\(client.displayName) fetches a tool's schema when it needs one, so Bastion serves it "
-        + "every tool a profile's server exposes even where 'Load tools on demand' is on. "
-        + "Fronting it there would buy back the names and take its own tool search with it."
+      defers
+      ? "\(client.displayName) fetches a tool's schema when it needs one, so fronting it would "
+        + "buy back the names and take its own tool search with it."
       : "\(client.displayName) is sent every tool definition a profile's server exposes, and "
-        + "holds them for the whole conversation. Profiles with 'Load tools on demand' turned on "
-        + "are fronted with Bastion's three tools instead."
+        + "holds them for the whole conversation."
     // Only where Bastion claims the client defers. The escape hatch is for the
     // things Bastion cannot see — the env var, the base URL, the version — and
     // naming them under a client nobody claims defers would be noise.
