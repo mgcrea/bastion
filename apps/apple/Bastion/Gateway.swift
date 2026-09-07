@@ -385,7 +385,19 @@ nonisolated final class Gateway: Sendable {
     if let refusal = checkHost(request) { return refusal }
     if let refusal = checkOrigin(request) { return refusal }
 
-    guard let presented = request.bearerToken, let client = GatewayToken.identify(presented) else {
+    let client: String
+    switch request.bearerToken.map(GatewayToken.identify) ?? .unknown {
+    case .client(let named):
+      client = named
+    case .unavailable:
+      // 503, not 401. The keychain is locked or unreadable, which is this app's
+      // problem and a transient one; answering "unauthorized" would send every
+      // wired client re-issuing a token that was never wrong.
+      hostLog("gateway", .error, "the keychain would not answer; refusing until it does")
+      return HTTPResponse(
+        status: 503, message: "Bastion cannot read its own keychain right now",
+        headers: ["Retry-After": "5"])
+    case .unknown:
       // No detail. "Unknown token" and "no token" are the same sentence on
       // purpose: an error that distinguishes them is an oracle.
       return HTTPResponse(

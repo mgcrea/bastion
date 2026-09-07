@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import os
 
 /// Every secret Bastion holds, in the login Keychain.
 ///
@@ -281,11 +282,56 @@ nonisolated enum GatewayToken {
   static func issue(to client: String) throws -> String {
     let token = mint()
     try CredentialStore.write(.gatewayToken, account: client, value: token)
+    forget()
     return token
   }
 
   static func revoke(_ client: String) throws {
     try CredentialStore.delete(.gatewayToken, account: client)
+    forget()
+  }
+
+  /// The issued tokens, held between requests.
+  ///
+  /// `identify` runs on EVERY request, before anything is served, and used to
+  /// do a `SecItemCopyMatching` over the whole account namespace plus one
+  /// decrypting read per issued client — up to 64 connections deep, for a set
+  /// that changes when somebody wires or unwires an editor and at no other
+  /// time.
+  ///
+  /// Invalidated explicitly by `issue` and `revoke`, which are the only ways
+  /// this app changes it, and expired on a short timer anyway so a token
+  /// deleted in Keychain Access stops working without a relaunch.
+  private static let cache = OSAllocatedUnfairLock<(at: DispatchTime, map: [String: String])?>(
+    initialState: nil)
+
+  /// How long a cached token set may stand when nothing invalidated it.
+  private static let cacheTTL: UInt64 = 60 * 1_000_000_000
+
+  static func forget() { cache.withLock { $0 = nil } }
+
+  /// `nil` means the keychain would not answer — which is NOT the same as
+  /// "no such token", and the caller must not turn it into one.
+  private static func issued() -> [String: String]? {
+    let now = DispatchTime.now()
+    if let warm = cache.withLock({ $0 }),
+      now.uptimeNanoseconds &- warm.at.uptimeNanoseconds < cacheTTL
+    {
+      return warm.map
+    }
+    let clients = CredentialStore.accounts(.gatewayToken)
+    var map: [String: String] = [:]
+    for client in clients {
+      guard let stored = CredentialStore.read(.gatewayToken, account: client) else { continue }
+      map[client] = stored
+    }
+    // Names but no values is the locked-keychain shape, and it is transient.
+    // Caching it would hold a blanket refusal in place for the whole TTL, and
+    // answering "unknown token" would tell a client its credential is wrong
+    // when the truth is that this app cannot read its own.
+    if map.isEmpty && !clients.isEmpty { return nil }
+    cache.withLock { $0 = (at: now, map: map) }
+    return map
   }
 
   /// Which client, if any, this token belongs to.
@@ -295,13 +341,24 @@ nonisolated enum GatewayToken {
   /// early on the first differing byte leaks the token prefix to anything that
   /// can time it — which, on a loopback listener a web page can reach, is not a
   /// theoretical attacker.
-  static func identify(_ presented: String) -> String? {
+  static func identify(_ presented: String) -> Identity {
+    guard let issued = issued() else { return .unavailable }
     let candidate = Array(presented.utf8)
-    for client in CredentialStore.accounts(.gatewayToken) {
-      guard let stored = CredentialStore.read(.gatewayToken, account: client) else { continue }
-      if constantTimeEquals(candidate, Array(stored.utf8)) { return client }
+    for (client, stored) in issued {
+      if constantTimeEquals(candidate, Array(stored.utf8)) { return .client(client) }
     }
-    return nil
+    return .unknown
+  }
+
+  /// Three answers, because two of them must not be collapsed.
+  ///
+  /// `unknown` is the client's problem and `unavailable` is this app's, and
+  /// reporting the second as the first sends someone re-wiring a client that
+  /// was never wrong.
+  enum Identity {
+    case client(String)
+    case unknown
+    case unavailable
   }
 
   private static func constantTimeEquals(_ a: [UInt8], _ b: [UInt8]) -> Bool {
