@@ -49,6 +49,17 @@ nonisolated final class HTTPStream: Sendable {
     var broken = false
     var sent = 0
     var dropped = 0
+    /// The connection thread has finished and is about to `close(2)` the
+    /// descriptor.
+    ///
+    /// Without this, `send` held nothing but a raw `Int32`. A progress frame is
+    /// looked up under the supervisor's lock and delivered OUTSIDE it, so the
+    /// reaper could expire the waiter, resume the connection thread and let it
+    /// close the socket in that window — and the reader thread would then write
+    /// into a descriptor number the kernel may already have reissued to a newly
+    /// accepted connection. The benign outcome is `EBADF`; the other one is one
+    /// profile's payload appearing in another client's response.
+    var closed = false
   }
 
   private let fd: Int32
@@ -78,7 +89,7 @@ nonisolated final class HTTPStream: Sendable {
   func send(_ payload: Data) -> Bool {
     guard armed else { return false }
     return state.withLock { current in
-      guard !current.broken else { return false }
+      guard !current.broken, !current.closed else { return false }
       var out = Data()
       if !current.opened {
         out += Self.head
@@ -120,12 +131,21 @@ nonisolated final class HTTPStream: Sendable {
   /// truncated event and the close is the honest end of it.
   func finish(with response: HTTPResponse) {
     let shouldWrite = state.withLock { current -> Bool in
-      guard current.opened, !current.broken else { return false }
+      guard current.opened, !current.broken, !current.closed else { return false }
       current.sent += 1
       return true
     }
     guard shouldWrite else { return }
     _ = writeAll(fd, Self.frame(response.body))
+  }
+
+  /// Retire the descriptor, from the connection's own thread.
+  ///
+  /// Called before `close(2)` and under the same lock every write takes, so a
+  /// frame is either fully written to a descriptor that is still ours or not
+  /// written at all. There is no window in between.
+  func close() {
+    state.withLock { $0.closed = true }
   }
 
   // MARK: - Wire

@@ -351,6 +351,11 @@ nonisolated final class Gateway: Sendable {
       return
     }
     let stream = HTTPStream(fd: client, armed: request.acceptsEventStream)
+    // Registered after the stream exists, so it runs BEFORE the outer `defer`
+    // closes the descriptor. That ordering is the whole fix: a progress frame
+    // racing this teardown is dropped rather than written into an fd number the
+    // kernel is free to hand to the next connection.
+    defer { stream.close() }
     let response = route(request, stream: stream)
     // `isOpen` is false unless a progress frame actually went out, so a call
     // that streamed nothing is answered exactly as it was before streaming
