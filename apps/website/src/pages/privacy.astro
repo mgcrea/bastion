@@ -98,8 +98,9 @@ const STAYS = [
         }
       </dl>
       <p class="mt-6 mb-0 max-w-[62ch] text-[14px] leading-[1.6] text-fg-muted text-pretty">
-        That is the whole list. There is no analytics, no telemetry, no crash reporter and no
-        first-run ping.
+        That is the whole list. The app sends no analytics, no telemetry, no crash reporter and
+        no first-run ping. (The website is a separate matter, and counts page views — see
+        <a href="#this-site" class="underline underline-offset-2">This site</a> below.)
         <a href={DOCS.audit} rel="noopener" class="underline underline-offset-2">
           scripts/audit-listener.sh
         </a> asserts the gateway binds loopback and nothing else; the update check is the single
@@ -147,14 +148,22 @@ const STAYS = [
     </section>
 
     <section class="mt-16">
-      <h2 class="m-0 font-display text-[22px] font-semibold tracking-[-0.03em]">This site</h2>
+      <h2 id="this-site" class="m-0 font-display text-[22px] font-semibold tracking-[-0.03em]">This site</h2>
       <p class="mt-5 mb-0 max-w-[62ch] text-[15px] leading-[1.65] text-fg-dim text-pretty">
-        Static files on Cloudflare, with no analytics script, no cookies and no third-party embeds.
-        It loads no fonts and no images from anywhere else — the content security policy in
-        <code class="font-mono text-[13.5px] text-fg/75">astro.config.mjs</code> is
-        <code class="font-mono text-[13.5px] text-fg/75">'self'</code> throughout, so a request to a
-        third party would not merely be absent, it would be refused by the browser. Cloudflare keeps
-        its own request logs, as any host does.
+        Static files on Cloudflare, with no cookies and no third-party embeds. It loads no fonts
+        and no images from anywhere else: the content security policy in
+        <code class="font-mono text-[13.5px] text-fg/75">astro.config.mjs</code> names the one
+        third-party origin this page is allowed to reach, and any other request would not merely be
+        absent, it would be refused by the browser. Cloudflare keeps its own request logs, as any
+        host does.
+      </p>
+      <p class="mt-5 mb-0 max-w-[62ch] text-[15px] leading-[1.65] text-fg-dim text-pretty">
+        That one origin is Cloudflare Web Analytics, which counts page views. It sets no cookie and
+        stores nothing on your device, so there is no banner asking you to accept it. What it
+        records is the page address, the referring page, your browser and operating system, your
+        screen size, how long the page took to load, and the country the request came from. It never
+        receives your IP address, and there is no identifier that would let one visit be joined to
+        another or to you. You can block it with any content blocker and the page works unchanged.
       </p>
     </section>
 

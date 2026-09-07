@@ -17,11 +17,26 @@ export default defineConfig({
         "default-src 'self'",
         "img-src 'self' data:",
         "font-src 'self' data:",
-        "connect-src 'self'",
+        // The beacon POSTs its measurement here (no `static.` prefix). Miss this
+        // and the script loads, runs, and every report stays empty.
+        "connect-src 'self' https://cloudflareinsights.com",
         "base-uri 'self'",
         "form-action 'self'",
         "object-src 'none'",
       ],
+      /*
+       * The Cloudflare Web Analytics beacon is a manual embed, so the browser has to be
+       * allowed to fetch it from a third-party origin. Astro fills `script-src` with
+       * `'self'` plus a sha256 per inline script and nothing else, and hashes only ever
+       * match inline scripts — an external URL needs a host source or it is refused
+       * silently, with the tag sitting in the HTML looking perfect.
+       *
+       * `resources` REPLACES Astro's default source list rather than extending it, so
+       * `'self'` has to be repeated here. The per-script hashes are still appended.
+       */
+      scriptDirective: {
+        resources: ["'self'", "https://static.cloudflareinsights.com/beacon.min.js"],
+      },
       // The marquee, the fan-in connector lanes and the staggered dash
       // animations carry computed delays in per-element `style` attributes. CSP
       // hashes never cover style attributes, and 'unsafe-inline' on `style-src`

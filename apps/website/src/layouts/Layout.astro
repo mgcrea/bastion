@@ -132,5 +132,14 @@ const schemaEntries = Array.isArray(schema) ? schema : schema ? [schema] : [];
         toggle.setAttribute("aria-pressed", String(foreign));
       });
     </script>
+    {/* Cloudflare Web Analytics. Cookieless and stores nothing on the visitor's
+        device, so it needs no consent banner — see /privacy. The token is public
+        by design: it ships in the HTML of every page. */}
+    <script
+      is:inline
+      defer
+      src="https://static.cloudflareinsights.com/beacon.min.js"
+      data-cf-beacon='{"token": "b012e47834464062ab866370f8cabea6"}'
+    ></script>
   </body>
 </html>
