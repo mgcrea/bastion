@@ -84,6 +84,41 @@ nonisolated enum RemoteOAuth {
     }
   }
 
+  /// Split on `separator`, ignoring separators inside a quoted value.
+  ///
+  /// A plain `split(separator: ",")` cuts inside `resource_metadata="https://x/a,b"`
+  /// and yields a truncated URL, so discovery falls back to the RFC 9728
+  /// well-known path against a server that did name its metadata — a failure
+  /// that looks like the server's.
+  static func splitOutsideQuotes(_ text: String, on separator: Character) -> [String] {
+    var parts: [String] = []
+    var current = ""
+    var quoted = false
+    var escaped = false
+    for character in text {
+      if escaped {
+        current.append(character)
+        escaped = false
+        continue
+      }
+      switch character {
+      case "\\" where quoted:
+        current.append(character)
+        escaped = true
+      case "\"":
+        quoted.toggle()
+        current.append(character)
+      case separator where !quoted:
+        parts.append(current)
+        current = ""
+      default:
+        current.append(character)
+      }
+    }
+    parts.append(current)
+    return parts
+  }
+
   // MARK: - Step 1, the challenge
 
   /// The protected-resource metadata URL named by a 401, per RFC 9728.
@@ -94,7 +129,7 @@ nonisolated enum RemoteOAuth {
   static func resourceMetadataURL(fromChallenge header: String) -> URL? {
     // `Bearer resource_metadata=https://…, error="…"`. Quoted or bare, and the
     // parameter order is not fixed.
-    for part in header.split(separator: ",") {
+    for part in splitOutsideQuotes(header, on: ",") {
       let trimmed = part.trimmingCharacters(in: .whitespaces)
       let body = trimmed.hasPrefix("Bearer ") ? String(trimmed.dropFirst(7)) : trimmed
       guard let equals = body.firstIndex(of: "=") else { continue }
@@ -200,7 +235,13 @@ nonisolated enum RemoteOAuth {
 
     init() {
       var bytes = [UInt8](repeating: 0, count: 32)
-      _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+      let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+      // Fatal for the same reason `GatewayToken.mint` is. Discarding the status
+      // left an all-zero verifier on failure, which is a challenge an attacker
+      // can compute — and PKCE is the entire reason an intercepted code is
+      // useless, so a silently predictable one removes the protection while
+      // still looking like it is there.
+      precondition(status == errSecSuccess, "SecRandomCopyBytes failed")
       verifier = Self.base64URL(Data(bytes))
     }
 
@@ -256,10 +297,15 @@ nonisolated enum RemoteOAuth {
     func value(_ name: String) -> String? {
       items.first { $0.name == name }?.value
     }
+    // State first, which is what the comment above has always promised. With
+    // `error` read first, anything able to reach the ephemeral callback port —
+    // any local process — could abort an authorization in flight with
+    // `?error=access_denied`, and the user would read the refusal as the
+    // provider's.
+    guard value("state") == state else { throw OAuthError.stateMismatch }
     if let error = value("error") {
       throw OAuthError.denied(value("error_description") ?? error)
     }
-    guard value("state") == state else { throw OAuthError.stateMismatch }
     guard let code = value("code"), !code.isEmpty else {
       throw OAuthError.denied("no code in the callback")
     }
@@ -345,7 +391,11 @@ nonisolated enum RemoteOAuth {
   /// A random, URL-safe `state`.
   static func randomState() -> String {
     var bytes = [UInt8](repeating: 0, count: 16)
-    _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+    let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+    // As in `PKCE.init`: an all-zero `state` is one an attacker knows, and this
+    // value is the only thing standing between the callback and a response to a
+    // request this app never made.
+    precondition(status == errSecSuccess, "SecRandomCopyBytes failed")
     return PKCE.base64URL(Data(bytes))
   }
 }

@@ -247,6 +247,16 @@ struct RemoteCheck {
       meta("Bearer error=\"invalid_token\", resource_metadata=https://x.example/m")
         == "https://x.example/m")
     check("a challenge naming nothing yields nil", meta("Bearer realm=\"x\"") == nil)
+    // A comma inside a quoted value is legal and used to cut the header in half,
+    // truncating the URL and sending discovery to the well-known path against a
+    // server that had just named its metadata.
+    check(
+      "a comma inside a quoted value does not split the challenge",
+      meta("Bearer resource_metadata=\"https://x.example/m,n\"") == "https://x.example/m,n")
+    check(
+      "and it is still found after a quoted parameter carrying one",
+      meta("Bearer error=\"bad, very bad\", resource_metadata=https://x.example/m")
+        == "https://x.example/m")
 
     print("\nOAuth: RFC 8414 metadata locations")
     // The counter-intuitive one, and the one Stripe actually serves: the
@@ -323,6 +333,25 @@ struct RemoteCheck {
     check("a missing state is refused", code("code=abc", state: "xyz") == nil)
     check(
       "an error response is refused", code("error=access_denied&state=xyz", state: "xyz") == nil)
+    // State is checked BEFORE error, which is what the doc comment always
+    // claimed. Otherwise anything that could reach the ephemeral callback port —
+    // any local process — could abort an authorization in flight, and the user
+    // would read the refusal as coming from the provider.
+    check(
+      "an error carrying the wrong state is a state mismatch, not a denial",
+      {
+        do {
+          _ = try RemoteOAuth.code(
+            fromCallback: URL(
+              string: "http://127.0.0.1:53682/oauth/callback?error=access_denied&state=nope")!,
+            expecting: "xyz")
+          return false
+        } catch RemoteOAuth.OAuthError.stateMismatch {
+          return true
+        } catch {
+          return false
+        }
+      }())
 
     print("\nOAuth: token requests and token sets")
     // A code containing + or & is legal and would arrive truncated unencoded —

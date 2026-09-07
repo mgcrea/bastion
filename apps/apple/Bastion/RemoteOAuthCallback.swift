@@ -139,7 +139,7 @@ nonisolated final class RemoteOAuthCallback {
       guard client >= 0 else { continue }
       defer { close(client) }
 
-      guard let line = Self.readRequestLine(client) else { continue }
+      guard let line = Self.readRequestLine(client, until: deadline) else { continue }
       // `GET /oauth/callback?code=…&state=… HTTP/1.1`
       let parts = line.split(separator: " ")
       guard parts.count >= 2 else { continue }
@@ -165,20 +165,46 @@ nonisolated final class RemoteOAuthCallback {
 
   /// Just the request line. The headers and body of a redirect are of no
   /// interest, and reading a whole request would mean caring how long it is.
-  private static func readRequestLine(_ client: Int32) -> String? {
+  private static func readRequestLine(_ client: Int32, until deadline: Date) -> String? {
     var buffer = [UInt8]()
     var byte: UInt8 = 0
     // A request line long enough to hold a code and a state, and no longer:
     // this reads from a socket anyone local can connect to, so it needs a
     // ceiling that does not depend on the sender being reasonable.
     while buffer.count < 8192 {
+      // The deadline matters as much as the ceiling, and it used to be missing.
+      // `poll` upstairs watches the LISTENING socket; once `accept` returns,
+      // this sat in a blocking one-byte `recv` with no timeout at all. Browsers
+      // routinely open speculative connections and send nothing on them, and one
+      // landing here parked the authorization forever: the 300-second timeout is
+      // only re-read at the top of the accept loop, which this never returned
+      // to. The profile could not be authorized again until the app restarted.
+      guard awaitReadable(client, until: deadline) else { break }
       let read = recv(client, &byte, 1, 0)
+      if read < 0 && errno == EINTR { continue }
       if read <= 0 { break }
       if byte == UInt8(ascii: "\n") { break }
       if byte != UInt8(ascii: "\r") { buffer.append(byte) }
     }
     guard !buffer.isEmpty else { return nil }
     return String(bytes: buffer, encoding: .utf8)
+  }
+
+  /// Block until `fd` has something to read, or the deadline passes.
+  ///
+  /// `poll` rather than `SO_RCVTIMEO`, for the reason `HTTPRequest.awaitReadable`
+  /// gives: that option bounds one `recv`, so a peer trickling a byte at a time
+  /// stays under it indefinitely. `POLLHUP` and `POLLERR` count as readable —
+  /// the `recv` that follows returns 0 or -1, which the caller handles.
+  private static func awaitReadable(_ fd: Int32, until deadline: Date) -> Bool {
+    while true {
+      let remaining = deadline.timeIntervalSinceNow
+      guard remaining > 0 else { return false }
+      var poller = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+      let ready = poll(&poller, 1, Int32(min(remaining, 1) * 1000))
+      if ready > 0 { return true }
+      if ready < 0 && errno != EINTR { return false }
+    }
   }
 
   private static func respond(_ client: Int32, status: String, body: String) {
