@@ -27,6 +27,14 @@ are taken from this file, which is the curated summary.
   cannot pass the check on the developer's own npm. Every existing step ran the two binaries by
   absolute path, which is how a bundle that no child could shell out from passed all of them.
 
+### Changed
+
+- **The npm catalog entry documents the variables it always read.** `NPM_BIN`, `NPM_TOTP_LABEL`,
+  `NPM_TOTP_SECRET` and `NPM_TOTP_KEYCHAIN_SERVICE` are now in the profile editor, and
+  `NPM_OTP_MODE` lists `totp` — the only mode that answers npm's second factor without a human,
+  and therefore the only one an unattended publish or trusted-publisher batch can use. It was
+  missing from the description, which made the mode undiscoverable from Bastion.
+
 ## [1.13.0] - 2026-09-07
 
 ### Added

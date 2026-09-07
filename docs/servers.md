@@ -202,7 +202,7 @@ asserts both eras against a running build.
 | [Shopify](https://github.com/mgcrea/mcp-shopify) | `shopify` | `shopify-mcp` | `@mgcrea/mcp-shopify` (npm, provenance) | read-only | 1 |
 | [OVHcloud](https://github.com/mgcrea/mcp-ovh) | `ovh` | `ovh-mcp` | `@mgcrea/mcp-ovh` (npm) | `OVH_ALLOW_WRITES` | 4 |
 | [Keycloak](https://github.com/mgcrea/mcp-keycloak) | `keycloak` | `keycloak-mcp` | `@mgcrea/mcp-keycloak` (npm, provenance) | `KEYCLOAK_ALLOW_WRITES` | 2 |
-| [npm](https://github.com/mgcrea/mcp-npm) | `npm` | `npm-mcp` | `@mgcrea/mcp-npm` (npm, provenance) | `NPM_ALLOW_WRITES` | 2 |
+| [npm](https://github.com/mgcrea/mcp-npm) | `npm` | `npm-mcp` | `@mgcrea/mcp-npm` (npm, provenance) | `NPM_ALLOW_WRITES` | 3 |
 | [GitHub](https://github.com/github/github-mcp-server) | `github` | — | `https://api.githubcopilot.com/mcp/` (remote) | `actions_run_trigger`, `add_comment_to_pending_review`, `add_issue_comment`, `add_reply_to_pull_request_comment`, `assign_copilot_to_issue`, `assign_copilot_to_issue_with_intent`, `create_branch`, `create_gist`, `create_or_update_file`, `create_pull_request`, `create_pull_request_with_copilot`, `create_repository`, `delete_file`, `delete_repository`, `discussion_comment_write`, `dismiss_notification`, `fork_repository`, `issue_write`, `label_write`, `manage_notification_subscription`, `manage_repository_notification_subscription`, `mark_all_notifications_read`, `merge_pull_request`, `projects_write`, `pull_request_review_write`, `push_files`, `request_copilot_review`, `star_repository`, `sub_issue_write`, `unstar_repository`, `update_gist`, `update_pull_request`, `update_pull_request_branch` (by name) | 1 |
 | [Notion](https://developers.notion.com/docs/mcp) | `notion` | — | `https://mcp.notion.com/mcp` (remote) | read-only | 1 |
 | [Linear](https://linear.app/docs/mcp) | `linear` | — | `https://mcp.linear.app/mcp` (remote) | read-only | 1 |
@@ -534,9 +534,16 @@ The writes worth naming are irreversible in npm's own terms, and the
 gate is not the only thing standing in front of them: publish and
 unpublish both offer a dry run, and everything irreversible also
 wants an explicit `confirm: true`. npm demands a fresh one-time
-password on every trusted-publisher endpoint, the READ included, so
-unattended trust configuration is impossible by construction rather
-than by policy.
+password on every trusted-publisher endpoint, the READ included, and
+on a publish once the account has two-factor on writes.
+
+Which mode answers that decides whether any of it runs unattended.
+In the default web mode it ends at a human every time, because a
+code lasts five minutes and npm only issues the authorization URL
+inside a 401. NPM_OTP_MODE=totp is the one that does not: the seed
+sits in the keychain and the code is computed on the spot. The trade
+is that npm's second factor then lives on this machine beside the
+token, so anything that can read that keychain item can publish.
 
 | Variable | Required | Secret | Meaning |
 | --- | --- | --- | --- |
@@ -544,10 +551,14 @@ than by policy.
 | `NPM_REGISTRY` | — | — | Registry to talk to. Defaults to https://registry.npmjs.org, and the .npmrc token is looked up for whichever host this names, never sent to another. |
 | `NPM_CONFIG_USERCONFIG` | — | — | Which .npmrc the fallback token is read from. Unset means the machine's own ~/.npmrc, which every profile would then share. |
 | `NPM_MCP_CONFIG` | — | — | Config file path. Bastion already points the default at the profile's own directory; set this only to name a file elsewhere. |
-| `NPM_OTP_MODE` | — | — | How the one-time password npm demands on every trusted-publisher call is obtained: web opens npm's confirmation page and waits, static uses NPM_OTP, none refuses with instructions. Defaults to web. |
+| `NPM_OTP_MODE` | — | — | How the one-time password npm demands on every trusted-publisher call and on a challenged publish is obtained: web opens npm's confirmation page and waits, totp mints one locally from a stored seed, static uses NPM_OTP, none refuses with instructions. Defaults to web. Only totp runs unattended — the others all end at a human. |
 | `NPM_OTP` | — | yes | A one-time password, and the only thing NPM_OTP_MODE=static will start without complaining about. Rarely right: a code lasts about five minutes, so one set at spawn is dead before anything calls a tool. |
+| `NPM_TOTP_LABEL` | — | — | NPM_OTP_MODE=totp only: which stored seed to read, through @mgcrea/mcp-totp. Defaults to npm. |
+| `NPM_TOTP_SECRET` | — | yes | NPM_OTP_MODE=totp only: an otpauth:// URI or bare base32 key, used instead of the keychain. This is npm's SECOND FACTOR, so a profile holding it alongside the token holds both halves of the account — prefer the keychain, and prefer trusted publishing over OIDC where it applies, which needs no second factor at all. |
+| `NPM_TOTP_KEYCHAIN_SERVICE` | — | — | NPM_OTP_MODE=totp only: which keychain service the seed is stored under. Defaults to com.mgcrea.mcp-totp, which is where mcp-totp's own totp_import_uri writes it. |
 | `NPM_AUTO_OPEN_BROWSER` | — | — | Whether the one-time-password flow launches a browser, or only prints the authorization URL. Boolean — unset means on. |
-| `NPM_ALLOW_WRITES` | — | — | Registers the write tools: publish and unpublish, dist-tags, deprecation, package access, org and team membership, tokens, and trusted-publisher changes. |
+| `NPM_ALLOW_WRITES` | — | — | Registers the write tools: publish and unpublish, dist-tags, deprecation, package access, org and team membership, tokens, trusted-publisher changes, and the browser login that puts a session token in front of every other credential for the life of the process. |
+| `NPM_BIN` | — | — | Path to npm's npm-cli.js, used by npm_publish to build the tarball with `npm pack`. Left unset the server finds npm beside the Node it is running under, which under Bastion is the bundled runtime. Set it to publish with a different npm than the one this app ships. |
 
 Per-profile state: `NPM_CONFIG_USERCONFIG`, `NPM_MCP_CONFIG`
 
