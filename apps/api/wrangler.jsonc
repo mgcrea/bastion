@@ -39,5 +39,46 @@
   "observability": { "enabled": true },
   "send_metrics": false,
   "workers_dev": false,
-  "preview_urls": false
+  "preview_urls": false,
+
+  // The test-mode rehearsal, and the reason it is a named environment rather
+  // than a second config file.
+  //
+  // `.test.vars.example` has always said "the Stripe TEST-mode deployment", but
+  // there was no such deployment: this file declared one Worker and
+  // `push-worker-secrets.mjs` passed no `--env`, so following those
+  // instructions replaced the LIVE webhook signing secret with a test-mode one.
+  // Every real `checkout.session.completed` would then be refused as an invalid
+  // signature, and nothing would say why until a buyer wrote in.
+  //
+  // Named environments inherit `main` and `compatibility_date` but NOT bindings
+  // or vars, so those are repeated in full below rather than assumed. No custom
+  // domain: a rehearsal is reached at its workers.dev URL, and the webhook
+  // endpoint is whatever the test-mode Stripe dashboard is pointed at.
+  "env": {
+    "test": {
+      "name": "bastion-api-test",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "bastion-licenses-test",
+          "migrations_dir": "./migrations"
+        }
+      ],
+      "send_email": [{ "name": "EMAIL" }],
+      "ratelimits": [
+        { "name": "RESEND_LIMIT", "namespace_id": "2001", "simple": { "limit": 5, "period": 60 } },
+        { "name": "THANKS_LIMIT", "namespace_id": "2002", "simple": { "limit": 20, "period": 60 } }
+      ],
+      "vars": {
+        "CURRENT_MAJOR": "1",
+        "LICENSE_FROM_EMAIL": "licences@mgcrea.io",
+        "SITE_URL": "https://bastion.mgcrea.io"
+      },
+      "observability": { "enabled": true },
+      "send_metrics": false,
+      "workers_dev": true,
+      "preview_urls": false
+    }
+  }
 }

@@ -16,14 +16,33 @@
 // `.dev.vars` needs none of this — wrangler reads it automatically for local dev
 // and it never reaches the deployed Worker.
 //
+// The other thing it does is refuse to push TEST-mode credentials at the
+// production Worker. `.test.vars.example` documents a rehearsal against a
+// test-mode deployment, but wrangler applies secrets to the default environment
+// unless told otherwise — so following those instructions replaced the LIVE
+// webhook signing secret with a test-mode one, and every real payment was then
+// refused as an invalid signature with nothing anywhere saying why.
+//
 //   node scripts/push-worker-secrets.mjs .prod.vars
+//   node scripts/push-worker-secrets.mjs .test.vars --env test
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const [file] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const envAt = args.indexOf("--env");
+const targetEnv = envAt === -1 ? null : args[envAt + 1];
+if (envAt !== -1 && !targetEnv) {
+  console.error("FATAL: --env needs a name, e.g. --env test");
+  process.exit(2);
+}
+const file = args.find((argument, index) => {
+  if (argument === "--env") return false;
+  if (envAt !== -1 && index === envAt + 1) return false;
+  return !argument.startsWith("--");
+});
 if (!file) {
   console.error("FATAL: name a dotenv file, e.g. .prod.vars");
   process.exit(2);
@@ -71,8 +90,31 @@ if (modes.size > 1) {
   console.error(`WARNING: ${file} mixes test and live Stripe credentials.`);
 }
 
-console.log(`pushing ${entries.map(([name]) => name).join(", ")} from ${file}`);
-execFileSync("pnpm", ["exec", "wrangler", "secret", "bulk", file], {
-  cwd: API,
-  stdio: "inherit",
-});
+// The one that is not a warning. `wrangler secret bulk` with no `--env` writes
+// to the DEFAULT environment, which is the Worker taking real money at
+// api.bastion.mgcrea.io. Pushing a test-mode webhook secret there refuses every
+// genuine payment, and the failure surfaces as a signature error rather than as
+// anything pointing back here.
+if (modes.has("test") && !targetEnv) {
+  console.error(`FATAL: ${file} carries TEST-mode Stripe credentials and no --env was given.`);
+  console.error("Without --env these go to the production Worker, which would then refuse");
+  console.error("every real payment as an invalid signature. Did you mean:");
+  console.error(`  node scripts/push-worker-secrets.mjs ${file} --env test`);
+  process.exit(2);
+}
+
+const target = targetEnv ? `the "${targetEnv}" environment` : "the production Worker";
+console.log(`pushing ${entries.map(([name]) => name).join(", ")} from ${file} to ${target}`);
+try {
+  execFileSync(
+    "pnpm",
+    ["exec", "wrangler", "secret", "bulk", file, ...(targetEnv ? ["--env", targetEnv] : [])],
+    { cwd: API, stdio: "inherit" },
+  );
+} catch (error) {
+  // Every other failure in this script is a sentence. A raw Node stack trace
+  // over a wrangler error that already printed its own is noise on top of the
+  // useful part.
+  console.error(`FATAL: wrangler did not apply the secrets (${String(error?.message ?? error)})`);
+  process.exit(1);
+}
