@@ -284,6 +284,7 @@ final class ServerInstaller {
     case npmFailed(code: Int32, detail: String)
     case noEntryPoint(package: String)
     case quarantined(package: String)
+    case timedOut(package: String, seconds: Int)
 
     var errorDescription: String? {
       switch self {
@@ -305,8 +306,42 @@ final class ServerInstaller {
           + "applying — `min-release-age` or `before`, usually from ~/.npmrc. Wait until a "
           + "version is old enough, or set a shorter window for Bastion alone in Settings › "
           + "General."
+      case .timedOut(let package, let seconds):
+        return
+          "installing \(package) got no further after \(seconds)s and was stopped. The registry "
+          + "may be unreachable or unusually slow; try again."
       }
     }
+  }
+
+  /// How long npm gets before it is stopped.
+  ///
+  /// Generous — a cold cache on a slow link is genuinely slow — but finite,
+  /// which it was not. `readDataToEndOfFile` returns at EOF and the pipe reaches
+  /// EOF when the child exits, so a registry that accepted the connection and
+  /// then said nothing parked this forever. The visible symptom was worse than
+  /// the wait: `running[server.id]` is only cleared when the task returns, so
+  /// the guard in `install` refused every retry for the life of the app, and the
+  /// row sat on "Installing…" with no way to dismiss it.
+  nonisolated static let installTimeout: TimeInterval = 300
+
+  /// Stop `process` if it is still running after `seconds`, and say so.
+  ///
+  /// `asyncAfter` rather than a `DispatchSourceTimer` because there is nothing
+  /// to cancel: the closure retains what it needs, and once the child has
+  /// exited it does nothing at all. SIGTERM rather than SIGKILL — npm gets to
+  /// remove its own partial tree — and the EOF that follows is what releases the
+  /// thread blocked in `readDataToEndOfFile`.
+  nonisolated private static func armWatchdog(
+    _ process: Process, seconds: TimeInterval
+  ) -> OSAllocatedUnfairLock<Bool> {
+    let fired = OSAllocatedUnfairLock(initialState: false)
+    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + seconds) {
+      guard process.isRunning else { return }
+      fired.withLock { $0 = true }
+      process.terminate()
+    }
+    return fired
   }
 
   /// Install or re-install one server. Safe to call on something already there:
@@ -458,6 +493,7 @@ final class ServerInstaller {
     closeOnExec(errors.fileHandleForReading.fileDescriptor)
 
     try process.run()
+    let watchdog = Self.armWatchdog(process, seconds: Self.installTimeout)
     // Read before waiting. npm on a slow registry writes more than a pipe
     // buffer holds, and waiting first would deadlock against a child blocked on
     // a write nobody is draining.
@@ -465,6 +501,9 @@ final class ServerInstaller {
       decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
     process.waitUntilExit()
 
+    if watchdog.withLock({ $0 }) {
+      throw InstallError.timedOut(package: package.npmName, seconds: Int(Self.installTimeout))
+    }
     guard process.terminationStatus == 0 else {
       // Checked against the code rather than the sentence: `lastMeaningfulLine`
       // drops the `code ENOVERSIONS` line on purpose, and the sentence it keeps
@@ -585,8 +624,14 @@ final class ServerInstaller {
     closeOnExec(output.fileHandleForReading.fileDescriptor)
 
     try process.run()
+    let watchdog = armWatchdog(process, seconds: installTimeout)
     let data = output.fileHandleForReading.readDataToEndOfFile()
     process.waitUntilExit()
+    // An update check that hung is "unknown", not "up to date": saying the
+    // latter would be a claim about a registry that never answered.
+    if watchdog.withLock({ $0 }) {
+      throw InstallError.timedOut(package: package.npmName, seconds: Int(installTimeout))
+    }
 
     // npm prints a human summary line ("change zod 4.5.0 => 4.5.4") *before*
     // the JSON, on the same stream. Parsing from the first brace rather than
