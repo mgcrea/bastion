@@ -69,7 +69,11 @@ if (!Number.isInteger(major) || major < 1) {
 const key = mint({ email, major, privateKey });
 const { claims } = parse(key);
 const out = valueOf("out", "");
-if (out) writeFileSync(out, `${key}\n`);
+// 0600, not the default umask. The file holds somebody's licence key, and every
+// other secret this repo writes is already careful about it — the Makefile
+// chmods dev.json to 600 and sets `umask 077` before writing the Sparkle key.
+// This one landed world-readable.
+if (out) writeFileSync(out, `${key}\n`, { mode: 0o600 });
 
 if (json) {
   console.log(JSON.stringify({ claims, key, publicKey: publicKeyOf(privateKey) }, null, 2));
