@@ -5,15 +5,17 @@
 // it. The app makes no network connections — scripts/audit-listener.sh fails the
 // build over it and the README sells it — so there is no list it can consult
 // while running. A refunded key therefore keeps working until the next release
-// and then stops. That belongs in published terms, said to the buyer rather than
-// left to be discovered — Bastion has none yet.
+// and then stops. That is said to the buyer rather than left to be discovered:
+// the EULA in apps/apple/EULA covers it at §5(a) and §6, and the site serves it
+// at /terms.
 //
 // Generated-and-committed rather than fetched by CI. Reading D1 from the release
 // job would put a network dependency in the path of shipping, so an outage at
 // Cloudflare would become an outage in releases — and it would buy nothing,
 // since a revocation cannot take effect before the next build either way. CI
-// only checks that the committed file is current, and skips even that when it
-// has no credentials, so forks and pull requests are unaffected.
+// runs `--check` in the Manifest job to confirm the committed file is current,
+// and skips even that when it has no credentials, so forks and pull requests are
+// unaffected.
 //
 //   node scripts/generate-revocations.mjs            # rewrite the Swift file
 //   node scripts/generate-revocations.mjs --check    # fail if it is stale
@@ -83,7 +85,14 @@ const ids = rows
   .toSorted();
 
 const header = readFileSync(TARGET, "utf8").split("\nenum Revocations")[0];
-const list = ids.length === 0 ? "[]" : `[\n${ids.map((id) => `    "${id}",`).join("\n")}\n  ]`;
+// `JSON.stringify`, not string interpolation — the same escaper
+// `generate-servers.mjs` uses for every value it writes into Swift. These ids
+// come from a DATABASE rather than from servers.json, which makes this the one
+// string in the release path nobody in this repo chose, and a quote or a
+// backslash in one would emit Swift that does not compile.
+const swiftString = (value) => JSON.stringify(value);
+const list =
+  ids.length === 0 ? "[]" : `[\n${ids.map((id) => `    ${swiftString(id)},`).join("\n")}\n  ]`;
 const next = `${header}\nenum Revocations {\n  static let ids: Set<String> = ${list}\n}\n`;
 
 if (check) {
