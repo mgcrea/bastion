@@ -468,6 +468,12 @@ enum ClientWiringMerge {
       backup = url.appendingPathExtension(backupSuffix)
       try? fm.removeItem(at: backup!)
       try fm.copyItem(at: url, to: backup!)
+      // Same 0600 the target gets below, and for a stronger reason: a copy
+      // inherits the mode of what it copied, so re-wiring a client that was
+      // world-readable left a sibling file holding the PREVIOUS bearer token at
+      // that mode, indefinitely, where nobody thinks to look for it. The token
+      // in it stays valid until it is revoked.
+      try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup!.path)
     } else {
       try fm.createDirectory(
         at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
