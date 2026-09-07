@@ -203,6 +203,12 @@ NODE_SUMS := apps/apple/.build/node-cache/SHASUMS256-v$(NODE_VERSION).txt
 
 node: ## Download, verify and stage the embedded node runtime and npm
 	@mkdir -p $(STAGED) apps/apple/.build/node-cache
+	@# `[ -f ]`, so an interrupted curl leaves a TRUNCATED sums file that
+	@# satisfies this test forever. The verification below then finds no line for
+	@# the tarball, `shasum -c` reads empty input and exits 1 — correctly failing
+	@# closed — so the handler deletes both files rather than only the tarball,
+	@# which used to leave the poisoned cache in place and re-download a
+	@# perfectly good archive on every subsequent run.
 	@[ -f "$(NODE_SUMS)" ] || curl -fsSL -o "$(NODE_SUMS)" \
 		"https://nodejs.org/dist/v$(NODE_VERSION)/SHASUMS256.txt"
 	@for arch in $(NODE_ARCHS); do \
@@ -210,8 +216,8 @@ node: ## Download, verify and stage the embedded node runtime and npm
 		tar="apps/apple/.build/node-cache/$$name"; \
 		[ -f "$$tar" ] || curl -fsSL -o "$$tar" "https://nodejs.org/dist/v$(NODE_VERSION)/$$name"; \
 		grep " $$name$$" "$(NODE_SUMS)" | sed "s|  .*|  $$tar|" | shasum -a 256 -c - >/dev/null \
-			|| { echo "  !! $$name does not match SHASUMS256.txt for v$(NODE_VERSION); deleted, run 'make node' again"; \
-			     rm -f "$$tar"; exit 1; }; \
+			|| { echo "  !! $$name does not match SHASUMS256.txt for v$(NODE_VERSION); deleted both, run 'make node' again"; \
+			     rm -f "$$tar" "$(NODE_SUMS)"; exit 1; }; \
 		echo "  $$name verified"; \
 		tar -xzf "$$tar" -C apps/apple/.build/node-cache \
 			"node-v$(NODE_VERSION)-darwin-$$arch/bin/node"; \
@@ -349,7 +355,12 @@ sparkle-keys: sparkle ## Generate or reuse the EdDSA update-signing key
 # ahead of /usr/bin on many machines, where `-f%z` fails with "invalid option"
 # and the enclosure came out as length="" — a malformed appcast whose only
 # symptom is somebody else's update failing.
-appcast: ## Sign the release zip and write a one-item appcast
+# `sparkle` as a prerequisite because the recipe calls $(SPARKLE_TOOLS)/sign_update,
+# which only the $(SPARKLE_STAMP) rule ever puts there. It worked in CI by
+# accident of ordering — `build-release` runs `bundle`, which depends on
+# `sparkle` — so after a `make clean` this died with a bare "no such file or
+# directory" from the shell instead of the guard below.
+appcast: sparkle ## Sign the release zip and write a one-item appcast
 	@test -f apps/apple/.build/Bastion.zip || { echo "run 'make build-release' first"; exit 1; }
 	@version=$$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
 		"$(RELEASE_APP)/Contents/Info.plist"); \
@@ -397,7 +408,14 @@ appcast: ## Sign the release zip and write a one-item appcast
 	@echo "  wrote apps/apple/.build/appcast.xml"
 
 notarize: ## Submit the signed bundle to Apple and staple the ticket
-	@test -n "$$AC_KEY_ID" || { echo "set AC_KEY_ID, AC_ISSUER_ID and AC_KEY_PATH first" >&2; exit 1; }
+	@# All three, not just the first. With AC_KEY_ID set and AC_KEY_PATH empty
+	@# this guard passed, `ditto` spent a minute building a 60 MB zip, and
+	@# notarytool then failed on an empty `--key` — after the upload rather than
+	@# before it.
+	@for v in AC_KEY_ID AC_ISSUER_ID AC_KEY_PATH; do \
+		eval "value=\$$$$v"; \
+		[ -n "$$value" ] || { echo "set AC_KEY_ID, AC_ISSUER_ID and AC_KEY_PATH first ($$v is empty)" >&2; exit 1; }; \
+	done
 	@ditto -c -k --keepParent "$(RELEASE_APP)" apps/apple/.build/Bastion.zip
 	@xcrun notarytool submit apps/apple/.build/Bastion.zip --wait \
 		--key "$$AC_KEY_PATH" --key-id "$$AC_KEY_ID" --issuer "$$AC_ISSUER_ID"
@@ -899,7 +917,7 @@ typecheck: ## tsc the Worker and astro check the website
 .PHONY: help app run stop dev-config clean \
 	sparkle sparkle-keys appcast node bundle sign notarize build-release \
 	install install-release install-from uninstall \
-	smoke dialect builtin wiring-check wiring-check-real remote-check remote-live-check unit license-check revocations audit audit-check migrate servers servers-check catalog-check discover icon \
+	smoke dialect builtin facade wiring-check wiring-check-real remote-check remote-live-check unit license-check revocations audit audit-check migrate servers servers-check catalog-check provenance provenance-check discover icon \
 	screenshots screenshots-capture screenshots-check screenshots-update \
 	screenshots-seal screenshots-selftest screenshots-appstore \
 	screenshots-website screenshots-compose screenshots-doctor screenshots-clean \
