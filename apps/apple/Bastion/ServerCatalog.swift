@@ -829,7 +829,7 @@ nonisolated enum ServerCatalog {
           distribution: .npm,
           localPath: "mcp-x",
           vendor: .mgcrea,
-          provenance: false)),
+          provenance: true)),
       docsURL: URL(string: "https://github.com/mgcrea/mcp-x"),
       dialect: .v2025_11_25,
       writeGate: "X_ALLOW_WRITES",

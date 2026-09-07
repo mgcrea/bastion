@@ -95,7 +95,7 @@ export const SERVERS: Server[] = [
     writeGate: "X_ALLOW_WRITES",
     transport: "child",
     vendor: "mgcrea",
-    provenance: false,
+    provenance: true,
     dialect: "2025-11-25",
   },
   {

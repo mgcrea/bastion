@@ -481,7 +481,7 @@
         "distribution": "npm",
         "localPath": "mcp-x",
         "vendor": "mgcrea",
-        "provenance": false
+        "provenance": true
       },
       "docsUrl": "https://github.com/mgcrea/mcp-x",
       "dialect": "2025-11-25",
