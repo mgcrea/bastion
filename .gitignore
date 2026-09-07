@@ -42,6 +42,11 @@ dist/
 .env
 .env.*
 !.env.example
+# Wrangler's local state: the miniflare D1 that `pnpm migrate:local` and the
+# Worker test suite run against. Machine-local and rebuilt from migrations/,
+# so committing it would be committing a database.
+.wrangler/
+
 # Worker secrets. `.dev.vars` is what `wrangler dev` reads locally; `.prod.vars`
 # is the set `pnpm secrets:prod` pushes. Both hold the licence signing key.
 # Globbed rather than listed. `.test.vars` was not covered by the two names that
