@@ -350,6 +350,18 @@ nonisolated enum BuiltinServer {
   /// Safe to block on: connection threads are dedicated (`onDedicatedThread`)
   /// and are never the main thread, and nothing on the main thread ever waits
   /// on one.
+  ///
+  /// THE SECOND HALF OF THAT IS THE INVARIANT, and it is not enforced anywhere.
+  /// The day something on the main actor blocks on the supervisor — a sheet that
+  /// waits for a tool call, a menu that synchronously asks a child for its tools
+  /// — this becomes a deadlock rather than a slow path, because that main thread
+  /// would be waiting on a connection thread that is here waiting on it. Reach
+  /// for `Task { @MainActor in … }` and an async result on the main-actor side
+  /// rather than relaxing anything here.
+  ///
+  /// The cost that is already real: `invoke` does file writes, Keychain writes
+  /// and `ServerInstaller` bookkeeping while holding the main thread, so a
+  /// management call is as slow as the slowest thing the UI is doing.
   private static func onMain<T>(_ body: @MainActor () throws -> T) rethrows -> T {
     if Thread.isMainThread {
       return try MainActor.assumeIsolated(body)
