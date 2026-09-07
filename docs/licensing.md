@@ -152,12 +152,35 @@ showing the key against it forever would make each of those a copy of the
 licence. Both public routes are rate-limited per address, and a limited request
 answers exactly as an unlimited one does.
 
-Idempotency is the unique constraint on `stripe_session_id`: Stripe redelivers for
-days, and a redelivery must not mean a second licence. A failed email returns 500
-on purpose, so Stripe retries and the send is attempted again.
+Idempotency has two halves, because the two failures are different. The unique
+constraint on `stripe_session_id` stops a second LICENCE: Stripe redelivers for
+days, and a redelivery must not mean a second key. The `stripe_events` table
+stops a second EMAIL, which the first does not — past the five-minute send
+cooldown, a redelivery or a "Resend" from the Stripe dashboard used to mail the
+key again. An event is recorded only once it has been handled successfully, so a
+failed email still returns 500, Stripe still retries, and the send is attempted
+again.
 
-Refunds and lost disputes mark `revoked_at`; a dispute **won** clears it, because
-the claim failed and the customer did pay after all.
+Refunds and lost disputes mark `revoked_at` along with `revoked_reason`. A
+dispute **won** clears it only when the dispute is what set it — otherwise a
+refunded licence whose charge was later disputed and won would come back to life,
+and the next `make revocations` would drop it from the baked-in list.
+
+Delayed-notification payment methods are handled: SEPA and its relatives send
+`checkout.session.completed` with `payment_status: "unpaid"` and settle later
+with `checkout.session.async_payment_succeeded`, which fulfils the same way. None
+of the methods enabled on the payment link today is delayed, so this costs
+nothing now and is the difference between a key and silence if one is ever
+switched on in the Stripe dashboard.
+
+`POST /license/resend` re-sends a key to the address that bought it. Nothing on
+the website calls it and nothing is planned to: there is no form, the Worker
+serves no `OPTIONS` and the site's CSP allows no cross-origin `connect-src`, so
+building one means changing all three. Resends are support-driven — somebody
+replies to their receipt — and the endpoint exists so that answering them is one
+request rather than a hand-written database query. It answers identically whether
+or not the address is a customer, which is what stops it being an oracle for who
+bought Bastion.
 
 The mark beside the line item on the checkout page is `product.images` on the
 Stripe product, pointing at `https://bastion.mgcrea.io/product-image.png` —

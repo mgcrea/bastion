@@ -28,6 +28,14 @@ CLI and the Codex IDE extension all read that same file. Three rows would mean
 three gateway tokens overwriting each other in it, and an unwire of any one of
 them taking the other two out.
 
+**A token says which client is asking. It does not say what that client may
+reach.** Revoking one client's token signs out that client and no other, and the
+audit line records which one made every call — that is what per-client buys. It
+is not a permission boundary: any valid token reaches every profile, every
+server and Bastion's own control plane, so a token lifted out of one client's
+config is as good as any other. The boundary is the file it sits in, which is
+why every config Bastion writes is chmod'ed 0600, backups included.
+
 VS Code's path is `User/mcp.json`, deliberately not `User/settings.json`.
 settings.json is JSONC: it has comments and trailing commas, and round-tripping
 it through `JSONSerialization` would silently delete every comment in a file the
