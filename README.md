@@ -411,7 +411,10 @@ reads, that a write gate is read as a boolean, and that a variable typed as a sw
 same default its own schema does. Only the second can catch a rename upstream, and only it can
 catch a `boolean.default` of `false` on a setting the server defaults to `true`, which the
 profile editor would present as the safe choice. It reads the sibling checkout named by
-`MCP_ROOT` (default `~/Projects/mgcrea/mgcrea-ai`) and skips, passing, when there is none.
+`MCP_ROOT` (default `~/Projects/mgcrea/mgcrea-ai`) where there is one, and falls back to the
+published tarball otherwise. `make catalog-check` passes `--strict`, so an entry that could be
+checked against neither is a failure rather than a skip: reading "skipped" as "passed" is how a
+green run comes to mean less than it looks.
 
 A Debug build carries its own bundle identifier, `io.mgcrea.bastion.debug`. That is not cosmetic:
 Keychain items are scoped by app identity, so a shared identifier means a debug build reads,

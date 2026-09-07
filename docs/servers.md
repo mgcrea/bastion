@@ -57,7 +57,7 @@ than once when the entry is added, because a name that passed yesterday can
 resolve somewhere else today. `make remote-check` asserts all of it.
 
 Bastion curates lightly, and only to fill the first screen. The catalog seeds
-thirty-three entries — eleven servers written here, eleven somebody else
+thirty-four entries — twelve servers written here, eleven somebody else
 publishes, and eleven endpoints their own vendors operate — because a catalog
 that opens with nothing recognisable in it teaches nobody what the app is for.
 The middle group is named rather than folded into the first: those are installed
@@ -146,7 +146,7 @@ declares its protocol version, identity and capabilities in each request's
 shared server instance correct rather than a hack, and it is why Bastion fronts
 clients with it.
 
-None of the catalog entries below are modern. The eleven children written here
+None of the catalog entries below are modern. The twelve children written here
 run an SDK whose newest protocol is `2025-11-25`, and `server/discover` against
 one returns `-32601` — the exact signal the spec names for recognising a legacy
 server. The eleven third-party children were measured at the same revision, and
@@ -195,7 +195,7 @@ asserts both eras against a running build.
 | [App Store Connect](https://github.com/mgcrea/mcp-appstore-connect) | `appstore-connect` | `appstore-connect-mcp` | `@mgcrea/mcp-appstore-connect` (npm, provenance) | `APP_STORE_CONNECT_ALLOW_WRITES` | 1 |
 | [CloudKit](https://github.com/mgcrea/mcp-cloudkit) | `cloudkit` | `cloudkit-mcp` | `@mgcrea/mcp-cloudkit` (npm, provenance) | `CLOUDKIT_ALLOW_WRITES` | 1 |
 | [Reddit](https://github.com/mgcrea/mcp-reddit) | `reddit` | `reddit-mcp` | `@mgcrea/mcp-reddit` (npm, provenance) | `REDDIT_ALLOW_WRITES` | 1 |
-| [X](https://github.com/mgcrea/mcp-x) | `x` | `x-mcp` | `@mgcrea/mcp-x` (npm) | `X_ALLOW_WRITES` | 2 |
+| [X](https://github.com/mgcrea/mcp-x) | `x` | `x-mcp` | `@mgcrea/mcp-x` (npm, provenance) | `X_ALLOW_WRITES` | 2 |
 | [UniFi Protect](https://github.com/mgcrea/mcp-unifi-protect) | `unifi-protect` | `unifi-protect-mcp` | `@mgcrea/mcp-unifi-protect` (npm, provenance) | `UNIFI_PROTECT_ALLOW_WRITES` | 3 |
 | [UniFi Network](https://github.com/mgcrea/mcp-unifi-network) | `unifi-network` | `unifi-network-mcp` | `@mgcrea/mcp-unifi-network` (npm, provenance) | `UNIFI_ALLOW_WRITES` | 2 |
 | [Stripe](https://docs.stripe.com/mcp) | `stripe` | — | `https://mcp.stripe.com` (remote) | `stripe_api_write`, `create_refund`, `stripe_report` (by name) | 1 |
