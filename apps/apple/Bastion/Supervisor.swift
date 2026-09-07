@@ -339,6 +339,13 @@ nonisolated extension Supervisor {
       /// instance, not on disk, and `childExited` clears it beside the handshake
       /// so a restarted child is never described by the dead one's tools.
       var toolCatalog: [[String: Any]]?
+      /// The idle-and-expiry sweep.
+      ///
+      /// In here rather than beside it as a bare `var` because `stop()` is
+      /// reached from three threads — the reaper's own queue via `sweep`, the
+      /// main actor at quit, and Sparkle's relaunch delegate — and every other
+      /// field on this class is already behind the lock.
+      var reaper: DispatchSourceTimer?
     }
 
     private struct Waiter {
@@ -383,7 +390,23 @@ nonisolated extension Supervisor {
     /// browser, and a browser left running all week is not cheap.
     private static let idleTimeout: TimeInterval = 30 * 60
 
-    private var reaper: DispatchSourceTimer?
+    /// Serialises start-and-handshake.
+    ///
+    /// `ensureRunning` is check-then-act — is there a live child, and has it
+    /// handshaken — and both halves are several syscalls long. Two connection
+    /// threads arriving on a dead child would each see "no", each spawn, and the
+    /// loser would be a `node` process holding this profile's credentials that
+    /// nothing ever terminates. Its eventual exit then tore down the child that
+    /// won, because `childExited` cleared `pending` for whichever process
+    /// happened to die.
+    ///
+    /// A semaphore rather than a lock on `state`: the whole point is to hold it
+    /// ACROSS the spawn and the handshake, and the handshake blocks on the
+    /// reader thread, which takes `state`. Nothing on the reader's path takes
+    /// this, and neither does `childExited`, so a child that dies mid-handshake
+    /// resolves the waiter instead of deadlocking against the thread waiting
+    /// for it.
+    private let lifecycle = DispatchSemaphore(value: 1)
 
     /// Serialises the one-time catalog walk.
     ///
@@ -552,7 +575,7 @@ nonisolated extension Supervisor {
     private func watchExit(_ process: Process) {
       onDedicatedThread("bastion.reap") { [weak self] in
         process.waitUntilExit()
-        self?.childExited(status: process.terminationStatus)
+        self?.childExited(status: process.terminationStatus, process: process)
       }
     }
 
@@ -560,8 +583,15 @@ nonisolated extension Supervisor {
     /// answer: with one process per client a crash was one client's problem and
     /// nobody had to say anything. Here it is several clients' problem, so it
     /// has to be said out loud, to each of them and in the Activity window.
-    private func childExited(status: Int32) {
-      let waiters = state.withLock { current -> [Waiter] in
+    private func childExited(status: Int32, process: Process) {
+      // `nil` means "this exit is not ours to act on". A process that is no
+      // longer the instance's, while a different one is, is an orphan from a
+      // lost start race: tearing state down for it would fail every in-flight
+      // request of the child that is alive and serving. A nil `current.process`
+      // is the ordinary teardown — `stop()` clears it before the SIGTERM — and
+      // must still resolve its waiters.
+      let outcome = state.withLock { current -> [Waiter]? in
+        if let live = current.process, live !== process { return nil }
         let taken = Array(current.pending.values)
         current.pending.removeAll()
         current.process = nil
@@ -569,6 +599,12 @@ nonisolated extension Supervisor {
         current.handshake = nil
         current.toolCatalog = nil
         return taken
+      }
+      guard let waiters = outcome else {
+        hostLog(
+          key, .error,
+          "an orphaned server process exited (exit \(status)) — the live one was left alone")
+        return
       }
       let detail = "exit \(status)"
       hostLog(
@@ -610,13 +646,14 @@ nonisolated extension Supervisor {
     }
 
     func stop(reason: String) {
-      reaper?.cancel()
-      reaper = nil
-      let process = state.withLock { current -> Process? in
+      let (timer, process) = state.withLock { current -> (DispatchSourceTimer?, Process?) in
+        let timer = current.reaper
+        current.reaper = nil
         let taken = current.process
         current.process = nil
-        return taken
+        return (timer, taken)
       }
+      timer?.cancel()
       guard let process, process.isRunning else { return }
       hostLog(key, .info, "stopping — \(reason)")
       // SIGTERM, not SIGKILL: the child gets to close its own token file and
@@ -631,7 +668,7 @@ nonisolated extension Supervisor {
       timer.schedule(deadline: .now() + 10, repeating: 10)
       timer.setEventHandler { [weak self] in self?.sweep() }
       timer.resume()
-      reaper = timer
+      state.withLock { $0.reaper = timer }
     }
 
     private func sweep() {
@@ -1132,8 +1169,15 @@ nonisolated extension Supervisor {
     /// child that died and was restarted goes through this again rather than
     /// serving a cached capability list from a process that no longer exists.
     private func ensureRunning() throws {
-      let ready = state.withLock { $0.process?.isRunning == true && $0.handshake != nil }
-      if ready { return }
+      // Cheap path first, and deliberately outside the gate: a warm child is the
+      // common case by a wide margin, and it costs one lock.
+      if state.withLock({ $0.process?.isRunning == true && $0.handshake != nil }) { return }
+
+      lifecycle.wait()
+      defer { lifecycle.signal() }
+      // Re-check under the gate. The thread that just released it may have done
+      // exactly this work, in which case there is nothing left to do.
+      if state.withLock({ $0.process?.isRunning == true && $0.handshake != nil }) { return }
       if state.withLock({ $0.process?.isRunning != true }) { try start() }
       try performHandshake()
     }
