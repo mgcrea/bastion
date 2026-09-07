@@ -46,7 +46,18 @@ const explain = (error: { issues: { path: PropertyKey[]; message: string }[] }):
   error.issues.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`).join("; ");
 
 const html = (body: string, status = 200): Response =>
-  new Response(body, { status, headers: { "content-type": "text/html; charset=utf-8" } });
+  new Response(body, {
+    status,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      // `/thanks` puts a licence key in a page body. Without this a proxy or a
+      // browser disk cache may keep it, addressed by a `session_id` that never
+      // expires on Stripe's side and that lands in history and in `Referer`.
+      // The seven-day window bounds what the origin will serve, not what
+      // something else has already stored.
+      "cache-control": "private, no-store",
+    },
+  });
 
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -116,7 +127,8 @@ const markSent = async (env: Env, id: string): Promise<void> => {
 
 const findBySession = (env: Env, sessionId: string): Promise<LicenseRow | null> =>
   env.DB.prepare(
-    "SELECT id, email, key, issued_at, last_sent_at FROM licenses WHERE stripe_session_id = ?",
+    "SELECT id, email, key, issued_at, last_sent_at, revoked_at, revoked_reason" +
+      " FROM licenses WHERE stripe_session_id = ?",
   )
     .bind(sessionId)
     .first<LicenseRow>();
@@ -188,6 +200,14 @@ const fulfil = async (object: unknown, env: Env, livemode: boolean): Promise<Res
     return new Response("could not record the licence", { status: 500 });
   }
 
+  // A revoked licence is not re-sent, for the same reason `handleResend` will
+  // not send one: the money has been given back. Without this, a redelivery
+  // arriving after the cooldown — or a "Resend" click on the event in the Stripe
+  // dashboard — mailed the dead key again, under a covering note promising a
+  // full refund.
+  if (row.revoked_at) {
+    return new Response("revoked, not re-sent", { status: 200 });
+  }
   if (sentWithin(row.last_sent_at, SEND_COOLDOWN_MS, Date.now())) {
     return new Response("already sent", { status: 200 });
   }
@@ -210,8 +230,8 @@ const fulfil = async (object: unknown, env: Env, livemode: boolean): Promise<Res
  * Nothing here reaches the app. Revocation is baked into a build by
  * `make revocations`, so this only records the fact; the refunded key keeps
  * working until the next release. That is the trade the offline check makes, and
- * it is the kind of thing published terms should say out loud — Bastion has none
- * yet, which is a gap this comment cannot close on its own.
+ * it is said out loud rather than left to be discovered: the EULA covers it at
+ * §5(a) and §6, and the site serves that text at /terms.
  */
 const revoke = async (env: Env, paymentIntent: string | null | undefined, why: string) => {
   if (!paymentIntent) {
@@ -221,9 +241,10 @@ const revoke = async (env: Env, paymentIntent: string | null | undefined, why: s
     return new Response(`${why}: no payment intent on the event, nothing revoked`, { status: 200 });
   }
   const result = await env.DB.prepare(
-    "UPDATE licenses SET revoked_at = ? WHERE payment_intent = ? AND revoked_at IS NULL",
+    "UPDATE licenses SET revoked_at = ?, revoked_reason = ?" +
+      " WHERE payment_intent = ? AND revoked_at IS NULL",
   )
-    .bind(new Date().toISOString(), paymentIntent)
+    .bind(new Date().toISOString(), why, paymentIntent)
     .run();
   return new Response(`${why}: revoked ${result.meta.changes ?? 0}`, { status: 200 });
 };
@@ -267,8 +288,14 @@ const disputeClosed = async (object: unknown, env: Env): Promise<Response> => {
   if (!paymentIntent) {
     return new Response("dispute won: no payment intent, nothing restored", { status: 200 });
   }
+  // Only what the DISPUTE took away. `revoke` is guarded on `revoked_at IS
+  // NULL`, and this had no matching guard: a licence revoked by a refund, whose
+  // charge was later disputed and won, came back — and the next
+  // `make revocations` then dropped it from the baked-in list, returning a
+  // working key to someone who already had their money back.
   const result = await env.DB.prepare(
-    "UPDATE licenses SET revoked_at = NULL WHERE payment_intent = ?",
+    "UPDATE licenses SET revoked_at = NULL, revoked_reason = NULL" +
+      " WHERE payment_intent = ? AND revoked_reason = 'disputed'",
   )
     .bind(paymentIntent)
     .run();
@@ -303,10 +330,52 @@ const handleWebhook = async (request: Request, env: Env): Promise<Response> => {
   }
   if (!envelope.success) return new Response("not a Stripe event", { status: 400 });
 
-  const object = envelope.data.data.object;
-  switch (envelope.data.type) {
+  const event = envelope.data;
+  // Before anything is acted on. The unique constraint on `stripe_session_id`
+  // stops a second licence, which is not the same as stopping a second email:
+  // past the send cooldown, a redelivery or a "Resend" from the dashboard used
+  // to mail the key again.
+  const seen = await env.DB.prepare("SELECT id FROM stripe_events WHERE id = ?")
+    .bind(event.id)
+    .first();
+  if (seen) return new Response("duplicate", { status: 200 });
+
+  const response = await dispatch(event.type, event.data.object, env, event.livemode);
+  // Recorded only once the event has actually been handled. A 500 must stay
+  // retryable — that is what turns a failed send into a second attempt rather
+  // than a customer who paid and got nothing.
+  if (response.status < 300) {
+    await env.DB.prepare(
+      "INSERT INTO stripe_events (id, type, received_at) VALUES (?, ?, ?)" +
+        " ON CONFLICT (id) DO NOTHING",
+    )
+      .bind(event.id, event.type, new Date().toISOString())
+      .run();
+  }
+  return response;
+};
+
+const dispatch = async (
+  type: string,
+  object: unknown,
+  env: Env,
+  livemode: boolean,
+): Promise<Response> => {
+  switch (type) {
     case "checkout.session.completed":
-      return fulfil(object, env, envelope.data.livemode);
+      return fulfil(object, env, livemode);
+    // A delayed-notification method — SEPA, Bancontact-to-SEPA, a bank transfer
+    // — sends `completed` with `payment_status: "unpaid"` and settles later with
+    // this. Unhandled, that second event fell to `ignored`: the customer was
+    // charged, no row was written, no key was minted and nothing recorded that
+    // it had happened. None of the methods enabled on the Payment Link today is
+    // delayed, which makes this cheap to add and expensive to leave out — the
+    // switch lives in the Stripe dashboard, not in this repo.
+    case "checkout.session.async_payment_succeeded":
+      return fulfil(object, env, livemode);
+    case "checkout.session.async_payment_failed":
+      console.error("webhook: async payment failed for a session");
+      return new Response("async payment failed", { status: 200 });
     case "charge.refunded":
       return refunded(object, env);
     case "charge.dispute.created":
@@ -320,7 +389,7 @@ const handleWebhook = async (request: Request, env: Env): Promise<Response> => {
 
 const handleThanks = async (request: Request, url: URL, env: Env): Promise<Response> => {
   const sessionId = url.searchParams.get("session_id");
-  if (!sessionId) return html(notFoundPage(), 404);
+  if (!sessionId) return html(notFoundPage(env.SITE_URL), 404);
   // The pending page, not an error: to a browser that has just paid, a limit
   // and a slow webhook look the same and deserve the same sentence.
   if (await overLimit(env.THANKS_LIMIT, request)) return html(pendingPage(), 429);
@@ -387,7 +456,7 @@ export default {
       case "GET /health":
         return json({ ok: true });
       default:
-        return html(notFoundPage(), 404);
+        return html(notFoundPage(env.SITE_URL), 404);
     }
   },
 } satisfies ExportedHandler<Env>;

@@ -81,8 +81,13 @@ page shortly will also show it.</p>
 will be sorted out by hand.</p>`,
   );
 
-export const notFoundPage = (): string =>
+/**
+ * `site` comes from the SITE_URL binding, which was declared in wrangler.jsonc
+ * and read by nothing — so the host was hardcoded here and a move would have
+ * left this page pointing at the old one.
+ */
+export const notFoundPage = (site = "https://bastion.mgcrea.io"): string =>
   shell(
     "Not found",
-    `<h1>Not found.</h1><p><a href="https://bastion.mgcrea.io">bastion.mgcrea.io</a></p>`,
+    `<h1>Not found.</h1><p><a href="${site}">${site.replace(/^https?:\/\//, "")}</a></p>`,
   );

@@ -17,6 +17,17 @@ const INTENT = "pi_test_1";
 // table rather than from whatever the previous one left.
 beforeEach(async () => {
   await env.DB.prepare("DELETE FROM licenses").run();
+  await env.DB.prepare("DELETE FROM stripe_events").run();
+});
+
+// Every event needs its own id, because the Worker now refuses to handle the
+// same one twice. Stamped rather than hardcoded so each builder call is a
+// distinct delivery, which is what these tests have always meant; a test about
+// redelivery passes an explicit id and overrides this.
+let eventSeq = 0;
+const stamped = <T extends object>(event: T): T & { id: string } => ({
+  id: `evt_test_${++eventSeq}`,
+  ...event,
 });
 
 let privateKey = "";
@@ -92,32 +103,35 @@ const webhook = async (
   );
 };
 
-const completed = (session: Record<string, unknown> = {}, livemode = false) => ({
-  type: "checkout.session.completed",
-  livemode,
-  data: {
-    object: {
-      id: SESSION,
-      payment_intent: INTENT,
-      amount_total: 1499,
-      currency: "eur",
-      payment_status: "paid",
-      customer_details: { email: " Buyer@Example.com " },
-      metadata: { price_id: "price_test" },
-      ...session,
+const completed = (session: Record<string, unknown> = {}, livemode = false) =>
+  stamped({
+    type: "checkout.session.completed",
+    livemode,
+    data: {
+      object: {
+        id: SESSION,
+        payment_intent: INTENT,
+        amount_total: 1499,
+        currency: "eur",
+        payment_status: "paid",
+        customer_details: { email: " Buyer@Example.com " },
+        metadata: { price_id: "price_test" },
+        ...session,
+      },
     },
-  },
-});
+  });
 
-const chargeEvent = (type: string, charge: Record<string, unknown> = {}) => ({
-  type,
-  data: { object: { id: "ch_1", payment_intent: INTENT, amount: 1499, ...charge } },
-});
+const chargeEvent = (type: string, charge: Record<string, unknown> = {}) =>
+  stamped({
+    type,
+    data: { object: { id: "ch_1", payment_intent: INTENT, amount: 1499, ...charge } },
+  });
 
-const disputeEvent = (type: string, dispute: Record<string, unknown> = {}) => ({
-  type,
-  data: { object: { id: "dp_1", payment_intent: INTENT, ...dispute } },
-});
+const disputeEvent = (type: string, dispute: Record<string, unknown> = {}) =>
+  stamped({
+    type,
+    data: { object: { id: "dp_1", payment_intent: INTENT, ...dispute } },
+  });
 
 type Row = {
   email: string;
@@ -125,12 +139,13 @@ type Row = {
   price_id: string;
   livemode: number;
   revoked_at: string | null;
+  revoked_reason: string | null;
   last_sent_at: string | null;
 };
 
 const row = (forEnv: Env): Promise<Row | null> =>
   forEnv.DB.prepare(
-    "SELECT email, key, price_id, livemode, revoked_at, last_sent_at FROM licenses WHERE stripe_session_id = ?",
+    "SELECT email, key, price_id, livemode, revoked_at, revoked_reason, last_sent_at FROM licenses WHERE stripe_session_id = ?",
   )
     .bind(SESSION)
     .first<Row>();
@@ -250,10 +265,10 @@ describe("the webhook", () => {
   });
 
   it("ignores an event type it does not handle", async () => {
-    const response = await webhook(testEnv().env, {
-      type: "payment_intent.succeeded",
-      data: { object: {} },
-    });
+    const response = await webhook(
+      testEnv().env,
+      stamped({ type: "payment_intent.succeeded", data: { object: {} } }),
+    );
     expect(response.status).toBe(200);
     expect(await response.text()).toBe("ignored");
   });
@@ -308,6 +323,111 @@ describe("refunds and disputes", () => {
     expect(await won.text()).toBe("dispute won: restored 1");
     expect((await row(built.env))?.revoked_at).toBeNull();
   });
+
+  // The asymmetry that used to bite: `revoke` is guarded on `revoked_at IS
+  // NULL`, and the restore had no matching guard. A refunded licence whose
+  // charge was later disputed and won came back to life, and the next
+  // `make revocations` then dropped it from the baked-in list.
+  it("does not restore a refunded licence when a later dispute is won", async () => {
+    const built = await fulfilled();
+    await webhook(built.env, chargeEvent("charge.refunded", { amount_refunded: 1499 }));
+    const when = (await row(built.env))?.revoked_at;
+    expect(when).not.toBeNull();
+    expect((await row(built.env))?.revoked_reason).toBe("refunded");
+
+    const won = await webhook(built.env, disputeEvent("charge.dispute.closed", { status: "won" }));
+    expect(await won.text()).toBe("dispute won: restored 0");
+    expect((await row(built.env))?.revoked_at).toBe(when);
+  });
+
+  it("does not re-send a revoked licence", async () => {
+    const built = await fulfilled();
+    expect(built.sent).toHaveLength(1);
+    await webhook(built.env, chargeEvent("charge.refunded", { amount_refunded: 1499 }));
+    await cooled(built.env);
+
+    // A "Resend" of the original event from the Stripe dashboard, past the
+    // cooldown. It used to mail the dead key again, under a note promising a
+    // refund that had already been paid.
+    const again = await webhook(built.env, completed());
+    expect(again.status).toBe(200);
+    expect(await again.text()).toBe("revoked, not re-sent");
+    expect(built.sent).toHaveLength(1);
+  });
+});
+
+// Not a behaviour test: a claim that the bindings in wrangler.jsonc actually
+// arrive. Every other test in this file injects its own limiter stub, so
+// renaming or dropping one of these would leave the suite green and both public
+// routes unlimited, with nothing anywhere saying so.
+describe("bindings", () => {
+  it("binds both rate limiters from wrangler.jsonc", () => {
+    expect(typeof env.RESEND_LIMIT?.limit).toBe("function");
+    expect(typeof env.THANKS_LIMIT?.limit).toBe("function");
+  });
+});
+
+describe("event idempotency", () => {
+  it("handles the same event id only once", async () => {
+    const built = testEnv();
+    const event = { ...completed(), id: "evt_fixed" };
+    expect((await webhook(built.env, event)).status).toBe(200);
+    expect(built.sent).toHaveLength(1);
+    await cooled(built.env);
+
+    const second = await webhook(built.env, event);
+    expect(second.status).toBe(200);
+    expect(await second.text()).toBe("duplicate");
+    expect(built.sent).toHaveLength(1);
+    expect(await count(built.env)).toBe(1);
+  });
+
+  // The retry path fulfilment depends on: a 500 must stay retryable, so a
+  // failed send must NOT record the event as handled.
+  it("does not record an event whose handling failed", async () => {
+    let broken = true;
+    const built = testEnv({}, async () => {
+      if (broken) throw new Error("smtp is down");
+    });
+    const event = { ...completed(), id: "evt_retry" };
+    expect((await webhook(built.env, event)).status).toBe(500);
+
+    broken = false;
+    const retry = await webhook(built.env, event);
+    expect(retry.status).toBe(200);
+    expect(await retry.text()).not.toBe("duplicate");
+    expect(built.sent).toHaveLength(1);
+  });
+});
+
+describe("delayed payment methods", () => {
+  // SEPA and friends send `completed` with `payment_status: "unpaid"`, then
+  // settle later with this. It used to fall through to "ignored": the customer
+  // was charged and no key was ever minted.
+  it("fulfils on async_payment_succeeded", async () => {
+    const built = testEnv();
+    const pending = await webhook(built.env, completed({ payment_status: "unpaid" }));
+    expect(await pending.text()).toBe("not paid yet");
+    expect(await count(built.env)).toBe(0);
+
+    const settled = await webhook(built.env, {
+      ...completed(),
+      type: "checkout.session.async_payment_succeeded",
+    });
+    expect(settled.status).toBe(200);
+    expect(await count(built.env)).toBe(1);
+    expect(built.sent).toHaveLength(1);
+  });
+
+  it("records an async payment failure without minting anything", async () => {
+    const built = testEnv();
+    const failed = await webhook(built.env, {
+      ...completed(),
+      type: "checkout.session.async_payment_failed",
+    });
+    expect(failed.status).toBe(200);
+    expect(await count(built.env)).toBe(0);
+  });
 });
 
 describe("/thanks", () => {
@@ -331,6 +451,16 @@ describe("/thanks", () => {
     const page = await response.text();
     expect(page).toContain((await row(built.env))?.key);
     expect(page).toContain("buyer@example.com");
+  });
+
+  // The page carries a licence key, addressed by a session id that never
+  // expires on Stripe's side and that lands in browser history and in `Referer`.
+  // The seven-day window bounds what this origin will serve; it says nothing
+  // about what a proxy or a disk cache has already kept.
+  it("tells caches not to keep the page with the key on it", async () => {
+    const built = await fulfilled();
+    const response = await thanks(built.env);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
 
   it("stops showing the key a week after it was issued", async () => {

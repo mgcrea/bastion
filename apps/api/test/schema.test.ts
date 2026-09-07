@@ -20,7 +20,11 @@ import {
 
 describe("eventEnvelope", () => {
   it("accepts an event type this Worker does not handle", () => {
-    const other = { type: "payment_intent.succeeded", data: { object: { id: "pi_1", odd: true } } };
+    const other = {
+      id: "evt_1",
+      type: "payment_intent.succeeded",
+      data: { object: { id: "pi_1", odd: true } },
+    };
     expect(eventEnvelope.safeParse(other).success).toBe(true);
   });
 
