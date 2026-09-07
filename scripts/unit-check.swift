@@ -134,6 +134,15 @@ struct UnitCheck {
     check(
       "a non-numeric content-length reads as zero rather than throwing",
       parse("POST / HTTP/1.1\r\nContent-Length: abc\r\n\r\n")?.body.isEmpty == true)
+    // Not a silly-input check. `Int("-1")` parses, so before the `>= 0` guard
+    // this reached `body.prefix(-1)` and trapped — on the connection thread,
+    // before any of the three refusals, taking the whole process down with it.
+    check(
+      "a negative content-length is refused rather than trapping the process",
+      parse("POST / HTTP/1.1\r\nContent-Length: -1\r\n\r\n") == nil)
+    check(
+      "a negative content-length is refused even with a body attached",
+      parse("POST / HTTP/1.1\r\nContent-Length: -8\r\n\r\nabcdefgh") == nil)
 
     print("\nHTTP: the request deadline")
     // The parser used to block for as long as the peer stayed quiet, and it

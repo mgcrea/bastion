@@ -149,7 +149,14 @@ nonisolated struct HTTPRequest {
 
     var body = Data(buffer[headerEnd.upperBound...])
     let declared = Int(headers["content-length"] ?? "0") ?? 0
-    guard declared <= maxBody else { return nil }
+    // `>= 0` is not fussiness about a silly number. `Int("-1")` parses, the fill
+    // loop below is skipped, `body.count >= declared` passes, and
+    // `body.prefix(-1)` traps on `Collection.prefix`'s own precondition — which
+    // kills the process, not the connection. This runs on the connection thread
+    // BEFORE checkHost, checkOrigin and the bearer token, so one line from any
+    // local process would take down every client session and every supervised
+    // child with it.
+    guard declared >= 0, declared <= maxBody else { return nil }
     while body.count < declared {
       guard awaitReadable(fd, until: deadline) else { return nil }
       let n = chunk.withUnsafeMutableBufferPointer { Darwin.read(fd, $0.baseAddress, $0.count) }
