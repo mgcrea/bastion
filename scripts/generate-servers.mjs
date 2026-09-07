@@ -740,6 +740,104 @@ target("apps/website/src/data/servers.ts", (src) =>
   ),
 );
 
+// ─── the counts written out in prose ─────────────────────────────────────────
+//
+// Three files state the size of the catalog in words, in the middle of
+// sentences, and all three sat OUTSIDE the generated regions above — so
+// `--check` could not see them. They drifted exactly as you would expect: the
+// iOS Simulator entry landed in 1.12.0 and docs/servers.md still said
+// "thirty-three entries — eleven servers written here", while SECURITY.md
+// undercounted the child entries in the paragraph that disclaims liability for
+// third-party server code.
+//
+// Not generated, because each number is welded into a different sentence and
+// rewriting prose from a script is how prose stops reading like prose. Asserted
+// instead: the sentence stays hand-written, and the number in it has to be
+// right. Whitespace is collapsed first because every one of these wraps across
+// a line break.
+const WORDS = [
+  "zero",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+  "eleven",
+  "twelve",
+  "thirteen",
+  "fourteen",
+  "fifteen",
+  "sixteen",
+  "seventeen",
+  "eighteen",
+  "nineteen",
+];
+const TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+
+const inWords = (n) => {
+  if (n < 20) return WORDS[n];
+  if (n > 99) return String(n);
+  const unit = n % 10;
+  return unit === 0 ? TENS[Math.floor(n / 10)] : `${TENS[Math.floor(n / 10)]}-${WORDS[unit]}`;
+};
+
+const children = servers.filter((s) => s.transport.kind === "child");
+const counts = {
+  total: servers.length,
+  children: children.length,
+  own: children.filter((s) => s.transport.vendor === "mgcrea").length,
+  third: children.filter((s) => s.transport.vendor !== "mgcrea").length,
+  remote: servers.filter((s) => s.transport.kind === "remote").length,
+};
+
+// Each claim names the file, the sentence to look for, and which count the word
+// in it has to equal. The regex captures the number word only; the surrounding
+// text is what pins it to the right sentence.
+const CLAIMS = [
+  ["docs/servers.md", /The catalog seeds ([a-z-]+) entries/, "total"],
+  ["docs/servers.md", /entries — ([a-z-]+) servers written here/, "own"],
+  ["docs/servers.md", /written here, ([a-z-]+) somebody else publishes/, "third"],
+  ["docs/servers.md", /publishes, and ([a-z-]+) endpoints/, "remote"],
+  ["docs/servers.md", /The ([a-z-]+) children written here/, "own"],
+  ["docs/servers.md", /The ([a-z-]+) third-party children/, "third"],
+  ["docs/servers.md", /The ([a-z-]+) remote entries/, "remote"],
+  ["SECURITY.md", /of the catalog's ([a-z-]+) child entries/, "children"],
+  ["apps/website/public/llms.txt", /([A-Za-z-]+) entries are in the catalog/, "total"],
+  ["apps/website/public/llms.txt", /([A-Za-z-]+) are servers written here/, "own"],
+  ["apps/website/public/llms.txt", /([A-Za-z-]+) more are child processes/, "third"],
+  ["apps/website/public/llms.txt", /The last ([a-z-]+) are https endpoints/, "remote"],
+];
+
+let miscounted = 0;
+for (const [path, pattern, key] of CLAIMS) {
+  const flat = read(path).replace(/\s+/g, " ");
+  const found = flat.match(pattern);
+  const want = inWords(counts[key]);
+  if (!found) {
+    console.error(`${path}: could not find the sentence matching ${pattern}`);
+    miscounted += 1;
+    continue;
+  }
+  if (found[1].toLowerCase() !== want) {
+    console.error(`${path}: says "${found[1]}" where the catalog has ${counts[key]} (${want})`);
+    miscounted += 1;
+  }
+}
+
+if (miscounted) {
+  // A warning when writing, because `make servers` cannot fix a sentence — only
+  // a person can. A failure under --check, because that is the gate.
+  console.error(
+    `\n${miscounted} prose count(s) disagree with servers.json. Edit the sentences named above.`,
+  );
+  if (CHECK) process.exit(1);
+}
+
 // ─── write or check ──────────────────────────────────────────────────────────
 
 let drifted = 0;
