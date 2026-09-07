@@ -17,6 +17,9 @@ import { z } from "zod";
 
 /** Just enough to route on. `object` stays unknown until the type is known. */
 export const eventEnvelope = z.object({
+  // The per-event idempotency key. `stripe_session_id` stops a second licence
+  // and nothing more; this is what stops a second EMAIL for the same event.
+  id: z.string(),
   type: z.string(),
   // Recorded on the licence, not enforced here. One signing key and one database
   // serve both Stripe modes, so a test purchase mints a key that really works —

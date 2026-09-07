@@ -15,4 +15,6 @@ export interface LicenseRow {
   key: string;
   issued_at: string;
   last_sent_at: string | null;
+  revoked_at: string | null;
+  revoked_reason: string | null;
 }
