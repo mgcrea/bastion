@@ -32,6 +32,7 @@ export const DOCS = {
   audit: `${REPO_URL}/blob/main/scripts/audit-listener.sh`,
   readme: `${REPO_URL}#readme`,
   licensing: `${REPO_URL}/blob/main/docs/licensing.md`,
+  sourceLicense: `${REPO_URL}/blob/main/apps/apple/LICENSE`,
 } as const;
 
 /**

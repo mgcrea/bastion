@@ -14,6 +14,10 @@
  */
 import Footer from "../components/Footer.astro";
 import Nav from "../components/Nav.astro";
+// Both links come from the config that every other page's links come from.
+// Hardcoded here, they were two URLs that a repository rename would turn into
+// two 404s — on the page a buyer consents to at checkout.
+import { DOCS } from "../config";
 import Layout from "../layouts/Layout.astro";
 
 // `?raw`, not `readFileSync`. Vite resolves this against THIS file at build
@@ -33,10 +37,10 @@ import eula from "../../../apple/EULA?raw";
     </h1>
     <p class="mt-4 mb-0 max-w-[62ch] text-[16px] leading-[1.6] text-fg-dim text-pretty">
       This covers the signed builds. The source is separate and has
-      <a href="https://github.com/mgcrea/bastion/blob/main/apps/apple/LICENSE" class="underline">
+      <a href={DOCS.sourceLicense} class="underline">
         its own licence
       </a>; the reasoning behind both is in
-      <a href="https://github.com/mgcrea/bastion/blob/main/docs/licensing.md" class="underline">
+      <a href={DOCS.licensing} class="underline">
         docs/licensing.md
       </a>.
     </p>
