@@ -10,6 +10,23 @@
         "--golden",
         "apps/apple/Screenshots/golden"
       ],
+      "at" : "2026-09-07T12:20:14Z",
+      "count" : 6,
+      "cwd" : "/Users/olivier/Projects/apps/bastion",
+      "host" : "oliviermacbookpro.local",
+      "pid" : 13960,
+      "user" : "olivier"
+    },
+    {
+      "appshotVersion" : "0.9.0",
+      "argv" : [
+        "/Users/olivier/.local/bin/appshot",
+        "accept",
+        "--source",
+        "apps/apple/Screenshots/source",
+        "--golden",
+        "apps/apple/Screenshots/golden"
+      ],
       "at" : "2026-09-06T11:52:09Z",
       "count" : 6,
       "cwd" : "/Users/olivier/Projects/apps/bastion",
@@ -152,60 +169,43 @@
       "host" : "oliviermacbookpro.local",
       "pid" : 28309,
       "user" : "olivier"
-    },
-    {
-      "appshotVersion" : "0.9.0",
-      "argv" : [
-        "/Users/olivier/.local/bin/appshot",
-        "accept",
-        "--source",
-        "apps/apple/Screenshots/source",
-        "--golden",
-        "apps/apple/Screenshots/golden"
-      ],
-      "at" : "2026-09-04T12:31:37Z",
-      "count" : 6,
-      "cwd" : "/Users/olivier/Projects/apps/bastion",
-      "host" : "oliviermacbookpro.local",
-      "pid" : 85145,
-      "user" : "olivier"
     }
   ],
   "entries" : {
     "chat~dark.png" : {
-      "bytes" : 344034,
+      "bytes" : 378245,
       "height" : 1592,
-      "sha256" : "dfbba6780b744243d427b2e0d321f3879b8833bcb21b6f1f360a32b9ba04170f",
+      "sha256" : "9b8881033d76a0152689ee8afab33cd50e908a69200b3277f37f50c4e35e1c9e",
       "width" : 2360
     },
     "client~dark.png" : {
-      "bytes" : 452461,
+      "bytes" : 479311,
       "height" : 1592,
-      "sha256" : "1c01b74f2ab42417548a8ff6480869f541c9083881e362f971c67708fe328907",
+      "sha256" : "91902f64595d6ff934f3e6a3045f6604684ff8f044587f38e240c38315dcf6ec",
       "width" : 2360
     },
     "licence~dark.png" : {
-      "bytes" : 158630,
+      "bytes" : 156403,
       "height" : 1004,
-      "sha256" : "f1ab04e4369eb44642f81ea7d795b659474333455464eb0c40abf2fdc3ae3af6",
+      "sha256" : "645f02f59aeadb81742ef146e9bc004c9f29b4ea4a987c0556afe8d70047b7d2",
       "width" : 1520
     },
     "log~dark.png" : {
-      "bytes" : 609579,
+      "bytes" : 645643,
       "height" : 1592,
-      "sha256" : "5254f1fe9b4229fae4e17f81b5f5a83a81b99a7e78fa87b9ae1ad95f3cbf9985",
+      "sha256" : "ba3c19e560700f415b88a28c4efa564d1eaf155f9c1daaeeef37c6743262fe4a",
       "width" : 2360
     },
     "running~dark.png" : {
-      "bytes" : 278297,
+      "bytes" : 312543,
       "height" : 1592,
-      "sha256" : "d1369a7b8994dd23a5602b50fd0255ade7594f6c4325060480e33d58f6e43adf",
+      "sha256" : "7a9fb21c5bef05f3362a4396f1f44911c2a20c52fd6b8ad8a87a3ebf60ad9345",
       "width" : 2360
     },
     "server~dark.png" : {
-      "bytes" : 479063,
+      "bytes" : 511672,
       "height" : 1592,
-      "sha256" : "7285c192256425454cf1f225648c374855fa7c2bdbf514027fc3d737ba3fd902",
+      "sha256" : "78de39abc0ba523acda37433f5c7d092076feb86b1c5e58c9aaf7f2bcc77ecff",
       "width" : 2360
     }
   },

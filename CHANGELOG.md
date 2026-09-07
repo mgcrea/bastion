@@ -4,8 +4,176 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.12.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.13.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
+
+## [1.13.0] - 2026-09-07
+
+### Added
+
+- **A shield in front of the provenance badge, and a seventeenth package behind it.** The badge
+  1.12.0 introduced now carries `checkmark.shield.fill` at its own teal tint, both in a server's
+  pane and in the catalog row. `Badge` gained an optional glyph to do it, defaulted to nothing, so
+  every other call site renders exactly as it did.
+
+  `@mgcrea/mcp-x` published 0.3.0 from GitHub Actions in the meantime, and its attestation names
+  the repository the entry already links, so seventeen of the twenty-three npm entries carry the
+  badge rather than sixteen. Checked against the registry rather than assumed, which is the only
+  way the claim is worth anything.
+
+### Fixed
+
+This release is mostly a hardening pass over the gateway, the supervisor and the purchase path. Several of the entries below are reachable by anything that can open a connection to the port, so they are worth reading before deciding to defer the update.
+
+- **One crafted request could take the whole app down, before it was ever asked who was sending
+  it.** `Int("-1")` parses. The fill loop was then skipped, `body.count >= declared` passed, and
+  `body.prefix(-1)` hit `Collection.prefix`'s own precondition — which kills the process, not the
+  connection. It ran on the connection thread BEFORE the Host, Origin and bearer-token checks, so
+  it needed nothing but the ability to reach the port: every client session and every supervised
+  child went down with it. Reproduced with a single request against a running build. The gateway
+  now answers 400 and keeps serving.
+
+- **A progress frame could be written into a different client's response.** A frame is looked up
+  under the supervisor's lock and delivered outside it, from the child's reader thread. If the
+  reaper expired the waiter and resumed the connection thread in that window, the connection's own
+  `defer` could `close(2)` the socket before the reader's write landed — and a free descriptor
+  number is one the kernel is entitled to hand to the next accepted connection. The write then
+  landed in somebody else's response.
+
+  `HTTPStream` now tracks a closed flag under its own lock, set by that `defer` before the close
+  runs and checked by every write. A frame is either written in full to a descriptor that is still
+  ours, or not written at all.
+
+- **A double-spawn race could leave an orphaned server holding a profile's credentials.**
+  `ensureRunning()` was check-then-act, so two connection threads that both found a dead child
+  could both start one; nothing ever terminated the loser. Worse, the orphan's eventual exit tore
+  down the child that had won, because `childExited` cleared the pending state unconditionally.
+
+  A semaphore now serialises start-and-handshake, and `childExited` is a no-op unless the exiting
+  process is the instance's current one. The idle-sweep timer moves under the same lock, since
+  `stop()` is reached from three threads and every other field there was already guarded.
+
+- **Four gaps in the remote-server OAuth flow.** `PKCE.init` and `randomState` discarded
+  `SecRandomCopyBytes`' status, so a CSPRNG failure produced an all-zero verifier or state in
+  silence — a predictable challenge and a predictable CSRF token. That is now fatal, matching
+  `GatewayToken.mint`. The callback checked `error` before `state`, so anything that could reach
+  the ephemeral loopback port could abort an authorization in flight and have it read as the
+  provider's refusal; state is checked first now. `resourceMetadataURL` split a 401 challenge on
+  every comma, truncating a quoted `resource_metadata` value containing one, and is now a
+  quote-aware scan. And the callback's accept loop polled with a deadline while the one-byte `recv`
+  after `accept` had none, so a browser's speculative pre-connect that sent nothing parked the
+  authorization until the app restarted. Each fix ships with a `scripts/remote-check.swift` case
+  that fails without it.
+
+- **The SSE parser would buffer without limit, and rescanned from the start on every chunk.** Every
+  other reader in the app bounds what it will take from an untrusted source; this one, fed straight
+  from `URLSession` by a remote server, did not — and its rescan made a long stream quadratic. Both
+  are now handled the way `Supervisor.readLoop` already handled its own: a 32MB ceiling, and a scan
+  that resumes two bytes before the last cut.
+
+- **A client config backup kept the previous bearer token at the original file's permissions.** The
+  backup written ahead of a rewrite inherited the source's mode, so re-wiring a world-readable
+  config left a sibling `.bastion-backup` holding the OLD token, readable by anyone, indefinitely.
+  It is now `chmod`'ed 0600 like the file it backs up.
+
+- **An install could hang forever, and the row could never be retried.** Both the install and the
+  update-check subprocess read to EOF with no deadline, so a registry that accepted the connection
+  and then said nothing parked the call indefinitely. Because `running[server.id]` is cleared only
+  when the task returns, every retry was refused for the life of the app while the row sat on
+  "Installing…" with no way to dismiss it. A watchdog now SIGTERMs after five minutes and the call
+  surfaces a named timeout.
+
+- **A locked keychain told every client to re-wire itself.** `identify(_:)` ran on every request
+  ahead of everything else, doing a `SecItemCopyMatching` over the whole account namespace plus a
+  decrypting read per issued client. That set changes only when a client is wired or unwired, so it
+  is cached for 60 seconds now and invalidated explicitly on issue and revoke.
+
+  The cache also separates two states the old `Optional` collapsed into one: a token Bastion does
+  not know (the client's problem, still 401) and a keychain that will not answer at all (this
+  app's problem, and usually transient). The second answers 503 now, instead of sending the owner
+  of a locked keychain off to re-wire every client they have.
+
+- **A revoked licence could be mailed out again, and a dispute could restore the wrong one.**
+  Five gaps in the purchase webhook, with the schema to support them. `fulfil` re-sent a revoked
+  licence's key on any redelivery past the cooldown — or on a dashboard "Resend" — under a note
+  promising a refund that had already been paid. `charge.dispute.closed` with status `won` restored
+  ANY revoked licence for that payment intent, including one revoked by an unrelated refund; it is
+  scoped to `revoked_reason = 'disputed'` now. The only idempotency key was `stripe_session_id`,
+  which stops a second licence but not a second email, so every webhook event id is recorded once
+  handled and a duplicate delivery is a no-op. `checkout.session.async_payment_succeeded` and its
+  failed twin were unhandled, so a delayed-notification method — SEPA and its relatives — could
+  charge a customer and mint nothing; both route to the same path. And `/thanks` served a licence
+  key with no cache-control, while the 404 page hardcoded the site's host instead of reading the
+  `SITE_URL` binding that was declared and never read.
+
+### Internal
+
+- **CI gates two checks that had only ever run by hand.** `generate-revocations.mjs` claimed in its
+  own header that CI checked the committed list was current; nothing did, so a refund with no
+  follow-up `make revocations` shipped a stale list with no signal anywhere. That drift check runs
+  in the Manifest job now. `make license-check` runs in the App job, compiling the real
+  `License.swift` and verifying a Node-minted key against it — the drift between the two signing
+  implementations is invisible to either side's own tests. It skips on a fork with a warning, since
+  it needs the signing key.
+
+  Both deploy jobs' "no token, skipping" branch now emits a `::warning::` annotation rather than a
+  plain echo. A rotated `CLOUDFLARE_API_TOKEN` previously left a green Deploy step on every push
+  while production stayed frozen, with nothing anywhere surfacing it.
+
+- **`catalog-check` went blind on an entry and reported the opposite.** Every check assumed a
+  literal `env.NAME` or `process.env["NAME"]` read, so when `mcp-x` moved its config to a
+  `bool(name)` helper closing over `env[name]`, the detector lost the entry and reported seven
+  problems — including "writeGate `X_ALLOW_WRITES` is not read by mcp-x", when the gate had been
+  fine the whole time. A helper is recognised only once its own body has been seen indexing `env`
+  with its own parameter, which keeps the assertion as strong as the literal case: not "trust any
+  one-argument function", but proof that `bool("X")` really is a read of `X`. Helpers routing
+  through `parseBool` are tracked separately so the write-gate boolean check still holds, and it is
+  verified against two probes that must keep failing.
+
+- **The catalog's counts are gated where they are written as words.** `docs/servers.md`,
+  `SECURITY.md` and `llms.txt` each state the catalog's size in words, mid-sentence and outside the
+  generated regions `servers-check` covers — which is exactly how they went stale after the iOS
+  Simulator entry landed. Twelve claims are asserted against the real counts now: `--check` fails,
+  a plain run warns, since a script cannot rewrite prose that reads as prose. The stale figures
+  themselves are corrected, along with `README.md`'s description of `catalog-check`, which said it
+  "skips, passing" without `MCP_ROOT` when `make catalog-check` runs `--strict` and fails.
+
+- **The push script can no longer put test-mode Stripe credentials on the production Worker.**
+  `.test.vars.example` documented a rehearsal against a test-mode deployment, but `wrangler.jsonc`
+  declared one Worker and the script passed no `--env`, so `wrangler secret bulk` always targeted
+  production: following the documented steps replaced the live `STRIPE_WEBHOOK_SECRET` with a
+  test-mode one and refused every real payment as an invalid signature. A test environment is
+  declared now, with its own D1 binding, rate limiters and vars, and the script refuses test-mode
+  credentials without an explicit `--env`. Five tests cover the refusal paths and none of them
+  reach wrangler.
+
+- **Build and script guards.** An interrupted `curl` left a truncated `SHASUMS256` that satisfied
+  `[ -f ]` forever while the failure handler deleted only the tarball, so `make node` re-downloaded
+  a good archive and failed identically on every later run; it deletes both now. `appcast` gained
+  `sparkle` as a prerequisite, having worked in CI only by the accident that `build-release` runs
+  `bundle` first. `notarize` checks all three required variables before spending a minute building
+  a 60MB zip rather than only `AC_KEY_ID`. `facade`, `provenance` and `provenance-check` were
+  missing from `.PHONY`. `mint-license.mjs --out` writes at 0600 like every other secret this repo
+  emits, `migrate-mcp-json` names the fix instead of throwing a raw ENOENT at a missing `MCP_ROOT`,
+  and `generate-revocations.mjs` escapes licence ids through the same `JSON.stringify` escaper the
+  catalog generator uses, rather than interpolating them into Swift.
+
+- **Documentation corrections.** `clients.md` now says what a per-client gateway token actually
+  scopes: it identifies which client is asking and revoking it signs out that client, but it is not
+  a permission boundary — any valid token reaches every profile and Bastion's own control plane,
+  and the file it sits in is the real boundary. `licensing.md` documents the two idempotency keys,
+  the scoped dispute restore, delayed-payment handling, and why `POST /license/resend` has no
+  caller and is not getting one. `.env.example` drops a described-but-absent "skipped" branch for
+  `make revocations` — silently doing nothing after a refund is the exact failure it exists to
+  prevent — and documents five load-bearing knobs that had none: `BASTION_PORT`, `MCP_ROOT`,
+  `PROFILE`/`SERVER` and `VERIFY_OFFLINE`/`VERIFY_PROBE`. The safety comment on `onMain` now names
+  what breaks if the main thread ever waits on a connection thread.
+
+- **Website and repository.** `/checked`'s top section was an `h2`, leaving that page's outline
+  starting a level below every other; `terms.astro` hardcoded the source-licence and licensing-doc
+  URLs that `config.ts` already exports, so a repository rename would have left two 404s on the
+  page a buyer consents to at checkout. `apps/api/.wrangler/` — the local D1 that `migrate:local`
+  and the Worker suite rebuild from `migrations/` — is ignored.
 
 ## [1.12.0] - 2026-09-06
 
