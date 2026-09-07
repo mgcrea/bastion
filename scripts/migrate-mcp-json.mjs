@@ -52,6 +52,17 @@ const expand = (p) => (p?.startsWith("~") ? join(homedir(), p.slice(1)) : p);
 
 /** Every `.mcp.json` under the source tree, with its entries resolved to manifest ids. */
 const discover = () => {
+  // `readdirSync` on a path that is not there throws ENOENT with a stack trace,
+  // and this default is one developer's directory layout — so anyone else
+  // running the `make migrate` target that `make help` advertises got a crash
+  // rather than the one line that fixes it. `catalog-check.mjs` already gets
+  // this right for the same variable.
+  if (!existsSync(SOURCE)) {
+    console.error(`FATAL: no checkout at ${SOURCE}`);
+    console.error("Set MCP_ROOT to where the mcp-* repositories live, e.g.");
+    console.error("  MCP_ROOT=~/code/mcp make migrate");
+    process.exit(2);
+  }
   const found = [];
   for (const dir of readdirSync(SOURCE).filter((d) => d.startsWith("mcp-"))) {
     const file = join(SOURCE, dir, ".mcp.json");
