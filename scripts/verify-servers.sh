@@ -20,6 +20,7 @@
 #
 #   1. the embedded node runs                    (an ABI or lipo fault)
 #   2. the embedded npm runs under it            (a truncated ditto, a bad pair)
+#   2b. node, npm and npx resolve BY NAME        (a server that shells out)
 #   3. npm installs a real catalog server        (the install path itself)
 #   4. the server's declared bin starts          (module resolution)
 #
@@ -90,6 +91,29 @@ done
 npm_version="$("$NODE" "$NPM" --version 2>&1)" || {
   echo "  the embedded npm does not run: $npm_version"; exit 1; }
 echo "  npm $npm_version"
+
+# 2b — the same two binaries, reached the way a GRANDCHILD reaches them: by
+# name, off the PATH Bastion hands a server. Every check above runs them by
+# absolute path, which is why the flat layout could pass all of them while
+# `npm_publish` died with `sh: npm: command not found` inside a package's own
+# prepare script — the script `npm pack` runs, several layers below anything
+# that could explain itself.
+#
+# `env -i` is the point. Inheriting this shell's PATH would find the
+# developer's own npm and pass on a bundle that ships none a child can use.
+BIN="$APP/Contents/Resources/bin"
+CHILD_PATH="$BIN:/usr/bin:/bin"
+[ -d "$BIN" ] || {
+  echo "  no Resources/bin — a server that shells out to npm cannot find it"; exit 1; }
+
+for tool in node npm npx; do
+  out="$(env -i PATH="$CHILD_PATH" "$tool" --version 2>&1)" || {
+    echo "  bare \`$tool\` does not run off the child PATH: $out"
+    echo "      PATH=$CHILD_PATH"
+    exit 1
+  }
+done
+echo "  node, npm and npx resolve by name off the child PATH"
 
 if [ "${VERIFY_OFFLINE:-0}" = "1" ]; then
   echo "  VERIFY_OFFLINE=1 — skipping the install probe"

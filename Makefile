@@ -233,13 +233,44 @@ node: ## Download, verify and stage the embedded node runtime and npm
 		rm -rf "$(STAGED)/npm"; \
 		ditto "$$src/lib/node_modules/npm" "$(STAGED)/npm"
 	@echo "  npm $$($(STAGED)/node $(STAGED)/npm/bin/npm-cli.js --version) staged"
+	@# A `bin/` beside them, and the only reason it exists: a server that shells
+	@# out to `npm` or `npx` BY NAME. Children are spawned with PATH=/usr/bin:/bin
+	@# plus this directory, so a package's own prepare script — which is what
+	@# `npm pack` runs, and therefore what a publish runs — resolves them.
+	@#
+	@# The flat layout above cannot do that on its own. `Resources/npm` is a
+	@# DIRECTORY, so bare `npm` does not resolve there at all, and putting
+	@# `Resources/npm/bin` on PATH instead fails differently: npm's own shims
+	@# locate npm relative to node's prefix (`<prefix>/bin/node` plus
+	@# `<prefix>/lib/node_modules/npm`), which this layout is not, and they die
+	@# with "Could not determine Node.js install directory".
+	@#
+	@# Symlinks to the `-cli.js` entrypoints skip that detection entirely: the
+	@# shebang is `#!/usr/bin/env node`, and `node` is in this same directory.
+	@# Relative, so they still point at the right files once ditto'd into the
+	@# bundle, and so nothing here depends on where the build ran.
+	@rm -rf $(STAGED)/bin
+	@mkdir -p $(STAGED)/bin
+	@ln -s ../node $(STAGED)/bin/node
+	@ln -s ../npm/bin/npm-cli.js $(STAGED)/bin/npm
+	@ln -s ../npm/bin/npx-cli.js $(STAGED)/bin/npx
+	@# Asserted here as well as in verify-servers.sh, because this is the step
+	@# that could produce it wrong and the failure is otherwise invisible until
+	@# a publish dies inside somebody's prepare script.
+	@env -i PATH="$(abspath $(STAGED)/bin):/usr/bin:/bin" npm --version >/dev/null 2>&1 \
+		|| { echo "  !! bare npm does not resolve from $(STAGED)/bin"; exit 1; }
+	@echo "  bin/ staged: node, npm and npx resolve by name"
 
 bundle: node sparkle ## Build, stage, verify and sign a Release Bastion.app
 	@$(MAKE) --no-print-directory app CONFIG=Release \
 		XCARGS="$(XCARGS) CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO"
-	@rm -rf "$(RELEASE_APP)/Contents/Resources/node" "$(RELEASE_APP)/Contents/Resources/npm"
+	@rm -rf "$(RELEASE_APP)/Contents/Resources/node" "$(RELEASE_APP)/Contents/Resources/npm" \
+		"$(RELEASE_APP)/Contents/Resources/bin"
 	@ditto "$(STAGED)/node" "$(RELEASE_APP)/Contents/Resources/node"
 	@ditto "$(STAGED)/npm" "$(RELEASE_APP)/Contents/Resources/npm"
+	@# ditto copies the symlinks as symlinks; they are relative and resolve
+	@# inside Resources/, so nothing here points outside the bundle.
+	@ditto "$(STAGED)/bin" "$(RELEASE_APP)/Contents/Resources/bin"
 	@# Before signing, not after. A signature over a bundle that cannot install
 	@# or start a server is worth nothing, and this is the first point at which
 	@# the runtime and the package manager it installs with sit side by side.

@@ -7,6 +7,26 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.13.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Fixed
+
+- **A server that shells out to `npm` could not find it.** Children are spawned with a
+  deliberately minimal `PATH`, which was `/usr/bin:/bin` — so `mcp-npm`'s publish tool, whose
+  `npm pack` runs the package's own prepare script, died several layers down with
+  `sh: npm: command not found`. Neither `Resources` nor `Resources/npm/bin` fixes it: the first
+  holds an `npm` that is a directory, and the shims in the second locate npm relative to node's
+  prefix (`<prefix>/bin/node` plus `<prefix>/lib/node_modules/npm`), which the flat bundle layout
+  is not, so they fail with "Could not determine Node.js install directory". `make node` now
+  stages a `Resources/bin` of symlinks to the `-cli.js` entrypoints, which skips prefix detection
+  entirely, and every child gets that directory in front of `/usr/bin:/bin`. What is added is
+  exactly node, npm and npx from this bundle — never the developer's shell PATH, and nothing a
+  profile can point elsewhere.
+
+  `scripts/verify-servers.sh` now asserts it before signing, with `env -i` so an inherited PATH
+  cannot pass the check on the developer's own npm. Every existing step ran the two binaries by
+  absolute path, which is how a bundle that no child could shell out from passed all of them.
+
 ## [1.13.0] - 2026-09-07
 
 ### Added

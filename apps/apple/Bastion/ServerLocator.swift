@@ -58,6 +58,38 @@ nonisolated enum ServerLocator {
     return nil
   }
 
+  /// The directory a child should have on its `PATH`, so `node`, `npm` and
+  /// `npx` resolve BY NAME.
+  ///
+  ///     Bastion.app/Contents/Resources/bin/{node,npm,npx}
+  ///
+  /// Bastion spawns servers with a deliberately minimal environment, which is
+  /// right up until one of them shells out. `npm_publish` does: `npm pack` runs
+  /// the package's own prepare script, that script runs `npm run build`, and on
+  /// `/usr/bin:/bin` it dies with `sh: npm: command not found` — several layers
+  /// below anything that could explain itself.
+  ///
+  /// `Resources` itself is not the answer, which is the part worth writing
+  /// down: the `npm` there is a DIRECTORY, and `Resources/npm/bin` holds npm's
+  /// own shims, which locate npm relative to node's prefix and fail on this
+  /// flat layout with "Could not determine Node.js install directory". The
+  /// staged `bin/` is symlinks to the `-cli.js` entrypoints, which skip that
+  /// detection entirely. See the `node` target in the Makefile.
+  static func runtimeBinDirectory() -> URL? {
+    if let resources = Bundle.main.resourceURL {
+      let bundled = resources.appendingPathComponent("bin", isDirectory: true)
+      if FileManager.default.fileExists(atPath: bundled.path) { return bundled }
+    }
+    #if DEBUG
+      // The developer's own node already lives in a real bin directory, with
+      // its own npm and npx beside it. Nothing to synthesize.
+      if let dev = try? developmentConfig() {
+        return URL(fileURLWithPath: dev.node).deletingLastPathComponent()
+      }
+    #endif
+    return nil
+  }
+
   static func npmCLI() -> URL? {
     if let resources = Bundle.main.resourceURL {
       let bundled = resources.appendingPathComponent("npm/bin/npm-cli.js")

@@ -319,8 +319,16 @@ nonisolated enum ProfileEnvironment {
       at: state, withIntermediateDirectories: true,
       attributes: [.posixPermissions: 0o700])
 
+    // `/usr/bin:/bin` is the floor, and the bundled runtime's own bin directory
+    // goes in front of it. A server that shells out — `npm pack` running a
+    // package's prepare script is the case that found this — otherwise dies
+    // with `sh: npm: command not found`, several layers below anything that
+    // could explain itself. What is added is exactly node, npm and npx from
+    // this bundle: not the developer's shell PATH, and nothing a profile can
+    // point somewhere else.
+    let runtimeBin = ServerLocator.runtimeBinDirectory()?.path
     var env = [
-      "PATH": "/usr/bin:/bin",
+      "PATH": [runtimeBin, "/usr/bin", "/bin"].compactMap { $0 }.joined(separator: ":"),
       "HOME": NSHomeDirectory(),
       // Three of the ten servers resolve their state as
       // `XDG_CONFIG_HOME ?? ~/.config` — appstore-connect, reddit and x.
