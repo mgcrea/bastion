@@ -344,9 +344,29 @@ struct MainView: View {
       }
 
       HStack(spacing: 6) {
-        Text("Version \(AppInfo.shortVersion)")
-          .font(.caption)
-          .foregroundStyle(.tertiary)
+        // The version, and — only when something shipped that has not been
+        // read — a way to find out what. The gear's comment below applies here
+        // too, which is why this is not simply always a button: the line stays
+        // a line until there is something behind it, and the dot is the part
+        // that announces itself.
+        if Changelog.hasUnseen {
+          Button {
+            SettingsWindowController.show(.whatsNew)
+          } label: {
+            HStack(spacing: 4) {
+              Text("Version \(AppInfo.shortVersion)")
+              Circle().fill(Color.accentColor).frame(width: 5, height: 5)
+            }
+            .font(.caption)
+            .foregroundStyle(.tertiary)
+          }
+          .buttonStyle(.plain)
+          .help("What's new in \(AppInfo.version)")
+        } else {
+          Text("Version \(AppInfo.shortVersion)")
+            .font(.caption)
+            .foregroundStyle(.tertiary)
+        }
         Spacer()
         // The one entrance that says so. A status line that happens to be a
         // button is the right behaviour and no help at all to somebody who does

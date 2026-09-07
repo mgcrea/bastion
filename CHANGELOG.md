@@ -30,6 +30,32 @@ are taken from this file, which is the curated summary.
   stops at page one. `Bastion --capabilities=<profile>/<server>` prints the same three lists from
   a Debug build.
 
+- **What changed, readable after you have already updated.** Release notes existed in exactly one
+  place a user could reach: the sheet Sparkle puts up while it asks permission to install. That
+  sheet is gone the moment you press Install, which left the one person most likely to want them
+  — somebody who has just updated — with nowhere to look but `CHANGELOG.md` on GitHub. Settings
+  has a **What's New** pane now, between About and Updates, because the three answer three parts
+  of one question in that order: which build is this, what did it change, is there a newer one.
+
+  It is generated, not bundled. `make changelog` compiles the last five releases of
+  `CHANGELOG.md` into `Changelog.swift` the same way `make servers` compiles `servers.json` into
+  `ServerCatalog.swift`, and `changelog-check` fails CI if the two drift — so the notes in the app
+  are the notes in the repository, or the build goes red. `### Internal` sections are dropped at
+  generation time rather than hidden at render time, so repo-facing prose about CI never reaches
+  the binary at all. `[Unreleased]` is emitted separately and shown only in a Debug build, where
+  it is true of what is running.
+
+  The parse behind it is now shared with `changelog-notes.mjs`, which renders the appcast Sparkle
+  reads, so the two cannot disagree about what a bullet is. Extracting it turned up a latent bug
+  in the renderer's own placeholder scheme, and the tests in `scripts/lib/changelog.test.mjs` are
+  written against the awkward shapes this file actually contains rather than tidy examples: a
+  bullet with no bold headline, a headline with a code span inside it, and prose sitting between
+  a `###` heading and its first bullet.
+
+  Anything that shipped since the version you last read is marked, and says so from the menu bar
+  panel and the main window's footer as well as in Settings — once, until you look. A fresh
+  install is treated as caught up rather than greeted with five unread releases.
+
 ### Fixed
 
 - **A server that shells out to `npm` could not find it.** Children are spawned with a

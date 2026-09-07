@@ -45,6 +45,8 @@ jobs:
         run: pnpm run format:check
       - name: Servers drift 🔍
         run: pnpm run servers:check
+      - name: Changelog drift 🔍
+        run: pnpm run changelog:check
       # The Worker decides whether a paying customer gets a key, and the script
       # tests assert the Node minter and the Worker produce byte-identical
       # licences against the public key compiled into the app. Both suites

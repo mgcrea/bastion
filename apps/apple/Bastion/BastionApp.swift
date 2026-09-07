@@ -24,6 +24,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       return
     }
 
+    // Whether this build's notes count as read, decided once and never again.
+    //
+    // Has to happen before any view can ask `Changelog.hasUnseen`, and has to
+    // happen on a launch that is NOT a capture — `DemoSeed` returns above.
+    // Without it, a fresh install has no seen-version recorded, every release
+    // in the pane looks unread, and Bastion greets somebody who has never run
+    // it with an indicator in three places. See `markSeenIfUnset()`.
+    Changelog.markSeenIfUnset()
+
     // Before anything can be logged. `LogStore` publishes rows through two
     // hooks rather than calling the audit log itself, so nothing is kept until
     // this runs — and with the Audit pane untouched `AuditLog` opens no file
@@ -97,6 +106,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ServerCheck.runHeadless(
           String(raw.dropFirst("--check=".count)),
           probing: CommandLine.arguments.contains("--probe"))
+      }
+      // Walks every page of all three listings and prints them. See
+      // `CapabilityStore.runHeadless`.
+      if let raw = CommandLine.arguments.first(where: { $0.hasPrefix("--capabilities=") }) {
+        CapabilityStore.runHeadless(String(raw.dropFirst("--capabilities=".count)))
       }
     #endif
   }
@@ -308,6 +322,19 @@ private struct GatewayMenu: View {
           .keyboardShortcut("q")
       }
       .controlSize(.small)
+
+      // A row that appears once after an update and then goes away, rather than
+      // a permanent badge on the version text above. This panel is 320pt and
+      // its header comment is largely about what does NOT earn a place in it; a
+      // marker that is right twice a year would not. MenuBarExtra builds this
+      // content lazily, so the test is re-read every time the panel opens.
+      if Changelog.hasUnseen {
+        Divider()
+        Button("What's new in \(AppInfo.version)…") {
+          SettingsWindowController.show(.whatsNew)
+        }
+        .controlSize(.small)
+      }
     }
     .padding(14)
     // Cupertino's 320. It was 340 to fit a row of three buttons that is no

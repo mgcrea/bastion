@@ -11,6 +11,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
   case general
   case audit
   case about
+  case whatsNew
   case updates
   case licence
 
@@ -19,12 +20,13 @@ enum SettingsPane: String, CaseIterable, Identifiable {
 
   /// What the app is and how it behaves…
   ///
-  /// Updates sits last, next to About, because the two answer halves of one
-  /// question: which build is this, and is there a newer one. It is a pane
-  /// rather than the Section in General it used to be — General is where the
-  /// gateway port and the npm minimum age live, and the only manual check the
-  /// app has was the fourth card down a page nobody scrolls to look for it.
-  static let application: [SettingsPane] = [.general, .audit, .about, .updates]
+  /// The last three answer three parts of one question, in the order somebody
+  /// asks them: which build is this (About), what did it change (What's New),
+  /// is there a newer one (Updates). Updates is a pane rather than the Section
+  /// in General it used to be — General is where the gateway port and the npm
+  /// minimum age live, and the only manual check the app has was the fourth
+  /// card down a page nobody scrolls to look for it.
+  static let application: [SettingsPane] = [.general, .audit, .about, .whatsNew, .updates]
 
   /// …and what was bought, which is a different question and the only reason the
   /// sidebar is in two groups rather than one list of three. Somebody opens
@@ -37,6 +39,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     case .general: "General"
     case .audit: "Activity"
     case .about: "About"
+    case .whatsNew: "What's New"
     case .updates: "Updates"
     case .licence: "Licence"
     }
@@ -47,6 +50,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     case .general: "gearshape"
     case .audit: "list.bullet.rectangle"
     case .about: "info.circle"
+    case .whatsNew: "sparkles"
     case .updates: "arrow.down.circle"
     case .licence: "key"
     }
@@ -105,7 +109,12 @@ struct SettingsView: View {
   }
 
   private func row(_ pane: SettingsPane) -> some View {
-    Label(pane.title, systemImage: pane.symbol).tag(pane)
+    Label(pane.title, systemImage: pane.symbol)
+      // Only ever on What's New, and only while something is genuinely unread.
+      // `.badge(0)` draws nothing, so the unread case needs no branch of its
+      // own and the row cannot end up with an empty pill on it.
+      .badge(pane == .whatsNew && Changelog.hasUnseen ? Changelog.unseen.count : 0)
+      .tag(pane)
   }
 
   var body: some View {
@@ -133,6 +142,7 @@ struct SettingsView: View {
           case .general: GeneralPane()
           case .audit: AuditPane()
           case .about: AboutPane()
+          case .whatsNew: WhatsNewPane()
           case .updates: UpdatesPane()
           case .licence: LicencePane()
           }

@@ -637,6 +637,17 @@ servers: ## Regenerate every copy of the server list from servers.json
 servers-check: ## Fail if any generated copy has drifted from servers.json
 	@node scripts/generate-servers.mjs --check
 
+# The app's What's New pane, from the same CHANGELOG.md the appcast and the
+# GitHub release notes are cut from. Release-day order matters: this runs AFTER
+# the head section is retitled with its version and date, and the result is
+# committed with it — otherwise the tag build fails changelog-check on a file
+# the release commit forgot.
+changelog: ## Regenerate the app's release notes from CHANGELOG.md
+	@node scripts/generate-changelog.mjs
+
+changelog-check: ## Fail if the app's release notes have drifted from CHANGELOG.md
+	@node scripts/generate-changelog.mjs --check
+
 # The other direction. `servers-check` asserts every generated copy matches the
 # manifest; this asserts the MANIFEST matches the servers it describes, which no
 # amount of regenerating can tell you.
@@ -948,7 +959,7 @@ typecheck: ## tsc the Worker and astro check the website
 .PHONY: help app run stop dev-config clean \
 	sparkle sparkle-keys appcast node bundle sign notarize build-release \
 	install install-release install-from uninstall \
-	smoke dialect builtin facade wiring-check wiring-check-real remote-check remote-live-check unit license-check revocations audit audit-check migrate servers servers-check catalog-check provenance provenance-check discover icon \
+	smoke dialect builtin facade wiring-check wiring-check-real remote-check remote-live-check unit license-check revocations audit audit-check migrate servers servers-check changelog changelog-check catalog-check provenance provenance-check discover icon \
 	screenshots screenshots-capture screenshots-check screenshots-update \
 	screenshots-seal screenshots-selftest screenshots-appstore \
 	screenshots-website screenshots-compose screenshots-doctor screenshots-clean \
