@@ -50,6 +50,23 @@ jobs:
       # licences against the public key compiled into the app. Both suites
       # existed for a month before anything ran them outside a developer's
       # shell.
+      # The one gate `scripts/generate-revocations.mjs` has always claimed to
+      # have and never had: its own header said "CI only checks that the
+      # committed file is current", and the fork-safe `--check` branch it
+      # implements for exactly this was dead code.
+      #
+      # What it prevents: a licence is refunded, `revoked_at` is set in D1, the
+      # manual `make revocations` is forgotten, and the next notarized release
+      # bakes in a stale list — leaving the refunded key working. Build-time
+      # revocation is the design's only enforcement point, so nothing else
+      # catches it.
+      #
+      # The script skips itself, passing, when there is no token: a pull request
+      # from a fork must not fail over a check it structurally cannot run.
+      - name: Revocations drift 🔍
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/generate-revocations.mjs --check
       - name: Types (api) 🔍
         run: pnpm --filter @mgcrea/bastion-api typecheck
       - name: Tests 🔍
@@ -113,7 +130,12 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           if [ -n "$CLOUDFLARE_API_TOKEN" ]; then echo "present=true" >> "$GITHUB_OUTPUT"
-          else echo "No CLOUDFLARE_API_TOKEN secret; skipping the deploy."; fi
+          # An annotation, not a plain line: every step below is gated on this
+          # output, so without a warning a rotated or renamed secret leaves a
+          # green "Deploy" on every push to main while production stays frozen,
+          # and the health curls that would notice are skipped by the same
+          # condition.
+          else echo "::warning::No CLOUDFLARE_API_TOKEN secret; nothing was deployed."; fi
       - name: Checkout 🛎️
         if: steps.token.outputs.present == 'true'
         uses: actions/checkout@v5
@@ -153,7 +175,12 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           if [ -n "$CLOUDFLARE_API_TOKEN" ]; then echo "present=true" >> "$GITHUB_OUTPUT"
-          else echo "No CLOUDFLARE_API_TOKEN secret; skipping the deploy."; fi
+          # An annotation, not a plain line: every step below is gated on this
+          # output, so without a warning a rotated or renamed secret leaves a
+          # green "Deploy" on every push to main while production stays frozen,
+          # and the health curls that would notice are skipped by the same
+          # condition.
+          else echo "::warning::No CLOUDFLARE_API_TOKEN secret; nothing was deployed."; fi
       - name: Checkout 🛎️
         if: steps.token.outputs.present == 'true'
         uses: actions/checkout@v5
@@ -209,10 +236,34 @@ jobs:
       # any authentication. `make dialect` is deliberately NOT here — it needs a
       # running app and an installed catalog server, which makes it a
       # developer's check like `make smoke`, not CI's.
+      #
+      # Neither are `make builtin` and `make facade`, for the same reason and
+      # said here because it was not: both need a profile and an installed
+      # catalog server. `make screenshots-check` is out too, and less happily —
+      # capture needs a GUI session and Screen Recording permission, which no
+      # runner has, so the golden gate only ever runs on a developer's Mac.
       - name: Unit checks 🔍
         run: make unit
       - name: Client wiring 🔍
         run: make wiring-check
+      # The cross-language check, and the one whose failure costs money.
+      # JavaScript mints the keys and Swift accepts them, so the disagreement
+      # that matters lives between the two and neither side's own tests can see
+      # it: `scripts/lib/license.test.mjs` is JavaScript verifying JavaScript,
+      # and the vitest suite is the same. This compiles the real License.swift
+      # and runs a minted key through it.
+      #
+      # Needs the signing key, so it skips on a fork rather than failing there.
+      # `if:` cannot read `secrets`, so the guard is in the shell.
+      - name: Licence round trip 🔍
+        env:
+          LICENSE_SIGNING_KEY: ${{ secrets.LICENSE_SIGNING_KEY }}
+        run: |
+          if [ -z "$LICENSE_SIGNING_KEY" ]; then
+            echo "::warning::no LICENSE_SIGNING_KEY secret; skipping the licence round trip"
+            exit 0
+          fi
+          make license-check
       # Beside the two above and for the same reason: no app, no network, no
       # Keychain — the stub in `audit-check.swift` stands in for one — so the
       # signing round trip is as cheap as the parser checks. Worth having in CI
