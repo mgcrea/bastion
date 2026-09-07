@@ -105,12 +105,34 @@ nonisolated enum ServerSentEvents {
   struct Parser {
     private var buffer = Data()
 
+    /// A single event longer than this is not SSE framing.
+    ///
+    /// The same ceiling and the same answer as `Supervisor.readLoop`, which
+    /// faces the identical problem from a child that never sends a newline:
+    /// stop buffering rather than grow without bound. Every other reader in this
+    /// app has a ceiling — `HTTPRequest.read`, the bridge, the child loop — and
+    /// this one is fed straight from `URLSession` by a REMOTE server, which is
+    /// the least trustworthy source of the four.
+    private static let maxEvent = 32 << 20
+
     init() {}
 
     /// Every complete event at the front of what has been fed so far.
     mutating func feed(_ bytes: Data) -> [Data] {
+      // Where a boundary could newly appear: the retained buffer never contains
+      // one — the previous `feed` cut at the last — so any boundary now must use
+      // at least one new byte. The overlap is two bytes, the longest boundary
+      // being three (`\n\r\n`). Scanning the whole buffer every time made a long
+      // stream quadratic.
+      let scanFrom = buffer.count >= 2 ? buffer.count - 2 : 0
       buffer.append(bytes)
-      guard let cut = lastEventBoundary(in: buffer) else { return [] }
+      if buffer.count > Self.maxEvent {
+        buffer.removeAll(keepingCapacity: false)
+        return []
+      }
+      let tail = Data(buffer[scanFrom...])
+      guard let cutInTail = lastEventBoundary(in: tail) else { return [] }
+      let cut = scanFrom + cutInTail
       let complete = Data(buffer[..<cut])
       buffer = Data(buffer[cut...])
       return dataPayloads(in: complete)
