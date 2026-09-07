@@ -222,18 +222,64 @@ const mentionsOf = (texts) => {
 };
 
 /**
+ * Single-argument helpers that read the environment by the name handed to them.
+ *
+ * `mcp-x` moved its config to this shape and every literal-read check here went
+ * blind at once:
+ *
+ *     const bool = (name: string) => parseBool(name, env[name], warn);
+ *     ...
+ *     allowWrites: bool("X_ALLOW_WRITES") ?? file.allowWrites,
+ *
+ * Seven problems were reported against that entry, including "writeGate
+ * X_ALLOW_WRITES is not read by mcp-x, so the profile toggle sets a variable
+ * nothing consults" — which reads as the write gate being broken, and was
+ * entirely this detector's blind spot.
+ *
+ * A helper is only accepted once its body has been seen indexing `env` with its
+ * own parameter, so this is not "trust any one-argument call": the proof that
+ * `bool("X")` is a read of `X` is that `bool` was defined as `env[name]`. That
+ * keeps the "declared but never read" assertion strong enough to fail a build
+ * on, which is the whole reason it is not the weaker by-name test.
+ *
+ * `parsesBool` records which of them go through `parseBool`, because the write
+ * gate has to be read as a boolean and not merely read.
+ */
+const envHelpersOf = (texts) => {
+  const helpers = new Map();
+  for (const text of texts) {
+    const pattern =
+      /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*\(\s*([A-Za-z_$][\w$]*)\s*(?::[^)]*)?\)\s*(?::[^=]*?)?=>\s*([^;\n]*)/g;
+    for (const m of text.matchAll(pattern)) {
+      const [, name, param, body] = m;
+      if (!body.includes(`env[${param}]`)) continue;
+      helpers.set(name, { parsesBool: /\bparseBool\s*\(/.test(body) });
+    }
+  }
+  return helpers;
+};
+
+/**
  * Every environment variable a server reads.
  *
- * Both forms are matched, but only one is used in practice: every read across
- * the eleven repos is a literal `env.NAME` or `process.env.NAME`, with no
- * computed access anywhere. That is what makes the "declared but never read"
- * assertion safe to fail a build on — a dynamic read would make it a guess.
+ * Three forms: a literal `env.NAME`, a literal `process.env["NAME"]`, and a
+ * call to one of the helpers above with the name as a string literal. All three
+ * are literal in the sense that matters — the NAME is written down in the
+ * source — which is what makes the "declared but never read" assertion safe to
+ * fail a build on. A genuinely computed read would make it a guess, and none of
+ * these repos has one.
  */
-const readsOf = (texts) => {
+const readsOf = (texts, helpers = new Map()) => {
   const found = new Set();
+  const names = [...helpers.keys()];
+  const viaHelper =
+    names.length === 0
+      ? null
+      : new RegExp(`\\b(?:${names.join("|")})\\(\\s*["'\`]([A-Z][A-Z0-9_]*)["'\`]\\s*\\)`, "g");
   for (const text of texts) {
     for (const m of text.matchAll(/\benv\.([A-Z][A-Z0-9_]*)/g)) found.add(m[1]);
     for (const m of text.matchAll(/\bprocess\.env\[\s*["']([A-Z][A-Z0-9_]*)/g)) found.add(m[1]);
+    if (viaHelper) for (const m of text.matchAll(viaHelper)) found.add(m[1]);
   }
   return found;
 };
@@ -252,6 +298,23 @@ const AMBIENT = new Set([
 ]);
 
 const UNDETERMINABLE = "could not be determined from the server's source";
+
+/**
+ * Whether `gate` is read AS A BOOLEAN, in either of the two shapes our servers
+ * write it in: `parseBool(env.GATE)` directly, or `bool("GATE")` through a
+ * helper proven above to index `env` and to call `parseBool`.
+ *
+ * The distinction matters and is not pedantry: Bastion writes "1" and "0", and
+ * a parser that is not `parseBool` may well read "0" as on — which turns the
+ * profile's write toggle into a switch that only ever points one way.
+ */
+const readsAsBool = (config, gate, boolHelpers) => {
+  if (new RegExp(`parseBool\\(env\\.${gate}\\)`).test(config)) return true;
+  if (!boolHelpers.length) return false;
+  return new RegExp(`\\b(?:${boolHelpers.join("|")})\\(\\s*["'\`]${gate}["'\`]\\s*\\)`).test(
+    config,
+  );
+};
 
 const problems = [];
 const advice = [];
@@ -328,7 +391,11 @@ for (const server of manifest.servers ?? manifest) {
   }
   checked += 1;
 
-  const reads = readsOf(texts);
+  const helpers = envHelpersOf(texts);
+  const reads = readsOf(texts, helpers);
+  // The helper names whose body goes through `parseBool`, for the write-gate
+  // check below. A gate read by `int()` is read, but not read as a boolean.
+  const boolHelpers = [...helpers].filter(([, h]) => h.parsesBool).map(([name]) => name);
   const known = byName ? mentionsOf(texts) : reads;
   const declared = server.env ?? [];
   // Which of this entry's variables the weaker test had to carry. Usually none:
@@ -362,7 +429,7 @@ for (const server of manifest.servers ?? manifest) {
         `${server.id}: writeGate ${server.writeGate} is not ${byName ? "mentioned by" : "read by"} ` +
           `${against}, so the profile toggle sets a variable nothing consults`,
       );
-    } else if (ours && !new RegExp(`parseBool\\(env\\.${server.writeGate}\\)`).test(config)) {
+    } else if (ours && !readsAsBool(config, server.writeGate, boolHelpers)) {
       problems.push(
         `${server.id}: writeGate ${server.writeGate} is read, but not as a boolean — ` +
           'Bastion writes "1" and "0", so a different parser may read "0" as on',
@@ -377,6 +444,14 @@ for (const server of manifest.servers ?? manifest) {
   const fieldOf = new Map();
   for (const m of config.matchAll(/(\w+):\s*parseBool\(env\.([A-Z][A-Z0-9_]*)\)/g)) {
     fieldOf.set(m[2], m[1]);
+  }
+  // `field: bool("THE_VAR")`, the same mapping written the other way.
+  if (boolHelpers.length) {
+    const pattern = new RegExp(
+      `(\\w+):\\s*(?:${boolHelpers.join("|")})\\(\\s*["'\`]([A-Z][A-Z0-9_]*)["'\`]\\s*\\)`,
+      "g",
+    );
+    for (const m of config.matchAll(pattern)) fieldOf.set(m[2], m[1]);
   }
   for (const variable of declared) {
     if (!variable.boolean || !ours) continue;
