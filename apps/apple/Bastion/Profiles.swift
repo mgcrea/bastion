@@ -256,6 +256,7 @@ final class ProfileStore {
         Supervisor.shared.stop(profile: profile.name, server: profile.serverID)
         ServerCheck.shared.forget(profile.id)
         ToolCostStore.shared.forget(profile.id)
+        CapabilityStore.shared.forget(profile.id)
       }
     } else {
       profiles.append(profile)

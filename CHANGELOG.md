@@ -9,6 +9,27 @@ are taken from this file, which is the curated summary.
 
 ## [Unreleased]
 
+### Added
+
+- **A profile's tools, prompts and resources, in one place.** Every profile row has a `Tools…`
+  button beside `Test`, and it opens the listing the app could not previously show: all three
+  surfaces, read from the running server through that profile's own write gate, with a count on
+  each tab, a filter, a per-tool token cost and the input schema behind a disclosure. Nothing in
+  Bastion had ever asked a server for `prompts/list` or `resources/list`. The check sheet reads
+  one page of tools and reports the five heaviest, on purpose; the Chat pane's picker is a budget
+  control that drops everything the write gate touches. Neither answers "what is in here", and a
+  static table in `servers.json` cannot: a Bastion listing is per profile and per client, which
+  is the same reason `Dialect.listCacheScope` is `private`.
+
+  It says which of the possible listings it is showing, because a number here can honestly
+  disagree with one elsewhere in the app. Whether the gate was on or off; which tools Bastion
+  removed, named and struck through, for a remote server whose catalog entry marks them as
+  writes — a child server switches its own off at startup and cannot be asked what they were;
+  and whether loading on demand means a client is sent three declarations in place of this list.
+  Walking every page also hands `ToolCostStore` a better measurement than the check's, which
+  stops at page one. `Bastion --capabilities=<profile>/<server>` prints the same three lists from
+  a Debug build.
+
 ### Fixed
 
 - **A server that shells out to `npm` could not find it.** Children are spawned with a

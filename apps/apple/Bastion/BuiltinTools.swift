@@ -584,12 +584,21 @@ enum BuiltinTools {
         facadeCount: ToolFacade.declarationCount(
           hasWriteDispatcher: (measured.writeToolCount ?? 0) > 0))
     {
+      // "Not applied yet", and then the condition, because an agent reading
+      // this is deciding whether to change the setting. The floor is recomputed
+      // from the catalog on every `tools/list`, so On here is armed rather than
+      // ignored and telling it otherwise invites a pointless `update_server`.
+      let needed = ToolFacade.toolsWorthFronting(
+        hasWriteDispatcher: (measured.writeToolCount ?? 0) > 0)
       out["lazy_tools_note"] =
-        "On, but not applied: "
+        "On, but not applied yet: "
         + (floor == .tooFewTools
           ? "\(measured.toolCount) tools is too few to be worth searching, "
           : "the tools that would replace this listing cost about what it costs, ")
-        + "so clients are sent the real list."
+        + "so clients are sent the real list. Bastion re-checks on every listing and fronts "
+        + (floor == .tooFewTools
+          ? "this server from \(needed) tools up."
+          : "this server once its listing is worth more than the tools that would replace it.")
     }
     if let gate = server.writeGate { out["write_gate"] = gate }
     if let docs = server.docsURL { out["docs_url"] = docs.absoluteString }

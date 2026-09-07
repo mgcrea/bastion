@@ -29,6 +29,9 @@ struct ServerDetail: View {
   /// for the reason `editing` is: a sheet presented from a row is torn down by
   /// the state churn behind it, and `ProfileRow` redraws on a five-second clock.
   @State private var checking: Profile?
+  /// The profile whose capability listing is open, owned here for the reason
+  /// `checking` is.
+  @State private var browsing: Profile?
   @State private var lastError: String?
   @State private var confirmingServerRemoval = false
 
@@ -54,6 +57,10 @@ struct ServerDetail: View {
     .sheet(item: $checking) { profile in
       ServerCheckSheet(server: server, profile: profile)
     }
+    .sheet(item: $browsing) { profile in
+      CapabilitiesSheet(server: server, profile: profile)
+    }
+
   }
 
   // MARK: - Header
@@ -670,20 +677,38 @@ struct ServerDetail: View {
         server.loadsToolsOnDemand
         ? "Bastion is sending the real list anyway."
         : "turning this on would change nothing here."
+      // Said because the picker above stays live, and a caption ending at
+      // `outcome` reads as if it should not. The floor is not a property of
+      // this server that the app stored once; every `tools/list` recomputes it
+      // from the catalog the server just returned, so the setting is an armed
+      // intent rather than a switch on a wire, and a server that grows starts
+      // being fronted with nobody touching the control again. Leaving that
+      // unsaid is what makes On look broken here.
+      let carry =
+        server.loadsToolsOnDemand
+        ? " It re-checks on every listing, and will front this server"
+        : " It would take effect"
       // The term that actually held, named. "Too small to be worth searching"
       // and "the three cost what the list costs" are different facts about a
       // server and lead somewhere different — the first is permanent, the
-      // second moves the next time the server grows.
+      // second moves the next time the server grows. They also differ in what
+      // it would TAKE to clear them, which is the half the carry clause needs:
+      // the count term is a number that can be named, the byte term moves on
+      // description text nobody here controls and can only be described.
       switch floor {
       case .tooFewTools:
+        let needed = ToolFacade.toolsWorthFronting(
+          hasWriteDispatcher: (measured.writeToolCount ?? 0) > 0)
         return "\(scope). \(measured.toolCount) tools, which is not enough to search: an agent "
           + "reaching for this server needs most of them, and finding them through Bastion's "
           + "own tools would cost more round trips than reading the list. So \(outcome)"
+          + "\(carry) from \(needed) tools up."
       case .notCheaper:
         let full = ToolCost.short(ToolCost.tokens(bytes: measured.bytes))
         let three = ToolCost.short(ToolCost.tokens(bytes: facade))
         return "\(scope). \(measured.toolCount) tools, \(full) tokens — and the Bastion tools "
           + "that would replace them cost \(three) of that, so \(outcome)"
+          + "\(carry) once the list is worth more than the tools that would replace it."
       }
     }
     return "\(scope). \(measured.toolCount) tools, "
@@ -761,6 +786,7 @@ struct ServerDetail: View {
                   ServerCheck.shared.start(profile: profile, server: server)
                   checking = profile
                 },
+                browse: { browsing = profile },
                 chat: { ChatRequest.present(profile: profile, server: server) },
                 report: { lastError = $0 })
               if profile.id != profiles.last?.id { Divider() }
@@ -913,6 +939,7 @@ private struct ProfileRow: View {
   let profile: Profile
   let edit: () -> Void
   let check: () -> Void
+  let browse: () -> Void
   let chat: () -> Void
   let report: (String?) -> Void
 
@@ -975,6 +1002,17 @@ private struct ProfileRow: View {
         }
         .help("Start this server, complete the handshake, and list its tools.")
         .disabled(ServerCheck.shared.isRunning(profile))
+        // Three verbs before Edit, and each answers a different question. Test
+        // asks whether this server answers at all; Tools asks what it exposes,
+        // which is the question a check deliberately does not answer in full —
+        // it reads one page, of tools only, because it is the cheap thing a row
+        // can offer. Chat asks whether the credential behind it works upstream.
+        Button {
+          browse()
+        } label: {
+          Label("Tools…", systemImage: "list.bullet.rectangle")
+        }
+        .help("List every tool, prompt and resource this profile exposes.")
         // Two verbs, and the division between them is the point: Test proves
         // this server answers, Chat proves the credential behind it actually
         // works upstream. The second question is the one somebody has just
@@ -1082,9 +1120,13 @@ private struct ProfileRow: View {
         // Only under a picker sitting at On, where it explains a badge that
         // shows no saving. Off, this is the ordinary bill and the floor is not
         // what makes it one.
+        // "Not applied" rather than "off", and then what would change it: the
+        // floor is recomputed from the catalog on every `tools/list`, so this
+        // is a description of today's listing and not of the setting.
         + (server.loadsToolsOnDemand
-          ? " Loading on demand is on and not applied: this listing is too small to be worth "
-            + "putting a search in front of, so the real one is sent."
+          ? " Loading on demand is on and not applied yet: this listing is too small to be worth "
+            + "putting a search in front of, so the real one is sent. Bastion checks again on "
+            + "every listing."
           : "")
         + " Measured \(when)."
     )

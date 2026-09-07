@@ -421,6 +421,16 @@ nonisolated enum ToolFacade {
   /// a server Bastion can tell writes from reads on.
   static func declarationCount(hasWriteDispatcher: Bool) -> Int { hasWriteDispatcher ? 4 : 3 }
 
+  /// The smallest listing that clears the count term of the floor.
+  ///
+  /// For a caption that wants to name the number rather than say "bigger". The
+  /// same product `floor` compares against, so a string cannot drift away from
+  /// the arithmetic the gateway actually applies the next time `savingFactor`
+  /// moves.
+  static func toolsWorthFronting(hasWriteDispatcher: Bool) -> Int {
+    declarationCount(hasWriteDispatcher: hasWriteDispatcher) * savingFactor
+  }
+
   /// The same question against a catalog, for the two wirings that hold one.
   static func floor(
     catalog: [[String: Any]], displayName: String, summary: String, hasWriteDispatcher: Bool
