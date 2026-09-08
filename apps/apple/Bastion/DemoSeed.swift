@@ -345,6 +345,22 @@ enum DemoSeed {
     }
   }
 
+  /// What a check found, for the sidebar's update dot and the Settings list.
+  ///
+  /// `keycloak` rather than `shopify` on purpose. The `server` plate selects
+  /// Shopify, and giving *that* server an update would add `ServerDetail`'s
+  /// `checkStatus` line to the one frame whose caption already promises a
+  /// `secret` badge sitting at the bottom of it. One dot in the sidebar is the
+  /// whole feature; pushing the Environment card down to photograph it twice is
+  /// how the fold warning in `screenshots.config.json` gets earned again.
+  ///
+  /// Everything else is `nil` — not `.upToDate` — because a check that has not
+  /// run is the state the product is actually in most of the time, and the
+  /// Settings pane's "not checked yet" rows are worth a picture too.
+  nonisolated static func availability(of id: String) -> ServerInstaller.Availability? {
+    id == "keycloak" ? .newer("1.0.0") : nil
+  }
+
   /// The protocol the installed code speaks, and the SDK that decides it.
   ///
   /// Deliberately the *agreeing* case on every entry. The disagreeing branch

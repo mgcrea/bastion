@@ -228,6 +228,39 @@ struct MainView: View {
         HStack(spacing: 4) {
           Text("Servers")
           Spacer()
+          // The only place in the window that asks about every server at once,
+          // and the reason the dots below it can ever appear: `availability` is
+          // empty until something asks, so a badge with no way to populate it
+          // but nine visits to nine panes would be a feature nobody finds.
+          //
+          // Still a press, which is the whole constraint — see
+          // `ServerInstaller.checkForUpdate`. Nothing here runs on a timer, on
+          // launch, or when this view appears.
+          if ServerInstaller.shared.hasCheckableServers {
+            Button {
+              let installer = ServerInstaller.shared
+              if installer.isCheckingAll {
+                installer.cancelCheckAll()
+              } else {
+                installer.checkAll()
+              }
+            } label: {
+              if ServerInstaller.shared.isCheckingAll {
+                ProgressView().controlSize(.small).scaleEffect(0.6).frame(width: 12, height: 12)
+              } else {
+                Image(systemName: "arrow.triangle.2.circlepath")
+              }
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .contentShape(.rect)
+            .help(
+              ServerInstaller.shared.isCheckingAll
+                ? "Stop checking — anything already asking npm finishes"
+                : "Check all servers for updates")
+            .accessibilityLabel(
+              ServerInstaller.shared.isCheckingAll ? "Stop checking" : "Check all for updates")
+          }
           Button {
             editor.subject = .adding
           } label: {
@@ -443,10 +476,12 @@ struct MainView: View {
   }
 }
 
-/// The trailing accessory on a server row: what is running, what is still
-/// downloading, what cannot run, or how many profiles could.
+/// The trailing accessory on a server row: whether there is a newer version,
+/// then what is running, what is still downloading, what cannot run, or how
+/// many profiles could.
 ///
-/// Facts competing for one slot, and the order is the order somebody wants
+/// Two channels, not one — see `updateDot` for why the first is not simply the
+/// top of the ladder. Below it, facts competing for one slot, and the order is the order somebody wants
 /// them. Running wins — a green dot answers "is this working", which is the
 /// question somebody opening this window actually arrived with. Then the two
 /// states that mean nothing will *ever* work, which the list could not express
@@ -456,6 +491,36 @@ private struct ServerBadge: View {
   let server: BastionServer
 
   var body: some View {
+    HStack(spacing: 4) {
+      updateDot
+      ladder
+    }
+  }
+
+  /// Beside the ladder rather than in it, and that is the point.
+  ///
+  /// Every state below competes for one slot because they answer the same
+  /// question — *is this working* — and only one of them can be true. "There is
+  /// a newer version" answers a different question, is true at the same time as
+  /// running, disabled or a profile count, and would be invisible in the case
+  /// that matters most: a server anybody actually uses is a server with a green
+  /// dot on it. So it gets a channel of its own, narrow enough that the row is
+  /// still the ladder's.
+  ///
+  /// Orange, matching the `Badge` on the detail pane's Package card, and a dot
+  /// rather than `arrow.up.circle`, which at `.caption2` is the same shape as
+  /// the `arrow.down.circle` two branches below it meaning the opposite thing.
+  @ViewBuilder private var updateDot: some View {
+    if case .newer(let latest) = ServerInstaller.shared.availability(of: server.id) {
+      Circle()
+        .fill(Color.orange)
+        .frame(width: 5, height: 5)
+        .help("Update available (\(latest))")
+        .accessibilityLabel("Update available, version \(latest)")
+    }
+  }
+
+  @ViewBuilder private var ladder: some View {
     let live = Activity.shared.instances.filter { $0.server == server.id && $0.isLive }.count
     let profiles = ProfileStore.shared.profiles.filter { $0.serverID == server.id }.count
 

@@ -58,6 +58,17 @@ final class ServerInstaller {
 
   func isChecking(_ id: String) -> Bool { checking.contains(id) }
 
+  /// What the last check said about one server, or `nil` when none has run.
+  ///
+  /// The read path, where `availability` is the store: under a capture the
+  /// answer comes off the fixture table instead, for the same reason
+  /// `installedVersion(of:)` does — otherwise every screenshot of the sidebar
+  /// is a photograph of whatever the capturing Mac happened to have checked.
+  func availability(of id: String) -> Availability? {
+    if DemoSeed.isEnabled { return DemoSeed.availability(of: id) }
+    return availability[id]
+  }
+
   /// The outcome of a check, as sentences rather than as a version plus a flag.
   ///
   /// `pinnedOlder` is the case a version number alone would misreport. A
@@ -76,6 +87,34 @@ final class ServerInstaller {
     /// count is packages.
     case needsRepair(Int)
     case failed(String)
+
+    /// One row's worth, for a list that shows every server at once.
+    ///
+    /// A third phrasing rather than a shared one, deliberately.
+    /// `ServerDetail.checkStatus` writes prose because it has a card to itself
+    /// and one server to explain; `BuiltinTools.describe` writes for a model
+    /// deciding whether to call `update_server` and names that tool. Neither
+    /// fits a column two inches wide, and forcing all three through one string
+    /// would make the shortest of them the ceiling.
+    var shortLabel: String {
+      switch self {
+      case .upToDate: "Up to date"
+      case .newer(let latest): "\(latest) available"
+      case .pinnedOlder(let resolved): "Held at \(resolved) by minimum age"
+      case .needsRepair(let count): "\(count) \(count == 1 ? "package" : "packages") to repair"
+      case .failed: "Check failed"
+      }
+    }
+
+    var symbol: String {
+      switch self {
+      case .upToDate: "checkmark.circle"
+      case .newer: "arrow.down.circle.fill"
+      case .pinnedOlder: "clock.badge.exclamationmark"
+      case .needsRepair: "wrench.and.screwdriver"
+      case .failed: "exclamationmark.triangle.fill"
+      }
+    }
   }
 
   // MARK: - Where it lands
@@ -440,6 +479,112 @@ final class ServerInstaller {
     case .failure(let error):
       availability[server.id] = .failed(error.localizedDescription)
       hostLog("install", .error, "\(server.id): check failed — \(error.localizedDescription)")
+    }
+  }
+
+  // MARK: - All of them at once
+
+  /// How many `npm --dry-run` subprocesses a check-all keeps in flight.
+  ///
+  /// Not unbounded: `runCheck` blocks its thread on `readDataToEndOfFile` and
+  /// `waitUntilExit`, so one task per server would park the whole cooperative
+  /// pool on nine registry round trips and take the window down with it. Not
+  /// one either — serial makes each check wait out the latency of the last for
+  /// no reason, since the slow part is a network the app is not otherwise using.
+  private static let checkFanOut = 3
+
+  private var checkAllTask: Task<Void, Never>?
+  private var updateAllTask: Task<Void, Never>?
+
+  var isCheckingAll: Bool { checkAllTask != nil }
+  var isUpdatingAll: Bool { updateAllTask != nil }
+
+  /// The servers a check can say anything about: published to npm, with code
+  /// already on disk to compare against.
+  ///
+  /// The same two guards `checkForUpdate` applies before it will do anything,
+  /// hoisted so the sidebar button, the Settings count and the fan-out cannot
+  /// disagree about what "all of them" means. A server with no package, a
+  /// remote one, and one that has never been installed are all excluded — for
+  /// the last of those the button is Install, and "up to date" would be a
+  /// sentence about a directory that is not there.
+  var checkableServers: [BastionServer] {
+    ServerStore.shared.servers.filter(Self.isCheckable)
+  }
+
+  /// Whether there is at least one, without building the list.
+  ///
+  /// The sidebar header asks this on every redraw to decide whether to draw its
+  /// button at all, and the predicate reads a `package.json` per server. Same
+  /// answer, first match wins — the array is for the callers that need the
+  /// names.
+  var hasCheckableServers: Bool {
+    ServerStore.shared.servers.contains(where: Self.isCheckable)
+  }
+
+  private nonisolated static func isCheckable(_ server: BastionServer) -> Bool {
+    server.package?.distribution == .npm && installedVersion(of: server) != nil
+  }
+
+  /// Servers a check found something newer for. Only `.newer`: `pinnedOlder`
+  /// would go backwards and `needsRepair` is a different button.
+  var updatesAvailable: [BastionServer] {
+    checkableServers.filter {
+      if case .newer = availability(of: $0.id) { return true }
+      return false
+    }
+  }
+
+  /// Ask npm about every checkable server. One press, still a press.
+  ///
+  /// Cancelling stops the queue rather than the checks: a dry run already
+  /// talking to the registry is left to finish, because killing it halfway
+  /// would leave `checking` set with nothing coming to clear it.
+  func checkAll() {
+    guard checkAllTask == nil else { return }
+    let servers = checkableServers
+    guard !servers.isEmpty else { return }
+    checkAllTask = Task { [self] in
+      await withTaskGroup(of: Void.self) { group in
+        var next = 0
+        while next < servers.count, next < Self.checkFanOut {
+          let server = servers[next]
+          group.addTask { await self.checkForUpdate(server) }
+          next += 1
+        }
+        while await group.next() != nil {
+          guard !Task.isCancelled, next < servers.count else { continue }
+          let server = servers[next]
+          group.addTask { await self.checkForUpdate(server) }
+          next += 1
+        }
+      }
+      checkAllTask = nil
+    }
+  }
+
+  func cancelCheckAll() {
+    checkAllTask?.cancel()
+  }
+
+  /// Install every server a check found something newer for.
+  ///
+  /// Serial, unlike the checks. Each install stops that server's running
+  /// children (see `install`), so a fan-out here is a restart storm across the
+  /// whole machine at once; one at a time is the same work in an order somebody
+  /// can watch. The list is taken once up front — `install` clears each
+  /// server's `availability` as it goes, and re-reading it would empty the queue
+  /// underneath the loop.
+  func updateAll() {
+    guard updateAllTask == nil else { return }
+    let servers = updatesAvailable
+    guard !servers.isEmpty else { return }
+    updateAllTask = Task { [self] in
+      for server in servers {
+        guard !Task.isCancelled else { break }
+        await install(server)
+      }
+      updateAllTask = nil
     }
   }
 

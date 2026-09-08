@@ -135,6 +135,12 @@ reaches the registry when something asks it to and not otherwise — so what `ge
 under `update` is only ever as fresh as the last time somebody asked, and it says `unchecked`
 rather than guessing.
 
+The window asks the same question about every installed server at once — one control in the
+sidebar's Servers header, an orange dot on the rows npm would move, and the full list under
+Settings ▸ Updates beside the app's own check. It is still a press. There is no schedule behind
+it, nothing checks at launch, and what a check found is forgotten on quit rather than kept and
+shown stale.
+
 It is the one server that cannot be removed. Removing a server takes its profiles, their Keychain
 entries and its downloaded code with it, which was far too much to mean "not right now" — so every
 server now has a **switch** instead. A disabled server stops its children and refuses requests with

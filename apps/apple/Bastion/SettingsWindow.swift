@@ -364,12 +364,12 @@ private struct AboutPane: View {
 
 // MARK: - Updates
 
-/// The update check, and the only outbound connection in the app.
+/// Am I current — asked about the app, and about the servers it runs.
 ///
 /// Its own pane rather than a Section in General for the reason
-/// `SettingsPane.application` gives: it is the only manual check Bastion has,
-/// automatic checking is off until asked for, and a build with the toggle off
-/// had no way to look that anyone could find. The pane also has room to say
+/// `SettingsPane.application` gives: these are the only manual checks Bastion
+/// has, automatic checking is off until asked for, and a build with the toggle
+/// off had no way to look that anyone could find. The pane also has room to say
 /// what the check sends in plain terms, which is a claim the rest of the app's
 /// loopback-only story rests on — see `UpdateController`.
 private struct UpdatesPane: View {
@@ -377,7 +377,9 @@ private struct UpdatesPane: View {
   /// from an updater that does not exist until somebody says yes, so there is
   /// nothing for `@Observable` to have tracked before the first write.
   @State private var automatic = UpdateController.shared.automatic
+  @State private var confirmingUpdateAll = false
   private var updates = UpdateController.shared
+  private var installer = ServerInstaller.shared
 
   var body: some View {
     Form {
@@ -411,17 +413,129 @@ private struct UpdatesPane: View {
             }))
         // A caption inside the card rather than a section footer, which is what
         // every other pane in this file does.
+        // "The only network connection Bastion makes" is what this said until
+        // the section below it existed, and the two cannot both be on one
+        // screen. The claim that was actually being made — and that
+        // `UpdateController` and `ServerInstaller.checkForUpdate` both make — is
+        // narrower and survives: this is the only one Bastion opens on its own.
+        // npm reaches the registry too, and never without a press.
         Text(
-          "Off until you say otherwise. This is the only network connection Bastion makes, and it "
-            + "makes none at all until you turn this on or press Check Now. It reads one file, the "
-            + "appcast at bastion.mgcrea.io/appcast.xml, which redirects to the GitHub release, "
-            + "and sends no identifier with it: not your licence key, not a machine id."
+          "Off until you say otherwise. This is the only connection Bastion opens on its own, and "
+            + "it opens none at all until you turn this on or press Check Now. It reads one file, "
+            + "the appcast at bastion.mgcrea.io/appcast.xml, which redirects to the GitHub "
+            + "release, and sends no identifier with it: not your licence key, not a machine id."
         )
         .font(.caption).foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
       }
+
+      serversSection
     }
     .formStyle(.grouped)
+    .confirmationDialog(
+      "Update \(installer.updatesAvailable.count) servers?",
+      isPresented: $confirmingUpdateAll, titleVisibility: .visible
+    ) {
+      Button("Update All") { installer.updateAll() }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text(updateAllWarning)
+    }
+  }
+
+  /// The same two questions as the section above, asked about the servers.
+  ///
+  /// Here rather than in a pane of its own because "am I current" is one
+  /// question with two halves, and a user who has answered it for the app and
+  /// not for the nine packages it runs has not answered it. The check is the
+  /// same shape as Sparkle's — a button, a sentence about when it last ran —
+  /// which is the shape `ServerDetail` already borrowed for one server.
+  @ViewBuilder private var serversSection: some View {
+    let checkable = installer.checkableServers
+    if !checkable.isEmpty {
+      Section {
+        LabeledContent {
+          Button(installer.isCheckingAll ? "Checking…" : "Check All…") { installer.checkAll() }
+            .disabled(installer.isCheckingAll || installer.isUpdatingAll)
+        } label: {
+          Text(
+            checkable.count == 1
+              ? "1 server installed from npm" : "\(checkable.count) servers installed from npm")
+        }
+
+        ForEach(checkable, id: \.id) { server in
+          serverRow(server)
+        }
+
+        if !installer.updatesAvailable.isEmpty {
+          Button(installer.isUpdatingAll ? "Updating…" : "Update All…") {
+            confirmingUpdateAll = true
+          }
+          .disabled(installer.isUpdatingAll || installer.isCheckingAll)
+        }
+
+        // The rule the rest of this app's update story rests on, said where
+        // somebody is looking at a button that would be a timer in most
+        // software. See `ServerInstaller.checkForUpdate`.
+        Text(
+          "Nothing here runs on a timer. Bastion asks npm what it would install when you press "
+            + "one of these buttons and at no other time, so an answer is only ever as fresh as "
+            + "the last press — and it is forgotten when Bastion quits rather than shown stale."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      } header: {
+        Text("Servers")
+      }
+    }
+  }
+
+  @ViewBuilder private func serverRow(_ server: BastionServer) -> some View {
+    LabeledContent {
+      if installer.isRunning(server.id) {
+        ProgressView().controlSize(.small)
+      } else if installer.isChecking(server.id) {
+        ProgressView().controlSize(.small)
+      } else if case .newer = installer.availability(of: server.id) {
+        Button("Update") { Task { await installer.install(server) } }
+          .disabled(installer.isUpdatingAll)
+      } else if let state = installer.availability(of: server.id) {
+        Label(state.shortLabel, systemImage: state.symbol)
+          .font(.caption)
+          .foregroundStyle(state == .upToDate ? Color.secondary : Color.orange)
+          .labelStyle(.titleAndIcon)
+      } else {
+        // Not "up to date". Nothing has asked, and the difference between those
+        // two is the whole reason this pane says anything at all.
+        Text("Not checked").font(.caption).foregroundStyle(.tertiary)
+      }
+    } label: {
+      HStack(spacing: 6) {
+        Text(server.displayName)
+        if case .newer(let latest) = installer.availability(of: server.id) {
+          Text("\(ServerInstaller.installedVersion(of: server) ?? "?") → \(latest)")
+            .font(.caption).foregroundStyle(.orange).monospacedDigit()
+        } else if let installed = ServerInstaller.installedVersion(of: server) {
+          Text(installed).font(.caption).foregroundStyle(.tertiary).monospacedDigit()
+        }
+      }
+    }
+  }
+
+  /// What Update All costs, counted rather than hedged.
+  ///
+  /// The number that matters is not how many packages move — it is how many
+  /// live processes stop, because `install` stops every child of a server whose
+  /// code it replaced and the user is the only one who knows what is mid-call.
+  private var updateAllWarning: String {
+    let servers = installer.updatesAvailable
+    let ids = Set(servers.map(\.id))
+    let live = Activity.shared.instances.filter { ids.contains($0.server) && $0.isLive }.count
+    let names = servers.map(\.displayName).joined(separator: ", ")
+    guard live > 0 else { return "\(names) will be downloaded again at their newest versions." }
+    return "\(names) will be downloaded again at their newest versions. This stops \(live) "
+      + "running \(live == 1 ? "process" : "processes"), which any attached client will restart "
+      + "on its next call."
   }
 
   private var lastCheck: String {

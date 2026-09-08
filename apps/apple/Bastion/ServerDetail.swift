@@ -355,7 +355,7 @@ struct ServerDetail: View {
             Text("\(server.package?.npmName ?? server.id) \(version)")
               .font(.system(.callout, design: .monospaced))
               .textSelection(.enabled)
-            if case .newer(let latest) = installer.availability[server.id] {
+            if case .newer(let latest) = installer.availability(of: server.id) {
               Badge("\(latest) available", tint: .orange)
             }
           } else {
@@ -462,7 +462,7 @@ struct ServerDetail: View {
       Button("Update") { Task { await installer.install(server) } }
         .disabled(busy)
     } else {
-      switch installer.availability[server.id] {
+      switch installer.availability(of: server.id) {
       case .newer(let latest):
         Button("Update to \(latest)") { Task { await installer.install(server) } }
           .disabled(busy)
@@ -521,7 +521,7 @@ struct ServerDetail: View {
         Text("Asking npm what it would install…").font(.caption).foregroundStyle(.secondary)
       }
     } else {
-      switch installer.availability[server.id] {
+      switch installer.availability(of: server.id) {
       case .upToDate:
         Label("Up to date. npm would change nothing here.", systemImage: "checkmark.circle")
           .font(.caption).foregroundStyle(.secondary)
