@@ -4,12 +4,24 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.15.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.16.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.16.0] - 2026-09-08
 
 ### Added
+
+- **A reply can be stopped, and the chat says which tool it is waiting on.** The Send button becomes
+  Stop while an answer is arriving rather than a second control appearing beside it, so the thing
+  you reach for does not move. Stopping drops that question from what the model remembers — said in
+  the transcript rather than left to be inferred — and rebuilds the session from the last complete
+  answer, so an abandoned half-turn cannot sit in the context poisoning everything after it.
+
+  Beside the spinner is the name of the tool currently in flight. A call is allowed three minutes
+  before Bastion gives up on it, and a bare spinner for three minutes is indistinguishable from a
+  hang. One question is also capped at six tool calls now: every call's output can be 2000
+  characters, so a handful is the rest of the window, and a model looping on a failing tool could
+  otherwise spend six timeouts before anybody could type again.
 
 - **One press asks about every installed server, and the sidebar says which ones answered.**
   Whether a server had a newer version was a fact you could only collect one server at a time:
@@ -29,6 +41,32 @@ are taken from this file, which is the curated summary.
   is the claim `UpdateController` and `ServerInstaller` have both always actually made.
 
 ### Fixed
+
+- **Leaving the chat pane threw the conversation away.** The pane was one arm of the window's
+  `switch`, so a trip to the Log and back destroyed it — the transcript, the tools it was started
+  with, the live session, and a reply that was still arriving with nobody left to receive it. The
+  conversation is owned by the window now rather than by the view, so it survives navigating away,
+  closing the window, and reopening it.
+
+- **The transcript scrolled to the wrong place, or not at all.** It followed the last message's
+  text, which a tool call is not — so a call arriving mid-answer grew the transcript under the fold
+  and moved nothing. It also fought anyone scrolling up to re-read, dragging them back on every
+  token. It follows the tail until you scroll away, stops, and offers **Jump to latest** while a
+  reply is still arriving; asking something new starts following again.
+
+- **Shift-Return did nothing in the composer.** Return was bound twice — once by the text field and
+  once as the Send button's key equivalent — and removing the duplicate was not enough on its own:
+  Shift-Return was then swallowed outright, no newline and no send, so the field never had the
+  multiline behaviour its own line limit advertised. It inserts a newline now, and plain Return
+  still sends.
+
+  The tool picker is also disabled while a reply is arriving, with a note saying why. Changing the
+  selection rebuilds the session, which would have discarded the answer being written into it.
+
+- **A streamed token re-rendered the whole pane.** Every token re-ran the profile picker's pass over
+  every server crossed with every profile, plus the budget arithmetic and the banners, because one
+  view body read the messages. The header, transcript and composer are three views now, and only the
+  transcript reads them.
 
 - **Claude Desktop was being fronted with the facade it never needed.** "Load tools on demand"
   replaces a server's listing with a search tool and a dispatcher, and it is skipped for clients
@@ -56,6 +94,16 @@ are taken from this file, which is the curated summary.
   client that starts deferring before Bastion learns it has — is the one nobody can report, and it
   is exactly what just happened. Both directions are offered now, and the pane says what Bastion has
   watched rather than asserting what a client does.
+
+### Internal
+
+- **The screenshot goldens had stopped describing the app, and the gate could not have said so.**
+  The captures and the website's images were re-taken for the sidebar's new check-all control and
+  update dot, but the goldens were left at the previous run. The difference is 318 pixels — 0.0085%,
+  where the gate fails at 0.100% — so it would have passed forever while comparing the app against a
+  baseline missing the release's headline feature. The goldens are accepted. `DemoSeed.version`
+  stays at `1.14.0` deliberately: it renders in five plates, and moving it at this hour would sample
+  a different desktop than the goldens were taken against for no gain.
 
 ## [1.15.0] - 2026-09-08
 

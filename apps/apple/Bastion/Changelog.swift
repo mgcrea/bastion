@@ -177,7 +177,78 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_15_0, v1_14_0, v1_13_0, v1_12_0, v1_11_0]
+  static let releases: [Release] = [v1_16_0, v1_15_0, v1_14_0, v1_13_0, v1_12_0]
+
+  // swift-format-ignore
+  private static let v1_16_0: Release = Release(
+    version: "1.16.0",
+    date: "2026-09-08",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "A reply can be stopped, and the chat says which tool it is waiting on.",
+            body: [
+              "The Send button becomes Stop while an answer is arriving rather than a second control appearing beside it, so the thing you reach for does not move. Stopping drops that question from what the model remembers — said in the transcript rather than left to be inferred — and rebuilds the session from the last complete answer, so an abandoned half-turn cannot sit in the context poisoning everything after it.",
+              "Beside the spinner is the name of the tool currently in flight. A call is allowed three minutes before Bastion gives up on it, and a bare spinner for three minutes is indistinguishable from a hang. One question is also capped at six tool calls now: every call's output can be 2000 characters, so a handful is the rest of the window, and a model looping on a failing tool could otherwise spend six timeouts before anybody could type again.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "One press asks about every installed server, and the sidebar says which ones answered.",
+            body: [
+              "Whether a server had a newer version was a fact you could only collect one server at a time: open its pane, press the button, read the badge, go back, repeat. The Servers header carries a check-all control now, rows npm would move get an orange dot beside whatever else they were already saying, and Settings ▸ Updates has grown a Servers section listing every npm-installed server with its state — with Update All behind a confirmation that counts the running processes it is about to stop.",
+              "Still not a timer. Nothing checks on launch, on a window appearing, or on a schedule; an answer is as fresh as the last press and is forgotten when Bastion quits rather than shown stale. What changed is that one press now covers nine servers instead of one.",
+              "The Sparkle pane's caption was corrected on the way: it claimed the appcast was \"the only network connection Bastion makes\", which was never quite what was meant and stopped being defensible with an npm check sitting under it. It says \"the only connection Bastion opens on its own\" now, which is the claim `UpdateController` and `ServerInstaller` have both always actually made.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 2,
+            headline: "Leaving the chat pane threw the conversation away.",
+            body: [
+              "The pane was one arm of the window's `switch`, so a trip to the Log and back destroyed it — the transcript, the tools it was started with, the live session, and a reply that was still arriving with nobody left to receive it. The conversation is owned by the window now rather than by the view, so it survives navigating away, closing the window, and reopening it.",
+            ]),
+          Entry(
+            ordinal: 3,
+            headline: "The transcript scrolled to the wrong place, or not at all.",
+            body: [
+              "It followed the last message's text, which a tool call is not — so a call arriving mid-answer grew the transcript under the fold and moved nothing. It also fought anyone scrolling up to re-read, dragging them back on every token. It follows the tail until you scroll away, stops, and offers **Jump to latest** while a reply is still arriving; asking something new starts following again.",
+            ]),
+          Entry(
+            ordinal: 4,
+            headline: "Shift-Return did nothing in the composer.",
+            body: [
+              "Return was bound twice — once by the text field and once as the Send button's key equivalent — and removing the duplicate was not enough on its own: Shift-Return was then swallowed outright, no newline and no send, so the field never had the multiline behaviour its own line limit advertised. It inserts a newline now, and plain Return still sends.",
+              "The tool picker is also disabled while a reply is arriving, with a note saying why. Changing the selection rebuilds the session, which would have discarded the answer being written into it.",
+            ]),
+          Entry(
+            ordinal: 5,
+            headline: "A streamed token re-rendered the whole pane.",
+            body: [
+              "Every token re-ran the profile picker's pass over every server crossed with every profile, plus the budget arithmetic and the banners, because one view body read the messages. The header, transcript and composer are three views now, and only the transcript reads them.",
+            ]),
+          Entry(
+            ordinal: 6,
+            headline: "Claude Desktop was being fronted with the facade it never needed.",
+            body: [
+              "\"Load tools on demand\" replaces a server's listing with a search tool and a dispatcher, and it is skipped for clients that already fetch a schema only when something reaches for it — a list that had one entry, Claude Code, because Claude Code documents the mechanism. Claude Desktop sat outside it on the grounds that no equivalent was documented for it, and `docs/clients.md` and the client pane both went further and stated as fact that Desktop takes the whole listing on connect. Nobody had checked.",
+              "It was checked on 2026-09-08, and it defers. A one-tool server was wired into `claude_desktop_config.json` beside the usual surface, carrying two freshly generated tokens: one in the tool's description, one as the only allowed value of its required argument. Asked to quote either from context, Desktop 1.46388.4 produced neither, named the tool under a deferred listing, and then called it with the correct passphrase — a value nothing but the schema carried, fetched on the already-open connection with no second `tools/list`. Chat and Cowork behaved the same way.",
+              "So the facade was costing these users rather than saving them anything: Desktop never held the schemas it buys back, and being fronted took its own tool search away, leaving three generic entries indexed where eighty-five specific ones used to be. `claude-desktop` joins the list, the website's figures say which clients they do not describe, and the flat claims in the docs and the pane are gone.",
+            ]),
+          Entry(
+            ordinal: 7,
+            headline: "The per-client escape hatch was withheld from the clients that needed it.",
+            body: [
+              "The Context pane offered \"set this to No\" only for clients Bastion already believed defer. The reverse case — a client that starts deferring before Bastion learns it has — is the one nobody can report, and it is exactly what just happened. Both directions are offered now, and the pane says what Bastion has watched rather than asserting what a client does.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_15_0: Release = Release(
@@ -393,102 +464,11 @@ nonisolated enum Changelog {
         ]),
     ])
 
-  // swift-format-ignore
-  private static let v1_11_0: Release = Release(
-    version: "1.11.0",
-    date: "2026-09-06",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "The writes get their own dispatcher, so an editor's approval rule stops collapsing.",
-            body: [
-              "The facade's one real cost was that every call reached the client as `bastion_call_tool`, so a rule covering `app_store_connect_list_builds` ended up covering `..._update_app` too. A profile whose server Bastion can classify is now served a fourth tool, `bastion_call_write_tool`, and the ordinary dispatcher REFUSES anything Bastion knows to mutate — naming the other one, so the next call succeeds. Allowlisting `bastion_call_tool` in an editor can no longer run a write, and that is a property Bastion holds up rather than a hint it asserts and hopes the host respects. The two are disjoint in both directions, so nothing downstream has to check the split twice.",
-              "`bastion_call_tool` still carries no `readOnlyHint`, and that is deliberate. A tool in neither the manifest's `writeTools` nor the server's own annotations is UNCLASSIFIED, and the house rule is that silence is not a no. Bastion already bets that way for its own gating, but that bet only decides Bastion's refusal; putting it in an annotation moves it into the editor's confirmation prompt, where being wrong means a mutation nobody was asked about. Refusing the writes it knows is honest and checkable. Claiming to be read-only would be neither.",
-              "Classification comes from the manifest's `writeTools` ORed with what the server annotates, so a server that says nothing either way keeps exactly the three tools it had rather than gaining a fourth that would be a guess — and a profile with writes off has nothing to dispatch to, so it keeps three as well. Seven catalog entries declare `writeTools` today; Bastion's own server annotates every tool it exposes.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "Every client now says what it is actually being sent.",
-            body: [
-              "Each server pane already quoted its own figure and each one looks survivable alone; a client wired to five of them pays the sum on every connect, and nothing in the app added them up. The Clients pane does now, under Context, and it resolves both axes into the one number that matters: a server loading on demand counts as its three or four declarations rather than its full listing, and a client that defers schemas is told it is sent everything but holds only the names — no alarm, and no false comfort either.",
-              "It says \"measured\", and names how many of the wired profiles have a figure, because `tool-costs.json` holds one only for a profile something has actually listed. The total is a floor, and a floor that says so.",
-            ]),
-        ]),
-      Section(
-        name: "Changed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 2,
-            headline: "\"Load tools on demand\" moved from the profile to the server.",
-            body: [
-              "It was stored per profile, with the control on a server writing through to every one of its rows — which is why that control needed a \"Mixed\" position at all. Mixed was never a state anybody set out to reach; it was the shape of the storage showing through the window.",
-              "The question the switch answers is _is this listing big enough to be worth the trade_, and a listing is a property of the server: `appstore-connect` is 85 tools, `reddit` is 14, and two profiles of one server differ in credentials and in the write gate rather than in whether eighty-five is a lot. The one disagreement that genuinely was per profile — \"this one feeds Claude Code, which defers by itself\" — is the client axis above, where a profile feeding two clients can be answered honestly instead of averaged.",
-              "A `lazyTools` already written on a profile is carried onto its server once, on the first launch after upgrading, and the key then leaves `profiles.json` on the next save. `upsert_profile` still accepts `lazy_tools` and now writes it through to the server: an argument that starts being silently ignored is worse than one that was renamed, and the schema says out loud that it moves every profile of that server. `list_servers` and `get_server` report it, which is where it lives now.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 3,
-            headline: "The cost figure stopped rounding in its own favour.",
-            body: [
-              "A measurement now records how many of its tools Bastion could tell were writes, so a view can distinguish \"no writes here\" from \"Bastion cannot tell\". Without it `ServerDetail` had no way to see a server that classifies by annotation alone — the manifest is all a view has — and understated the facade by the fourth declaration on every one of them. The same figure drives a new caveat: where load-on-demand is on and Bastion could classify nothing, the pane says so, because that is the case where one approval rule in the editor still covers every call including the writes.",
-            ]),
-        ]),
-    ])
-
   /// Work that is written down but not shipped.
   ///
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  // swift-format-ignore
-  private static let unreleasedRelease: Release = Release(
-    version: "Unreleased",
-    date: "",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "One press asks about every installed server, and the sidebar says which ones answered.",
-            body: [
-              "Whether a server had a newer version was a fact you could only collect one server at a time: open its pane, press the button, read the badge, go back, repeat. The Servers header carries a check-all control now, rows npm would move get an orange dot beside whatever else they were already saying, and Settings ▸ Updates has grown a Servers section listing every npm-installed server with its state — with Update All behind a confirmation that counts the running processes it is about to stop.",
-              "Still not a timer. Nothing checks on launch, on a window appearing, or on a schedule; an answer is as fresh as the last press and is forgotten when Bastion quits rather than shown stale. What changed is that one press now covers nine servers instead of one.",
-              "The Sparkle pane's caption was corrected on the way: it claimed the appcast was \"the only network connection Bastion makes\", which was never quite what was meant and stopped being defensible with an npm check sitting under it. It says \"the only connection Bastion opens on its own\" now, which is the claim `UpdateController` and `ServerInstaller` have both always actually made.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 1,
-            headline: "Claude Desktop was being fronted with the facade it never needed.",
-            body: [
-              "\"Load tools on demand\" replaces a server's listing with a search tool and a dispatcher, and it is skipped for clients that already fetch a schema only when something reaches for it — a list that had one entry, Claude Code, because Claude Code documents the mechanism. Claude Desktop sat outside it on the grounds that no equivalent was documented for it, and `docs/clients.md` and the client pane both went further and stated as fact that Desktop takes the whole listing on connect. Nobody had checked.",
-              "It was checked on 2026-09-08, and it defers. A one-tool server was wired into `claude_desktop_config.json` beside the usual surface, carrying two freshly generated tokens: one in the tool's description, one as the only allowed value of its required argument. Asked to quote either from context, Desktop 1.46388.4 produced neither, named the tool under a deferred listing, and then called it with the correct passphrase — a value nothing but the schema carried, fetched on the already-open connection with no second `tools/list`. Chat and Cowork behaved the same way.",
-              "So the facade was costing these users rather than saving them anything: Desktop never held the schemas it buys back, and being fronted took its own tool search away, leaving three generic entries indexed where eighty-five specific ones used to be. `claude-desktop` joins the list, the website's figures say which clients they do not describe, and the flat claims in the docs and the pane are gone.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "The per-client escape hatch was withheld from the clients that needed it.",
-            body: [
-              "The Context pane offered \"set this to No\" only for clients Bastion already believed defer. The reverse case — a client that starts deferring before Bastion learns it has — is the one nobody can report, and it is exactly what just happened. Both directions are offered now, and the pane says what Bastion has watched rather than asserting what a client does.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  static let unreleased: Release? = unreleasedRelease
+  static let unreleased: Release? = nil
   // </generated:changelog>
 }
