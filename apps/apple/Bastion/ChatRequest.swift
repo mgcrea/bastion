@@ -25,12 +25,22 @@ final class ChatRequest {
   /// the pane already treats "load a profile" as destructive enough to confirm.
   var pending: Pending?
 
-  struct Pending: Identifiable, Equatable {
+  /// A profile paired with the server it belongs to.
+  ///
+  /// Also what `ChatPane` picks from, and what a pending profile switch is held
+  /// as. The pane used to carry a private `Pick` of exactly these two fields;
+  /// two names for one pair is how the two drift, and the switch now lives on
+  /// `ChatSession`, which cannot see a type private to the view.
+  struct Pending: Identifiable, Hashable {
     let profile: Profile
     let server: BastionServer
     var id: String { profile.id }
 
+    /// By id alone, and load-bearing: `ChatPane` watches
+    /// `ChatRequest.shared.pending` for changes, so equality has to mean "the
+    /// same request" rather than "the same bytes".
     static func == (a: Pending, b: Pending) -> Bool { a.id == b.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
   }
 
   /// Open the main window on the chat pane, loaded with this profile.

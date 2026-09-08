@@ -103,6 +103,25 @@ struct MainView: View {
   /// menu bar can open it too. See `ServerEditorHost`.
   @Bindable private var editor = ServerEditorHost.shared
 
+  /// The conversation, held here rather than inside `ChatPane`.
+  ///
+  /// The pane is one arm of the `switch` below, so a trip to the Log and back
+  /// destroyed it — taking the transcript, the tool selection, a live
+  /// `LanguageModelSession` and a reply that was still arriving.
+  ///
+  /// Here and not in a `shared`, unlike `ServerEditorHost`: `HostedWindow`
+  /// retains its `NSWindow` with `isReleasedWhenClosed = false`, so this
+  /// `@State` already outlives every close and reopen — the lifetime a
+  /// singleton would buy is the lifetime this has. What a singleton would add
+  /// is a second global that can have a model request and a supervised tool
+  /// call in flight, which is a different kind of object from a registry.
+  ///
+  /// Under a capture this builds `DemoSeed.chatSession()` whatever stage is
+  /// showing rather than only the chat one. It is in-memory fixture
+  /// construction that runs after `DemoSeed.apply()` in every case, so no plate
+  /// is affected.
+  @State private var chat = DemoSeed.isEnabled ? DemoSeed.chatSession() : ChatSession()
+
   /// `List(selection:)` drives an `Optional` for a single selection, and the
   /// stored value is a `String` because that is what `@AppStorage` can hold.
   /// Bridging here rather than mirroring into `@State` keeps one source of
@@ -419,7 +438,7 @@ struct MainView: View {
     case .log:
       LogPane()
     case .chat:
-      ChatPane()
+      ChatPane(chat: chat)
     }
   }
 }

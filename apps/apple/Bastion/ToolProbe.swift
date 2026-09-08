@@ -149,7 +149,7 @@ enum ToolProbe {
 
   // MARK: - What came of it
 
-  struct Call: Identifiable, Sendable {
+  struct Call: Identifiable, Sendable, Equatable {
     let id = UUID()
     let tool: String
     /// The arguments the model invented, as JSON.

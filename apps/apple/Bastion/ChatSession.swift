@@ -42,8 +42,13 @@ final class ChatSession {
   /// and this one has to keep working on a runner with no Apple Intelligence at
   /// all — where there is no model to ask.
   static var contextSize: Int {
-    DemoSeed.isEnabled ? 4096 : SystemLanguageModel.default.contextSize
+    DemoSeed.isEnabled ? 4096 : measuredContextSize
   }
+
+  /// Asked once. The model cannot change mid-launch, and this is read twice per
+  /// header render — which, before the header was a view of its own, meant
+  /// twice per streamed token.
+  private static let measuredContextSize = SystemLanguageModel.default.contextSize
 
   /// Tokens of tool schema the conversation is allowed to carry.
   ///
@@ -56,9 +61,9 @@ final class ChatSession {
   /// 44% would come to 1802 and quietly move which tools fit.
   static var budget: Int { contextSize * 1800 / 4096 }
 
-  enum Role: Sendable { case you, model }
+  enum Role: Sendable, Equatable { case you, model }
 
-  struct Message: Identifiable {
+  struct Message: Identifiable, Equatable {
     let id = UUID()
     let role: Role
     var text: String
@@ -88,9 +93,137 @@ final class ChatSession {
   /// otherwise indistinguishable from one that is being obtuse.
   private(set) var trims = 0
 
+  /// The tool a reply is currently waiting on, for the composer to name. A call
+  /// can block for `Supervisor.callTimeout` — three minutes — and a spinner
+  /// that does not say what it is waiting for is indistinguishable from a hang.
+  private(set) var activeTool: String?
+
+  /// One counter the transcript watches, and the only thing deciding how often
+  /// it scrolls.
+  ///
+  /// Three separate mutations mean "there is more to see" — a token, a recorded
+  /// call, a new message — and the pane watched two of them, so a tool call
+  /// arriving mid-answer scrolled nothing at all. Watching all three separately
+  /// would be the same bug with more edges.
+  ///
+  /// Throttled here rather than in the view, because the view cannot throttle
+  /// what it is not told about: all it can do is animate less per token, which
+  /// is the pile of overlapping animations this replaces.
+  private(set) var revision = 0
+  private var lastPulse = ContinuousClock.now
+
+  private func pulse(force: Bool = false) {
+    let now = ContinuousClock.now
+    guard force || now - lastPulse >= .milliseconds(100) else { return }
+    lastPulse = now
+    revision &+= 1
+  }
+
+  /// Whether there is a conversation to lose.
+  ///
+  /// A stored `Bool` rather than `messages.isEmpty` at the call site: reading
+  /// `messages` from the header would subscribe the header — profile picker,
+  /// budget line, banners — to every token of every reply, and the picker's
+  /// list is a flatMap over every server crossed with every profile.
+  private(set) var hasTranscript = false
+
+  // MARK: - What belongs to the conversation rather than to the pane
+
+  /// The question being typed.
+  ///
+  /// Here and not in the pane for two reasons: a half-typed question should
+  /// survive a look at the Log, and `send` refuses on a condition the pane
+  /// cannot test, so the pane is the wrong place to decide whether the field
+  /// may be cleared. See `submit()`.
+  var draft = ""
+
+  /// Whether the writes-enabled warning has been acknowledged for this profile.
+  ///
+  /// Reset by `load`, and only by `load`. It used to live in the pane, so it
+  /// reset on every navigation — and since it also gates sending, the orange
+  /// banner came back and blocked the composer every time somebody glanced at
+  /// another pane and returned.
+  var acknowledgedWrites = false
+
+  /// A profile the user has asked to switch to, waiting on the confirmation
+  /// that the current conversation may be discarded.
+  var pendingSwitch: ChatRequest.Pending?
+
   private var session: LanguageModelSession?
   private var bound: [any Tool] = []
-  private nonisolated let callIDs = OSAllocatedUnfairLock<Int>(initialState: 1000)
+
+  private struct TurnState {
+    /// Which conversation a write belongs to. Bumped by everything that
+    /// replaces `messages` wholesale, which is what makes a write from an
+    /// abandoned turn *detectable* rather than merely unlikely.
+    var era = 0
+    /// Tool calls made by the turn in progress.
+    var calls = 0
+    var nextID = 1000
+  }
+
+  /// The era, the per-turn call count and the call id, under one lock.
+  ///
+  /// One lock rather than three because they are read from the same place: the
+  /// bridged tools' `perform` closures run on a dedicated thread and cannot
+  /// touch main-actor state. The id counter was already here for exactly that
+  /// reason; the other two join it.
+  private nonisolated let turnState = OSAllocatedUnfairLock(initialState: TurnState())
+
+  private nonisolated var era: Int { turnState.withLock { $0.era } }
+
+  /// Everything the running turn has not written yet is now stale.
+  private func endEra() {
+    turnState.withLock {
+      $0.era += 1
+      $0.calls = 0
+    }
+  }
+
+  /// Take a slot for one tool call, or refuse. Off the main actor, because the
+  /// bridged closures are.
+  private nonisolated func claim() -> (era: Int, id: Int)? {
+    turnState.withLock { state in
+      guard state.calls < Self.callsPerTurn else { return nil }
+      state.calls += 1
+      state.nextID += 1
+      return (state.era, state.nextID)
+    }
+  }
+
+  /// The task following the current turn, so it can be let go of. Held here and
+  /// not in the pane: the pane is the thing that gets destroyed.
+  private var turn: Task<Void, Never>?
+
+  /// Tool calls one question may make.
+  ///
+  /// Every call's output can be 2000 characters (`ToolProbe.render`), so a
+  /// handful of them is the rest of the context. And a model looping on a
+  /// failing tool could spend six times `Supervisor.callTimeout` — three
+  /// minutes each — before anybody could type again.
+  ///
+  /// `nonisolated`, because the two places that enforce it — `claim()` and the
+  /// bridged closure that calls it — both run off the main actor. Left
+  /// main-actor isolated by the project's default, reading it from there is a
+  /// warning today and an error under Swift 6.
+  nonisolated static let callsPerTurn = 6
+
+  /// What a stopped row says.
+  ///
+  /// It has to say something, because `reseat()` drops the stopped question
+  /// from what the model remembers while its row stays on screen. Unexplained,
+  /// that divergence reads as a model with amnesia.
+  static let stopped = "Stopped. This question was dropped from what the model remembers."
+
+  /// The cap the deep check has always had (`ToolProbe.run`, 300 tokens) and
+  /// chat never did. Without one, a model that starts enumerating spends the
+  /// rest of the window on it and then throws `exceededContextWindowSize` —
+  /// which the trim path dutifully absorbs, so the only symptom is a
+  /// conversation that has forgotten its own opening for no visible reason. The
+  /// instructions already ask for short replies; this is the same request the
+  /// model cannot talk itself out of.
+  private static let options = GenerationOptions(
+    sampling: .greedy, maximumResponseTokens: 400)
 
   /// Set by `DemoSeed.chat()` only.
   ///
@@ -163,6 +296,7 @@ final class ChatSession {
     self.selected = selected
     self.withheld = withheld
     self.messages = messages
+    hasTranscript = !messages.isEmpty
     demoReady = true
   }
 
@@ -170,6 +304,11 @@ final class ChatSession {
 
   func load(profile: Profile, server: BastionServer) {
     guard !isLoading else { return }
+    // A reply can still be arriving into the conversation this is about to
+    // throw away — the confirmation dialog is answerable mid-stream.
+    abandon(noting: false)
+    acknowledgedWrites = false
+    pendingSwitch = nil
     self.profile = profile
     self.server = server
     tools = []
@@ -177,11 +316,13 @@ final class ChatSession {
     unusable = []
     selected = []
     messages = []
+    hasTranscript = false
     session = nil
     bound = []
     trims = 0
     loadFailure = nil
     isLoading = true
+    pulse(force: true)
 
     // `ServerCheck.call` blocks by contract, so it gets a thread rather than a
     // slot in the cooperative pool — the same bargain every other caller makes.
@@ -228,6 +369,10 @@ final class ChatSession {
   // MARK: - The session
 
   func toggle(_ tool: MCPTool) {
+    // Rebuilding discards the conversation, and a reply in flight is writing
+    // into it. The popover disables these too; that is the explanation, this is
+    // the invariant.
+    guard !isResponding else { return }
     if selected.contains(tool.name) {
       selected.remove(tool.name)
     } else {
@@ -249,13 +394,19 @@ final class ChatSession {
       do {
         built.append(
           try ToolProbe.bridgeTool(for: tool) { [self] json in
+            // The era is read here rather than captured when this closure is
+            // built. `bound` outlives a Stop — `reseat()` reuses it — so a
+            // build-time era would be stale for the next turn and would
+            // silently drop every call that turn made.
+            guard let claim = claim() else {
+              return "refused: this question has already used its "
+                + "\(Self.callsPerTurn) tool calls. Answer with what the "
+                + "previous calls returned."
+            }
+            Task { @MainActor in self.note(waitingOn: tool.name, era: claim.era) }
             let call = ToolProbe.invoke(
-              tool: tool, argumentsJSON: json, profile: profile, server: server,
-              id: callIDs.withLock {
-                $0 += 1
-                return $0
-              })
-            Task { @MainActor in self.record(call) }
+              tool: tool, argumentsJSON: json, profile: profile, server: server, id: claim.id)
+            Task { @MainActor in self.record(call, era: claim.era) }
             return call.output
           })
       } catch {
@@ -264,9 +415,12 @@ final class ChatSession {
     }
     unusable = dropped
     bound = built
+    endEra()
     messages = []
+    hasTranscript = false
     trims = 0
     session = LanguageModelSession(tools: built) { Self.instructions }
+    pulse(force: true)
   }
 
   private static let instructions = """
@@ -282,46 +436,100 @@ final class ChatSession {
 
   // MARK: - Talking
 
-  func send(_ text: String) {
+  @discardableResult
+  func send(_ text: String) -> Bool {
     let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !prompt.isEmpty, session != nil, !isResponding else { return }
+    guard !prompt.isEmpty, session != nil, !isResponding else { return false }
     messages.append(Message(role: .you, text: prompt))
     messages.append(Message(role: .model, text: ""))
+    hasTranscript = true
     isResponding = true
-    Task {
-      await respond(to: prompt, at: messages.count - 1, retrying: false)
+    turnState.withLock { $0.calls = 0 }
+    pulse(force: true)
+
+    let stamp = era
+    let index = messages.count - 1
+    turn = Task { [self] in
+      await respond(to: prompt, at: index, era: stamp, retrying: false)
+      // An orphan must not unwind a turn that is no longer its own: `stop` has
+      // already done that, and may have started another since.
+      guard stamp == era else { return }
       isResponding = false
+      activeTool = nil
+      turn = nil
+      pulse(force: true)
     }
+    return true
   }
 
-  private func respond(to prompt: String, at index: Int, retrying: Bool) async {
-    guard let session, messages.indices.contains(index) else { return }
+  /// Send what is typed, and clear the field only if it was taken.
+  ///
+  /// `send` refuses on three conditions and the pane's `canSend` mirrors two of
+  /// them — `session != nil` is the one it cannot see, since `demoReady` makes
+  /// `isReady` true with no session behind it. Clearing regardless is how a
+  /// refused question used to vanish as though it had been asked.
+  func submit() {
+    if send(draft) { draft = "" }
+  }
+
+  /// Stream one reply into `messages[index]`.
+  ///
+  /// The index is an identity only for as long as the era holds, and that is
+  /// enough. Within one era `messages` only ever grows, and only in `send`,
+  /// which is gated on `!isResponding`; everything that replaces the array
+  /// wholesale — `load`, `rebuild`, `stop` — ends the era first. So a stamp
+  /// that still matches means the index still points at the same message, and
+  /// no `firstIndex(where:)` per token is needed to prove it.
+  private func respond(to prompt: String, at index: Int, era stamp: Int, retrying: Bool) async {
+    guard let session, stamp == era, messages.indices.contains(index) else { return }
     do {
-      for try await snapshot in session.streamResponse(
-        to: prompt, options: GenerationOptions(sampling: .greedy))
-      {
-        guard messages.indices.contains(index) else { return }
+      for try await snapshot in session.streamResponse(to: prompt, options: Self.options) {
+        guard stamp == era, messages.indices.contains(index) else { return }
         messages[index].text = snapshot.content
+        pulse()
       }
+      pulse(force: true)
     } catch let error as LanguageModelSession.GenerationError {
       // Overflow is the expected end of a long conversation here, not a fault:
       // the tool budget is a little under half the window, so what is left for
       // everything else is about the same again, and one fat tool result spends
       // a good part of it. Drop the oldest turns and try once more; a second
       // failure is a real one.
-      if case .exceededContextWindowSize = error, !retrying, trimTranscript() {
-        await respond(to: prompt, at: index, retrying: true)
+      if case .exceededContextWindowSize = error, !retrying, stamp == era, trimTranscript() {
+        await respond(to: prompt, at: index, era: stamp, retrying: true)
         return
       }
-      messages[index].failure = error.localizedDescription
+      fail(error.localizedDescription, at: index, era: stamp)
     } catch {
-      messages[index].failure = error.localizedDescription
+      fail(error.localizedDescription, at: index, era: stamp)
     }
   }
 
-  private func record(_ call: ToolProbe.Call) {
-    guard let index = messages.indices.last else { return }
+  /// The one place a failure is written, so there is one place the guard has to
+  /// be right. Both catch arms above used to write the subscript themselves and
+  /// neither checked it — which was the whole bug, twice over.
+  private func fail(_ message: String, at index: Int, era stamp: Int) {
+    // A stopped turn is not a failed one, and the framework is free to report
+    // cancellation as whatever error it likes — so the question asked here is
+    // "is this still the current turn", never "which error is this".
+    guard stamp == era, !Task.isCancelled, messages.indices.contains(index) else { return }
+    messages[index].failure = message
+    pulse(force: true)
+  }
+
+  private func note(waitingOn tool: String, era stamp: Int) {
+    guard stamp == era else { return }
+    activeTool = tool
+  }
+
+  private func record(_ call: ToolProbe.Call, era stamp: Int) {
+    guard stamp == era, let index = messages.indices.last else { return }
     messages[index].calls.append(call)
+    activeTool = nil
+    // A recorded call changes neither `messages.count` nor the last message's
+    // text, so before there was one counter to watch it scrolled nothing at all
+    // and the call block grew under the fold.
+    pulse(force: true)
   }
 
   /// Drop the oldest exchange, keeping the instructions, and rebuild.
@@ -339,8 +547,71 @@ final class ChatSession {
   }
 
   func clear() {
-    guard session != nil else { return }
+    guard session != nil, !isResponding else { return }
     rebuild()
+  }
+
+  // MARK: - Letting go
+
+  /// Stop following the current turn. It is abandoned, not cancelled.
+  ///
+  /// `Task.cancel()` is sent, and is honoured wherever the framework happens to
+  /// be between tokens. The expensive place to be stuck is inside a tool call,
+  /// and that one cannot be cancelled by anybody: `ToolProbe.MCPBridgeTool.call`
+  /// parks on `withCheckedContinuation` — not `withTaskCancellationHandler` —
+  /// around `Supervisor.call`, which ends in a semaphore with no local deadline.
+  /// The supervisor's reaper owns that deadline and resolves it at
+  /// `callTimeout`, up to three minutes from now, and waiting for that IS the
+  /// dead composer this exists to remove.
+  ///
+  /// So nothing here waits. The era ends, the pane unwinds now, and the thread
+  /// still blocked in the child finishes into a conversation with no slot left
+  /// for what it produces. That costs one 512KB thread and one answer nobody
+  /// reads. It cannot cost correctness, because every write that turn can still
+  /// make — a token, a call, a failure — carries an era that is over.
+  func stop() {
+    guard isResponding else { return }
+    abandon(noting: true)
+    reseat()
+    pulse(force: true)
+  }
+
+  /// Let go of the running turn.
+  ///
+  /// `noting` marks the row on screen, which `stop` wants and a wholesale reset
+  /// does not — there, the row is about to go with everything else.
+  private func abandon(noting: Bool) {
+    turn?.cancel()
+    turn = nil
+    if noting, let index = messages.indices.last, messages[index].role == .model {
+      messages[index].failure = Self.stopped
+    }
+    endEra()
+    isResponding = false
+    activeTool = nil
+  }
+
+  /// A session of the conversation's own, since the old one belongs to a turn
+  /// that has been let go of and may still be generating into it. Asking a busy
+  /// `LanguageModelSession` is an error rather than a queue, so without this the
+  /// next question after a Stop would fail.
+  ///
+  /// Truncated at the last completed response, which drops the question that was
+  /// stopped: a transcript ending in a prompt with no answer, or in tool calls
+  /// with no output, is not one the model's own generator would ever have
+  /// produced. It is also why the stopped row says so on screen — the row is
+  /// still in the pane, and the model no longer remembers it.
+  ///
+  /// The same manoeuvre as `trimTranscript()`, and deliberately the same shape.
+  private func reseat() {
+    guard let session else { return }
+    let entries = Array(session.transcript)
+    let instructions = entries.filter { if case .instructions = $0 { true } else { false } }
+    let body = entries.filter { if case .instructions = $0 { false } else { true } }
+    let lastAnswer = body.lastIndex { if case .response = $0 { true } else { false } }
+    let kept = lastAnswer.map { Array(body[...$0]) } ?? []
+    self.session = LanguageModelSession(
+      tools: bound, transcript: Transcript(entries: instructions + kept))
   }
 }
 
