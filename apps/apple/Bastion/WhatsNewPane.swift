@@ -209,17 +209,60 @@ private struct EntryRow: View {
   let section: String
   let entry: Changelog.Entry
 
+  /// Whether the bold lead is a headline or just the start of a sentence.
+  ///
+  /// Both are written in this CHANGELOG. Most entries open with a complete
+  /// sentence — "**A pruned audit log reported itself as tampered with.**" —
+  /// which reads well pulled onto its own line. Others bold only the subject and
+  /// run straight on: "**Messages search returned nothing recent once older
+  /// results filled the page**, because the text column pass ran to the limit".
+  /// Splitting that one puts a line break before a comma and strands the clause
+  /// that explains it, so it is not split.
+  ///
+  /// Sentence-final punctuation is the test because it is the thing the author
+  /// actually decided. A length heuristic would guess, and would guess wrong on
+  /// the short flowing leads that are exactly the ones at risk.
+  private var leadIsHeadline: Bool {
+    guard let headline = entry.headline, let last = headline.last else { return false }
+    return last == "." || last == "!" || last == "?" || last == ":"
+  }
+
+  /// The first paragraph, reassembled, for the case where it must stay whole.
+  ///
+  /// Re-wrapping the headline in `**` rather than styling it: the headline can
+  /// itself contain a code span, and one markdown string keeps the emphasis and
+  /// the monospacing under a single parse — the same string the appcast renders.
+  ///
+  /// The generator strips the whitespace between the two, so the space has to be
+  /// put back — except before punctuation that never takes one. A flowing lead
+  /// continues as ", because …", and "the page , because" is the artifact this
+  /// avoids. It is a typographic rule rather than a guess about this file.
+  private var flowingLead: String {
+    guard let headline = entry.headline else { return entry.body.first ?? "" }
+    guard let first = entry.body.first, let next = first.first else { return "**\(headline)**" }
+    let joiner = ",.;:!?)".contains(next) ? "" : " "
+    return "**\(headline)**\(joiner)\(first)"
+  }
+
+  private var trailingParagraphs: ArraySlice<String> {
+    leadIsHeadline || entry.headline == nil ? entry.body[...] : entry.body.dropFirst()
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
       HStack(alignment: .firstTextBaseline, spacing: 6) {
         Badge(section.lowercased(), tint: Self.tint(for: section))
-        if let headline = entry.headline {
+        if leadIsHeadline, let headline = entry.headline {
           Text(Changelog.markdown(headline, .callout))
             .font(.callout).bold()
             .fixedSize(horizontal: false, vertical: true)
+        } else if entry.headline != nil {
+          Text(Changelog.markdown(flowingLead, .callout))
+            .font(.callout)
+            .fixedSize(horizontal: false, vertical: true)
         }
       }
-      ForEach(Array(entry.body.enumerated()), id: \.offset) { _, paragraph in
+      ForEach(Array(trailingParagraphs.enumerated()), id: \.offset) { _, paragraph in
         Text(Changelog.markdown(paragraph, .caption))
           .font(.caption)
           .foregroundStyle(.secondary)
