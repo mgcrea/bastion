@@ -1856,8 +1856,12 @@ struct UnitCheck {
     }
 
     check("Claude Code defers, so it is never fronted", defers("claude-code"))
-    check("Claude Desktop does not", !defers("claude-desktop"))
-    check("nor does Cursor", !defers("cursor"))
+    // Measured 2026-09-08, in both Chat and Cowork — see `clientsDeferringSchemas`.
+    // This line asserted the opposite until then, on nothing but the absence of a
+    // documented mechanism, which is exactly the shape of claim a test should not
+    // have been pinning.
+    check("Claude Desktop defers too, and is not fronted either", defers("claude-desktop"))
+    check("Cursor does not", !defers("cursor"))
     check("nor VS Code", !defers("vscode"))
     check("nor Codex", !defers("codex"))
     // The answer `scripts/facade-check.sh` depends on without saying so: its

@@ -521,16 +521,28 @@ struct ClientDetail: View {
   }
 
   private func contextDetail(_ defers: Bool) -> String {
+    guard defers else {
+      // NOT "is sent every tool definition", which is what this said until
+      // 2026-09-08 about every client off the list — Claude Desktop included,
+      // which turned out to defer. Bastion cannot see deferral from here, so
+      // the only honest sentence is one about what Bastion has watched.
+      //
+      // The hatch belongs on THIS branch, and used to be withheld from it. A
+      // client that starts deferring before Bastion learns it has is the case
+      // nobody can report, and it is the case this pane exists for: the person
+      // reading it is looking at the client Bastion is about to get wrong.
+      return "Bastion has not watched \(client.displayName) defer, so it is treated as a client "
+        + "that holds every tool definition for the whole conversation. Set this to Yes if you "
+        + "can see it loading schemas on demand."
+    }
     let base =
-      defers
-      ? "\(client.displayName) fetches a tool's schema when it needs one, so fronting it would "
-        + "buy back the names and take its own tool search with it."
-      : "\(client.displayName) is sent every tool definition a profile's server exposes, and "
-        + "holds them for the whole conversation."
-    // Only where Bastion claims the client defers. The escape hatch is for the
-    // things Bastion cannot see — the env var, the base URL, the version — and
-    // naming them under a client nobody claims defers would be noise.
-    guard ToolFacade.clientsDeferringSchemas.contains(client.id) else { return base }
+      "\(client.displayName) fetches a tool's schema when it needs one, so fronting it would "
+      + "buy back the names and take its own tool search with it."
+    // The env var, the base URL and the version are things Bastion cannot see,
+    // and they are Claude Code's alone. Naming them under any other client on
+    // the list — Claude Desktop, whose deferral has no user-visible switch —
+    // would be advice that does not apply.
+    guard client.id == "claude-code" else { return base }
     return base
       + " Set this to No if you have turned that off — ENABLE_TOOL_SEARCH=false, a custom "
       + "ANTHROPIC_BASE_URL, or a version before 2.1.191."

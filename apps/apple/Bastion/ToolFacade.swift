@@ -101,17 +101,43 @@ nonisolated enum ToolFacade {
   /// nobody has watched belongs outside the set rather than inside it on the
   /// grounds that it probably does.
   ///
-  /// One entry, and it should stay small. Claude Code is here for
-  /// `ENABLE_TOOL_SEARCH`, on by default since 2.1.191: schemas never reach the
-  /// model, only names do, and a search tool fetches the rest. Claude Desktop,
-  /// the editors and Codex are not here because no equivalent is documented for
-  /// any of them, which is the same answer `docs/clients.md` has always given.
+  /// It should stay small, and every entry has to carry its reading.
+  ///
+  /// Claude Code is here for `ENABLE_TOOL_SEARCH`, on by default since 2.1.191:
+  /// schemas never reach the model, only names do, and a search tool fetches
+  /// the rest.
+  ///
+  /// Claude Desktop is here because it was MEASURED on 2026-09-08 — and it was
+  /// measured because this table used to say the opposite, on the grounds that
+  /// no equivalent was documented for it. That is an absence of evidence, not a
+  /// reading, and it had been stated as fact in `docs/clients.md` and in
+  /// `ClientDetail` for long enough that nobody was going to check it.
+  ///
+  /// The probe: a one-tool stdio server wired into `claude_desktop_config.json`
+  /// beside the usual surface, carrying two freshly generated tokens — one in
+  /// the tool's description, one as the only `enum` value of its required
+  /// argument. Asked to quote either from context, Claude Desktop 1.46388.4
+  /// could produce NEITHER; it named the tool `canary:canary_probe` under a
+  /// deferred listing, then called it with the correct passphrase —
+  /// a value it had just reported it could not see — on the already-open
+  /// connection, with no second `tools/list`. Nothing but the schema carried
+  /// that token, so it was fetched on demand. That is deferral.
+  ///
+  /// Which also means the facade was COSTING these users rather than saving
+  /// them anything: Desktop never held the schemas the facade buys back, and
+  /// being fronted took its own tool search away. See the header.
+  ///
+  /// Both modes, checked separately: Chat and Cowork each answered NOT
+  /// AVAILABLE and each then called the probe correctly. Worth doing, because
+  /// the gate could not have acted on a difference anyway — the bearer token
+  /// identifies the CLIENT, not the conversation — so a split would have left
+  /// one of the two modes wrong whichever way the entry went.
   ///
   /// Matched exactly and case-sensitively against the Keychain account the
   /// bearer token was issued to, which `ClientWiring.token(for:)` always writes
   /// from `client.id` — lowercase kebab. A fuzzy identity test on a credential's
   /// account name is worse than a strict one that is occasionally too narrow.
-  static let clientsDeferringSchemas: Set<String> = ["claude-code"]
+  static let clientsDeferringSchemas: Set<String> = ["claude-code", "claude-desktop"]
 
   /// Where one client's override lives, for `ClientDetail`'s picker and for the
   /// read below. Per client rather than per profile because a profile feeds

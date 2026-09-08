@@ -70,10 +70,20 @@ conversation. That is the largest fixed charge a shared gateway imposes:
 profile row in the window carries the figure, so it is readable rather than
 inferred.
 
-Some clients already handle this themselves. Claude Code defers a tool's schema
-until something reaches for it, so its window holds the names and almost nothing
-else. Claude Desktop, and most editors, do not — they take the whole listing on
-connect and there is nothing the user can do about it from that side.
+Some clients already handle this themselves. Claude Code and Claude Desktop both
+defer a tool's schema until something reaches for it, so their windows hold the
+names and almost nothing else. The editors and Codex are not known to, and take
+the whole listing on connect.
+
+Not known to is doing real work in that sentence. Bastion cannot see deferral
+from where it stands — it happens between the client and the model, above MCP,
+and the gateway is served the same `tools/list` either way. Every entry is
+therefore a reading somebody took, and this page said the opposite about Claude
+Desktop until one was taken on 2026-09-08: wired a one-tool server carrying a
+freshly generated token in its schema, asked Desktop to quote it, watched it
+answer NOT AVAILABLE and then call the tool with that exact value. A client
+nobody has probed is listed as not deferring, which is the safe direction and
+not a claim about what it does.
 
 **Bastion never fronts a client that defers by itself**, whatever a profile says.
 That is not only because it would buy back the names and little else. It would
@@ -178,13 +188,17 @@ of showing a saving of nothing, and `get_server` reports it as
 fronted list can go on calling through it.
 
 The client half lives in that client's own pane, under Context, as the same
-tri-state. Its default is Bastion's list of clients known to defer, which has one
-entry and is a claim about evidence rather than a capability lookup: a client
-nobody has watched defer is treated as one that does not, so a switch somebody
-turned on cannot quietly do nothing. Override it to **No** if Claude Code is not
-actually deferring on this machine — `ENABLE_TOOL_SEARCH=false`, a custom
+tri-state. Its default is Bastion's list of clients known to defer, which is a
+claim about evidence rather than a capability lookup: a client nobody has watched
+defer is treated as one that does not, so a switch somebody turned on cannot
+quietly do nothing.
+
+Override it to **No** if a client on that list is not actually deferring on this
+machine. For Claude Code, `ENABLE_TOOL_SEARCH=false`, a custom
 `ANTHROPIC_BASE_URL`, or a build before 2.1.191 all turn it off, and none of the
-three is visible from Bastion's side.
+three is visible from Bastion's side. Override it to **Yes** for a client that
+has started deferring since the reading was taken — the picker is shown for every
+client, not only the ones on the list, for exactly that case.
 
 ## Why Claude Desktop gets a bridge
 

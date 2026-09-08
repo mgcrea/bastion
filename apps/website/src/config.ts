@@ -161,8 +161,10 @@ export const DIALECT = {
  *
  * `skips` is the second. Every figure above is what a client that takes the
  * whole listing pays, and the page has to say so out loud, because the reader
- * likeliest to arrive here is running the one client the switch is never
- * applied to. `ToolFacade.clientsDeferringSchemas` is the authority.
+ * likeliest to arrive here is running one of the clients the switch is never
+ * applied to. `ToolFacade.clientsDeferringSchemas` is the authority, and it
+ * gained Claude Desktop on 2026-09-08 once somebody actually measured it — so
+ * this list grows by reading, not by guessing, and the page moves with it.
  */
 export const CONTEXT = {
   profile: "prod/appstore-connect",
@@ -174,7 +176,7 @@ export const CONTEXT = {
   cut: "67×",
   off: true,
   /** Clients that load a schema on demand themselves, and so are never fronted. */
-  skips: ["Claude Code"],
+  skips: ["Claude Code", "Claude Desktop"],
   /** The three tools a client is served instead, as the facade declares them. */
   facade: [
     {
