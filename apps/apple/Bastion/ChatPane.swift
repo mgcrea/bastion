@@ -90,7 +90,6 @@ struct ChatPane: View {
     }
   }
 
-
   private func unavailable(_ why: String) -> some View {
     VStack(spacing: 8) {
       Image(systemName: "sparkles.slash").font(.largeTitle).foregroundStyle(.tertiary)
@@ -175,7 +174,8 @@ private struct ChatHeader: View {
 
       if let failure = chat.loadFailure {
         banner(failure, tint: .red, symbol: "xmark.circle.fill")
-      } else if let eligibility = chat.eligibility, eligibility.needsConfirmation, !chat.acknowledgedWrites,
+      } else if let eligibility = chat.eligibility, eligibility.needsConfirmation,
+        !chat.acknowledgedWrites,
         chat.isReady
       {
         writesBanner(eligibility)
@@ -522,8 +522,6 @@ private struct ChatComposer: View {
 extension String {
   fileprivate var isBlank: Bool { trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 }
-
-
 
 // MARK: - One message
 

@@ -257,7 +257,8 @@ struct MainView: View {
             .help(
               ServerInstaller.shared.isCheckingAll
                 ? "Stop checking — anything already asking npm finishes"
-                : "Check all servers for updates")
+                : "Check all servers for updates"
+            )
             .accessibilityLabel(
               ServerInstaller.shared.isCheckingAll ? "Stop checking" : "Check all for updates")
           }
