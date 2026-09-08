@@ -177,7 +177,42 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_14_0, v1_13_0, v1_12_0, v1_11_0, v1_10_0]
+  static let releases: [Release] = [v1_15_0, v1_14_0, v1_13_0, v1_12_0, v1_11_0]
+
+  // swift-format-ignore
+  private static let v1_15_0: Release = Release(
+    version: "1.15.0",
+    date: "2026-09-08",
+    sections: [
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "X signs you in itself now, rather than asking for a client ID nothing read.",
+            body: [
+              "The `x` server's OAuth2 profile presented an `X_CLIENT_ID` field, and mcp-x has never read that variable — it holds its own token through child OAuth, like the other servers that sign in for themselves. The profile is **Sign in with X** now, wired to `x_login`, `x_get_auth_status` and `x_logout`, with no environment of its own. Anyone who filled that field in was configuring nothing; the sign-in button is what actually grants access.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "The EULA names Magenta Creations.",
+            body: [
+              "It was the last surface still naming an individual, where the website's legal pages and the footer name the company throughout. It moves in two steps, which is worth stating rather than discovering: the site imports this file at build time, so the terms page changed on its next deploy, while the app carries its own copy and only agrees again with this release. It is also the document Stripe Checkout links as the terms consented to at purchase.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 2,
+            headline: "The What's New pane broke sentences that run on past the bold part.",
+            body: [
+              "Most entries here open with a complete bolded sentence, which reads well pulled onto its own line — but some bold only the subject and continue straight into the clause that explains it. The pane treated every lead as a standalone headline, so it put a line break before the comma and stranded the explanation. It tests for sentence-final punctuation to tell the two shapes apart now, and reassembles a flowing lead into a single markdown string, so emphasis and code spans still parse across the join.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_14_0: Release = Release(
@@ -405,27 +440,6 @@ nonisolated enum Changelog {
             headline: "The cost figure stopped rounding in its own favour.",
             body: [
               "A measurement now records how many of its tools Bastion could tell were writes, so a view can distinguish \"no writes here\" from \"Bastion cannot tell\". Without it `ServerDetail` had no way to see a server that classifies by annotation alone — the manifest is all a view has — and understated the facade by the fourth declaration on every one of them. The same figure drives a new caveat: where load-on-demand is on and Bastion could classify nothing, the pane says so, because that is the case where one approval rule in the editor still covers every call including the writes.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_10_0: Release = Release(
-    version: "1.10.0",
-    date: "2026-09-06",
-    sections: [
-      Section(
-        name: "Changed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "A client that already defers tool schemas is never fronted.",
-            body: [
-              "\"Load tools on demand\" was a decision about a profile alone, and a profile feeds every client wired to it at once. Claude Code has loaded MCP schemas on demand by itself since 2.1.191, so turning the facade on for a profile it reads spends the whole cost and buys back only the tool _names_ — and it does worse than nothing besides: the host's own tool search then indexes Bastion's three generic entries instead of the server's eighty-five, so `app_store_connect_list_builds` stops being reachable by keyword at the client layer even though `bastion_search_tools` still is. The comment in `ToolFacade` has said so since 1.7.0 and nothing acted on it, which left `ServerDetail` quoting a 67x saving to the one client it was not delivering to.",
-              "The decision is now two switches and an `and`, not one: the profile answers _is this listing big enough to be worth the trade_, and the client answers _does this client need the help at all_. They are resolved independently and nobody fills in a grid — the gateway already knows which client is asking, because the bearer token identifies it, so the second term is a set lookup at the line that was already comparing that same string.",
-              "Which clients defer is an allowlist backed by evidence rather than a capability field, and it has one entry. An unrecognised client does not defer: the client axis is an exception to something the user asked for, and an exception with no evidence behind it is not an exception. Being wrong in this direction shows up as a listing that shrank and is one click from fixed; being wrong in the other would make a switch somebody turned on quietly do nothing, with no symptom naming the cause.",
-              "It is an allowlist rather than a fact because Bastion cannot see the thing that decides it — `ENABLE_TOOL_SEARCH=false`, a custom `ANTHROPIC_BASE_URL` or an older build all turn native deferral off, and the token only says which config file it was written into. So each client carries the same three positions the rest of the app uses, in the Clients pane, and the escape hatch has to live there rather than on the profile: overriding a profile to get Claude Code fronted again would drag Claude Desktop along with it.",
             ]),
         ]),
     ])

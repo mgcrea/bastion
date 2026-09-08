@@ -4,8 +4,57 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.14.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.15.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
+
+## [1.15.0] - 2026-09-08
+
+### Changed
+
+- **X signs you in itself now, rather than asking for a client ID nothing read.** The `x` server's
+  OAuth2 profile presented an `X_CLIENT_ID` field, and mcp-x has never read that variable — it holds
+  its own token through child OAuth, like the other servers that sign in for themselves. The profile
+  is **Sign in with X** now, wired to `x_login`, `x_get_auth_status` and `x_logout`, with no
+  environment of its own. Anyone who filled that field in was configuring nothing; the sign-in
+  button is what actually grants access.
+
+- **The EULA names Magenta Creations.** It was the last surface still naming an individual, where
+  the website's legal pages and the footer name the company throughout. It moves in two steps,
+  which is worth stating rather than discovering: the site imports this file at build time, so the
+  terms page changed on its next deploy, while the app carries its own copy and only agrees again
+  with this release. It is also the document Stripe Checkout links as the terms consented to at
+  purchase.
+
+### Fixed
+
+- **The What's New pane broke sentences that run on past the bold part.** Most entries here open
+  with a complete bolded sentence, which reads well pulled onto its own line — but some bold only
+  the subject and continue straight into the clause that explains it. The pane treated every lead as
+  a standalone headline, so it put a line break before the comma and stranded the explanation. It
+  tests for sentence-final punctuation to tell the two shapes apart now, and reassembles a flowing
+  lead into a single markdown string, so emphasis and code spans still parse across the join.
+
+### Internal
+
+- **The website had no analytics at all, so its absence from every traffic report was a coverage
+  gap rather than a zero.** Cloudflare Web Analytics is installed now, registered with
+  `auto_install` false so it does not pool into the rest of the `mgcrea.io` zone, and embedded
+  `is:inline` so Astro does not bundle it away from Cloudflare's origin. Both content security
+  policy directives had to be opened, not only the obvious one: `script-src` to fetch
+  `beacon.min.js`, and `connect-src` to let it POST, which is the half that fails silently with the
+  tag sitting in the page looking perfect.
+
+  The privacy page needed rewriting rather than a paragraph appended. It claimed the site ran no
+  analytics script, and that the policy was `'self'` throughout so a third-party request "would be
+  refused by the browser" — two sentences that would have become false on deploy. The app-level
+  claim is the stronger one and stays, scoped explicitly to the app now: Bastion itself still sends
+  nothing.
+
+- **A keyboard user had no way past the sticky nav.** Every page is one long scroll and none of them
+  offered a skip link. The `<main>` elements carry `tabindex="-1"` alongside the id, without which
+  Safari and Chrome scroll the page but leave focus where it was — the link appears to work while
+  doing nothing for a screen reader. The feedback email field had no `autocomplete` attribute
+  either; the only one on the form was on the honeypot.
 
 ## [1.14.0] - 2026-09-07
 
