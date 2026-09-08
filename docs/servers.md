@@ -338,7 +338,7 @@ on this API a read has a price, so an unbounded profile is a bill.
 | `X_ADS_ENABLED` | — | — | Registers the Ads API tools. Needs a user context. Boolean — unset means off. |
 | `X_ADS_ALLOW_WRITES` | — | — | Enables campaign mutations. No effect without X_ADS_ENABLED. Boolean — unset means off. |
 
-Satisfy exactly one of: **App-only bearer token** (`X_BEARER_TOKEN`), **OAuth2 user context** (`X_CLIENT_ID`)
+Satisfy exactly one of: **App-only bearer token** (`X_BEARER_TOKEN`), **Sign in with X** (no variables — the server holds its own token)
 
 Per-profile state: `X_CONFIG`, `X_TOKEN_FILE`
 

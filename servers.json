@@ -495,8 +495,12 @@
         },
         {
           "id": "oauth2",
-          "displayName": "OAuth2 user context",
-          "env": ["X_CLIENT_ID"]
+          "displayName": "Sign in with X",
+          "kind": "childOAuth",
+          "loginTool": "x_login",
+          "statusTool": "x_get_auth_status",
+          "logoutTool": "x_logout",
+          "env": []
         }
       ],
       "stateEnv": ["X_CONFIG", "X_TOKEN_FILE"],
