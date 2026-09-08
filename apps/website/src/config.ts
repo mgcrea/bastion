@@ -175,8 +175,16 @@ export const CONTEXT = {
   indexTokens: "3.2k",
   cut: "67×",
   off: true,
-  /** Clients that load a schema on demand themselves, and so are never fronted. */
-  skips: ["Claude Code", "Claude Desktop"],
+  /**
+   * Clients that load a schema on demand themselves, and so are never fronted.
+   *
+   * Widened rather than left to `as const`, which would type this as a tuple of
+   * exactly its current length and make `skips.length === 1` in `Context.astro`
+   * a comparison TypeScript can prove false — an error, not a warning. The
+   * singular and plural both have to stay reachable: this list is a reading, it
+   * grew to two on 2026-09-08, and the page has to keep reading correctly at one.
+   */
+  skips: ["Claude Code", "Claude Desktop"] as readonly string[],
   /** The three tools a client is served instead, as the facade declares them. */
   facade: [
     {
