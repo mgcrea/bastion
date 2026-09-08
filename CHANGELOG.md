@@ -7,6 +7,56 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.15.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Added
+
+- **One press asks about every installed server, and the sidebar says which ones answered.**
+  Whether a server had a newer version was a fact you could only collect one server at a time:
+  open its pane, press the button, read the badge, go back, repeat. The Servers header carries a
+  check-all control now, rows npm would move get an orange dot beside whatever else they were
+  already saying, and Settings ▸ Updates has grown a Servers section listing every npm-installed
+  server with its state — with Update All behind a confirmation that counts the running processes
+  it is about to stop.
+
+  Still not a timer. Nothing checks on launch, on a window appearing, or on a schedule; an answer
+  is as fresh as the last press and is forgotten when Bastion quits rather than shown stale. What
+  changed is that one press now covers nine servers instead of one.
+
+  The Sparkle pane's caption was corrected on the way: it claimed the appcast was "the only network
+  connection Bastion makes", which was never quite what was meant and stopped being defensible with
+  an npm check sitting under it. It says "the only connection Bastion opens on its own" now, which
+  is the claim `UpdateController` and `ServerInstaller` have both always actually made.
+
+### Fixed
+
+- **Claude Desktop was being fronted with the facade it never needed.** "Load tools on demand"
+  replaces a server's listing with a search tool and a dispatcher, and it is skipped for clients
+  that already fetch a schema only when something reaches for it — a list that had one entry,
+  Claude Code, because Claude Code documents the mechanism. Claude Desktop sat outside it on the
+  grounds that no equivalent was documented for it, and `docs/clients.md` and the client pane both
+  went further and stated as fact that Desktop takes the whole listing on connect. Nobody had
+  checked.
+
+  It was checked on 2026-09-08, and it defers. A one-tool server was wired into
+  `claude_desktop_config.json` beside the usual surface, carrying two freshly generated tokens: one
+  in the tool's description, one as the only allowed value of its required argument. Asked to quote
+  either from context, Desktop 1.46388.4 produced neither, named the tool under a deferred listing,
+  and then called it with the correct passphrase — a value nothing but the schema carried, fetched
+  on the already-open connection with no second `tools/list`. Chat and Cowork behaved the same way.
+
+  So the facade was costing these users rather than saving them anything: Desktop never held the
+  schemas it buys back, and being fronted took its own tool search away, leaving three generic
+  entries indexed where eighty-five specific ones used to be. `claude-desktop` joins the list, the
+  website's figures say which clients they do not describe, and the flat claims in the docs and the
+  pane are gone.
+
+- **The per-client escape hatch was withheld from the clients that needed it.** The Context pane
+  offered "set this to No" only for clients Bastion already believed defer. The reverse case — a
+  client that starts deferring before Bastion learns it has — is the one nobody can report, and it
+  is exactly what just happened. Both directions are offered now, and the pane says what Bastion has
+  watched rather than asserting what a client does.
+
 ## [1.15.0] - 2026-09-08
 
 ### Changed
