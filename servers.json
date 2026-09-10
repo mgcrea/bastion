@@ -589,6 +589,89 @@
       ]
     },
     {
+      "id": "a2a",
+      "displayName": "A2A Bridge",
+      "summary": "A2A (Agent2Agent) bridge: hand work between local agents from different vendors, and act as an A2A peer.",
+      "transport": {
+        "kind": "child",
+        "npmName": "@mgcrea/mcp-a2a",
+        "binName": "a2a-mcp",
+        "distribution": "local",
+        "localPath": "mcp-a2a",
+        "vendor": "mgcrea"
+      },
+      "docsUrl": "https://github.com/mgcrea/mcp-a2a",
+      "dialect": "2025-11-25",
+      "writeGate": "A2A_ALLOW_WRITES",
+      "gateBypass": [],
+      "authModes": [
+        {
+          "id": "shared-token",
+          "displayName": "Shared daemon token",
+          "env": ["A2A_TOKEN"]
+        }
+      ],
+      "stateEnv": [],
+      "callbackEnv": [],
+      "env": [
+        {
+          "name": "A2A_DAEMON_URL",
+          "required": false,
+          "secret": false,
+          "description": "Where the A2A peer daemon listens. Loopback only \u2014 anything else is refused at startup. Defaults to http://127.0.0.1:41241."
+        },
+        {
+          "name": "A2A_TOKEN",
+          "required": false,
+          "secret": true,
+          "description": "Shared bearer for this machine's loopback A2A mesh. Must match the daemon's own value or every call gets 401."
+        },
+        {
+          "name": "A2A_AGENT_NAME",
+          "required": false,
+          "secret": false,
+          "description": "How this machine introduces itself in its agent card. A peer's operator reads it before delegating here."
+        },
+        {
+          "name": "A2A_PEERS",
+          "required": false,
+          "secret": false,
+          "description": "Peer BASE urls, comma-separated. Not the card path \u2014 the client appends /.well-known/agent-card.json itself."
+        },
+        {
+          "name": "A2A_MAX_WAIT_SECONDS",
+          "required": false,
+          "secret": false,
+          "description": "Long-poll ceiling. Set 150 here: Bastion's own callTimeout is 180s, and a call it kills is indistinguishable from a broken server."
+        },
+        {
+          "name": "A2A_ALLOW_WRITES",
+          "required": false,
+          "secret": false,
+          "description": "Enables delegating work to a peer and answering an inbound task \u2014 the act that commits this agent to another agent's request."
+        }
+      ],
+      "notes": [
+        "Two processes, and Bastion supervises only one of them. The A2A peer",
+        "daemon must outlive any client, so it runs under launchd; a Bastion",
+        "child is stopped after 30 idle minutes and dies with the app, which is",
+        "exactly what an inbound listener cannot do.",
+        "",
+        "So A2A_STATE_DIR is deliberately absent from stateEnv AND from env.",
+        "Both halves must resolve the same shared store, and a per-profile",
+        "redirect would give them two disjoint directories with no task ever",
+        "crossing. The default (~/.local/state/mcp-a2a) is what the daemon uses,",
+        "so leaving it unset is what makes the pair work at all.",
+        "",
+        "A2A_MAX_WAIT_SECONDS is set per profile rather than detected: Bastion",
+        "injects no variable a child could recognise it by.",
+        "",
+        "distribution is local until the package is published; flip it to npm",
+        "and add provenance: true then \u2014 a local child has no tarball to",
+        "attest, which the schema enforces."
+      ]
+    },
+    {
       "id": "unifi-protect",
       "displayName": "UniFi Protect",
       "summary": "UniFi Protect: cameras, event history, recordings, snapshots and NVR status.",

@@ -33,7 +33,7 @@ Anything that breaks one of those is in scope. So is the licence Worker at `api.
 
 - A supervised server misbehaving with the credential it was legitimately given. Bastion fronts
   the server; the credential's own scopes are the boundary, and the catalog says so per entry.
-- What a catalog server's own code does. Eleven of the catalog's twenty-three child entries name a
+- What a catalog server's own code does. Eleven of the catalog's twenty-four child entries name a
   package somebody else publishes; Bastion installs those from npm on demand and runs them with the
   Node runtime in the app, with a profile's credentials in their environment. What Bastion adds is
   the supervision, the Keychain and the audit line — not a review of the code, and the app says so

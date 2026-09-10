@@ -99,6 +99,16 @@ export const SERVERS: Server[] = [
     dialect: "2025-11-25",
   },
   {
+    id: "a2a",
+    displayName: "A2A Bridge",
+    summary: "A2A (Agent2Agent) bridge: hand work between local agents from different vendors, and act as an A2A peer.",
+    writeGate: "A2A_ALLOW_WRITES",
+    transport: "child",
+    vendor: "mgcrea",
+    provenance: false,
+    dialect: "2025-11-25",
+  },
+  {
     id: "unifi-protect",
     displayName: "UniFi Protect",
     summary: "UniFi Protect: cameras, event history, recordings, snapshots and NVR status.",
