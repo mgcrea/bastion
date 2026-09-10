@@ -80,15 +80,24 @@ coordinate in `bastion-mark.svg` is that geometry multiplied by 1024/232 = 4.413
 decimal — computed, not eyeballed. If the canvas changes, re-run the multiplication; a hand-copied
 coordinate is invisible until somebody measures.
 
-Two numbers are **not** transcribed, and they are the only two anybody chose. Dropping the wall left
-the fort spanning 34% of the canvas — an island in a large field, and exactly the diagnosis the
-usual glyph-ratio check exists to catch. So it is scaled to **580** wide, roughly the footprint the
-wall used to hold, and seated at **y850** rather than the wall's old 776.8.
+Two things are **not** transcribed, and they are the only two anybody chose: the fort's size and its
+seat.
 
-The seat is the composition. At 850 the front hill crosses the fort's feet and the back hill runs
-behind it, so it stands _on_ the ridge; raise it and it floats above the hills with a visible strip
-of sky under it. Both numbers are pinned by `scripts/lib/lockup.test.mjs`, which holds the fort's
-path character for character.
+Dropping the wall left the fort spanning 34% of the canvas — an island in a large field, and exactly
+the diagnosis the usual glyph-ratio check exists to catch. It was first scaled to 580 wide and stood
+at y850, in front of both hills. That seat cost something only a render shows: the fort is 90% ink,
+so where its base crossed the back hill it laid a pale translucent band across the ridge.
+
+So the fort now sits **behind** the back hill. Its walls keep their slopes, the whole shape is 24/29
+of that earlier size (**466.8** wide at the feet, 45.6% of the canvas, apex at **y426.1**), and its
+base is not a line but the ridge itself: the span of the back hill's `Q512 609.1` between the two
+feet, re-expressed as `Q512 721.5`. Fort and hill share one edge and never overlap, which is the
+only way two 90% shapes meet without either a strip of sky or a lighter overlap. At 1024 the seam is
+one blended pixel with no plate showing through.
+
+Move a foot and re-solve the ridge under it; a base nudged by eye leaves the curve. Both the size and
+the seat are pinned by `scripts/lib/lockup.test.mjs`, which holds the fort's path character for
+character.
 
 The canvas's three stroke weights for the wall — 8 units at its 232px render, 10 at 38px, 13 at 116
 and below, its author compensating optically at each size — no longer apply to anything here. The
@@ -98,10 +107,11 @@ rather than against the canvas. See below.
 ## Small sizes
 
 The `.icon` format carries one artwork for every size. This got easier when the wall left: the
-counter between wall and fort was the thing that closed first, and there is no longer one. At 32px
-the fort and both hills separate cleanly; at 16px the fort and the back hill merge into a single
-mass on a ridge, which is the intended degradation and is why there is no second geometry to keep in
-step.
+counter between wall and fort was the thing that closed first, and there is no longer one. It got
+easier again when the fort moved behind the ridge: the two used to overlap, and at 16px they merged
+into a single pale mass. Now they share an edge and never overlap, so at 16px the fort is still a
+pale block standing on a two-tone band, and at 32px everything separates cleanly. That is why there
+is no second geometry to keep in step.
 
 ## Palette
 
@@ -165,9 +175,9 @@ spawns a process and so never appears there, which is what makes the state mean 
 
 They are still **authored, not composed** — `make icon` copies them and never derives them from the
 mark, because the sizing below is a menu bar problem the 1024 mark knows nothing about. What is no
-longer authored is the _shape_: the fort's five vertices are `bastion-mark.svg`'s own, scaled, and
-so is the ridge. The fort and the mark used to differ by about 5% in aspect for no reason anybody
-had written down.
+longer authored is the _shape_: the fort's walls carry `bastion-mark.svg`'s own slopes, scaled, and
+so does the ridge. The glyph closes the base flat where the icon lets the ridge hide it. The fort and
+the mark used to differ by about 5% in aspect for no reason anybody had written down.
 
 ### The ridge is Bastion's own, and it is not cupertino's
 
@@ -185,21 +195,23 @@ the same 61% restraint cupertino's hill carries. Keep the shape and move the amp
 two apps sharing a _construction_ while keeping their own ridges is the point; a shared hill would
 make one of them wrong.
 
-### The fort stands on the ridge, it does not set behind it
+### The glyph's fort stands on the ridge, and the icon's sets behind it
 
-This is the one place the two glyphs are built differently, and the icons decide it. In
-`bastion-mark.svg` the fort is drawn **after** the hills, so it is in front of them; cupertino's sun
-is drawn **before** its hills, so it sets behind them.
+This is the one place the icon and the glyph are built differently. In `bastion-mark.svg` the fort's
+base **is** the back hill's ridge, so the hill hides its foot — the arrangement cupertino's sun has,
+drawn before its hills and setting behind them.
 
-Drawn faithfully — the fort's flat base overlapping the ridge — the two weld into **one connected
-component at every size**, and the ridge reads as feet sticking out sideways. That was measured, not
-argued: in a one-colour template, "in front of" and "merged with" are the same picture.
+The glyph was fitted when the icon's fort still stood **in front** of its hills. Drawn that way in
+one colour, the fort's flat base overlapping the ridge welds the two into **one connected component
+at every size**, and the ridge reads as feet sticking out sideways. That was measured, not argued:
+in a one-colour template, "in front of" and "merged with" are the same picture.
 
-So the fort's flat base rests exactly **on** the sky line (y25.30, the clip's height at the centre)
+So the glyph's fort rests exactly **on** the sky line (y25.30, the clip's height at the centre)
 rather than below it. The fort is never actually cut, keeps the closed base it needs for a floor,
-and the ridge sits under it with 1.05pt of sky. Cutting it cupertino-style also measures fine and
-was drawn; it was rejected because a fort that sets behind a hill is cupertino's idea, not this
-one's.
+and the ridge sits under it with 1.05pt of sky. Cutting it cupertino-style — what the icon now does —
+also measures fine and was drawn. It was rejected on the grounds that a fort setting behind a hill
+was cupertino's idea, not this one's, and the icon has since given that argument up. The glyph has
+not been redrawn; a cut glyph is the candidate if the two should match again.
 
 ### The clip is a true normal offset
 

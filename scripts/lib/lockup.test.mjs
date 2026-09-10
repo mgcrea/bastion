@@ -34,7 +34,7 @@ const palette = JSON.parse(readFileSync(join(design, "colors.json"), "utf8"));
 const MARK_SHAPES = [
   "M-39.7 882.8 Q512 609.1 1063.7 882.8 V1063.7 H-39.7 Z",
   "M-39.7 935.7 Q282.5 829.8 582.6 918.1 T1121.1 891.6 V1063.7 H-39.7 Z",
-  "M512 386.1 L758.5 589.1 L802 850 L222 850 L265.5 589.1 Z",
+  "M512 426.1 L716 594.1 L745.4 770.4 Q512 721.5 278.6 770.4 L308 594.1 Z",
 ];
 
 const CARD_COPY = { headline: "A headline", subhead: "A subhead", ground: "#0b0c0f" };
@@ -44,9 +44,9 @@ describe("the mark the compositions read", () => {
     const mark = readFileSync(join(design, "bastion-mark.svg"), "utf8");
     for (const shape of MARK_SHAPES) assert.ok(mark.includes(shape), `missing ${shape}`);
     // The fort is the only shape anybody chose rather than transcribed, and the
-    // choice is its seat: at y850 the front hill crosses its feet, so it stands
-    // on the ridge instead of floating above it. The path above pins that, and
-    // `make icon` has no opinion on it.
+    // choice is its seat: its base is the back hill's own ridge between the
+    // feet, so it sits behind the hill without a strip of sky or an overlap.
+    // The path above pins that, and `make icon` has no opinion on it.
   });
 });
 
