@@ -177,7 +177,59 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_16_0, v1_15_0, v1_14_0, v1_13_0, v1_12_0]
+  static let releases: [Release] = [v1_17_0, v1_16_0, v1_15_0, v1_14_0, v1_13_0]
+
+  // swift-format-ignore
+  private static let v1_17_0: Release = Release(
+    version: "1.17.0",
+    date: "2026-09-11",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Help ▸ Report an Issue, Send Feedback and Bastion Support.",
+            body: [
+              "The Help menu opens the issue tracker, a feedback form on the website and a new support page, from the same shared package the other mgcrea apps use. The app still sends nothing: each item hands your browser a URL, and the app version, macOS version, Mac model and language it carries are in the address bar and editable on the form before anything goes anywhere. The tracker stays the primary channel; the form is for reports that quote your own servers, profiles or activity log.",
+            ]),
+        ]),
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 1,
+            headline: "The app icon's fort sits behind the ridge instead of on top of it.",
+            body: [
+              "Standing in front of both hills at 580 wide, the fort's 90% ink laid a pale translucent band across the ridge wherever the two crossed, and at 16px the two shapes merged into one. The fort is 24/29 of that size now and takes the ridge itself as its base — the same curve, re-expressed between its two feet — so fort and hill share one edge and never overlap. The `.icon` bundle, the lockup and every website favicon, touch icon and card are regenerated from the new mark. The menu bar glyphs are deliberately untouched: they still draw the fort standing on the ridge, recorded in `design/README.md` as a known divergence rather than quietly changed.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 2,
+            headline: "A gateway that had died went on showing green.",
+            body: [
+              "`Gateway` keeps its state behind a lock and is `Sendable`, with nothing for SwiftUI to subscribe to, so `Gateway.shared.port` read inside a view body was a value sampled once and never revisited. The menu bar panel got away with it because `MenuBarExtra` rebuilds its content every time it opens; the main window has no such rebuild, so the sidebar's status row could sit on \"Serving on 127.0.0.1:…\" indefinitely — the one line whose whole job is to beat a client's \"connection refused\" to you. Both read an observable projection now, published by `Gateway.start()` on the failure path as well as the success one.",
+            ]),
+          Entry(
+            ordinal: 3,
+            headline: "The menu bar panel had a phantom gap above the gateway line when licensed.",
+            body: [
+              "The licensed case returned an empty view from inside a `TimelineView`, which measures zero but remains a laid-out child, so the stack allocated spacing on both sides of nothing and the header sat 24pt above the line instead of 12. It also ran a fifteen-second timer for the lifetime of every panel open with no countdown to show for it. The licensed case contributes no view at all now, and only the trial and refused states build the timer.",
+            ]),
+          Entry(
+            ordinal: 4,
+            headline: "The menu bar's trial banner offered a licence the rest of the app would not sell.",
+            body: [
+              "Its buy button was not gated on `isSelling`, which the Settings licence pane has always gated its identical button on — so a build made while the store is closed answered the same question two ways depending on where you asked it.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_16_0: Release = Release(
@@ -419,75 +471,11 @@ nonisolated enum Changelog {
         ]),
     ])
 
-  // swift-format-ignore
-  private static let v1_12_0: Release = Release(
-    version: "1.12.0",
-    date: "2026-09-06",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "The iOS Simulator joins the catalog.",
-            body: [
-              "Thirty-four entries now, twenty-three children and eleven remote. It drives a booted simulator — screenshots, the accessibility tree, taps, swipes, typing, app lifecycle and the staged environment — and installs from `@mgcrea/mcp-ios-simulator`.",
-              "Two lanes reach it and they fail independently. `xcrun simctl` covers app lifecycle, the staged environment and the screen itself; only the accessibility tree and synthetic touches go through a WebDriverAgent runner, reached over the HOST's own loopback because a simulator shares the host network stack. That split is the real difference from the iOS Device server, where seeing anything at all requires the runner: here `simctl io screenshot` needs none, so everything except `ui_tree` works before one has ever started — and once writes are on, the server can start the runner itself. `ios_simulator_diagnostics` reports the two lanes separately.",
-              "It takes no credentials, so it has no auth modes, and unlike the device server there is barely any setup either: a simulator needs no pairing and no Developer Mode toggle, so there is nothing for a profile to hold. `IOS_SIMULATOR_ALLOW_WRITES` gates the fourteen tools that actually drive it.",
-              "The package itself defaults writes ON, the only entry here that does, reasoning that a phone belongs to a real person while a simulator is disposable and holds nobody's data. That default is never reached under Bastion, which writes the gate value explicitly on every spawn: the profile toggle is what decides, and a profile with writes off spawns a server that has not registered the driving tools at all.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "Catalog entries say which packages npm can tie back to the repository they link to.",
-            body: [
-              "A `provenance` badge now sits beside the package name in a server's pane and in the catalog list, and the website marks the same entries. Sixteen of the twenty-three published packages carry a SLSA build attestation from GitHub Actions; the seven that do not are not suspect, they publish the older way, so the badge is only ever shown and never negated.",
-              "The claim is deliberately narrower than \"attested\". A bare attestation says some CI somewhere built the tarball, which is a thing a typosquat of a popular package can have too. What is checked is that the workflow's repository matches the `docsUrl` the entry already advertises, so the badge means the bytes trace to the source the reader can go and look at. All sixteen match today, which makes the check a drift detector rather than a one-off audit.",
-              "It is a smaller claim than a review, and it is placed to say so: under the paragraph in a third-party server's Package card that finishes explaining nobody here read the code. Provenance ties a package to a source; it does not vouch for what is in it.",
-              "`make provenance` prints what the registry currently holds, and `make provenance-check` fails when a claim in `servers.json` no longer does. Neither runs in CI, and neither belongs to the generator: it has to stay offline and deterministic because `servers-check` is a drift gate, and somebody else publishing overnight must not turn an unrelated pull request red. The two directions of drift are not treated alike — a stale `true` is a hard failure, because Bastion must never claim provenance it cannot show to someone deciding whether to run code on their machine, while a stale `false` is only advice, because a third party improving their release process is good news and good news must not fail a build.",
-              "`list_catalog` returns the flag too, so a model choosing between two servers that do the same job has one trust signal it can actually act on.",
-            ]),
-        ]),
-      Section(
-        name: "Changed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 2,
-            headline: "A listing too small to be worth searching is no longer fronted, whatever the switch says.",
-            body: [
-              "Loading tools on demand now resolves a third term beside the server's switch and the client's own deferral, and this one is measured rather than configured: a listing is fronted only when it has at least twice as many tools as the facade would send in its place, and costs at least twice as many tokens. Both have to hold.",
-              "The count is the term that decides the real cases, and it is not a proxy for the bytes. What this feature sells is not compression, it is selection — eighty-five schemas go unsent because an agent needed two of them. A server exposing three tools offers no selection to make, so the index costs two round trips to learn what one listing already said.",
-              "That is most of the remote catalog's shape. Cloudflare's hosted endpoint exposes `search`, `execute` and `docs`; Stripe ships a read and a write dispatcher beside its own search. They are already this design, and their listings are not small in bytes — Cloudflare's three descriptions measure about 1.7k tokens — so a floor counting bytes alone would front them and buy nothing. Nor can Bastion recover what a vendor's dispatcher already took away: the real tool name upstream _is_ `execute`, so the audit row says `execute` either way, and the one advantage of doing this in the gateway does not apply.",
-              "Measured rather than listed, deliberately. A set of vendors known to front their own tools would rot the first time one unpacked its dispatcher, and would do nothing for the small child server with the same problem and no vendor to name. Where the floor holds, the server's card says which half held instead of rendering a saving of nothing, the client's context bill counts the real listing, and `get_server` reports it as `lazy_tools_note`. It governs what is ADVERTISED only — a client still holding a fronted list goes on calling through it, which is the rule a pre-toggle tool name has always followed.",
-            ]),
-        ]),
-    ])
-
   /// Work that is written down but not shipped.
   ///
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  // swift-format-ignore
-  private static let unreleasedRelease: Release = Release(
-    version: "Unreleased",
-    date: "",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Help ▸ Report an Issue, Send Feedback and Bastion Support.",
-            body: [
-              "The Help menu opens the issue tracker, a feedback form on the website and a new support page, from the same shared package the other mgcrea apps use. The app still sends nothing: each item hands your browser a URL, and the app version, macOS version, Mac model and language it carries are in the address bar and editable on the form before anything goes anywhere. The tracker stays the primary channel; the form is for reports that quote your own servers, profiles or activity log.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  static let unreleased: Release? = unreleasedRelease
+  static let unreleased: Release? = nil
   // </generated:changelog>
 }
