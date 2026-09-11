@@ -274,6 +274,43 @@ describe("the webhook", () => {
   });
 });
 
+describe("the product guard", () => {
+  // The mix-up this exists to stop: bastion-api and cupertino-api are two
+  // webhook endpoints on ONE Stripe account, so every checkout event reaches
+  // both. A Bastion buyer was mailed a Cupertino key by the other Worker.
+  it("ignores a sale at another product's price, and mints nothing", async () => {
+    const built = testEnv();
+    const response = await webhook(built.env, completed({ metadata: { price_id: "price_other" } }));
+    // 200, so Stripe stops. A 4xx would have it retrying a valid event for days.
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("not this product");
+    expect(await count(built.env)).toBe(0);
+    expect(built.sent).toEqual([]);
+  });
+
+  // The deliberate hole. A link made by hand carries no metadata and
+  // `priceIdFor` returns "" on every failure including a timeout, so refusing
+  // these would refund a real sale to protect a column.
+  it("still fulfils a sale whose price cannot be resolved", async () => {
+    const built = testEnv({ STRIPE_SECRET_KEY: "" });
+    const response = await webhook(built.env, completed({ metadata: {} }));
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("ok");
+    expect(await count(built.env)).toBe(1);
+    expect(built.sent).toHaveLength(1);
+  });
+
+  // Unset means unguarded, which is what makes this safe to deploy before the
+  // var is configured, and what the test environment runs as.
+  it("fulfils any price when none is configured", async () => {
+    const built = testEnv({ EXPECTED_PRICE_ID: "" });
+    const response = await webhook(built.env, completed({ metadata: { price_id: "price_other" } }));
+    expect(response.status).toBe(200);
+    expect(await count(built.env)).toBe(1);
+    expect(built.sent).toHaveLength(1);
+  });
+});
+
 describe("refunds and disputes", () => {
   it("leaves a licence alone on a partial refund", async () => {
     const built = await fulfilled();

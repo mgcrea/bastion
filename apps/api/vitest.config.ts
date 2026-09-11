@@ -25,6 +25,14 @@ export default defineConfig(async () => ({
                 // a keypair per run and puts the private half on `env`.
                 STRIPE_WEBHOOK_SECRET: "whsec_test",
                 LICENSE_SIGNING_KEY: "",
+                // The product guard, pinned to the price the fixtures pay.
+                // wrangler.jsonc carries the LIVE price, which no fixture pays,
+                // so inheriting it would have every fulfilment test assert
+                // against a licence the guard had just refused to mint. Set
+                // here rather than per test so the whole suite runs with the
+                // guard ON, and a session at another price is the exception a
+                // test states explicitly.
+                EXPECTED_PRICE_ID: "price_test",
               },
             },
           }),

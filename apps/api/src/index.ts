@@ -158,8 +158,6 @@ const fulfil = async (object: unknown, env: Env, livemode: boolean): Promise<Res
 
   let row = await findBySession(env, session.id);
   if (!row) {
-    const major = Number(env.CURRENT_MAJOR) || 1;
-    const minted = await mint({ email, major, privateKey: env.LICENSE_SIGNING_KEY });
     // The Payment Link copies its metadata onto every session it creates, so the
     // price arrives inside the webhook that is already signed and already being
     // parsed. Preferring it removes a network call from the one path that must
@@ -169,6 +167,37 @@ const fulfil = async (object: unknown, env: Env, livemode: boolean): Promise<Res
     const priceId =
       session.metadata?.price_id ||
       (env.STRIPE_SECRET_KEY ? await priceIdFor(session.id, env.STRIPE_SECRET_KEY) : "");
+
+    // Whether this sale is ours at all. Resolved BEFORE the mint, so another
+    // product's sale never reaches the signing key.
+    //
+    // This Worker and cupertino-api are two endpoints on ONE Stripe account,
+    // and Stripe delivers every event of a subscribed type to every endpoint
+    // subscribed to it. Neither side used to look at what had been bought, so a
+    // single Bastion sale was fulfilled twice — a bas1 key from here and a cup1
+    // key from there — and the buyer was mailed a licence for a product they
+    // had never heard of.
+    //
+    // An allowlist of OUR price, never a blocklist of theirs: a third product
+    // is then a Worker nobody has to remember to tell about, and forgetting
+    // costs a duplicate rather than a stranger's licence.
+    //
+    // Two deliberate holes, both falling the way this file falls everywhere
+    // else — a reporting gap beats a customer who paid and got nothing. An
+    // unset EXPECTED_PRICE_ID guards nothing, so deploying this without
+    // configuring it changes no behaviour. And a session whose price could not
+    // be resolved AT ALL is let through: a link made by hand carries no
+    // metadata, and priceIdFor returns "" on every failure including a timeout,
+    // so refusing those would refund a real sale to protect a column.
+    if (env.EXPECTED_PRICE_ID && priceId && priceId !== env.EXPECTED_PRICE_ID) {
+      // 200, not 4xx: the event is valid and simply belongs to another product.
+      // A 4xx would have Stripe retrying it for three days.
+      console.log(`fulfil: ignoring ${session.id}, price ${priceId} is not ours`);
+      return new Response("not this product", { status: 200 });
+    }
+
+    const major = Number(env.CURRENT_MAJOR) || 1;
+    const minted = await mint({ email, major, privateKey: env.LICENSE_SIGNING_KEY });
     await env.DB.prepare(
       `INSERT INTO licenses
          (id, email, major, key, stripe_session_id, payment_intent, price_id, amount_paid,
