@@ -69,10 +69,9 @@ runs it.
 
 ## Servers
 
-Bastion ships with nothing installed. Thirty-five entries are in the catalog you install from. Thirteen
-are servers written here and run as child processes — App Store Connect, Reddit, X, A2A Bridge,
-UniFi Protect, UniFi Network, Shopify, OVHcloud, Keycloak, npm, iOS Device, iOS Simulator and
-CloudKit.
+Bastion ships with nothing installed. Thirty-four entries are in the catalog you install from. Twelve
+are servers written here and run as child processes — App Store Connect, Reddit, X, UniFi Protect,
+UniFi Network, Shopify, OVHcloud, Keycloak, npm, iOS Device, iOS Simulator and CloudKit.
 Eleven more are child processes too, but published by somebody else: MongoDB, DBHub, Kubernetes,
 Context7, Firecrawl, Exa, Tavily, Playwright, Supabase, Netlify and Apify — installed from npm and run
 on your machine, with the supervision, the Keychain and the audit line around them but no review of the

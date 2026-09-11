@@ -57,7 +57,7 @@ than once when the entry is added, because a name that passed yesterday can
 resolve somewhere else today. `make remote-check` asserts all of it.
 
 Bastion curates lightly, and only to fill the first screen. The catalog seeds
-thirty-five entries — thirteen servers written here, eleven somebody else
+thirty-four entries — twelve servers written here, eleven somebody else
 publishes, and eleven endpoints their own vendors operate — because a catalog
 that opens with nothing recognisable in it teaches nobody what the app is for.
 The middle group is named rather than folded into the first: those are installed
@@ -146,7 +146,7 @@ declares its protocol version, identity and capabilities in each request's
 shared server instance correct rather than a hack, and it is why Bastion fronts
 clients with it.
 
-None of the catalog entries below are modern. The thirteen children written here
+None of the catalog entries below are modern. The twelve children written here
 run an SDK whose newest protocol is `2025-11-25`, and `server/discover` against
 one returns `-32601` — the exact signal the spec names for recognising a legacy
 server. The eleven third-party children were measured at the same revision, and
@@ -196,7 +196,6 @@ asserts both eras against a running build.
 | [CloudKit](https://github.com/mgcrea/mcp-cloudkit) | `cloudkit` | `cloudkit-mcp` | `@mgcrea/mcp-cloudkit` (npm, provenance) | `CLOUDKIT_ALLOW_WRITES` | 1 |
 | [Reddit](https://github.com/mgcrea/mcp-reddit) | `reddit` | `reddit-mcp` | `@mgcrea/mcp-reddit` (npm, provenance) | `REDDIT_ALLOW_WRITES` | 1 |
 | [X](https://github.com/mgcrea/mcp-x) | `x` | `x-mcp` | `@mgcrea/mcp-x` (npm, provenance) | `X_ALLOW_WRITES` | 2 |
-| [A2A Bridge](https://github.com/mgcrea/mcp-a2a) | `a2a` | `a2a-mcp` | `mcp-a2a` (local) | `A2A_ALLOW_WRITES` | 1 |
 | [UniFi Protect](https://github.com/mgcrea/mcp-unifi-protect) | `unifi-protect` | `unifi-protect-mcp` | `@mgcrea/mcp-unifi-protect` (npm, provenance) | `UNIFI_PROTECT_ALLOW_WRITES` | 3 |
 | [UniFi Network](https://github.com/mgcrea/mcp-unifi-network) | `unifi-network` | `unifi-network-mcp` | `@mgcrea/mcp-unifi-network` (npm, provenance) | `UNIFI_ALLOW_WRITES` | 2 |
 | [Stripe](https://docs.stripe.com/mcp) | `stripe` | — | `https://mcp.stripe.com` (remote) | `stripe_api_write`, `create_refund`, `stripe_report` (by name) | 1 |
@@ -344,39 +343,6 @@ Satisfy exactly one of: **App-only bearer token** (`X_BEARER_TOKEN`), **Sign in 
 Per-profile state: `X_CONFIG`, `X_TOKEN_FILE`
 
 Per-profile OAuth callback: `X_REDIRECT_URI` as `http://127.0.0.1:{port}/callback`
-
-### A2A Bridge
-
-A2A (Agent2Agent) bridge: hand work between local agents from different vendors, and act as an A2A peer.
-
-Two processes, and Bastion supervises only one of them. The A2A peer
-daemon must outlive any client, so it runs under launchd; a Bastion
-child is stopped after 30 idle minutes and dies with the app, which is
-exactly what an inbound listener cannot do.
-
-So A2A_STATE_DIR is deliberately absent from stateEnv AND from env.
-Both halves must resolve the same shared store, and a per-profile
-redirect would give them two disjoint directories with no task ever
-crossing. The default (~/.local/state/mcp-a2a) is what the daemon uses,
-so leaving it unset is what makes the pair work at all.
-
-A2A_MAX_WAIT_SECONDS is set per profile rather than detected: Bastion
-injects no variable a child could recognise it by.
-
-distribution is local until the package is published; flip it to npm
-and add provenance: true then — a local child has no tarball to
-attest, which the schema enforces.
-
-| Variable | Required | Secret | Meaning |
-| --- | --- | --- | --- |
-| `A2A_DAEMON_URL` | — | — | Where the A2A peer daemon listens. Loopback only — anything else is refused at startup. Defaults to http://127.0.0.1:41241. |
-| `A2A_TOKEN` | — | yes | Shared bearer for this machine's loopback A2A mesh. Must match the daemon's own value or every call gets 401. |
-| `A2A_AGENT_NAME` | — | — | How this machine introduces itself in its agent card. A peer's operator reads it before delegating here. |
-| `A2A_PEERS` | — | — | Peer BASE urls, comma-separated. Not the card path — the client appends /.well-known/agent-card.json itself. |
-| `A2A_MAX_WAIT_SECONDS` | — | — | Long-poll ceiling. Set 150 here: Bastion's own callTimeout is 180s, and a call it kills is indistinguishable from a broken server. |
-| `A2A_ALLOW_WRITES` | — | — | Enables delegating work to a peer and answering an inbound task — the act that commits this agent to another agent's request. |
-
-Satisfy exactly one of: **Shared daemon token** (`A2A_TOKEN`)
 
 ### UniFi Protect
 
