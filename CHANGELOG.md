@@ -4,8 +4,42 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.17.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.17.1` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
+
+## [1.17.1] - 2026-09-11
+
+### Fixed
+
+- **The menu bar panel came up empty in 1.17.0.** Moving the panel's chrome onto swift-support-kit's
+  shared `MenuBarPanel` took the package at 1.2.0, whose panel laid its middle band out at no
+  height — so it drew a header and a footer with nothing between them, and the gateway line and the
+  servers section were rendered below the panel's own bottom edge. Everything the menu bar exists to
+  show was off-panel; the release that introduced the shared chrome is the release that shipped it
+  bodyless. The requirement is 1.2.1 or newer now.
+
+### Changed
+
+- **The menu bar header pins the version to its trailing edge.** The name stays at the leading edge
+  and the version goes hard right, which is the arrangement the fleet settled on. Bastion's own
+  suffix placement was one of the two inputs to that decision and lost it.
+
+### Internal
+
+- `LicencePane`, `LicenceLinks` and `LicenceBanner` are `LicensePane`, `LicenseLinks` and
+  `LicenseBanner`, matching `LicenseStore`'s spelling. Code identifiers only — the user-facing copy
+  ("Licence key", Settings ▸ Licence) is untouched, and so is the `licence` value that
+  `SettingsPane` persists under `settingsPane`, so nobody's selected pane moves on upgrade.
+
+- `Changelog.markSeen()` records `CFBundleShortVersionString` directly instead of `AppInfo.version`,
+  which returns `DemoSeed.version` under a capture — and `DemoSeed`'s own header forbids writing
+  anything to the user's real preference domain. Both callers already guard against it, so nothing
+  writes a demo version today; that is the reason to fix it now rather than after the one line that
+  makes it a real write lands somewhere nobody reads as capture-sensitive.
+
+- `SettingsPane.defaultsKey` records that a future move onto swift-support-kit's `SettingsSelection`
+  must pass `legacyKeys: ["settingsPane"]`. Without it every user's selected pane silently resets to
+  the first one, on the upgrade that ships the adoption.
 
 ## [1.17.0] - 2026-09-11
 

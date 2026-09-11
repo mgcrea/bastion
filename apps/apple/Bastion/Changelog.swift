@@ -194,7 +194,36 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_17_0, v1_16_0, v1_15_0, v1_14_0, v1_13_0]
+  static let releases: [Release] = [v1_17_1, v1_17_0, v1_16_0, v1_15_0, v1_14_0]
+
+  // swift-format-ignore
+  private static let v1_17_1: Release = Release(
+    version: "1.17.1",
+    date: "2026-09-11",
+    sections: [
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "The menu bar panel came up empty in 1.17.0.",
+            body: [
+              "Moving the panel's chrome onto swift-support-kit's shared `MenuBarPanel` took the package at 1.2.0, whose panel laid its middle band out at no height — so it drew a header and a footer with nothing between them, and the gateway line and the servers section were rendered below the panel's own bottom edge. Everything the menu bar exists to show was off-panel; the release that introduced the shared chrome is the release that shipped it bodyless. The requirement is 1.2.1 or newer now.",
+            ]),
+        ]),
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 1,
+            headline: "The menu bar header pins the version to its trailing edge.",
+            body: [
+              "The name stays at the leading edge and the version goes hard right, which is the arrangement the fleet settled on. Bastion's own suffix placement was one of the two inputs to that decision and lost it.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_17_0: Release = Release(
@@ -401,89 +430,6 @@ nonisolated enum Changelog {
             headline: "The npm catalog entry documents the variables it always read.",
             body: [
               "`NPM_BIN`, `NPM_TOTP_LABEL`, `NPM_TOTP_SECRET` and `NPM_TOTP_KEYCHAIN_SERVICE` are now in the profile editor, and `NPM_OTP_MODE` lists `totp` — the only mode that answers npm's second factor without a human, and therefore the only one an unattended publish or trusted-publisher batch can use. It was missing from the description, which made the mode undiscoverable from Bastion.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_13_0: Release = Release(
-    version: "1.13.0",
-    date: "2026-09-07",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "A shield in front of the provenance badge, and a seventeenth package behind it.",
-            body: [
-              "The badge 1.12.0 introduced now carries `checkmark.shield.fill` at its own teal tint, both in a server's pane and in the catalog row. `Badge` gained an optional glyph to do it, defaulted to nothing, so every other call site renders exactly as it did.",
-              "`@mgcrea/mcp-x` published 0.3.0 from GitHub Actions in the meantime, and its attestation names the repository the entry already links, so seventeen of the twenty-three npm entries carry the badge rather than sixteen. Checked against the registry rather than assumed, which is the only way the claim is worth anything.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [
-          "This release is mostly a hardening pass over the gateway, the supervisor and the purchase path. Several of the entries below are reachable by anything that can open a connection to the port, so they are worth reading before deciding to defer the update.",
-        ],
-        entries: [
-          Entry(
-            ordinal: 1,
-            headline: "One crafted request could take the whole app down, before it was ever asked who was sending it.",
-            body: [
-              "`Int(\"-1\")` parses. The fill loop was then skipped, `body.count >= declared` passed, and `body.prefix(-1)` hit `Collection.prefix`'s own precondition — which kills the process, not the connection. It ran on the connection thread BEFORE the Host, Origin and bearer-token checks, so it needed nothing but the ability to reach the port: every client session and every supervised child went down with it. Reproduced with a single request against a running build. The gateway now answers 400 and keeps serving.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "A progress frame could be written into a different client's response.",
-            body: [
-              "A frame is looked up under the supervisor's lock and delivered outside it, from the child's reader thread. If the reaper expired the waiter and resumed the connection thread in that window, the connection's own `defer` could `close(2)` the socket before the reader's write landed — and a free descriptor number is one the kernel is entitled to hand to the next accepted connection. The write then landed in somebody else's response.",
-              "`HTTPStream` now tracks a closed flag under its own lock, set by that `defer` before the close runs and checked by every write. A frame is either written in full to a descriptor that is still ours, or not written at all.",
-            ]),
-          Entry(
-            ordinal: 3,
-            headline: "A double-spawn race could leave an orphaned server holding a profile's credentials.",
-            body: [
-              "`ensureRunning()` was check-then-act, so two connection threads that both found a dead child could both start one; nothing ever terminated the loser. Worse, the orphan's eventual exit tore down the child that had won, because `childExited` cleared the pending state unconditionally.",
-              "A semaphore now serialises start-and-handshake, and `childExited` is a no-op unless the exiting process is the instance's current one. The idle-sweep timer moves under the same lock, since `stop()` is reached from three threads and every other field there was already guarded.",
-            ]),
-          Entry(
-            ordinal: 4,
-            headline: "Four gaps in the remote-server OAuth flow.",
-            body: [
-              "`PKCE.init` and `randomState` discarded `SecRandomCopyBytes`' status, so a CSPRNG failure produced an all-zero verifier or state in silence — a predictable challenge and a predictable CSRF token. That is now fatal, matching `GatewayToken.mint`. The callback checked `error` before `state`, so anything that could reach the ephemeral loopback port could abort an authorization in flight and have it read as the provider's refusal; state is checked first now. `resourceMetadataURL` split a 401 challenge on every comma, truncating a quoted `resource_metadata` value containing one, and is now a quote-aware scan. And the callback's accept loop polled with a deadline while the one-byte `recv` after `accept` had none, so a browser's speculative pre-connect that sent nothing parked the authorization until the app restarted. Each fix ships with a `scripts/remote-check.swift` case that fails without it.",
-            ]),
-          Entry(
-            ordinal: 5,
-            headline: "The SSE parser would buffer without limit, and rescanned from the start on every chunk.",
-            body: [
-              "Every other reader in the app bounds what it will take from an untrusted source; this one, fed straight from `URLSession` by a remote server, did not — and its rescan made a long stream quadratic. Both are now handled the way `Supervisor.readLoop` already handled its own: a 32MB ceiling, and a scan that resumes two bytes before the last cut.",
-            ]),
-          Entry(
-            ordinal: 6,
-            headline: "A client config backup kept the previous bearer token at the original file's permissions.",
-            body: [
-              "The backup written ahead of a rewrite inherited the source's mode, so re-wiring a world-readable config left a sibling `.bastion-backup` holding the OLD token, readable by anyone, indefinitely. It is now `chmod`'ed 0600 like the file it backs up.",
-            ]),
-          Entry(
-            ordinal: 7,
-            headline: "An install could hang forever, and the row could never be retried.",
-            body: [
-              "Both the install and the update-check subprocess read to EOF with no deadline, so a registry that accepted the connection and then said nothing parked the call indefinitely. Because `running[server.id]` is cleared only when the task returns, every retry was refused for the life of the app while the row sat on \"Installing…\" with no way to dismiss it. A watchdog now SIGTERMs after five minutes and the call surfaces a named timeout.",
-            ]),
-          Entry(
-            ordinal: 8,
-            headline: "A locked keychain told every client to re-wire itself.",
-            body: [
-              "`identify(_:)` ran on every request ahead of everything else, doing a `SecItemCopyMatching` over the whole account namespace plus a decrypting read per issued client. That set changes only when a client is wired or unwired, so it is cached for 60 seconds now and invalidated explicitly on issue and revoke.",
-              "The cache also separates two states the old `Optional` collapsed into one: a token Bastion does not know (the client's problem, still 401) and a keychain that will not answer at all (this app's problem, and usually transient). The second answers 503 now, instead of sending the owner of a locked keychain off to re-wire every client they have.",
-            ]),
-          Entry(
-            ordinal: 9,
-            headline: "A revoked licence could be mailed out again, and a dispute could restore the wrong one.",
-            body: [
-              "Five gaps in the purchase webhook, with the schema to support them. `fulfil` re-sent a revoked licence's key on any redelivery past the cooldown — or on a dashboard \"Resend\" — under a note promising a refund that had already been paid. `charge.dispute.closed` with status `won` restored ANY revoked licence for that payment intent, including one revoked by an unrelated refund; it is scoped to `revoked_reason = 'disputed'` now. The only idempotency key was `stripe_session_id`, which stops a second licence but not a second email, so every webhook event id is recorded once handled and a duplicate delivery is a no-op. `checkout.session.async_payment_succeeded` and its failed twin were unhandled, so a delayed-notification method — SEPA and its relatives — could charge a customer and mint nothing; both route to the same path. And `/thanks` served a licence key with no cache-control, while the 404 page hardcoded the site's host instead of reading the `SITE_URL` binding that was declared and never read.",
             ]),
         ]),
     ])
