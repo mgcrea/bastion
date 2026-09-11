@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mgcrea/swift-support-kit.git",
       "state" : {
-        "revision" : "f6b96173f2e920934c908ff572b9994f02679a51",
-        "version" : "1.0.0"
+        "revision" : "f6ffc30aa466f4f1d5adcfb579e6600f6b91114a",
+        "version" : "1.2.0"
       }
     }
   ],
