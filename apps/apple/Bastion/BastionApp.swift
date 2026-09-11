@@ -1,3 +1,4 @@
+import SupportKitUI
 import SwiftUI
 
 /// Starting the gateway belongs to the app lifecycle, not to the menu: the
@@ -187,6 +188,23 @@ struct BastionApp: App {
         Button("Settings…") { SettingsWindowController.show() }
           .keyboardShortcut(",", modifiers: .command)
       }
+
+      // The Help menu, from the package the rest of the fleet uses: Report an
+      // Issue, Send Feedback and the support page, all three built from
+      // `Support.app` rather than typed out here.
+      //
+      // No help closure. Bastion has no help window to open, and
+      // `SupportCommands` takes the action as an optional so an app without one
+      // does not have to invent a sheet before it can have a feedback link.
+      //
+      // Reachable only while there IS a main menu, which for this app means
+      // while a window is open — the same condition the Settings item above
+      // lives under, for the reason `DockPresence` gives. The popover's "Open
+      // Bastion" is the route to it; the popover itself gets no row for this.
+      SupportCommands(
+        app: Support.app,
+        preferIssueTracker: Support.preferIssueTracker
+      )
     }
   }
 }
