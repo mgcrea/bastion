@@ -144,7 +144,7 @@ struct SettingsView: View {
           case .about: AboutPane()
           case .whatsNew: WhatsNewPane()
           case .updates: UpdatesPane()
-          case .licence: LicencePane()
+          case .licence: LicensePane()
           }
         }
       }

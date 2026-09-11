@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-enum LicenceLinks {
+enum LicenseLinks {
   /// Where to buy one. The site's own vanity path rather than the Stripe
   /// checkout URL, so the destination can move without shipping a new build —
   /// see `apps/website/public/_redirects`. A Stripe URL compiled into a binary
@@ -39,7 +39,7 @@ enum LicenceLinks {
 /// send anyone to, and copy describing some other build is read at exactly the
 /// moment somebody is deciding whether to trust the app with every credential
 /// they own.
-struct LicencePane: View {
+struct LicensePane: View {
   @State private var entry = ""
   @State private var problem: String?
   /// Bumped by anything that changes the answer — a key entered, a key removed,
@@ -256,9 +256,9 @@ struct LicencePane: View {
           revision += 1
         }
         .disabled(LicenseStore.raw == nil)
-        if LicenceLinks.isSelling {
+        if LicenseLinks.isSelling {
           Spacer()
-          Button("Buy a licence…") { NSWorkspace.shared.open(LicenceLinks.buy) }
+          Button("Buy a licence…") { NSWorkspace.shared.open(LicenseLinks.buy) }
         }
       }
       .controlSize(.small)

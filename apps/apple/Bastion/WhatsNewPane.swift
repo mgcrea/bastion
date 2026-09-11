@@ -17,7 +17,7 @@ import SwiftUI
 /// and going to look stays the user's decision.
 ///
 /// Its own file rather than a sixth `private struct` in `SettingsWindow.swift`,
-/// following `LicencePane` — which is already the pane that moved out for the
+/// following `LicensePane` — which is already the pane that moved out for the
 /// same reason, being the one too big to read alongside the others.
 struct WhatsNewPane: View {
   /// Which releases were unread when this pane was opened.

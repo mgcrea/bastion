@@ -150,7 +150,7 @@ enum DemoSeed {
 
   /// Which view reported that its screen is ready.
   ///
-  /// `MainView` and `LicencePane` both call `signalReady(from:)` from their own
+  /// `MainView` and `LicensePane` both call `signalReady(from:)` from their own
   /// `.task`, and only the one matching the current stage's `readySource` is
   /// honoured. `openStagedWindow()` means only one of the two is built on any
   /// given stage, so today the check never fires — it is here because the
@@ -1014,7 +1014,7 @@ enum DemoSeed {
     // deliberately, so it is whatever AppKit resolved by the time the shutter
     // fired — a gate that fails about one run in three with no code change.
     // One runloop hop later, so SwiftUI's own assignment does not overwrite it.
-    // It also keeps a blinking caret out of `LicencePane`'s `TextEditor`.
+    // It also keeps a blinking caret out of `LicensePane`'s `TextEditor`.
     DispatchQueue.main.async { window.makeFirstResponder(nil) }
   }
 

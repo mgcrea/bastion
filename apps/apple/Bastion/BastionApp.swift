@@ -462,7 +462,7 @@ private struct EntitlementNotice: View {
             TrialBanner()
             Divider()
           case .refused(let reason):
-            LicenceBanner(reason: reason) { revision += 1 }
+            LicenseBanner(reason: reason) { revision += 1 }
             Divider()
           }
         }
@@ -473,7 +473,7 @@ private struct EntitlementNotice: View {
 }
 
 /// Unlicensed, with the reason attached and the way out under it.
-private struct LicenceBanner: View {
+private struct LicenseBanner: View {
   let reason: String
   /// Called once a trial is armed, so the panel redraws now rather than at the
   /// next tick. Pressing a button and watching nothing happen for fifteen
@@ -548,12 +548,12 @@ private struct TrialBanner: View {
       .font(.caption)
       .foregroundStyle(.secondary)
       .fixedSize(horizontal: false, vertical: true)
-      // Gated exactly as `LicencePane` gates the identical button. `isSelling`
+      // Gated exactly as `LicensePane` gates the identical button. `isSelling`
       // is compiled in, so a build made while the store is closed would
       // otherwise offer a licence here and not there — two answers to one
       // question, in the same app, on the same launch.
-      if LicenceLinks.isSelling {
-        Button("Buy a licence…") { NSWorkspace.shared.open(LicenceLinks.buy) }
+      if LicenseLinks.isSelling {
+        Button("Buy a licence…") { NSWorkspace.shared.open(LicenseLinks.buy) }
           .buttonStyle(.glassProminent)
           .controlSize(.small)
       }

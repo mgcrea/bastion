@@ -36,7 +36,7 @@ nonisolated enum LicenseStore {
   /// The stored key as typed, or nil. Kept separate from `check` so the entry
   /// field can show what is there even when it is being refused.
   static var raw: String? {
-    // `LicencePane.onAppear` puts this into a 92pt `TextEditor`, in every
+    // `LicensePane.onAppear` puts this into a 92pt `TextEditor`, in every
     // entitlement state — so without the branch the developer's own 240-character
     // key is photographed at full size on the licence plate.
     #if DEBUG
