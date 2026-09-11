@@ -4,10 +4,10 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.16.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.17.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.17.0] - 2026-09-11
 
 ### Added
 
@@ -18,11 +18,63 @@ are taken from this file, which is the curated summary.
   on the form before anything goes anywhere. The tracker stays the primary channel; the form is for
   reports that quote your own servers, profiles or activity log.
 
+### Changed
+
+- **The app icon's fort sits behind the ridge instead of on top of it.** Standing in front of both
+  hills at 580 wide, the fort's 90% ink laid a pale translucent band across the ridge wherever the
+  two crossed, and at 16px the two shapes merged into one. The fort is 24/29 of that size now and
+  takes the ridge itself as its base — the same curve, re-expressed between its two feet — so fort
+  and hill share one edge and never overlap. The `.icon` bundle, the lockup and every website
+  favicon, touch icon and card are regenerated from the new mark. The menu bar glyphs are
+  deliberately untouched: they still draw the fort standing on the ridge, recorded in
+  `design/README.md` as a known divergence rather than quietly changed.
+
+### Fixed
+
+- **A gateway that had died went on showing green.** `Gateway` keeps its state behind a lock and is
+  `Sendable`, with nothing for SwiftUI to subscribe to, so `Gateway.shared.port` read inside a view
+  body was a value sampled once and never revisited. The menu bar panel got away with it because
+  `MenuBarExtra` rebuilds its content every time it opens; the main window has no such rebuild, so
+  the sidebar's status row could sit on "Serving on 127.0.0.1:…" indefinitely — the one line whose
+  whole job is to beat a client's "connection refused" to you. Both read an observable projection
+  now, published by `Gateway.start()` on the failure path as well as the success one.
+
+- **The menu bar panel had a phantom gap above the gateway line when licensed.** The licensed case
+  returned an empty view from inside a `TimelineView`, which measures zero but remains a laid-out
+  child, so the stack allocated spacing on both sides of nothing and the header sat 24pt above the
+  line instead of 12. It also ran a fifteen-second timer for the lifetime of every panel open with
+  no countdown to show for it. The licensed case contributes no view at all now, and only the trial
+  and refused states build the timer.
+
+- **The menu bar's trial banner offered a licence the rest of the app would not sell.** Its buy
+  button was not gated on `isSelling`, which the Settings licence pane has always gated its
+  identical button on — so a build made while the store is closed answered the same question two
+  ways depending on where you asked it.
+
 ### Internal
 
 - The website's CI job runs `feedback:check`, which fails the build when the form's CSP origin,
   field names or editable diagnostics drift — every one of which otherwise breaks in the browser
   with nothing in the build log.
+
+- The menu bar panel's chrome — header, footer row, width and body scroll cap — comes from
+  swift-support-kit's `MenuBarPanel` and `MenuBarFooter`, shared with the other menu bar apps in the
+  fleet, instead of being written out here; two of the comments justifying the hand-rolled version
+  had drifted far enough to disagree with each other about the panel's own width. What stays local
+  is which rows the body draws and where the two glyphs go. The package requirement moved to 1.2.0
+  with it: the adoption added the product while leaving the range ending at 1.1.0, the one tag
+  carrying neither `SupportKitMenuBar` nor `SupportKitSettings` — which fails the build on a missing
+  product rather than on a version, since a product Xcode cannot find is indistinguishable from one
+  that was never written.
+
+- `make deploy`, `make api-deploy` and `make site-deploy` match the manual command to every other
+  repo under `~/Projects/apps`, and CI's two deploy jobs call them instead of an inline pnpm line
+  plus a separate curl step — so the health probe and the deploy command live in one place and the
+  hand path and the CI path cannot drift apart.
+
+- The screenshot goldens and the website's images are re-taken, and `DemoSeed.version` moves from
+  `1.14.0` to `1.17.0`. It had been deferred at both 1.15.0 and 1.16.0 and was three minors behind
+  the app it was captioning in five plates.
 
 ## [1.16.0] - 2026-09-08
 
