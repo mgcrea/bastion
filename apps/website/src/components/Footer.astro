@@ -1,5 +1,5 @@
 ---
-import { DOCS, FOOTER_APPS, PRICE, REPO_URL, REQUIRES } from "../config";
+import { DOCS, FEEDBACK_URL, FOOTER_APPS, PRICE, REPO_URL, REQUIRES } from "../config";
 import Logo from "./Logo.astro";
 import MagentaMark from "./MagentaMark.astro";
 
@@ -49,11 +49,17 @@ const COLUMNS = [
 ] as const;
 
 /**
- * Separate from `COLUMNS` because these are the two links a person goes looking
- * for rather than browses to, and burying them under a heading of their own is
- * how a privacy page ends up unfindable.
+ * Separate from `COLUMNS` because these are the links a person goes looking for
+ * rather than browses to, and burying them under a heading of their own is how a
+ * privacy page ends up unfindable. Support and Feedback lead: someone scrolling
+ * to the footer of a product page is likelier to want help than the terms.
+ *
+ * This is also the route `pnpm feedback:check` requires to the form — a page
+ * nothing links to fails it.
  */
 const LEGAL = [
+  { label: "Support", href: "/support/" },
+  { label: "Feedback", href: FEEDBACK_URL },
   { label: "Licence terms", href: "/terms" },
   { label: "Privacy", href: "/privacy" },
   { label: "Licensing, in full", href: DOCS.licensing },

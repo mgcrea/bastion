@@ -1,0 +1,127 @@
+---
+/**
+ * The support page.
+ *
+ * It exists because the app links to it. `SupportCommands` from
+ * `swift-support-kit` renders three Help items — the tracker, the feedback form
+ * and `siteURL + supportPath` — and the third needs somewhere to land.
+ *
+ * It routes rather than explains. Three channels, and the only thing a reader
+ * has to get right is which one their problem belongs in: the public tracker for
+ * anything about the software, the form for anything that quotes their own
+ * servers or profiles, mail for a licence. Everything past that is a link.
+ *
+ * Structure and wording follow Cupertino's `support.astro`, because the two apps
+ * sell the same way and a buyer of both should not have to learn two routes.
+ */
+import Footer from "../components/Footer.astro";
+import Nav from "../components/Nav.astro";
+import {
+  APP_NAME,
+  DOCS,
+  FEEDBACK_URL,
+  ISSUES_URL,
+  PRICE,
+  SITE_URL,
+  SUPPORT_EMAIL,
+  SUPPORT_EMAIL_HREF,
+} from "../config";
+import Layout from "../layouts/Layout.astro";
+
+const schema = {
+  "@context": "https://schema.org",
+  "@type": "ContactPage",
+  name: "Support",
+  url: `${SITE_URL}/support/`,
+  isPartOf: { "@id": `${SITE_URL}/#website` },
+  publisher: { "@id": `${SITE_URL}/#organization` },
+};
+
+const h2 = "m-0 font-display text-[22px] font-semibold tracking-[-0.03em]";
+const lead = "mt-5 mb-0 max-w-[62ch] text-[15px] leading-[1.65] text-fg-dim text-pretty";
+const prose = "mt-4 mb-0 max-w-[62ch] text-[15px] leading-[1.65] text-fg-dim text-pretty";
+const link = "underline underline-offset-2";
+const strong = "font-medium text-fg";
+---
+
+<Layout
+  title={`Support — ${APP_NAME}`}
+  description={`Get help with ${APP_NAME}: the public issue tracker, a private feedback form for reports that quote your own setup, or email for licences.`}
+  schema={schema}
+>
+  <Nav />
+  <main id="main" tabindex="-1" class="wrap py-20">
+    <h1 class="m-0 font-display text-[clamp(28px,4.4vw,40px)] font-semibold tracking-[-0.04em]">
+      Support
+    </h1>
+    <p class="mt-4 mb-0 max-w-[62ch] text-[16px] leading-[1.6] text-fg-dim text-pretty">
+      Three ways in, and which one to use comes down to a single question:
+      <strong class={strong}>does telling us what went wrong mean quoting your own setup?</strong>
+    </p>
+
+    <section class="mt-14">
+      <h2 class={h2}>A bug, a question, an idea</h2>
+      <p class={lead}>
+        The <a href={ISSUES_URL} rel="noopener" class={link}>issue tracker</a> is the primary channel
+        and the best place for anything that is not about your own servers — a catalog entry that will
+        not install, a client that will not wire up, a gateway that will not start, a protocol
+        question, a feature request. It is public, so the answer is there for whoever asks next.
+      </p>
+    </section>
+
+    <section class="mt-14">
+      <h2 class={h2}>Anything that quotes your own setup</h2>
+      <p class={lead}>
+        A real {APP_NAME} bug report often has to include a server's error output, a profile or host
+        name, or a row from the activity log. The tracker is public and permanent; the
+        <a href={FEEDBACK_URL} class={link}>feedback form</a> is neither. No account is needed and the
+        email address is optional — leave it blank and the report is anonymous.
+      </p>
+      <p class={prose}>
+        <strong class={strong}>Choosing Send Feedback in the app does not send anything.</strong> It
+        hands your browser a URL and stops. Everything that URL carries — the app version, the macOS
+        version, the Mac model and the language — is visible in the address bar, and on the page as
+        four fields you can edit or clear before pressing send.
+      </p>
+      <p class={prose}>
+        Leave credentials out of every channel. Nobody here needs one to answer you, and {APP_NAME}
+        cannot show you a secret once it is set, so there is nothing to copy by accident.
+      </p>
+    </section>
+
+    <section class="mt-14">
+      <h2 class={h2}>Licences and payment</h2>
+      <p class={lead}>
+        Email <a href={SUPPORT_EMAIL_HREF} class={link}>{SUPPORT_EMAIL}</a> for a key that will not
+        activate, a key you have lost, or a refund. {PRICE.refund}. A key is checked on your Mac and
+        never sent anywhere, so a reply is the only way we can look at one — quote the address you
+        bought with rather than the key itself.
+      </p>
+      <p class={prose}>
+        What a key covers, and what the trial does, is set out in the
+        <a href="/terms" class={link}>licence terms</a> and in
+        <a href={DOCS.licensing} rel="noopener" class={link}>docs/licensing.md</a>.
+      </p>
+    </section>
+
+    <section class="mt-14">
+      <h2 class={h2}>Finding the Help menu</h2>
+      <p class={lead}>
+        {APP_NAME} lives in the menu bar, so it only has an app menu while one of its windows is open.
+        Choose <strong class={strong}>Open {APP_NAME}</strong> from the menu bar panel and Help ▸ Send
+        Feedback is there. Opening this page or the form directly in a browser works exactly as well
+        — the app only ever hands them over.
+      </p>
+    </section>
+
+    <section class="mt-14">
+      <h2 class={h2}>What to expect</h2>
+      <p class={lead}>
+        Everything gets read, and most things get an answer within a few working days. A report that
+        says which version, which macOS, which client and which server was involved is one that can
+        usually be answered in the first reply rather than the third.
+      </p>
+    </section>
+  </main>
+  <Footer />
+</Layout>

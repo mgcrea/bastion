@@ -5,7 +5,8 @@
  * Written as an inventory rather than a policy, because for this product the
  * honest version is very short and a page of boilerplate would obscure it: the
  * app makes exactly one network request of its own, and the only personal data
- * anything here stores is a purchase email.
+ * anything here stores is a purchase email — plus whatever someone chooses to
+ * type into the feedback form, which the website sends and the app never does.
  *
  * Every claim below is checkable against something in the repository, and the
  * links say which — a privacy page whose assertions cannot be verified against
@@ -106,6 +107,12 @@ const STAYS = [
         </a> asserts the gateway binds loopback and nothing else; the update check is the single
         documented exception to that, and it is off until you switch it on.
       </p>
+      <p class="mt-4 mb-0 max-w-[62ch] text-[14px] leading-[1.6] text-fg-muted text-pretty">
+        Help ▸ Send Feedback is not a second entry. It opens the
+        <a href="/feedback/" class="underline underline-offset-2">feedback form</a> in your browser
+        with the app version, macOS version, Mac model and language in the address bar, and the app
+        sends nothing itself. Whether anything is sent after that is up to you and the Send button.
+      </p>
     </section>
 
     <section class="mt-16">
@@ -131,8 +138,9 @@ const STAYS = [
         Buying a licence
       </h2>
       <p class="mt-5 mb-0 max-w-[62ch] text-[15px] leading-[1.65] text-fg-dim text-pretty">
-        This is the one place personal data exists at all, and it exists because a licence has to be
-        deliverable and a refund has to be traceable back to a sale.
+        Apart from anything you choose to write to us, this is the one place personal data exists at
+        all, and it exists because a licence has to be deliverable and a refund has to be traceable
+        back to a sale.
       </p>
       <p class="mt-4 mb-0 max-w-[62ch] text-[15px] leading-[1.65] text-fg-dim text-pretty">
         Checkout is handled by Stripe, who take the payment details — this site never sees a card
@@ -152,18 +160,25 @@ const STAYS = [
       <p class="mt-5 mb-0 max-w-[62ch] text-[15px] leading-[1.65] text-fg-dim text-pretty">
         Static files on Cloudflare, with no cookies and no third-party embeds. It loads no fonts
         and no images from anywhere else: the content security policy in
-        <code class="font-mono text-[13.5px] text-fg/75">astro.config.mjs</code> names the one
-        third-party origin this page is allowed to reach, and any other request would not merely be
+        <code class="font-mono text-[13.5px] text-fg/75">astro.config.mjs</code> names the two
+        third-party origins this site is allowed to reach, and any other request would not merely be
         absent, it would be refused by the browser. Cloudflare keeps its own request logs, as any
         host does.
       </p>
       <p class="mt-5 mb-0 max-w-[62ch] text-[15px] leading-[1.65] text-fg-dim text-pretty">
-        That one origin is Cloudflare Web Analytics, which counts page views. It sets no cookie and
+        The first is Cloudflare Web Analytics, which counts page views. It sets no cookie and
         stores nothing on your device, so there is no banner asking you to accept it. What it
         records is the page address, the referring page, your browser and operating system, your
         screen size, how long the page took to load, and the country the request came from. It never
         receives your IP address, and there is no identifier that would let one visit be joined to
         another or to you. You can block it with any content blocker and the page works unchanged.
+      </p>
+      <p class="mt-5 mb-0 max-w-[62ch] text-[15px] leading-[1.65] text-fg-dim text-pretty">
+        The second is <code class="font-mono text-[13.5px] text-fg/75">feedback.mgcrea.io</code>, a
+        small worker of ours that the <a href="/feedback/" class="underline underline-offset-2">feedback
+        form</a> posts to. It receives what you typed and the four diagnostic fields shown beside it,
+        only when you press Send, and it keeps the report so it can be answered. The email address is
+        optional and used only to reply to you. No other page on this site talks to it.
       </p>
     </section>
 

@@ -109,8 +109,13 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Types 🔍
         run: pnpm --filter @mgcrea/bastion-website typecheck
-      - name: Build 📦
-        run: pnpm --filter @mgcrea/bastion-website build
+      # `feedback:check` runs `astro build` first, then reads dist/ — so this is
+      # the build step, plus the assertions a build cannot make. The one worth a
+      # CI step is the CSP: drop the feedback Worker from `connect-src` and the
+      # form still builds and renders, and every submission is refused by the
+      # browser with nothing anywhere in this log.
+      - name: Build and check the feedback form 📦
+        run: pnpm --filter @mgcrea/bastion-website feedback:check
 
   # Deploys, on main only, once the checks above are green.
   #

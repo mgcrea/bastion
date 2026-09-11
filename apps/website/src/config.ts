@@ -35,6 +35,39 @@ export const DOCS = {
   sourceLicense: `${REPO_URL}/blob/main/apps/apple/LICENSE`,
 } as const;
 
+/** The public tracker. The Help menu's first item lands on `/issues/new` under it. */
+export const ISSUES_URL = `${REPO_URL}/issues`;
+
+/**
+ * This project's slug in the shared feedback contract.
+ *
+ * Must be one of `APP_SLUGS` in `@mgcrea/feedback-contract`, and must match
+ * `Support.app.slug` in apps/apple/Bastion/Support.swift. The Worker answers any
+ * other value with a 400, so a typo here is a form that fails on every submit.
+ */
+export const APP_SLUG = "bastion";
+
+export const SUPPORT_EMAIL = "support@mgcrea.io";
+export const SUPPORT_EMAIL_HREF = `mailto:${SUPPORT_EMAIL}`;
+
+/**
+ * The feedback Worker's origin, shared by every mgcrea site.
+ *
+ * **Adding this to `connect-src` in the Astro config is not optional** — the
+ * browser refuses the POST at runtime and the form silently does nothing, with no
+ * build error. `pnpm feedback:check` asserts it survives into the emitted policy.
+ *
+ * Bastion has no App Store listing, so the usual argument for the form — keeping
+ * a privacy label at "Data Not Collected" — does not apply. It earns its place
+ * because a useful bug report about a gateway quotes what the gateway holds: a
+ * server's output, a profile name, a hostname. The tracker is public and
+ * permanent; this is neither.
+ */
+export const FEEDBACK_API = "https://feedback.mgcrea.io";
+
+/** The feedback form on this site. */
+export const FEEDBACK_URL = "/feedback/";
+
 /**
  * The account X attributes the card to. Both `twitter:site` (the publisher) and
  * `twitter:creator` (the author) are the same handle here, because they are the

@@ -17,9 +17,14 @@ export default defineConfig({
         "default-src 'self'",
         "img-src 'self' data:",
         "font-src 'self' data:",
-        // The beacon POSTs its measurement here (no `static.` prefix). Miss this
-        // and the script loads, runs, and every report stays empty.
-        "connect-src 'self' https://cloudflareinsights.com",
+        // The beacon POSTs its measurement to the first (no `static.` prefix).
+        // Miss it and the script loads, runs, and every report stays empty.
+        //
+        // The second is the feedback Worker `/feedback/` posts to. Miss that and
+        // the form renders, the user types a report, presses Send, and the
+        // browser refuses the fetch — no build error, one console line nobody
+        // reads. `pnpm feedback:check` asserts it survives into the policy.
+        "connect-src 'self' https://cloudflareinsights.com https://feedback.mgcrea.io",
         "base-uri 'self'",
         "form-action 'self'",
         "object-src 'none'",
