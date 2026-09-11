@@ -547,9 +547,15 @@ private struct TrialBanner: View {
       .font(.caption)
       .foregroundStyle(.secondary)
       .fixedSize(horizontal: false, vertical: true)
-      Button("Buy a licence…") { NSWorkspace.shared.open(LicenceLinks.buy) }
-        .buttonStyle(.glassProminent)
-        .controlSize(.small)
+      // Gated exactly as `LicencePane` gates the identical button. `isSelling`
+      // is compiled in, so a build made while the store is closed would
+      // otherwise offer a licence here and not there — two answers to one
+      // question, in the same app, on the same launch.
+      if LicenceLinks.isSelling {
+        Button("Buy a licence…") { NSWorkspace.shared.open(LicenceLinks.buy) }
+          .buttonStyle(.glassProminent)
+          .controlSize(.small)
+      }
     }
   }
 }
