@@ -98,9 +98,26 @@ nonisolated enum Changelog {
     markSeen()
   }
 
+  /// The marketing version alone: no build number, no demo override.
+  ///
+  /// `AppInfo.version` will not do. It returns `DemoSeed.version` under a
+  /// capture, and `DemoSeed`'s own header forbids writing anything to the user's
+  /// preference domain — "not even a `UserDefaults` key, because a capture runs
+  /// against the user's real preference domain".
+  ///
+  /// Both of `markSeen()`'s callers are already guarded (`AppDelegate` returns
+  /// before `markSeenIfUnset()` under a capture, and `WhatsNewPane` guards its
+  /// own call), so nothing writes a demo version today. That is exactly when to
+  /// fix it: the line that would make this a real write is one line, and it
+  /// would go in somewhere nobody reads as capture-sensitive. Cupertino reached
+  /// the same conclusion first and documents it on its own `marketingVersion`.
+  static var marketingVersion: String {
+    Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+  }
+
   /// Record that the notes for this build have been read.
   static func markSeen() {
-    UserDefaults.standard.set(AppInfo.version, forKey: seenKey)
+    UserDefaults.standard.set(marketingVersion, forKey: seenKey)
   }
 
   /// Releases newer than the last one whose notes were read.
