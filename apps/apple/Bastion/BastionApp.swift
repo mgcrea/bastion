@@ -291,20 +291,21 @@ private struct GatewayMenu: View {
         whatsNew: Changelog.hasUnseen
           ? .init(version: AppInfo.version) { SettingsWindowController.show(.whatsNew) }
           : nil
-      )
-    ) {
-      // First, above even the gateway line. Whoever is reading this has just
-      // been told by their assistant that a call was refused, and the licence is
-      // the reason — the gateway is up and answering, which is precisely why the
-      // green line below is not the answer they need.
-      EntitlementNotice()
+      ),
+      content: {
+        // First, above even the gateway line. Whoever is reading this has just
+        // been told by their assistant that a call was refused, and the licence is
+        // the reason — the gateway is up and answering, which is precisely why the
+        // green line below is not the answer they need.
+        EntitlementNotice()
 
-      gatewayStatus
+        gatewayStatus
 
-      Divider()
+        Divider()
 
-      ServersSection(activity: activity)
-    }
+        ServersSection(activity: activity)
+      }
+    )
   }
 
   /// Green or red, rather than a sentence you have to read to the end.
