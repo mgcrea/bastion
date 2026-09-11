@@ -514,7 +514,7 @@
 			repositoryURL = "https://github.com/mgcrea/swift-support-kit.git";
 			requirement = {
 				kind = upToNextMinorVersion;
-				minimumVersion = 1.2.0;
+				minimumVersion = 1.2.1;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
