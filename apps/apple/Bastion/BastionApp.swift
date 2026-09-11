@@ -431,23 +431,43 @@ private struct EntitlementNotice: View {
   @State private var revision = 0
 
   var body: some View {
-    // A trial that runs out with the popover open must stop claiming twelve
-    // minutes left. Fifteen seconds is finer than the minute the text rounds to.
-    TimelineView(.periodic(from: .now, by: 15)) { _ in
-      VStack(alignment: .leading, spacing: 12) {
-        switch Entitlement.current {
-        case .licensed:
-          EmptyView()
-        case .trial:
-          TrialBanner()
-          Divider()
-        case .refused(let reason):
-          LicenceBanner(reason: reason) { revision += 1 }
-          Divider()
+    // The licensed case returns EmptyView from the OUTER switch, so it
+    // contributes no view at all rather than a zero-height one.
+    //
+    // It used to sit inside the `TimelineView` below, and that cost every
+    // licensed user — which is nearly all of them — a phantom gap. A
+    // `TimelineView` wrapping a `VStack` wrapping `EmptyView` measures zero, but
+    // it is still a laid-out child of the panel's stack, so the stack allocated
+    // spacing on both sides of nothing and the header sat 24pt above the gateway
+    // line instead of 12. Nothing about that reads as a layout bug; it reads as
+    // a slightly airy panel, which is why it survived so long.
+    //
+    // It also ran a fifteen-second timer for the lifetime of every panel open,
+    // redrawing a view with no countdown in it.
+    switch Entitlement.current {
+    case .licensed:
+      EmptyView()
+    case .trial, .refused:
+      // A trial that runs out with the popover open must stop claiming twelve
+      // minutes left. Fifteen seconds is finer than the minute the text rounds
+      // to. The inner switch re-reads the entitlement on each tick, which is
+      // what lets a trial expire into `.refused` without reopening the panel.
+      TimelineView(.periodic(from: .now, by: 15)) { _ in
+        VStack(alignment: .leading, spacing: 12) {
+          switch Entitlement.current {
+          case .licensed:
+            EmptyView()
+          case .trial:
+            TrialBanner()
+            Divider()
+          case .refused(let reason):
+            LicenceBanner(reason: reason) { revision += 1 }
+            Divider()
+          }
         }
       }
+      .id(revision)
     }
-    .id(revision)
   }
 }
 
