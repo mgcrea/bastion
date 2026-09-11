@@ -12,6 +12,7 @@
 		0BA571000000000000000009 /* bastion-bridge in Embed Helper */ = {isa = PBXBuildFile; fileRef = 0BA571000000000000000001 /* bastion-bridge */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		0FEEDB0753AAC00000000003 /* SupportKit in Frameworks */ = {isa = PBXBuildFile; productRef = 0FEEDB0753AAC00000000001 /* SupportKit */; };
 		0FEEDB0753AAC00000000004 /* SupportKitUI in Frameworks */ = {isa = PBXBuildFile; productRef = 0FEEDB0753AAC00000000002 /* SupportKitUI */; };
+		EE01ACCB63B7B21E23981D96 /* SupportKitMenuBar in Frameworks */ = {isa = PBXBuildFile; productRef = F6371549246E37AEE54ED883 /* SupportKitMenuBar */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -88,6 +89,7 @@
 				0BA571000000000000000021 /* Sparkle.framework in Frameworks */,
 				0FEEDB0753AAC00000000003 /* SupportKit in Frameworks */,
 				0FEEDB0753AAC00000000004 /* SupportKitUI in Frameworks */,
+				EE01ACCB63B7B21E23981D96 /* SupportKitMenuBar in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -170,6 +172,7 @@
 			packageProductDependencies = (
 				0FEEDB0753AAC00000000001 /* SupportKit */,
 				0FEEDB0753AAC00000000002 /* SupportKitUI */,
+				F6371549246E37AEE54ED883 /* SupportKitMenuBar */,
 			);
 			productName = Bastion;
 			productReference = 09D8E51D304323C100C66A5A /* Bastion.app */;
@@ -526,6 +529,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 0FEEDB0753AAC00000000000 /* XCRemoteSwiftPackageReference "swift-support-kit" */;
 			productName = SupportKitUI;
+		};
+		F6371549246E37AEE54ED883 /* SupportKitMenuBar */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0FEEDB0753AAC00000000000 /* XCRemoteSwiftPackageReference "swift-support-kit" */;
+			productName = SupportKitMenuBar;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

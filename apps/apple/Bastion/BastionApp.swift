@@ -1,3 +1,4 @@
+import SupportKitMenuBar
 import SupportKitUI
 import SwiftUI
 
@@ -254,21 +255,44 @@ private struct MenuBarLabel: View {
 /// as rows, and the entrances along the bottom. Everything that wants explaining
 /// — why a server exited, which client called what, what a write gate is — is in
 /// the main window or Settings, and stays there.
+///
+/// The chrome around all of that — the header, the footer row, the width, and
+/// the body's scroll cap — is `MenuBarPanel` from `SupportKitMenuBar`, shared
+/// with every other menu bar app in the fleet. It used to be written out here,
+/// and the comments justifying it had already drifted from the code: two in this
+/// file disagreed about the panel's own width. What stays here is what is
+/// actually Bastion's: which rows the body draws, and where the two glyphs go.
 private struct GatewayMenu: View {
   private var activity = Activity.shared
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      // Baseline-aligned so the version reads as a suffix to the name rather
-      // than as a second heading. It goes beside the title because the popover
-      // is capped at 340pt and this is the one piece of horizontal space that
-      // costs nothing.
-      HStack(alignment: .firstTextBaseline, spacing: 6) {
-        Text("Bastion").font(.headline)
-        Text(AppInfo.shortVersion).font(.caption).foregroundStyle(.secondary)
-        Spacer()
-      }
-
+    MenuBarPanel(
+      app: Support.app,
+      version: AppInfo.shortVersion,
+      onOpenApp: { MainWindowController.show() },
+      // The version opens About, which is the pane that says what the number
+      // means — build, machine, the copy-for-a-bug-report button. `SettingsPane`
+      // puts it first of three for the same reason: which build is this, what
+      // did it change, is there a newer one.
+      onShowAbout: { SettingsWindowController.show(.about) },
+      footer: MenuBarFooter(
+        // Logs is the one destination that earns a standing place beside
+        // Settings: every line in the body above is a count of calls, and "what
+        // were those calls" is the only question this summary raises and cannot
+        // answer. It is also what people arrive with urgently — an agent just
+        // did something and they want to see what.
+        routes: [
+          .logs { MainWindowController.show(.log) },
+          .settings { SettingsWindowController.show() },
+        ],
+        // A row that appears once after an update and then goes away, rather
+        // than a permanent badge on the version text above. MenuBarExtra builds
+        // this content lazily, so the test is re-read every time the panel opens.
+        whatsNew: Changelog.hasUnseen
+          ? .init(version: AppInfo.version) { SettingsWindowController.show(.whatsNew) }
+          : nil
+      )
+    ) {
       // First, above even the gateway line. Whoever is reading this has just
       // been told by their assistant that a call was refused, and the licence is
       // the reason — the gateway is up and answering, which is precisely why the
@@ -280,85 +304,7 @@ private struct GatewayMenu: View {
       Divider()
 
       ServersSection(activity: activity)
-
-      Divider()
-
-      // One row, as Cupertino has it. The three that were here — Add Server,
-      // MCP Clients, Chat — each opened a pane of the window "Open Bastion"
-      // opens, so they were a second way to do one click's work in a panel whose
-      // whole claim is that it is a summary.
-      //
-      // ⌘N went with them and came back on the main window's own Add button,
-      // which had been leaving the shortcut to this menu. ⌘K and ⌘J did not:
-      // they only ever selected a sidebar row, and a shortcut for that is one
-      // the window never had.
-      //
-      // Glass on the left, plain on the right. Only "Open Bastion" is tinted,
-      // because a tinted button is a recommendation and it is the one being
-      // recommended; the two glyphs beside Quit are routes, not advice.
-      HStack {
-        Button("Open Bastion") { MainWindowController.show() }
-          .buttonStyle(.glass)
-          .keyboardShortcut("o")
-
-        Spacer()
-
-        // Logs is the one exception to the paragraph above, and it is worth
-        // naming rather than quietly re-adding a row that was deliberately
-        // removed.
-        //
-        // Add Server, MCP Clients and Chat were destinations you go to once you
-        // have decided to do something. The log is the destination this panel
-        // ARGUES FOR: every line above is a count of calls, and "what were
-        // those calls" is the only question the summary raises and cannot
-        // answer. It is also what people arrive with urgently — an agent just
-        // did something and they want to see what.
-        //
-        // Both are icons, and both sit right, which is the rule this row
-        // already had: what opens something sits left, what you GO TO sits
-        // right. A gear and a list are the two glyphs nobody needs taught, and
-        // spelling them cost the width cupertino measured a fourth text button
-        // truncating "Open Cupertino" at — same 320pt panel. The tooltips and
-        // the shortcuts carry the names.
-        Button {
-          MainWindowController.show(.log)
-        } label: {
-          Image(systemName: "list.bullet.rectangle")
-        }
-        .keyboardShortcut("l")
-        .help("Logs (⌘L) — what every client has called, live")
-
-        Button {
-          SettingsWindowController.show()
-        } label: {
-          Image(systemName: "gearshape")
-        }
-        .keyboardShortcut(",")
-        .help("Settings (⌘,)")
-
-        Button("Quit") { NSApplication.shared.terminate(nil) }
-          .keyboardShortcut("q")
-      }
-      .controlSize(.small)
-
-      // A row that appears once after an update and then goes away, rather than
-      // a permanent badge on the version text above. This panel is 320pt and
-      // its header comment is largely about what does NOT earn a place in it; a
-      // marker that is right twice a year would not. MenuBarExtra builds this
-      // content lazily, so the test is re-read every time the panel opens.
-      if Changelog.hasUnseen {
-        Divider()
-        Button("What's new in \(AppInfo.version)…") {
-          SettingsWindowController.show(.whatsNew)
-        }
-        .controlSize(.small)
-      }
     }
-    .padding(14)
-    // Cupertino's 320. It was 340 to fit a row of three buttons that is no
-    // longer there, and the widest thing left is a `<profile> / <server>` row
-    // before its trailing call count, which the narrower panel still carries.
-    .frame(width: 320)
   }
 
   /// Green or red, rather than a sentence you have to read to the end.
