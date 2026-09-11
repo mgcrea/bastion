@@ -361,6 +361,7 @@ struct MainView: View {
   /// is not, and that fact does not belong to any one screen.
   private var sidebarStatus: some View {
     let activity = Activity.shared
+    let gateway = GatewayStatus.shared
     return VStack(alignment: .leading, spacing: 8) {
       Divider()
 
@@ -368,7 +369,14 @@ struct MainView: View {
 
       Divider()
 
-      if let error = Gateway.shared.startupError {
+      // `GatewayStatus`, not `Gateway.shared`: the gateway's state is behind a
+      // lock with nothing for SwiftUI to observe, so this row was a value
+      // sampled when the sidebar was last built. The popover got away with the
+      // same read because `MenuBarExtra` rebuilds on every open; this window
+      // does not, so a gateway that died left a green dot on screen indefinitely
+      // — in the one place whose whole job is to beat "connection refused" to
+      // the user.
+      if let error = gateway.startupError {
         // The one state where nothing will ever work, and the reason this is a
         // Label rather than a dot: an app that looks fine while every client
         // says "connection refused" is the worst thing this window could be.
@@ -379,7 +387,7 @@ struct MainView: View {
       } else {
         HStack(spacing: 6) {
           Circle().fill(Color.green).frame(width: 7, height: 7)
-          Text("127.0.0.1:\(String(Gateway.shared.port))")
+          Text("127.0.0.1:\(String(gateway.port))")
             .font(.system(.caption, design: .monospaced))
           Spacer()
         }

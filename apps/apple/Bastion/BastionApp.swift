@@ -367,7 +367,7 @@ private struct GatewayMenu: View {
   /// a thing to be copied into another app's config, not prose.
   @ViewBuilder
   private var gatewayStatus: some View {
-    if let error = Gateway.shared.startupError {
+    if let error = gateway.startupError {
       // The one state where nothing will ever work. It has to be visible from
       // here, because the alternative is a menu bar icon that looks fine and a
       // client that says "connection refused".
@@ -381,7 +381,7 @@ private struct GatewayMenu: View {
       }
     } else {
       Label {
-        let address = Text("127.0.0.1:\(String(Gateway.shared.port))").monospaced()
+        let address = Text("127.0.0.1:\(String(gateway.port))").monospaced()
         Text("Serving on \(address)")
       } icon: {
         Image(systemName: "checkmark.circle.fill")
@@ -390,6 +390,18 @@ private struct GatewayMenu: View {
       .help("Loopback only")
     }
   }
+
+  /// Observed, not read off `Gateway.shared` directly.
+  ///
+  /// This is the trap this file warns about twice for `Supervisor` and had
+  /// itself fallen into. `Gateway` is lock-protected and `Sendable`, with
+  /// nothing for SwiftUI to subscribe to, so reading `Gateway.shared.port`
+  /// inside `body` produced a line that was correct only because `MenuBarExtra`
+  /// rebuilds its content on every open. A gateway that died while the panel was
+  /// on screen went on saying "Serving on 127.0.0.1:…" — the one sentence in the
+  /// panel that must never be wrong, since the whole point of the red state is
+  /// to beat the client's "connection refused" to the user.
+  private var gateway: GatewayStatus { GatewayStatus.shared }
 }
 
 /// What is running, capped.

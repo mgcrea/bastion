@@ -135,8 +135,10 @@ nonisolated final class Gateway: Sendable {
       try claimLock()
       try openSocket(port: chosen)
       state.withLock { $0.startupError = nil }
+      GatewayStatus.publish(port: chosen, startupError: nil)
     } catch {
       state.withLock { $0.startupError = error.localizedDescription }
+      GatewayStatus.publish(port: chosen, startupError: error.localizedDescription)
       throw error
     }
   }
