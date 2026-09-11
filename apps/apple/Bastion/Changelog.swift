@@ -469,6 +469,25 @@ nonisolated enum Changelog {
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  static let unreleased: Release? = nil
+  // swift-format-ignore
+  private static let unreleasedRelease: Release = Release(
+    version: "Unreleased",
+    date: "",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Help ▸ Report an Issue, Send Feedback and Bastion Support.",
+            body: [
+              "The Help menu opens the issue tracker, a feedback form on the website and a new support page, from the same shared package the other mgcrea apps use. The app still sends nothing: each item hands your browser a URL, and the app version, macOS version, Mac model and language it carries are in the address bar and editable on the form before anything goes anywhere. The tracker stays the primary channel; the form is for reports that quote your own servers, profiles or activity log.",
+            ]),
+        ]),
+    ])
+
+  // swift-format-ignore
+  static let unreleased: Release? = unreleasedRelease
   // </generated:changelog>
 }

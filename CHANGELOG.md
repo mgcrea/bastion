@@ -7,6 +7,23 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.16.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Added
+
+- **Help ▸ Report an Issue, Send Feedback and Bastion Support.** The Help menu opens the issue
+  tracker, a feedback form on the website and a new support page, from the same shared package the
+  other mgcrea apps use. The app still sends nothing: each item hands your browser a URL, and the
+  app version, macOS version, Mac model and language it carries are in the address bar and editable
+  on the form before anything goes anywhere. The tracker stays the primary channel; the form is for
+  reports that quote your own servers, profiles or activity log.
+
+### Internal
+
+- The website's CI job runs `feedback:check`, which fails the build when the form's CSP origin,
+  field names or editable diagnostics drift — every one of which otherwise breaks in the browser
+  with nothing in the build log.
+
 ## [1.16.0] - 2026-09-08
 
 ### Added
