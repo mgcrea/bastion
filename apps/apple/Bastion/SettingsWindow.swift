@@ -12,23 +12,30 @@ import SwiftUI
 /// The protocol is qualified because this enum has the same name as it, which
 /// is the fleet's convention.
 ///
-/// About, What's New and Updates answer three parts of one question, in the
-/// order somebody asks them: which build is this, what did it change, is there
-/// a newer one. Updates is a pane rather than the Section in General it used to
-/// be — General is where the gateway port and the npm minimum age live, and the
-/// only manual check the app has was the fourth card down a page nobody scrolls
-/// to look for it.
+/// Two pairs after the configuration panes, then what was bought.
 ///
-/// Help sits last. Bastion is `LSUIElement`, so the Help menu carrying those
-/// three links only exists while a window happens to be open; a pane is
-/// reachable whenever settings is. It goes after Updates rather than beside
-/// About so it does not split the trio above.
+/// What's New and Updates are the version pair: what did this build change, and
+/// is there a newer one. Updates is a pane rather than the Section in General it
+/// used to be — General is where the gateway port and the npm minimum age live,
+/// and the only manual check the app has was the fourth card down a page nobody
+/// scrolls to look for it.
+///
+/// About and Help are the identity pair, and they sit last because that is
+/// where a settings window's footer material belongs. About used to lead the
+/// version pair, on the reading "which build is this, what did it change, is
+/// there a newer one" — but that was written when there was no Help pane, and
+/// About earns its place beside Help now: both are where somebody goes when
+/// something is wrong rather than when they are tuning something.
+///
+/// Help is a pane at all because Bastion is `LSUIElement`, so the Help menu
+/// carrying these same three links only exists while a window happens to be
+/// open.
 enum SettingsPane: String, SupportKitSettings.SettingsPane {
   case general
   case audit
-  case about
   case whatsNew
   case updates
+  case about
   case help
   case licence
 
@@ -128,7 +135,21 @@ struct SettingsView: View {
       case .whatsNew: WhatsNewPane()
       case .updates: UpdatesPane()
       case .help:
-        HelpSettingsPane(app: Support.app, preferIssueTracker: Support.preferIssueTracker)
+        // A replacement intro rather than the package default, which invites
+        // bugs, ideas and questions but deliberately stops short of inviting a
+        // pull request — true only where the tracker is the source. Bastion's
+        // is: `Support.app.trackerURL` is this project's own repository.
+        HelpSettingsPane(
+          app: Support.app,
+          preferIssueTracker: Support.preferIssueTracker,
+          intro: """
+            Bugs, ideas and questions are all welcome, and none of them is a bother. \
+            Bastion is built in the open, so an issue or a pull request lands where the \
+            code does. The feedback form and the issue template arrive with your version, \
+            macOS, Mac model and language already filled in, where you can read them \
+            before anything is sent.
+            """
+        )
       case .licence: LicensePane()
       }
     }
