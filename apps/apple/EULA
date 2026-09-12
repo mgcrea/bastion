@@ -165,12 +165,21 @@ Three honest limits on that sentence:
       separate program with its own network behaviour and its own privacy terms.
       Bastion hands it data. What that program then does is between you and it.
 
-  (c) The audit log records which profile, which method and which tool, with
+  (c) The activity log records which profile, which method and which tool, with
       timings, and the arguments a tool was called with. A profile can be set to
       record results too, or to record names only. Credentials are never
       recorded whatever the setting: a tool whose argument IS the secret has its
-      arguments withheld, and that is not a preference. None of it is written to
-      disk, and none of it leaves your Mac.
+      arguments withheld, and that is not a preference. It is a ring buffer in
+      memory, cleared when the app quits, and it is never written to disk.
+
+      Bastion can also keep a durable audit log, which is off until you turn it
+      on in Settings > Activity. When it is on, the same records are appended to
+      files under Application Support, readable only by you, hash-chained so an
+      edited or missing record shows. Recording arguments and results there is a
+      second switch, also off by default. Retention is yours to set and defaults
+      to thirty days or a hundred megabytes, whichever comes first.
+
+      Credentials are never recorded in either. Neither leaves your Mac.
 
 8. WHAT IT ASKS OF YOUR SYSTEM
 
