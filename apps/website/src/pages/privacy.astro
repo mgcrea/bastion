@@ -49,7 +49,7 @@ const STAYS = [
   },
   {
     what: "The activity log",
-    body: "A ring buffer in memory, cleared when the app quits. Nothing writes it to disk, and nothing uploads it. Arguments are redacted before a row is recorded rather than filtered out afterwards.",
+    body: "A ring buffer in memory, cleared when the app quits. Nothing writes it to disk unless you turn on the audit log in Settings › Activity, which keeps hash-chained segments under Application Support readable only by you — and nothing uploads it either way. Arguments are redacted before a row is recorded rather than filtered out afterwards.",
   },
   {
     what: "Everything the servers do",
@@ -64,7 +64,7 @@ const STAYS = [
 
 <Layout
   title="Privacy — Bastion"
-  description="What leaves your Mac and what does not: one optional update check, no analytics, no telemetry, credentials in the Keychain and an activity log that never touches disk."
+  description="What leaves your Mac and what does not: one optional update check, no analytics, no telemetry, credentials in the Keychain and an activity log that stays in memory unless you ask for an audit log."
   schema={schema}
 >
   <Nav />

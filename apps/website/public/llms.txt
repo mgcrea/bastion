@@ -47,8 +47,9 @@ and carries a revocable bearer token in each one rather than a credential.
 - Never visible at all: what a server then does over the network or on disk. Bastion is the process
   holding the credential, not a proxy for the traffic. The page says so rather than implying
   otherwise.
-- The log is a ring buffer in memory, cleared on quit. Nothing writes it to disk and nothing uploads
-  it.
+- The log is a ring buffer in memory, cleared on quit. Nothing writes it to disk unless you turn on
+  the audit log in Settings › Activity, which appends hash-chained segments under Application
+  Support. Nothing uploads it either way.
 
 ## The five security rules
 
