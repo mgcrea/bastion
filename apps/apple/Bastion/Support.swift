@@ -1,5 +1,6 @@
 import Foundation
 import SupportKit
+import SupportKitSettings
 
 /// Bastion's identity for the shared support package.
 ///
@@ -34,4 +35,12 @@ enum Support {
 
   /// Whether the Help menu lists the public tracker above the feedback form.
   static let preferIssueTracker = true
+
+  /// The persisted Settings pane, under the fleet's `<slug>.settingsPane`.
+  ///
+  /// `legacyKeys` is load-bearing, not decoration. Bastion shipped the bare
+  /// `settingsPane` key for its whole life, and without carrying it forward the
+  /// upgrade that lands this would silently reset every existing user's pane to
+  /// General.
+  static let settings = SettingsSelection<SettingsPane>(app: app, legacyKeys: ["settingsPane"])
 }

@@ -1,4 +1,6 @@
 import AppKit
+import SupportKit
+import SupportKitSettings
 import SwiftUI
 
 /// Which Settings pane is showing.
@@ -7,62 +9,73 @@ import SwiftUI
 /// icon and one word across the top, which is survivable at two and is the
 /// reason nothing can ever be added to them; a sidebar costs a column once and
 /// then stays free.
-enum SettingsPane: String, CaseIterable, Identifiable {
+/// The protocol is qualified because this enum has the same name as it, which
+/// is the fleet's convention.
+///
+/// About, What's New and Updates answer three parts of one question, in the
+/// order somebody asks them: which build is this, what did it change, is there
+/// a newer one. Updates is a pane rather than the Section in General it used to
+/// be — General is where the gateway port and the npm minimum age live, and the
+/// only manual check the app has was the fourth card down a page nobody scrolls
+/// to look for it.
+///
+/// Help sits last. Bastion is `LSUIElement`, so the Help menu carrying those
+/// three links only exists while a window happens to be open; a pane is
+/// reachable whenever settings is. It goes after Updates rather than beside
+/// About so it does not split the trio above.
+enum SettingsPane: String, SupportKitSettings.SettingsPane {
   case general
   case audit
   case about
   case whatsNew
   case updates
+  case help
   case licence
 
-  var id: String { rawValue }
-  /// The bare, un-namespaced key. The fleet convention is `<slug>.settingsPane`
-  /// — but migrating onto swift-support-kit's `SettingsSelection`, which owns
-  /// that convention and has the tested migration for it, means linking
-  /// `SupportKitSettings`, and that scaffold adoption belongs to
-  /// `fleet-apple-conventions` rather than here.
-  ///
-  /// **When that migration happens it MUST pass `legacyKeys: ["settingsPane"]`.**
-  /// Without it every user's selected pane resets to the first one, silently, on the
-  /// upgrade that ships it.
-  static let defaultsKey = "settingsPane"
-
-  /// What the app is and how it behaves…
-  ///
-  /// The last three answer three parts of one question, in the order somebody
-  /// asks them: which build is this (About), what did it change (What's New),
-  /// is there a newer one (Updates). Updates is a pane rather than the Section
-  /// in General it used to be — General is where the gateway port and the npm
-  /// minimum age live, and the only manual check the app has was the fourth
-  /// card down a page nobody scrolls to look for it.
-  static let application: [SettingsPane] = [.general, .audit, .about, .whatsNew, .updates]
-
-  /// …and what was bought, which is a different question and the only reason the
-  /// sidebar is in two groups rather than one list of three. Somebody opens
-  /// Licence because of a refusal or a receipt, never because they are tuning
-  /// something — the same split cupertino makes, for the same reason.
-  static let entitlement: [SettingsPane] = [.licence]
-
-  var title: String {
+  var title: LocalizedStringKey {
     switch self {
     case .general: "General"
     case .audit: "Activity"
     case .about: "About"
     case .whatsNew: "What's New"
     case .updates: "Updates"
+    case .help: "Help"
     case .licence: "Licence"
     }
   }
 
-  var symbol: String {
+  var systemImage: String {
     switch self {
     case .general: "gearshape"
     case .audit: "list.bullet.rectangle"
     case .about: "info.circle"
     case .whatsNew: "sparkles"
     case .updates: "arrow.down.circle"
+    case .help: "questionmark.circle"
     case .licence: "key"
     }
+  }
+
+  /// Licence is its own group, and the only reason the sidebar is in two rather
+  /// than one list. Somebody opens it because of a refusal or a receipt, never
+  /// because they are tuning something — the same split cupertino makes.
+  var group: SettingsPaneGroup { self == .licence ? .entitlement : .configuration }
+
+  /// Only ever on What's New, and only while something is genuinely unread. The
+  /// package draws nothing for 0, so the read case needs no branch of its own.
+  var badge: Int { self == .whatsNew && Changelog.hasUnseen ? Changelog.unseen.count : 0 }
+
+  static var defaultPane: SettingsPane { .general }
+
+  /// The pane a screenshot stage asks for — and nil every other time.
+  ///
+  /// Non-nil outside a capture would be a disaster rather than a cosmetic bug:
+  /// `SettingsScaffold` lets a staged pane override the stored one AND drops
+  /// every selection write, so a sidebar that answered here on an ordinary
+  /// launch would be frozen for real users.
+  static var staged: SettingsPane? {
+    guard DemoSeed.isEnabled, case .settings(let pane) = DemoSeed.stage.subject else { return nil }
+    return pane
   }
 }
 
@@ -96,69 +109,33 @@ enum SettingsWindowController {
   static func show() { hosted.show() }
 
   /// Open onto a particular pane, including on a window that is already up —
-  /// the selection lives in `@AppStorage`, which observes this write.
+  /// the scaffold reads the selection through `@AppStorage`, which observes
+  /// this write. Writing first is what makes a deep link land on a window that
+  /// was already open.
   static func show(_ pane: SettingsPane) {
-    UserDefaults.standard.set(pane.rawValue, forKey: SettingsPane.defaultsKey)
+    Support.settings.select(pane)
     hosted.show()
   }
 }
 
 struct SettingsView: View {
-  @AppStorage(SettingsPane.defaultsKey) private var selection = SettingsPane.general.rawValue
-
-  private var pane: Binding<SettingsPane?> {
-    Binding(
-      get: { current },
-      set: { if !DemoSeed.isEnabled { selection = ($0 ?? .general).rawValue } })
-  }
-
-  private var current: SettingsPane {
-    if DemoSeed.isEnabled, case .settings(let staged) = DemoSeed.stage.subject { return staged }
-    return SettingsPane(rawValue: selection) ?? .general
-  }
-
-  private func row(_ pane: SettingsPane) -> some View {
-    Label(pane.title, systemImage: pane.symbol)
-      // Only ever on What's New, and only while something is genuinely unread.
-      // `.badge(0)` draws nothing, so the unread case needs no branch of its
-      // own and the row cannot end up with an empty pill on it.
-      .badge(pane == .whatsNew && Changelog.hasUnseen ? Changelog.unseen.count : 0)
-      .tag(pane)
-  }
-
   var body: some View {
-    NavigationSplitView {
-      List(selection: pane) {
-        Section {
-          ForEach(SettingsPane.application) { row($0) }
-        }
-        Section {
-          ForEach(SettingsPane.entitlement) { row($0) }
-        }
-      }
-      .navigationSplitViewColumnWidth(min: 160, ideal: 176, max: 220)
-    } detail: {
-      ScrollView {
-        VStack(alignment: .leading, spacing: 0) {
-          // The pane title in content rather than in the title bar, which keeps
-          // the window called "Bastion Settings" in ⌘-Tab and in the Window
-          // menu while the heading still says which page this is.
-          Text(current.title)
-            .font(.title2).bold()
-            .padding(.horizontal, 20).padding(.top, 20)
-
-          switch current {
-          case .general: GeneralPane()
-          case .audit: AuditPane()
-          case .about: AboutPane()
-          case .whatsNew: WhatsNewPane()
-          case .updates: UpdatesPane()
-          case .licence: LicensePane()
-          }
-        }
+    SettingsScaffold(selection: Support.settings, staged: SettingsPane.staged) { pane in
+      switch pane {
+      case .general: GeneralPane()
+      case .audit: AuditPane()
+      case .about: AboutPane()
+      case .whatsNew: WhatsNewPane()
+      case .updates: UpdatesPane()
+      case .help:
+        HelpSettingsPane(app: Support.app, preferIssueTracker: Support.preferIssueTracker)
+      case .licence: LicensePane()
       }
     }
-    .frame(minWidth: 620, minHeight: 400)
+    // Sized for the content, never the window: a sidebar spends up to 240pt
+    // before a pane sees any width, so the 620 this carried as a bare frame was
+    // measured against a narrower sidebar than the package draws.
+    .settingsWindowSize(minWidth: 660, idealWidth: 700, minHeight: 400, idealHeight: 460)
   }
 }
 
@@ -325,27 +302,30 @@ private struct GeneralPane: View {
 
 // MARK: - About
 
+/// The shared About pane, plus the two things that are Bastion's own.
+///
+/// Version, System, Model, the identity row and the copy-for-a-bug-report
+/// button all come from `AboutSettingsPane`, which is what the fleet's other
+/// apps draw. `showsIdentifier` brings the bundle id this pane always had, and
+/// with it the package's debug-build notice — worth the row here because two
+/// menu bar icons that look identical and hold different credentials is
+/// otherwise a confusing afternoon.
+///
+/// `includesSupport: false` because Help is its own pane now; leaving it on
+/// would draw Send Feedback, Report an Issue and Bastion Support in both.
+///
+/// What stays local is the prose: it describes THIS app's threat posture, and
+/// nothing about it would be true of another app in the fleet.
 private struct AboutPane: View {
   var body: some View {
-    Form {
-      Section {
-        LabeledContent("Version", value: AppInfo.version)
-        LabeledContent("Build", value: AppInfo.build)
-        LabeledContent("Identifier", value: AppSupport.identifier)
-        if AppInfo.isDebugBuild {
-          // Two menu bar icons that look identical and hold different
-          // credentials is otherwise a confusing afternoon.
-          Text(
-            "A debug build. It has its own bundle identifier, and therefore its own Keychain "
-              + "items, its own profiles and its own port."
-          )
-          .font(.caption).foregroundStyle(.orange)
-          .fixedSize(horizontal: false, vertical: true)
-        }
-      } header: {
-        Text("This build")
-      }
-
+    AboutSettingsPane(
+      app: Support.app,
+      showsIdentifier: true,
+      debugNotice:
+        "A debug build. It has its own bundle identifier, and therefore its own Keychain items, its own profiles and its own port.",
+      includesSupport: false,
+      preferIssueTracker: Support.preferIssueTracker
+    ) {
       Section {
         Text(
           "Bastion binds 127.0.0.1 and nothing else, validates Origin and Host on every request, "
@@ -367,7 +347,6 @@ private struct AboutPane: View {
         Text("What it does")
       }
     }
-    .formStyle(.grouped)
   }
 }
 
