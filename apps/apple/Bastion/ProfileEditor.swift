@@ -86,6 +86,20 @@ struct ProfileEditor: View {
 
   private var isNew: Bool { subject.profile == nil }
 
+  /// The name as it will be saved. `save()` trims before it validates, so the
+  /// Save button and the missing-values line have to judge the trimmed name
+  /// too — a pasted handle with a trailing space is otherwise a Save button
+  /// that never enables and a sheet with nothing on it saying why.
+  private var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
+
+  /// Why the typed name cannot be used, or nil. An empty field is not a
+  /// complaint: a name not yet typed is not yet a mistake.
+  private var nameProblem: String? {
+    guard !trimmedName.isEmpty, !Profile.isValidName(trimmedName) else { return nil }
+    if trimmedName.count > 64 { return "A name is at most 64 characters." }
+    return "A name must be lower case letters, digits and hyphens, and start with one."
+  }
+
   /// Which secrets are already held, asked by **account name only**.
   ///
   /// `CredentialStore.storedVariables` lists what exists without decrypting
@@ -175,7 +189,12 @@ struct ProfileEditor: View {
         // What is still missing, computed against what is about to be saved
         // rather than against what is on disk — so filling the last field
         // clears the warning before the sheet closes.
-        if let blocking = pendingMissing, !blocking.isEmpty {
+        if let nameProblem {
+          Label(nameProblem, systemImage: "exclamationmark.triangle.fill")
+            .font(.caption)
+            .foregroundStyle(.orange)
+            .fixedSize(horizontal: false, vertical: true)
+        } else if let blocking = pendingMissing, !blocking.isEmpty {
           Label(
             "Will not start — missing \(blocking.joined(separator: ", "))",
             systemImage: "exclamationmark.triangle.fill"
@@ -193,7 +212,7 @@ struct ProfileEditor: View {
           .keyboardShortcut(.cancelAction)
         Button("Save") { save() }
           .keyboardShortcut(.defaultAction)
-          .disabled(!Profile.isValidName(name))
+          .disabled(!Profile.isValidName(trimmedName))
       }
       .padding(12)
     }
@@ -225,7 +244,7 @@ struct ProfileEditor: View {
   /// time and wrong here: the value the user has just typed is not in it yet.
   /// So this answers the same question against the pending edit.
   private var pendingMissing: [String]? {
-    guard Profile.isValidName(name) else { return nil }
+    guard Profile.isValidName(trimmedName) else { return nil }
 
     func isSet(_ variable: BastionServer.EnvVar) -> Bool {
       if variable.isSecret {
@@ -444,7 +463,7 @@ struct ProfileEditor: View {
   /// which is precisely what it did, leaving a directory and a burnt port for
   /// every prefix of the name somebody typed. A view asks; the spawn decides.
   private func assignedCallback(_ callback: BastionServer.CallbackVar) -> String {
-    let trimmed = name.trimmingCharacters(in: .whitespaces)
+    let trimmed = trimmedName
     guard !trimmed.isEmpty,
       let assignment = ProfileEnvironment.callbackAssignment(
         profile: trimmed, server: server.id)
@@ -637,7 +656,7 @@ struct ProfileEditor: View {
   // MARK: - Save
 
   private func save() {
-    let trimmed = name.trimmingCharacters(in: .whitespaces)
+    let trimmed = trimmedName
     guard Profile.isValidName(trimmed) else {
       error = "A name must be lower case letters, digits and hyphens."
       return
