@@ -320,28 +320,35 @@ private struct GatewayMenu: View {
   /// a thing to be copied into another app's config, not prose.
   @ViewBuilder
   private var gatewayStatus: some View {
-    if let error = gateway.startupError {
-      // The one state where nothing will ever work. It has to be visible from
-      // here, because the alternative is a menu bar icon that looks fine and a
-      // client that says "connection refused".
-      VStack(alignment: .leading, spacing: 4) {
-        Label("Not serving", systemImage: "xmark.circle.fill")
-          .foregroundStyle(.red)
-        Text(error)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+    Group {
+      if let error = gateway.startupError {
+        // The one state where nothing will ever work. It has to be visible from
+        // here, because the alternative is a menu bar icon that looks fine and a
+        // client that says "connection refused".
+        VStack(alignment: .leading, spacing: 4) {
+          Label("Not serving", systemImage: "xmark.circle.fill")
+            .foregroundStyle(.red)
+          Text(error)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      } else {
+        Label {
+          let address = Text("127.0.0.1:\(String(gateway.port))").monospaced()
+          Text("Serving on \(address)")
+        } icon: {
+          Image(systemName: "checkmark.circle.fill")
+            .foregroundStyle(.green)
+        }
+        .help("Loopback only")
       }
-    } else {
-      Label {
-        let address = Text("127.0.0.1:\(String(gateway.port))").monospaced()
-        Text("Serving on \(address)")
-      } icon: {
-        Image(systemName: "checkmark.circle.fill")
-          .foregroundStyle(.green)
-      }
-      .help("Loopback only")
     }
+    // Both branches were unstyled and inherited the default `.body` size,
+    // which made this the single largest line in the panel — bigger than
+    // the bold "Servers" header. Every other row here is `.caption` or
+    // smaller, and the same fact is already `.caption` in the sidebar and
+    // in Settings ▸ General.
+    .font(.caption)
   }
 
   /// Observed, not read off `Gateway.shared` directly.
