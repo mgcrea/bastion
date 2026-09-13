@@ -426,15 +426,22 @@ replaces the Keychain item, and every config already carrying the old token woul
 stop working — so re-running _Configure_ to pick up a newly added server would
 silently break the entries it was not touching.
 
-The key an entry is filed under is `<prefix><server>`, where the prefix is the
-`clientKeyPrefix` setting and is **empty by default**. It used to be a hard-coded
-`bastion-`, which is Bastion's opinion imposed on a file somebody else owns, and
-it is not free: the key becomes part of every tool name the model reads, so a
-`shopify` entry is `mcp__bastion_shopify__…` for as long as the config lives. A
-second profile of the same server would collide, so both then carry the profile
-name — decided across the whole set rather than per entry, so the key for
-`shopify` does not change shape depending on which profiles happen to be
-selected.
+The key an entry is filed under is `<prefix><profile>-<server>`, where the prefix
+is the `clientKeyPrefix` setting and is **empty by default**. It used to be a
+hard-coded `bastion-`, which is Bastion's opinion imposed on a file somebody else
+owns, and it is not free: the key becomes part of every tool name the model
+reads, so a `shopify` entry is `mcp__bastion_shopify__…` for as long as the
+config lives.
+
+The profile name is in every key, including for a server that has only one. That
+is a change: the key used to be a bare `<prefix><server>` until a second profile
+of the same server appeared, at which point both grew the profile name. It read
+better, and it made the shape of one profile's key depend on how many _siblings_
+it had — so adding a second profile silently renamed the first one's entry, and
+nothing rewrote the configs already holding the old name. The new profile stayed
+invisible to every client until somebody pressed _Configure_ again, and because
+the entry already in the file still resolved, it looked like the new profile had
+been ignored rather than like anything was broken.
 
 ## Recognising Bastion's own entries
 

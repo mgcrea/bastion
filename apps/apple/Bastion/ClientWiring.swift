@@ -283,11 +283,21 @@ enum ClientWiring {
 
   /// The key a profile gets in a client config.
   ///
-  /// `<prefix><server>` while a server has one profile, which is the ordinary
-  /// case and reads well in a client's server list. A second profile of the
-  /// same server would collide, so both then carry the profile name. Decided
-  /// across the whole set rather than per entry, so the key for `shopify` does
-  /// not change shape depending on which profiles happen to be selected.
+  /// Always `<prefix><profile>-<server>`, for every profile of every server.
+  ///
+  /// It used to be `<prefix><server>` while a server had one profile, and only
+  /// grew the profile name once a second one appeared. That read better in a
+  /// client's server list, and it was wrong: the shape of one profile's key
+  /// depended on how many SIBLINGS it had, so adding a second profile renamed
+  /// the first one's entry too. Nothing rewrote the configs already holding the
+  /// old name, so the new profile stayed invisible to every client until
+  /// somebody pressed Configure again — and the stale entry went on working,
+  /// which is what made it look like the second profile had been ignored rather
+  /// than like anything was broken.
+  ///
+  /// A key that depends only on the profile it names is also what makes
+  /// `rewire` safe to run unattended: it can only keep a config current if the
+  /// key it would write today is the key it wrote yesterday.
   static func keys(for profiles: [Profile]) -> [Profile: String] {
     let prefix = prefix
     // `bastion-` in front of Bastion's own server would be `bastion-bastion`,
@@ -299,14 +309,9 @@ enum ClientWiring {
     var stem = prefix
     while stem.hasSuffix("-") { stem.removeLast() }
 
-    var counts: [String: Int] = [:]
-    for profile in profiles { counts[profile.serverID, default: 0] += 1 }
     var out: [Profile: String] = [:]
     for profile in profiles {
-      let body =
-        counts[profile.serverID] == 1
-        ? profile.serverID
-        : "\(profile.name)-\(profile.serverID)"
+      let body = "\(profile.name)-\(profile.serverID)"
       out[profile] = profile.serverID == stem ? body : prefix + body
     }
     return out

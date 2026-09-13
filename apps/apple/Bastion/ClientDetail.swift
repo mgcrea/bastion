@@ -98,9 +98,9 @@ struct ClientDetail: View {
     let profiles = profiles
     let off = Set(profiles.map(\.serverID)).subtracting(writable.map(\.serverID))
     // Keyed off the full list, and identical to `keys(for: writable)` for every
-    // profile in both: the `<profile>-<server>` disambiguation counts profiles
-    // per server, and the switch is per server, so a server's profiles are
-    // never split across the two lists. Written this way so a row for a
+    // profile in both: a key reads the profile's own name and server id and
+    // nothing else, so which profiles happen to be in the list it was computed
+    // from cannot change any of them. Written this way so a row for a
     // switched-off server names the key its entry is actually filed under.
     let keys = ClientWiring.keys(for: profiles)
     let ordered =

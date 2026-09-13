@@ -696,8 +696,9 @@ enum DemoSeed {
   /// error somebody has to read twice.
   ///
   /// The key shapes are `ClientWiring.keys(for:)`'s own output and worth
-  /// knowing before editing: a server with one profile gets a bare `<server>`
-  /// key, and a server with two gets `<profile>-<server>` for both.
+  /// knowing before editing: every entry is `<profile>-<server>`, whether or
+  /// not the server has a second profile. It used to depend on that count, and
+  /// this fixture held a bare `keycloak` back when it did.
   nonisolated static func config(for client: ClientWiring.Client) -> ClientWiring.Config {
     guard client.id == "claude-code" else {
       // Every other client is unconfigured, which is a true and unremarkable
@@ -721,7 +722,7 @@ enum DemoSeed {
     let servers: [String: Any] = [
       "prod-shopify": ours("prod", "shopify"),
       "staging-shopify": ours("staging", "shopify"),
-      "keycloak": ours("acme", "keycloak"),
+      "acme-keycloak": ours("acme", "keycloak"),
       "home-unifi-network": ours("home", "unifi-network"),
       // `lab-unifi-network` is deliberately absent — the `not written` row.
 
