@@ -398,7 +398,35 @@ private struct ServersSection: View {
     }
   }
 
+  /// Clickable, and to the profile rather than to the server.
+  ///
+  /// The row already names `<profile> / <server>`, and the profile is the half
+  /// that carries everything somebody arrives here wanting: its credentials,
+  /// its write gate, the endpoint a client is pointed at. Landing on the server
+  /// pane and leaving the reader to find the row again would be answering a
+  /// narrower question than the one they asked by clicking.
+  ///
+  /// Plain style with a pointer and a tooltip, which is the panel's own
+  /// convention for its title and its version — a row that grew link colour or
+  /// a hover fill would read as the one thing in the list worth looking at,
+  /// when every row here is equally clickable.
   private func row(_ instance: Activity.Instance) -> some View {
+    Button {
+      ProfileReveal.present(profileID: instance.id, serverID: instance.server)
+    } label: {
+      rowLabel(instance)
+    }
+    .buttonStyle(.plain)
+    .pointerStyle(.link)
+    // The whole width, including the gap the count is pushed out by. Without
+    // it, a `Spacer` is not hit-testable and the row would be clickable only on
+    // its name and its number, with a dead stripe between them.
+    .contentShape(.rect)
+    .help("Show \(instance.displayName) in Bastion")
+    .accessibilityIdentifier("menubar.server")
+  }
+
+  private func rowLabel(_ instance: Activity.Instance) -> some View {
     HStack(spacing: 6) {
       // Grey, not green, for an instance that has exited. The row survives a
       // crash on purpose — "this has restarted four times today" is only visible

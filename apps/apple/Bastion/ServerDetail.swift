@@ -34,6 +34,10 @@ struct ServerDetail: View {
   @State private var browsing: Profile?
   @State private var lastError: String?
   @State private var confirmingServerRemoval = false
+  /// The profile the menu bar just pointed at, lit for a beat and then not.
+  /// A highlight that stayed would read as a selection, and this pane has none.
+  /// See `ProfileReveal`.
+  @State private var revealed: String?
 
   private var profiles: [Profile] {
     ProfileStore.shared.profiles
@@ -42,14 +46,24 @@ struct ServerDetail: View {
   }
 
   var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 16) {
-        header
-        packageCard
-        profilesCard
-        environmentCard
+    ScrollViewReader { scroll in
+      ScrollView {
+        VStack(alignment: .leading, spacing: 16) {
+          header
+          packageCard
+          profilesCard
+          environmentCard
+        }
+        .padding(16)
       }
-      .padding(16)
+      // Both, and neither is redundant. A window already open on this pane has
+      // a `ServerDetail` that will never appear again, so a reveal arrives as a
+      // change; a window being opened — or switched to another server, which is
+      // what a click in the menu bar usually is — builds this pane *after*
+      // `present` has set the request, and that one arrives as an appearance
+      // with nothing left to change.
+      .onAppear { reveal(into: scroll) }
+      .onChange(of: ProfileReveal.shared.pending) { reveal(into: scroll) }
     }
     .sheet(item: $editing) { subject in
       ProfileEditor(server: server, subject: subject)
@@ -788,7 +802,21 @@ struct ServerDetail: View {
                 },
                 browse: { browsing = profile },
                 chat: { ChatRequest.present(profile: profile, server: server) },
-                report: { lastError = $0 })
+                report: { lastError = $0 }
+              )
+              // What `ScrollViewReader` scrolls to, and the only reason these
+              // rows carry an id at all.
+              .id(profile.id)
+              // Drawn in the background with negative padding rather than
+              // around a padded row: the highlight has to bleed past the
+              // text to read as one, and a row that gained six points of
+              // padding when it lit up would shove the card's other profiles
+              // down as it arrived.
+              .background {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                  .fill(Color.accentColor.opacity(revealed == profile.id ? 0.16 : 0))
+                  .padding(-6)
+              }
               if profile.id != profiles.last?.id { Divider() }
             }
 
@@ -805,6 +833,38 @@ struct ServerDetail: View {
         }
       }
     )
+  }
+
+  // MARK: - Reveal
+
+  /// Answer a `ProfileReveal`: scroll its row into view and light it briefly.
+  ///
+  /// Resolved against `profiles` rather than trusted. The click this came from
+  /// landed on a *running instance*, and a profile can be removed while its
+  /// server is still up — so the id may name a row this card no longer draws,
+  /// and scrolling to one that does not exist would leave the pane wherever it
+  /// happened to be with nothing to show for the trip.
+  @MainActor
+  private func reveal(into scroll: ScrollViewProxy) {
+    guard let profileID = ProfileReveal.shared.take(server: server.id),
+      profiles.contains(where: { $0.id == profileID })
+    else { return }
+
+    revealed = profileID
+    Task {
+      // A hop before the scroll. On the pass that *builds* this pane — which is
+      // what a menu bar click does whenever the window was closed or sitting on
+      // another server — the rows have not been laid out yet, and a proxy asked
+      // for an id it has never seen does nothing at all rather than failing.
+      try? await Task.sleep(for: .milliseconds(50))
+      withAnimation { scroll.scrollTo(profileID, anchor: .center) }
+
+      try? await Task.sleep(for: .seconds(2))
+      // Only if nothing has been revealed since: two clicks in quick succession
+      // would otherwise have the first one's timer put out the second's light.
+      guard revealed == profileID else { return }
+      withAnimation { revealed = nil }
+    }
   }
 
   // MARK: - Environment
