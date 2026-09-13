@@ -516,13 +516,23 @@ enum ClientWiring {
   /// caller has to say so twice — once in the UI, once here — because the thing
   /// being overwritten is a server somebody configured by hand.
   @discardableResult
-  static func wire(_ client: Client, profiles: [Profile], force: Bool = false) throws -> URL? {
+  static func wire(
+    _ client: Client,
+    profiles: [Profile],
+    retiring: Set<String> = [],
+    force: Bool = false
+  ) throws -> URL? {
     try retryingIfChanged(client.configURL) {
-      try wireOnce(client, profiles: profiles, force: force)
+      try wireOnce(client, profiles: profiles, retiring: retiring, force: force)
     }
   }
 
-  private static func wireOnce(_ client: Client, profiles: [Profile], force: Bool) throws -> URL? {
+  private static func wireOnce(
+    _ client: Client,
+    profiles: [Profile],
+    retiring: Set<String>,
+    force: Bool
+  ) throws -> URL? {
     let keys = keys(for: profiles)
     // Unreachable while the prefix was a constant; reachable the moment it is
     // typed by hand. Refusing beats writing one of the two entries and leaving
@@ -568,7 +578,7 @@ enum ClientWiring {
     }
 
     let merged = ClientWiringMerge.merged(
-      into: root, rootKey: client.rootKey, entries: entries)
+      into: root, rootKey: client.rootKey, entries: entries, retiring: retiring)
     let backup: URL?
     switch client.format {
     case .toml:
@@ -585,6 +595,106 @@ enum ClientWiring {
       "\(client.displayName): wrote \(entries.count) entr\(entries.count == 1 ? "y" : "ies")"
         + (backup.map { " (backup at \($0.lastPathComponent))" } ?? ""))
     return backup
+  }
+
+  /// Bring every client that already points at Bastion back in line with the
+  /// profiles that exist now.
+  ///
+  /// The missing half of multi-profile support. `keys(for:)` decides what a
+  /// profile is called in a config and `wire` writes it, but until this existed
+  /// nothing connected either one to the moment the set of profiles CHANGED:
+  /// `wire` ran from the Configure button and from `wire_client`, and nowhere
+  /// else. Adding a profile updated Bastion and left every client holding the
+  /// previous answer, with nothing on screen to say so — the entry already
+  /// there still resolved, so the new profile simply never appeared.
+  ///
+  /// Silent by design. This runs from inside a profile save, and a client whose
+  /// config is read-only, locked, or holding a colliding entry is not a reason
+  /// to fail that save: the profile is Bastion's own state, the config is a
+  /// copy of it. Every outcome lands in the log, and the Clients pane goes on
+  /// reporting what each file actually holds.
+  ///
+  /// `retiring` carries the profiles that no longer exist, which `wire` cannot
+  /// infer from the set it is writing. See `ClientWiringMerge.merged`.
+  ///
+  /// Gated on `autoWires`, which is the difference between this and Configure:
+  /// one is somebody asking, and this one is not.
+  static func rewire(retiring: Set<String> = []) {
+    guard autoWires else { return }
+    let profiles = ProfileStore.shared.onEnabledServers
+    for client in all where client.isInstalled {
+      guard isWired(client) else { continue }
+      do {
+        try wire(client, profiles: profiles, retiring: retiring)
+      } catch {
+        hostLog(
+          "wiring", .error,
+          "\(client.displayName): left unchanged — \(error.localizedDescription)")
+      }
+    }
+  }
+
+  /// Whether this instance may rewrite other applications' configs unasked.
+  ///
+  /// Automatic rewiring is the one thing Bastion does to somebody else's file
+  /// without being asked for it, and a Debug build is precisely the instance
+  /// that must not: it keeps its own `profiles.json` under
+  /// `io.mgcrea.bastion.debug` but shares every client config with the
+  /// installed Release app. So a check script spawning this binary rewrites the
+  /// real `~/.claude.json` from a profile set that is not the user's — which is
+  /// how three `checkro-bastion` entries and a `prod-reddit` that matched no
+  /// profile once ended up in it, from a `make builtin` run.
+  ///
+  /// Release on, Debug off, `-autoWireClients YES` to turn it back on for a
+  /// developer exercising the path. Pressing _Configure_ is unaffected in
+  /// either build: that one is somebody asking.
+  nonisolated static var autoWires: Bool {
+    if let override = UserDefaults.standard.object(forKey: "autoWireClients") as? Bool {
+      return override
+    }
+    #if DEBUG
+      return false
+    #else
+      return true
+    #endif
+  }
+
+  /// Bring the configs written under the previous key scheme up to date.
+  ///
+  /// `keys(for:)` used to name a single-profile server after the server alone,
+  /// so a config written before that changed holds `shopify` where this build
+  /// writes `prod-shopify`. Nothing about those entries is broken — they
+  /// resolve, and `isOurs` still claims them — but every key the current build
+  /// looks for is missing under its new name, and `audit` reads a config with
+  /// all of them missing as `.notConfigured`. Without this a correctly wired
+  /// client would report as unconfigured, and go on serving the old keys, until
+  /// somebody happened to press Configure. `merged` drops an entry of ours that
+  /// reaches an endpoint being written under a different key, so one pass
+  /// renames them in place rather than leaving two.
+  ///
+  /// Every launch rather than once behind a flag. A one-shot cannot finish the
+  /// job: `rewire` writes the profiles on switched-on servers, so a first
+  /// launch that happened while a server was off would strand its entry under
+  /// the old name permanently. Repeating is free because a write that changes
+  /// nothing is refused in `ClientWiringMerge.write`.
+  static func migrateKeyScheme() {
+    rewire()
+  }
+
+  /// Whether a client's config already holds an entry Bastion wrote.
+  ///
+  /// The gate on `rewire`, and deliberately not `status(of:)`: that asks whether
+  /// a config matches what `keys(for:)` would write TODAY, and the configs most
+  /// in need of rewiring are precisely the ones written under a previous answer
+  /// — every one of them audits as `.notConfigured`, because every expected key
+  /// is missing under its new name. Asking `isOurs` instead survives a rename,
+  /// which is the whole point of running this unattended.
+  ///
+  /// A client Bastion has never been configured into stays untouched. Wiring is
+  /// somebody's decision, and this is not a way to make it for them.
+  static func isWired(_ client: Client) -> Bool {
+    guard hasConfig(client), let config = try? read(client) else { return false }
+    return config.servers.values.contains { ClientWiringMerge.isOurs($0) }
   }
 
   @discardableResult

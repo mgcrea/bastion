@@ -196,17 +196,27 @@ enum ClientWiringMerge {
   /// replaces: the step-5 migration deliberately kept the user's own key names,
   /// so a bare `shopify` in a config may be Bastion's. A third-party `shopify`
   /// is left alone, because `isOurs` never claims it.
+  ///
+  /// `retiring` names profile/server pairs that are gone rather than renamed —
+  /// a deleted profile, whose entry no endpoint being written will ever match.
+  /// It has to be passed in: every other entry this removes is recognised by
+  /// colliding with something in `entries`, and a profile that no longer exists
+  /// produces no entry to collide with. Without it a removed profile would
+  /// leave a key pointing at an endpoint the gateway has stopped serving, which
+  /// is worse than the stale-but-working entry the rename case used to leave.
   static func merged(
     into root: [String: Any],
     rootKey: String,
-    entries: [String: [String: Any]]
+    entries: [String: [String: Any]],
+    retiring: Set<String> = []
   ) -> [String: Any] {
     var root = root
     var servers = root[rootKey] as? [String: Any] ?? [:]
 
     let written = Set(entries.values.compactMap { endpoint(of: $0) })
     for (key, entry) in servers where entries[key] == nil {
-      guard let endpoint = endpoint(of: entry), written.contains(endpoint) else { continue }
+      guard let endpoint = endpoint(of: entry) else { continue }
+      guard written.contains(endpoint) || retiring.contains(endpoint) else { continue }
       servers.removeValue(forKey: key)
     }
 
@@ -463,6 +473,13 @@ enum ClientWiringMerge {
     // Before the backup: a write that is not going to happen must not leave a
     // new `.bastion-backup` behind claiming it did.
     if let expecting, stamp(of: url) != expecting { throw WriteError.changedUnderneath(url) }
+
+    // Neither must one that would change nothing. The TOML splice has refused
+    // this since it was written — a write to somebody else's file is a new
+    // backup, a new mtime and a client told to restart for no reason — and the
+    // JSON half wanted the same guard the moment anything started rewiring on
+    // its own rather than only when somebody pressed Configure.
+    if let current = try? Data(contentsOf: url), current == data { return nil }
 
     if fm.fileExists(atPath: url.path) {
       backup = url.appendingPathExtension(backupSuffix)

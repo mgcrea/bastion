@@ -109,6 +109,8 @@ struct WiringCheck {
     isOursIsNarrow()
     targetReadsBothShapes()
     renamedKeysMigrateOnlyWhenOurs()
+    retiredProfileEntryIsRemoved()
+    jsonWriteIsIdempotent()
     prefixChangeLeavesOneEntry()
     collisionsAreNamedNotOverwritten()
     staleIsDecidedByWhereItPoints()
@@ -420,6 +422,94 @@ struct WiringCheck {
     check(
       "and is untouched",
       (after["keycloak"] as? [String: Any])?["command"] as? String == "npx")
+  }
+
+  /// A profile that was deleted, which no rename can account for.
+  static func retiredProfileEntryIsRemoved() {
+    print("\nRetired profiles")
+    // `staging-shopify` is a profile somebody has just deleted. Nothing being
+    // written reaches `staging/shopify`, so without being told, the merge has
+    // no way to tell it apart from an entry it simply is not touching today.
+    let before: [String: Any] = [
+      "mcpServers": [
+        "prod-shopify": ["type": "http", "url": "http://127.0.0.1:8720/s/prod/shopify"],
+        "staging-shopify": ["type": "http", "url": "http://127.0.0.1:8720/s/staging/shopify"],
+        "prod-keycloak": ["type": "http", "url": "http://127.0.0.1:8720/s/prod/keycloak"],
+        "theirs": ["command": "npx", "args": ["-y", "someone-elses-server"]],
+      ]
+    ]
+    let entries = ["prod-shopify": entry(httpReach("shopify"))]
+
+    let untold = ClientWiringMerge.merged(
+      into: before, rootKey: "mcpServers", entries: entries)
+    check(
+      "without being told, a deleted profile's entry survives",
+      (untold["mcpServers"] as? [String: Any])?["staging-shopify"] != nil)
+
+    let out = ClientWiringMerge.merged(
+      into: before, rootKey: "mcpServers", entries: entries,
+      retiring: ["staging/shopify"])
+    let after = out["mcpServers"] as? [String: Any] ?? [:]
+
+    check("the retired profile's entry is gone", after["staging-shopify"] == nil)
+    check("the profile that remains is still written", after["prod-shopify"] != nil)
+    check(
+      "an entry of ours for another server is left alone", after["prod-keycloak"] != nil)
+    check("and so is somebody else's", after["theirs"] != nil)
+
+    // The narrow bit: `retiring` names an endpoint, and reaching it is not
+    // enough on its own — the entry still has to be one of ours.
+    let foreign: [String: Any] = [
+      "mcpServers": [
+        "theirs": ["command": "npx", "args": ["--port", "8720", "--path", "/s/staging/shopify"]]
+      ]
+    ]
+    let kept = ClientWiringMerge.merged(
+      into: foreign, rootKey: "mcpServers", entries: [:], retiring: ["staging/shopify"])
+    check(
+      "retiring never reaches an entry isOurs does not claim",
+      (kept["mcpServers"] as? [String: Any])?["theirs"] != nil)
+  }
+
+  /// The JSON half of `tomlWireIsIdempotent`.
+  ///
+  /// It did not matter while every write followed somebody pressing Configure.
+  /// It matters now that a profile save and a launch rewire both write on their
+  /// own: without this, each one rotates the backup of a file it had nothing to
+  /// change in, and the previous version is lost to a copy of itself.
+  static func jsonWriteIsIdempotent() {
+    print("\nWriting the same JSON twice")
+    let fm = FileManager.default
+    let directory = fm.temporaryDirectory.appendingPathComponent(
+      "bastion-wiring-\(UUID().uuidString)")
+    try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: directory) }
+
+    let config = directory.appendingPathComponent("config.json")
+    try? #"{"mcpServers":{"github":{"url":"https://x"}}}"#
+      .write(to: config, atomically: true, encoding: .utf8)
+
+    guard let root = try? ClientWiringMerge.readJSON(config) else {
+      return check("fixture reads back", false)
+    }
+    let merged = ClientWiringMerge.merged(
+      into: root, rootKey: "mcpServers", entries: entries { httpReach($0) })
+
+    let first = try? ClientWiringMerge.write(merged, to: config, backupSuffix: "bastion-backup")
+    check("the first write lands", first != nil)
+    let written = try? Data(contentsOf: config)
+
+    // Re-read, re-merge, re-write: the path a second launch actually takes.
+    let again = ClientWiringMerge.merged(
+      into: (try? ClientWiringMerge.readJSON(config)) ?? [:], rootKey: "mcpServers",
+      entries: entries { httpReach($0) })
+    let second = try? ClientWiringMerge.write(again, to: config, backupSuffix: "bastion-backup")
+
+    check("the second makes no backup", second == nil)
+    check("and leaves the bytes alone", (try? Data(contentsOf: config)) == written)
+
+    let left = (try? fm.contentsOfDirectory(atPath: directory.path)) ?? []
+    check("still exactly config + one backup", left.count == 2)
   }
 
   /// What an entry reaches, which is what makes a rename recognisable.

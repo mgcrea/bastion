@@ -443,6 +443,56 @@ invisible to every client until somebody pressed _Configure_ again, and because
 the entry already in the file still resolved, it looked like the new profile had
 been ignored rather than like anything was broken.
 
+Configs written under the old scheme are renamed in place, once, on first launch
+of the build that changed it. The rename is safe because `merged` drops an entry
+of ours that reaches an endpoint being written under a different key, so the old
+`shopify` and the new `prod-shopify` never coexist.
+
+## Keeping configs current
+
+Adding or removing a profile rewrites the config of **every client already wired
+to Bastion**, immediately. Before that, `wire` ran from the _Configure_ button
+and from the `wire_client` tool and nowhere else, so a profile added anywhere
+else left every client holding the previous answer with nothing on screen to say
+so.
+
+Two limits are deliberate:
+
+- A client Bastion has never been configured into is **left alone**. Wiring is
+  somebody's decision, and a profile save is not a way to make it for them. The
+  test is whether the file already holds an entry `isOurs` claims — not whether
+  it matches what the current build would write, which is exactly what a config
+  written under an older key scheme does not do.
+- A rewrite that fails — a read-only file, a locked one, an entry of somebody
+  else's standing in the way — is **logged, not raised**. The profile is
+  Bastion's own state and the config is a copy of it; failing the save because a
+  copy could not be updated would be the tail wagging the dog. The Clients pane
+  goes on reporting what each file actually holds.
+
+A **Debug build never does any of this**, and neither does any check script that
+spawns one. A Debug build keeps its own `profiles.json` under
+`io.mgcrea.bastion.debug` but shares every client config with the installed
+Release app, so an automatic write from one puts entries into the real
+`~/.claude.json` from a profile set that is not the user's — `make builtin` did
+exactly that once, leaving three `checkro-bastion` entries and a `prod-reddit`
+matching no profile behind. `-autoWireClients YES` turns it back on for a
+developer exercising the path. Pressing _Configure_ is unaffected in either
+build: that one is somebody asking.
+
+The same launch pass also brings configs written under the older key scheme up
+to date, and it runs on **every** launch rather than once behind a flag. A
+one-shot cannot finish the job — a rewrite covers the profiles on switched-on
+servers, so a first launch that happened while a server was off would strand its
+entry under the old name for good. Repeating costs nothing because a write that
+would change no bytes is refused before it takes a backup, in both formats.
+
+Removing a profile is the one case that needs telling rather than inferring:
+every other entry a rewrite removes is recognised by colliding with one it is
+writing, and a profile that no longer exists produces nothing to collide with. So
+the removal passes its own `profile/server` pair through explicitly, and without
+that its key would survive in every config as an entry pointing at an endpoint
+the gateway has stopped serving.
+
 ## Recognising Bastion's own entries
 
 `isOurs` is the load-bearing predicate: it decides what _Remove Bastion's

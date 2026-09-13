@@ -66,6 +66,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       hostLog("gateway", .error, error.localizedDescription)
     }
 
+    // After the gateway, because the entries it writes carry the port, and only
+    // for clients already pointing at Bastion. A no-op in a Debug build and in
+    // every check script that spawns one — see `ClientWiring.autoWires` — and a
+    // no-op again on any launch that finds the configs already current.
+    ClientWiring.migrateKeyScheme()
+
     // Builds nothing unless the user has already opted in. Sparkle starts a
     // scheduler the moment it is constructed, so this must not be a
     // constructor call guarded by a later check.

@@ -258,10 +258,17 @@ final class ProfileStore {
         ToolCostStore.shared.forget(profile.id)
         CapabilityStore.shared.forget(profile.id)
       }
+      try save()
     } else {
       profiles.append(profile)
+      try save()
+      // A new profile means a new entry in every configured client, and the
+      // save is the only moment that is known. Editing an EXISTING profile
+      // cannot change a key — `ClientWiring.keys(for:)` reads the profile's own
+      // name and server and nothing else — so the ordinary Save does not touch
+      // anybody's config.
+      ClientWiring.rewire()
     }
-    try save()
   }
 
   /// Remove a profile and every secret it owns.
@@ -285,6 +292,12 @@ final class ProfileStore {
       try? CredentialStore.delete(.oauth, account: account)
     }
     try save()
+    // Named explicitly, because this is the one change a rewire cannot work out
+    // for itself: every other entry it removes is recognised by colliding with
+    // one it is writing, and a profile that is gone produces nothing to collide
+    // with. Left out, its key would survive in every config as an entry
+    // pointing at an endpoint the gateway no longer serves.
+    ClientWiring.rewire(retiring: [profile.id])
   }
 }
 
