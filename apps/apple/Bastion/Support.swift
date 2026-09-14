@@ -43,4 +43,11 @@ enum Support {
   /// upgrade that lands this would silently reset every existing user's pane to
   /// General.
   static let settings = SettingsSelection<SettingsPane>(app: app, legacyKeys: ["settingsPane"])
+
+  /// Launch at login, under `<slug>.launchAtLogin`.
+  ///
+  /// No `legacyDesiredKeys`: Bastion had no login item before this, so there is
+  /// no earlier intent to carry. See `LoginItem` for why the intent is recorded
+  /// apart from what `SMAppService` reports at all.
+  static let loginItem = LoginItem(app: app)
 }

@@ -185,6 +185,18 @@ private struct GeneralPane: View {
 
   var body: some View {
     Form {
+      // First, as in every app in the fleet that has one: it is the setting
+      // somebody decides the day they install Bastion, where everything below
+      // it is tuning. The detail says what it buys, which is less than it
+      // sounds — a bridge client starts Bastion on demand regardless.
+      LaunchAtLoginSection(
+        Support.loginItem,
+        detail: """
+          A client that launches its own bridge starts Bastion on demand. One configured with a \
+          URL finds nothing listening unless Bastion is already running.
+          """
+      )
+
       Section {
         // `Gateway` reads this once, in `start()`, and is not `@Observable` —
         // so saying "takes effect on restart" is not politeness, it is the

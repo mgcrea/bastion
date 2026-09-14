@@ -7,6 +7,17 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.18.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Added
+
+- **Launch at login**, at the top of Settings ▸ General. Until now nothing started Bastion when you
+  logged in, so a client configured with a URL found nothing listening until somebody opened the
+  app; one that launches its own bridge still starts Bastion on demand either way. The choice is
+  kept apart from what macOS reports, so an update that drops the registration has it put back on
+  the next launch. A copy running from outside Applications says why it cannot be added instead of
+  registering a path that will vanish, and one waiting on your approval in System Settings says so.
+
 ## [1.18.0] - 2026-09-14
 
 ### Added

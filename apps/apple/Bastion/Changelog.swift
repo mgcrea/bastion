@@ -494,6 +494,25 @@ nonisolated enum Changelog {
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  static let unreleased: Release? = nil
+  // swift-format-ignore
+  private static let unreleasedRelease: Release = Release(
+    version: "Unreleased",
+    date: "",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Launch at login",
+            body: [
+              ", at the top of Settings ▸ General. Until now nothing started Bastion when you logged in, so a client configured with a URL found nothing listening until somebody opened the app; one that launches its own bridge still starts Bastion on demand either way. The choice is kept apart from what macOS reports, so an update that drops the registration has it put back on the next launch. A copy running from outside Applications says why it cannot be added instead of registering a path that will vanish, and one waiting on your approval in System Settings says so.",
+            ]),
+        ]),
+    ])
+
+  // swift-format-ignore
+  static let unreleased: Release? = unreleasedRelease
   // </generated:changelog>
 }

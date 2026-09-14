@@ -1,4 +1,5 @@
 import SupportKitMenuBar
+import SupportKitSettings
 import SupportKitUI
 import SwiftUI
 
@@ -81,6 +82,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // scheduler the moment it is constructed, so this must not be a
     // constructor call guarded by a later check.
     UpdateController.shared.startIfConsented()
+
+    // Puts back a login item the last update dropped. Sparkle replaces the
+    // bundle, a registration is a bundle at a path, and this is the first launch
+    // where the recorded intent and the service's answer can be compared. After
+    // the `DemoSeed` return above, so a capture never registers anything.
+    Support.loginItem.healIfNeeded()
 
     // One observer for every window the app will ever own. Bastion is
     // `LSUIElement`, which is right for the 99% of its life when it is a
