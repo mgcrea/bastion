@@ -35,10 +35,22 @@
       "background": {
         "angle": 270,
         "stops": [
-          { "offset": 0, "color": "#7A2F1C" },
-          { "offset": 0.24, "color": "#241a1a" },
-          { "offset": 0.6, "color": "#101215" },
-          { "offset": 1, "color": "#0B0C0F" }
+          {
+            "offset": 0,
+            "color": "#7A2F1C"
+          },
+          {
+            "offset": 0.24,
+            "color": "#241a1a"
+          },
+          {
+            "offset": 0.6,
+            "color": "#101215"
+          },
+          {
+            "offset": 1,
+            "color": "#0B0C0F"
+          }
         ]
       },
       "title": "#F4F2EF",
@@ -56,7 +68,14 @@
       "subtitle": "Every client that wants a server spawns its own copy. Bastion runs one, and shows you who is attached to it."
     },
     {
-      "//": "The credential model, and the only pane that pictures it. Two profiles of one server are two identities — the answer to the obvious objection to a shared gateway — and the Environment card below them is read off the real catalog by ServerDetail, so a variable added to servers.json changes this plate rather than leaving it stale. The `secret` badge the subtitle promises sits on SHOPIFY_CLIENT_SECRET at the bottom of the frame: it was BELOW the fold while DemoSeed.contentSize was 620 and came into shot when the sidebar pushed that to 700. Check it is still in frame before changing either number, because a caption pointing at something outside the picture is exactly the rot this file exists to avoid.",
+      "//": "The one number nobody could see. Every server pane already quotes its own cost and each looks survivable alone; a client wired to five pays the sum on every connect, and until this pane there was nowhere that added them up. The bar with the faded end is acme/keycloak, whose listing was read one page at a time — so its figure is a floor and the copy under it says \"at least\" rather than \"about\". The facade line below the ranking is the product's own answer to the number above it. Everything under \"Over time\" is a measurement and everything above it is a forecast; the range picker sits between them because a time range over a standing cost would be meaningless.",
+      "id": "stats",
+      "website": "stats",
+      "title": "What every connect costs,\nbefore a word is typed.",
+      "subtitle": "A server's tool list is sent to your editor and held for the whole conversation. Bastion measures it, ranks it, and shows what loading on demand takes off the bill."
+    },
+    {
+      "//": "The credential model, and the only pane that pictures it. Two profiles of one server are two identities — the answer to the obvious objection to a shared gateway — and the Environment card below them is read off the real catalog by ServerDetail, so a variable added to servers.json changes this plate rather than leaving it stale. The `secret` badge the subtitle promises sits on SHOPIFY_CLIENT_SECRET at the bottom of the frame: it was BELOW the fold while DemoSeed.contentSize was 620, came into shot when the sidebar pushed that to 700, and survived the Stats row pushing it to 796. Check it is still in frame before changing either number, because a caption pointing at something outside the picture is exactly the rot this file exists to avoid.",
       "id": "server",
       "website": "server",
       "title": "Two profiles, two identities,\none installed server.",
@@ -70,7 +89,7 @@
       "subtitle": "Which profile, which tool, and the arguments — in memory, never on disk. Credentials are redacted before they are recorded, not after."
     },
     {
-      "//": "The sentence that makes writing into somebody else's config file defensible at all: the entry carries a bearer token issued to that client, and never a credential. The `Other servers in this file` card underneath is the migration story — those entries carry no token, no write gate and no line in the log.",
+      "//": "The sentence that makes writing into somebody else's config file defensible at all: the entry carries a bearer token issued to that client, and never a credential. The `Other servers in this file` card underneath is the migration story — those entries carry no token, no write gate and no line in the log. The «other servers in this file» card is this plate's evidence for the subtitle and it sits near the bottom of the frame: the context ranking was moved BELOW it for exactly that reason, after the ranked bars pushed it out of shot. Check it is still visible before reordering those cards.",
       "id": "client",
       "website": "client",
       "title": "Wired into your editor,\nnot living inside it.",
