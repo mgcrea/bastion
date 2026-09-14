@@ -49,7 +49,11 @@ const STAYS = [
   },
   {
     what: "The activity log",
-    body: "A ring buffer in memory, cleared when the app quits. Nothing writes it to disk unless you turn on the audit log in Settings › Activity, which keeps hash-chained segments under Application Support readable only by you — and nothing uploads it either way. Arguments are redacted before a row is recorded rather than filtered out afterwards.",
+    body: "A ring buffer in memory, cleared when the app quits. No argument and no result is written to disk unless you turn on the audit log in Settings › Activity, which keeps hash-chained segments under Application Support readable only by you — and nothing uploads it either way. Arguments are redacted before a row is recorded rather than filtered out afterwards.",
+  },
+  {
+    what: "Your usage statistics",
+    body: "Bastion keeps a usage rollup on disk, on by default, and it holds counts rather than content: per day, per profile and per tool, how many calls, how many bytes came back, how long they took, how many failed, how many times a server restarted. No arguments, no results, no resource paths, no identifiers. Tens of kilobytes a day at most, readable only by you, kept ninety days, never uploaded. Settings › Activity turns it off and deletes it.",
   },
   {
     what: "Everything the servers do",

@@ -91,6 +91,7 @@ enum DemoSeed {
   nonisolated enum Stage: String, CaseIterable {
     case server
     case running
+    case stats
     case log
     case client
     case chat
@@ -109,7 +110,7 @@ enum DemoSeed {
     var subject: Subject {
       switch self {
       case .licence: .settings(.licence)
-      case .server, .running, .log, .client, .chat: .main
+      case .server, .running, .stats, .log, .client, .chat: .main
       }
     }
 
@@ -121,6 +122,7 @@ enum DemoSeed {
       // an incomplete one together — the pairing the caption is about.
       case .server: .server("shopify")
       case .running: .running
+      case .stats: .stats
       case .log: .log
       // Claude Code rather than Claude Desktop, and the choice is the plate:
       // this is the client whose config carries hand-configured servers and
@@ -138,10 +140,18 @@ enum DemoSeed {
     var readySource: ReadySource {
       switch self {
       case .licence: .settings
-      case .server, .running, .log, .client, .chat: .main
+      case .server, .running, .stats, .log, .client, .chat: .main
       }
     }
   }
+
+  /// The range the Stats pane is photographed at.
+  ///
+  /// Pinned here rather than read from `@AppStorage`, for the reason
+  /// `MainView.current` is: a defaults read under a capture photographs whatever
+  /// the developer last clicked, and thirty days is the window the fixture below
+  /// actually fills.
+  nonisolated static let statsRange = StatsRange.month
 
   enum Subject {
     case main
@@ -252,7 +262,7 @@ enum DemoSeed {
   /// shot, and it is already the time `apps/website/src/components/Hero.astro`
   /// draws in its menu bar — so the real capture and the hand-drawn mock beside
   /// it agree rather than reading as two different products.
-  nonisolated private static func at(_ minute: Int, _ second: Int) -> Date {
+  nonisolated static func at(_ minute: Int, _ second: Int) -> Date {
     var components = DateComponents()
     components.year = 2026
     components.month = 1
@@ -917,6 +927,38 @@ enum DemoSeed {
     }
 
     seedInstances()
+    seedToolCosts()
+    CallStats.shared.seedDemo()
+  }
+
+  /// What each profile's tool list was measured to weigh.
+  ///
+  /// Five rows, and each earns something no other row shows. The two `shopify`
+  /// profiles are equal, which is the ordinary case. `acme/keycloak` is
+  /// `partial`, so the faded bar and the "at least" wording both get a picture.
+  /// And `home` against `lab` is the pair that makes the point of keying this
+  /// store by profile rather than by server: same package, same machine, and a
+  /// larger list on `lab` because its write gate is open.
+  ///
+  /// Roughly a kilobyte a tool, which is the ratio the two real examples quoted
+  /// in `ServerDetail` work out at.
+  @MainActor private static func seedToolCosts() {
+    let rows: [(profile: String, bytes: Int, tools: Int, partial: Bool, writes: Int?)] = [
+      ("prod/shopify", 24_400, 24, false, 0),
+      ("staging/shopify", 24_400, 24, false, 0),
+      ("acme/keycloak", 31_800, 31, true, 0),
+      ("home/unifi-network", 41_600, 41, false, 0),
+      ("lab/unifi-network", 48_800, 47, false, 9),
+    ]
+    for row in rows {
+      guard let profile = profiles.first(where: { $0.id == row.profile }),
+        let server = ServerStore.shared.server(id: profile.serverID)
+      else { continue }
+      ToolCostStore.shared.recordDemo(
+        profileID: profile.id, bytes: row.bytes, toolCount: row.tools, partial: row.partial,
+        version: ServerInstaller.installedVersion(of: server), allowWrites: profile.allowWrites,
+        writeToolCount: row.writes)
+    }
   }
 
   // MARK: - Windows
@@ -960,8 +1002,11 @@ enum DemoSeed {
   ///
   /// Adding a seventh server to the fixture pushes this up by another 32, and
   /// so does adding a client — 700 was measured against five of them, and LM
-  /// Studio and Windsurf arriving from Cupertino is what took it to 764.
-  nonisolated static let contentSize = NSSize(width: 1180, height: 764)
+  /// Studio and Windsurf arriving from Cupertino is what took it to 764. A row
+  /// in the Activity section costs the same 32: the Stats pane took it to 796,
+  /// and at 764 the Chat row sat clipped underneath the Add server footer on
+  /// every main-window plate.
+  nonisolated static let contentSize = NSSize(width: 1180, height: 796)
   /// The licence pane is the shortest screen in the app: a status card, a key
   /// field and two sentences. 620 left half the window empty under it.
   nonisolated static let settingsContentSize = NSSize(width: 760, height: 470)

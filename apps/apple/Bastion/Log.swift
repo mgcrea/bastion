@@ -18,6 +18,12 @@ import Observation
 /// Payloads live here and only here. Nothing writes them to disk — this store
 /// is a ring buffer in memory, cleared on quit, and `hostCall` deliberately
 /// keeps them off the stderr mirror that every other log line goes through.
+///
+/// This is the sentence the EULA, the privacy page, the README and two panes
+/// paraphrase, so it is the place to start when one of them looks wrong. Note
+/// what it does NOT say: `CallStats` keeps a usage rollup on disk by default,
+/// and is allowed to because it holds counts rather than payloads. Any surface
+/// claiming "nothing is written to disk" without that qualifier is now wrong.
 @MainActor
 @Observable
 final class LogStore {

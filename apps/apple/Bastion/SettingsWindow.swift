@@ -358,7 +358,8 @@ private struct AboutPane: View {
         Text(
           "The audit log records which profile, which method, which tool and the arguments it was "
             + "called with; results too, for a profile that asks for them. Credentials are never "
-            + "recorded, and none of it is written to disk unless you keep an audit log. It does "
+            + "recorded, and no argument and no result is written to disk unless you keep an "
+            + "audit log. It does "
             + "not see what a server then "
             + "does over the network or on disk."
         )
@@ -569,6 +570,9 @@ private struct AuditPane: View {
   @AppStorage(AuditLog.payloadsKey) private var filePayloads = false
   @AppStorage(AuditLog.maxDaysKey) private var maxDays = AuditLog.defaultMaxDays
   @AppStorage(AuditLog.maxMegabytesKey) private var maxMegabytes = AuditLog.defaultMaxMegabytes
+  @AppStorage(CallStats.enabledKey) private var keepStats = true
+  @AppStorage(CallStats.maxDaysKey) private var statsDays = CallStatsRollup.defaultMaxDays
+  @AppStorage(CallStats.includeBuiltinKey) private var statsIncludeBuiltin = false
 
   @State private var summary: AuditLog.Summary?
   @State private var note: String?
@@ -638,6 +642,41 @@ private struct AuditPane: View {
         .fixedSize(horizontal: false, vertical: true)
       } header: {
         Text("On disk")
+      }
+
+      Section {
+        Toggle("Count what crosses the gateway", isOn: $keepStats)
+          .onChange(of: keepStats) { _, on in
+            // Deleting on the way out, not merely stopping. An off switch that
+            // leaves the file behind is one whose claim expires the moment
+            // somebody looks in the directory.
+            if !on { CallStats.shared.disableAndForget() }
+          }
+        Text(
+          "On, unlike the log above, and it can be because it keeps counts rather than content: "
+            + "per day, per profile and per tool, how many calls, how many bytes came back, how "
+            + "long they took, how many failed. No arguments, no results, no resource paths. "
+            + "Turning it off deletes the file."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+        LabeledContent("Keep for") {
+          Stepper("\(statsDays) days", value: $statsDays, in: 1...365)
+        }
+        .disabled(!keepStats)
+
+        Toggle("Include Bastion's own server", isOn: $statsIncludeBuiltin)
+          .disabled(!keepStats)
+        Text(
+          "Off. Bastion's own tools are real traffic and are counted either way, but leaving "
+            + "them in the ranking means the busiest server on the machine is the one you are "
+            + "reading about."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      } header: {
+        Text("Statistics")
       }
 
       Section {

@@ -184,11 +184,18 @@ are dropped whatever the setting says, and any value under a key the server's ma
 is blanked. That is a rule in one place — `CallCapture` — rather than a habit at three call sites,
 and `make builtin` plants a canary through `set_credential` and asserts it never comes back out.
 
-**Nothing recorded is written to disk unless you ask for it.** By default the log is a bounded ring
-in memory, cleared when Bastion quits. This is not a matter of intent: every ordinary log line is
+**No arguments and no results are written to disk unless you ask for it.** By default the log is a
+bounded ring in memory, cleared when Bastion quits. This is not a matter of intent: every ordinary log line is
 mirrored to stderr, which for an app started by LaunchServices outlives the process, so payloads
 take a separate path that never reaches it. `make builtin` asserts that too, against the real
 bundle.
+
+Separately, Bastion keeps a **usage rollup** on disk, on by default: per day, per profile and per
+tool, how many calls were made, how many bytes came back, how long they took, how many failed, and
+how many times a server restarted. Counts only — no arguments, no results, no resource paths, no
+identifiers — which is what lets it be on by default where the log is not. Tens of kilobytes a day
+on a busy machine, kept for ninety days, and Settings › Activity turns it off and deletes it. It is
+what the Stats pane reads.
 
 Settings › Activity turns on a durable **audit log**: append-only JSONL under Application Support,
 0600, in segments, with retention by age and size. Whether that file carries arguments and results

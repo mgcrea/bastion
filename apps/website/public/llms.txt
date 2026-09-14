@@ -47,9 +47,14 @@ and carries a revocable bearer token in each one rather than a credential.
 - Never visible at all: what a server then does over the network or on disk. Bastion is the process
   holding the credential, not a proxy for the traffic. The page says so rather than implying
   otherwise.
-- The log is a ring buffer in memory, cleared on quit. Nothing writes it to disk unless you turn on
-  the audit log in Settings › Activity, which appends hash-chained segments under Application
-  Support. Nothing uploads it either way.
+- The log is a ring buffer in memory, cleared on quit. No argument and no result is written to disk
+  unless you turn on the audit log in Settings › Activity, which appends hash-chained segments under
+  Application Support. Nothing uploads it either way.
+- Separately, and on by default: a usage rollup under Application Support. Per day, per profile and
+  per tool — how many calls, how many bytes came back, how long they took, how many failed, how many
+  times a server restarted. Counts only, with no arguments, no results, no resource paths and no
+  identifiers, which is what lets it be on by default where the log is not. Kept ninety days, never
+  uploaded, and Settings › Activity turns it off and deletes it. The Stats pane reads it.
 
 ## The five security rules
 

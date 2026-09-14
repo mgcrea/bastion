@@ -439,6 +439,65 @@ nonisolated enum Changelog {
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  static let unreleased: Release? = nil
+  // swift-format-ignore
+  private static let unreleasedRelease: Release = Release(
+    version: "Unreleased",
+    date: "",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "A Stats pane, and the number nobody could see.",
+            body: [
+              "Every server pane already quoted its own tool list cost, and each one looked survivable alone; nothing added them up. The new pane ranks what each server costs a client on every connect, says what the write gate and loading on demand keep out of a context, and then — under a time range, because the two are different kinds of fact — shows calls, failures, response times and restarts over the last 7, 30 or 90 days. `ServerDetail` and `ClientDetail` grew the same figures scoped to one server and one client.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "A usage rollup, on disk and on by default.",
+            body: [
+              "Per day, per profile and per tool: how many calls, how many bytes came back, how long they took, how many failed, how many times a server restarted. Counts only, with no arguments, no results, no resource paths and no identifiers — which is what lets it be on by default where the activity log is not. Tens of kilobytes a day on a busy machine, kept ninety days, never uploaded. Settings ▸ Activity turns it off and deletes the file.",
+            ]),
+          Entry(
+            ordinal: 2,
+            headline: "`server_stats`",
+            body: [
+              ", a built-in tool returning the same figures for the calling profile, scoped the way `recent_activity` is and held to the same 16 KB reply budget. `status` gained one key saying whether counting is on and how much history stands behind it.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 3,
+            headline: "A refused tool call was recorded as a success.",
+            body: [
+              "A failure reaches the gateway either as a JSON-RPC `error` or as a result carrying `isError: true`, and the cheap pre-filter on the legacy-era path looked for the first spelling only — `isError` contains no lowercase `error`. Tool refusals are counted as failures now, and `make unit` holds the casing.",
+            ]),
+          Entry(
+            ordinal: 4,
+            headline: "The client pane's context bill claimed \"about\" for a figure it could not claim that for.",
+            body: [
+              "A listing read one page at a time makes every total built from it a floor. `partial` was read only as a trigger for the facade and never reached the sentence, which now says \"at least\" and fades the bar out rather than ending it.",
+            ]),
+        ]),
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 5,
+            headline: "Wording, in nine places, because a new file writes to disk by default.",
+            body: [
+              "\"Nothing recorded is written to disk unless you ask for it\" was true of the activity log and was read as being about the app. It is now \"no arguments and no results\", in the EULA, the README, `docs/servers.md`, the privacy page, two website components, `llms.txt`, the Log pane's own footer and the profile sheet. The EULA's §7(c) has a third paragraph for the rollup — and its existing \"with timings\" is true for the first time, since a per-call duration is measured now rather than a row stamp.",
+            ]),
+        ]),
+    ])
+
+  // swift-format-ignore
+  static let unreleased: Release? = unreleasedRelease
   // </generated:changelog>
 }

@@ -41,6 +41,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // even once it is listening.
     AuditLog.install()
 
+    // Beside it, and for a related reason: the usage rollup records nothing
+    // until this runs, so a build that never calls it writes no file and the
+    // privacy claim is trivially true rather than conditionally true.
+    CallStats.shared.start()
+
     // Explicitly, and before anything can ask for a profile.
     //
     // `ProfileStore` publishes a nonisolated snapshot that the connection
@@ -149,6 +154,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationWillTerminate(_ notification: Notification) {
     Supervisor.shared.stopAll()
     Gateway.shared.stop()
+    // The last minute of counters, which the sixty-second timer has not reached.
+    // Synchronous on this thread on purpose: there is no later.
+    CallStats.shared.flushNow()
   }
 }
 

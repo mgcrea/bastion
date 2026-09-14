@@ -162,6 +162,29 @@ nonisolated enum CallCapture {
     return (frame["result"] as? [String: Any])?["isError"] as? Bool == true
   }
 
+  /// The same question asked of raw bytes, without buying a parse for the
+  /// common case.
+  ///
+  /// For the one path that hands a child's reply on untouched: a legacy-era
+  /// client, where the gateway deliberately does not decode. A statistics
+  /// feature must not be what starts.
+  ///
+  /// **Both markers, because the casing differs.** A protocol fault names
+  /// `"error"` and a refused tool names `"isError"` — and `isError` does not
+  /// contain a lowercase `error`. Scanning for the first alone read every
+  /// refused tool call as a success, which is exactly the kind of wrong a
+  /// failure rate must not be, and exactly the kind nobody would notice.
+  ///
+  /// A reply carrying neither marker did not fail, so nothing is decoded. One
+  /// that might have pays for the parse, which is rare and settles it exactly.
+  static func reportsFailure(_ data: Data) -> Bool {
+    guard
+      data.range(of: Data("\"error\"".utf8)) != nil
+        || data.range(of: Data("isError".utf8)) != nil
+    else { return false }
+    return isFailure((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])
+  }
+
   // MARK: - Redaction
 
   /// Walk a decoded JSON value, blanking anything under a secret-looking key.

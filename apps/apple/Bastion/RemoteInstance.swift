@@ -196,6 +196,9 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     // the real list. Never for a client that
     // defers schemas itself either, whatever the profile says; see `ToolFacade`.
     var facadeAnswer: [String: Any]?
+    /// What the catalogue would have weighed, so the saving can be measured
+    /// against what actually went out rather than forecast from a stored figure.
+    var facadeListedBytes = 0
     if server.loadsToolsOnDemand, !ToolFacade.clientDefersSchemas(client),
       client != ServerCheck.client,
       ToolFacade.handles(method: method, params: frame["params"] as? [String: Any])
@@ -228,7 +231,11 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
           writeTools: writeTools,
           displayName: server.displayName, summary: server.summary)
         {
-        case .answer(let result): facadeAnswer = result
+        case .answer(let result):
+          facadeAnswer = result
+          if method == "tools/list" {
+            facadeListedBytes = catalog.reduce(0) { $0 + ToolCost.bytes(of: $1) }
+          }
         case .rewrite(let params): frame["params"] = params
         case .passThrough: break
         }
@@ -248,7 +255,15 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
           logID, CallCapture.result(reply, mode: profile.capture, secretKeys: secretKeys),
           failed: CallCapture.isFailure(reply))
       }
-      return try encode(reply)
+      let encoded = try encode(reply)
+      // The same measurement the child path takes, and it has to be taken in
+      // both: the two are genuinely two implementations of one rule, which is
+      // why the rule itself lives in `ToolFacade` and only the counting is here.
+      if facadeListedBytes > encoded.count {
+        CallStats.shared.noteSaved(
+          profile: profile.name, server: server.id, facade: facadeListedBytes - encoded.count)
+      }
+      return encoded
     }
 
     _ = try ensureHandshake()

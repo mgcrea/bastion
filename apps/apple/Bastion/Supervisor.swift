@@ -306,6 +306,11 @@ nonisolated extension Supervisor {
     private struct State {
       var process: Process?
       var stdin: FileHandle?
+      /// How many times this instance has spawned a child. The second and every
+      /// one after it is a restart, which is the distinction the reliability
+      /// figures need and the only place in the supervisor that knows it —
+      /// `Activity` works it out from a row that does not outlive the app.
+      var spawns = 0
       /// Client requests waiting on the child, keyed by the id Bastion gave
       /// them — never the id the client used.
       var pending: [Int: Waiter] = [:]
@@ -495,11 +500,15 @@ nonisolated extension Supervisor {
         throw SupervisorError.startFailed(error.localizedDescription)
       }
 
-      state.withLock {
+      let spawns = state.withLock {
         $0.process = process
         $0.stdin = toChild.fileHandleForWriting
         $0.lastActivity = Date()
+        $0.spawns += 1
+        return $0.spawns
       }
+      CallStats.shared.noteStarted(
+        profile: profile.name, server: server.id, isRestart: spawns > 1)
 
       hostLog(
         key, .info,
@@ -612,6 +621,7 @@ nonisolated extension Supervisor {
         "server exited (\(detail))"
           + (waiters.isEmpty ? "" : " — \(waiters.count) request(s) in flight were dropped"))
       if status != 0 { noteFailure() }
+      CallStats.shared.noteExited(profile: profile.name, server: server.id)
       let id = key
       let dropped = waiters.count
       Task(priority: Activity.priority) { @MainActor in
@@ -977,7 +987,16 @@ nonisolated extension Supervisor {
       // The re-encode can only fail on something that came out of
       // `JSONSerialization` a moment ago, so the fallback is the original bytes
       // rather than an error: a filter that cannot run must not lose the reply.
-      return (try? JSONSerialization.data(withJSONObject: response)) ?? data
+      let filtered = (try? JSONSerialization.data(withJSONObject: response)) ?? data
+      // Measured, not forecast. Everywhere else the saving from a write gate is
+      // worked out from a stored listing; here it is the difference between two
+      // buffers that both exist, which is the one figure on the statistics pane
+      // nobody has to hedge.
+      if filtered.count < data.count {
+        CallStats.shared.noteSaved(
+          profile: profile.name, server: server.id, gate: data.count - filtered.count)
+      }
+      return filtered
     }
 
     // MARK: - The facade
@@ -1122,7 +1141,18 @@ nonisolated extension Supervisor {
         // there is nothing to forward either — the tool it names does not exist
         // below. Swallowed, which is what `nil` means everywhere else here.
         guard let clientID else { return .answered(nil) }
-        return .answered(try encode(["jsonrpc": "2.0", "id": clientID, "result": result]))
+        let answer = try encode(["jsonrpc": "2.0", "id": clientID, "result": result])
+        // Only on a listing, and only the part that is genuinely a saving: the
+        // declarations still cost something, so what was kept out is the
+        // catalogue minus what went in its place.
+        if method == "tools/list" {
+          let listed = catalog.reduce(0) { $0 + ToolCost.bytes(of: $1) }
+          if listed > answer.count {
+            CallStats.shared.noteSaved(
+              profile: profile.name, server: server.id, facade: listed - answer.count)
+          }
+        }
+        return .answered(answer)
       case .rewrite(let params):
         var rewritten = frame
         rewritten["params"] = params

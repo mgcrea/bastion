@@ -599,6 +599,30 @@ nonisolated final class Gateway: Sendable {
       progress = { [stream] payload in stream.send(payload) }
     }
 
+    // A fresh clock, deliberately NOT `serve`'s at the top of the connection:
+    // that one is stamped before the request body has been read, so it carries
+    // however long the client took to send it. Attributing a slow client to a
+    // slow server is the one mistake a latency figure must not make.
+    //
+    // This is also the whole of the correlation the usage rollup needs. The call
+    // below is synchronous on this thread, so the elapsed time is a subtraction
+    // and `Waiter` gains no field — see `CallStats`.
+    let started = DispatchTime.now()
+    let method = frame["method"] as? String
+    let tool =
+      method == "tools/call" ? (frame["params"] as? [String: Any])?["name"] as? String : nil
+    // A frame with no id is a notification, which is traffic and not a call.
+    // `Activity.called(counts:)` already draws that line; this reuses it rather
+    // than drawing a second one a row away.
+    let counted = frame["id"] != nil
+
+    func note(bytes: Int, failed: Bool) {
+      CallStats.shared.record(
+        CallStats.Sample(
+          profile: profile, server: server, client: client, method: method, tool: tool,
+          bytes: bytes, started: started, failed: failed, counted: counted))
+    }
+
     do {
       guard
         let data = try Supervisor.shared.call(
@@ -611,9 +635,20 @@ nonisolated final class Gateway: Sendable {
         // strict client is entitled to reject.
         return HTTPResponse(status: 202, body: Data(), contentType: "application/json")
       }
-      return modernise(data, era: era, method: frame["method"] as? String)
+      // Measured AFTER modernising, because that is what the client is sent and
+      // what `Content-Length` will say. A figure taken inside the supervisor
+      // would be short by the annotation every modern client receives.
+      let (response, failed) = modernise(data, era: era, method: method)
+      note(bytes: response.body.count, failed: failed)
+      return response
     } catch {
-      return rpcError(error, profile: profile, server: server, client: client, request: request)
+      // A refusal is a first-class sample, not an absence: an unavailable child,
+      // a refused write and a dead server all reach a client as a reply, and a
+      // failure rate that could not see them would be the wrong number.
+      let response = rpcError(
+        error, profile: profile, server: server, client: client, request: request)
+      note(bytes: response.body.count, failed: true)
+      return response
     }
   }
 
@@ -630,21 +665,29 @@ nonisolated final class Gateway: Sendable {
   /// than the reply, because a JSON-RPC response does not carry it. Without it
   /// there is no way to tell a `tools/list` result from a `tools/call` result,
   /// and only the first takes an annotation.
-  private func modernise(_ data: Data, era: Dialect.Era, method: String?) -> HTTPResponse {
+  /// Also reports whether the reply carried a failure, which the usage rollup
+  /// needs and which this already knows: for a modern client the frame is parsed
+  /// here anyway, so the answer is exact and costs nothing.
+  private func modernise(_ data: Data, era: Dialect.Era, method: String?)
+    -> (response: HTTPResponse, failed: Bool)
+  {
     guard case .modern = era,
       let frame = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
     else {
-      return HTTPResponse(status: 200, body: data, contentType: "application/json")
+      return (
+        HTTPResponse(status: 200, body: data, contentType: "application/json"),
+        CallCapture.reportsFailure(data)
+      )
     }
 
     if let error = frame["error"] as? [String: Any],
       let code = error["code"] as? Int, code == Dialect.methodNotFound
     {
-      return HTTPResponse(status: 404, json: frame)
+      return (HTTPResponse(status: 404, json: frame), true)
     }
     var result = Dialect.modernise(result: frame)
     if let method { result = Dialect.annotateList(result: result, method: method) }
-    return HTTPResponse(status: 200, json: result)
+    return (HTTPResponse(status: 200, json: result), CallCapture.isFailure(frame))
   }
 
   /// A JSON-RPC error frame. `id` is `null` when the request had none, which

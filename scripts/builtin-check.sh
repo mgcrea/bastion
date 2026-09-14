@@ -317,6 +317,34 @@ check  "its own lines still are"                  "$SCOPED" 'checknosy/bastion'
 absent "naming another profile does not widen the scope" \
   "$(tool checknosy recent_activity '{"limit":200,"origin":"checkrw/bastion"}')" 'checkscratch'
 
+echo
+echo "server_stats is scoped the same way"
+# The same leak in a different shape: counts per profile are a smaller thing
+# than arguments, and the same kind of thing. One tool scoped and the other not
+# would be the sort of asymmetry nobody notices until it is quoted back.
+# Bastion's own server is kept out of the default ranking, and ALL of this
+# check's traffic is to Bastion's own server — so without this the assertions
+# below would pass by finding nothing at all. Turning it on is what makes the
+# scoping the thing under test rather than the exclusion.
+# Read-time only: the rollup counts every call whatever this says, so the rows
+# these assertions look for were recorded long before this line.
+defaults write "$BUNDLE" statsIncludeBuiltin -bool true
+STATS="$(tool checknosy server_stats '{"window":"30d","top":20}')"
+absent "another profile's rows are not reported" "$STATS" 'checkrw/bastion'
+check  "its own window still comes back"         "$STATS" 'days_covered'
+# Naming another profile's server must narrow, never widen.
+absent "naming a server does not widen the scope" \
+  "$(tool checknosy server_stats '{"window":"30d","server":"bastion","top":20}')" 'checkrw/bastion'
+# The rollup holds counts. A payload reaching it would make the EULA, the
+# privacy page and the README wrong at once, so the canary planted above is
+# looked for here too.
+absent "no payload reaches the rollup" "$STATS" 'payload-canary-zzz'
+absent "and no credential"             "$STATS" 's3cr3t-canary'
+# And the caller's own traffic IS there, or the two assertions above are only
+# saying that the reply was empty.
+check "its own profile's rows are reported" "$STATS" 'checknosy/bastion'
+defaults delete "$BUNDLE" statsIncludeBuiltin 2>/dev/null || true
+
 # A profile's recording setting is not something this tool takes, so editing an
 # unrelated field must carry it rather than rebuild the profile without it.
 # Silent either way until someone notices their choice was undone.

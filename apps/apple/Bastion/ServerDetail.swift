@@ -39,6 +39,10 @@ struct ServerDetail: View {
   /// See `ProfileReveal`.
   @State private var revealed: String?
 
+  /// The same key the Stats pane uses, so changing the range in one place
+  /// changes it in both and "the last 30 days" means one thing in the app.
+  @AppStorage(StatsRange.defaultsKey) private var statsRange = StatsRange.month.rawValue
+
   private var profiles: [Profile] {
     ProfileStore.shared.profiles
       .filter { $0.serverID == server.id }
@@ -53,6 +57,7 @@ struct ServerDetail: View {
           packageCard
           profilesCard
           environmentCard
+          usageCard
         }
         .padding(16)
       }
@@ -597,6 +602,135 @@ struct ServerDetail: View {
   /// used to justify a per-profile override — "this profile feeds Claude Code,
   /// which defers by itself" — is now `ToolFacade.clientDefersSchemas`, per
   /// client, where a profile feeding two of them can be answered honestly.
+  // MARK: - Usage
+
+  /// What this server actually did, as opposed to what it costs to have around.
+  ///
+  /// **Last, and both reasons point the same way.** Editorially, a pane orders
+  /// setup before history: Environment is what makes the server work, this is
+  /// what it went on to do. Mechanically, `screenshots.config.json` warns that
+  /// the `secret` badge on the Environment card only just sits inside the frame,
+  /// so a card inserted above it would push that badge out of shot and falsify a
+  /// caption.
+  ///
+  /// **It deliberately does not carry the context cost.** `ProfileRow.cost` says
+  /// it per profile and `lazyToolsDetail` says it again in a sentence, and both
+  /// are better than a summary here could be, because the cost genuinely is per
+  /// profile rather than per server.
+  @ViewBuilder private var usageCard: some View {
+    let range =
+      DemoSeed.isEnabled ? DemoSeed.statsRange : StatsRange(rawValue: statsRange) ?? .month
+    let series = seriesForServer(range)
+    let tools = CallStats.shared.tools(
+      window: range.window, server: server.id, limit: 3)
+    let calls = serverCalls(range)
+    Card(
+      title: "Usage",
+      accessory: {
+        Picker(
+          "Time range",
+          selection: Binding(
+            get: { range.rawValue },
+            set: { if !DemoSeed.isEnabled { statsRange = $0 } })
+        ) {
+          ForEach(StatsRange.allCases, id: \.rawValue) { option in
+            Text(option.label).tag(option.rawValue)
+          }
+        }
+        .pickerStyle(.segmented)
+        .controlSize(.small)
+        .fixedSize()
+      },
+      content: {
+        VStack(alignment: .leading, spacing: 10) {
+          if calls.calls == 0 {
+            Text("No calls in \(range.phrase).")
+              .font(.callout).foregroundStyle(.secondary)
+          } else {
+            MetricRow {
+              Tally(value: "\(calls.calls)", label: "calls")
+              Tally(value: "\(calls.failures)", label: "failed")
+              if let median = calls.latency.p50 {
+                Tally(
+                  value: CallStatsRollup.duration(milliseconds: median), label: "median")
+              }
+              if let tail = calls.latency.p95 {
+                Tally(value: CallStatsRollup.duration(milliseconds: tail), label: "95th")
+              }
+            }
+            if series.count > 1 {
+              DayBars(days: series, stride: range.stride)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Calls per day")
+                .accessibilityValue(
+                  "\(calls.calls) calls, \(calls.failures) of them failed.")
+            }
+            ForEach(tools) { tool in
+              RankedBar(
+                label: tool.label,
+                fraction: Double(tool.calls) / Double(max(1, tools.first?.calls ?? 1)),
+                value: "\(tool.calls)",
+                caption: tool.profile,
+                tint: tool.failures > 0 ? StatTint.warn : StatTint.primary)
+            }
+          }
+          if calls.restarts > 0 || calls.exits > 0 {
+            HStack(spacing: 8) {
+              if calls.restarts > 0 {
+                Badge("restarted ×\(calls.restarts)", tint: .red)
+                  .accessibilityLabel("restarted \(calls.restarts) times")
+              }
+              if calls.exits > 0 {
+                Badge("\(calls.exits) exit\(calls.exits == 1 ? "" : "s")", tint: .orange)
+              }
+              Spacer(minLength: 0)
+            }
+          }
+        }
+      })
+  }
+
+  /// Every profile of this server, as one row.
+  private func serverCalls(_ range: StatsRange) -> CallStats.ServerRow {
+    var total = CallStats.ServerRow(profile: "", server: server.id)
+    var latencies: [CallStats.Latency] = []
+    // Including Bastion's own, unlike the ranking on the Stats pane. The
+    // exclusion there exists so the busiest row is not the app itself; on this
+    // pane the reader has already asked about one server by name, and an empty
+    // Usage card on Bastion's own pane would just look broken.
+    for row in CallStats.shared.servers(window: range.window, includeBuiltin: true)
+    where row.server == server.id {
+      total.calls += row.calls
+      total.failures += row.failures
+      total.responseBytes += row.responseBytes
+      total.restarts += row.restarts
+      total.exits += row.exits
+      latencies.append(row.latency)
+    }
+    // The heaviest profile's figures rather than an average of percentiles,
+    // which is not a percentile. One server pane showing one profile's real
+    // numbers beats every profile's imaginary ones.
+    total.latency = latencies.max { ($0.count) < ($1.count) } ?? CallStats.Latency()
+    return total
+  }
+
+  private func seriesForServer(_ range: StatsRange) -> [CallStats.Point] {
+    var merged: [Date: CallStats.Point] = [:]
+    for profile in profiles {
+      for point in CallStats.shared.series(
+        profile: profile.name, server: server.id, window: range.window)
+      {
+        var existing = merged[point.date] ?? CallStats.Point(day: point.day, date: point.date)
+        existing.calls += point.calls
+        existing.failures += point.failures
+        existing.responseBytes += point.responseBytes
+        existing.restarts += point.restarts
+        merged[point.date] = existing
+      }
+    }
+    return merged.values.sorted { $0.day < $1.day }
+  }
+
   private var lazyToolsSelection: String {
     server.lazyTools.map(String.init) ?? ""
   }

@@ -996,6 +996,40 @@ struct UnitCheck {
       CallCapture.isFailure(["result": ["isError": true]]))
     check("a plain result is not", !CallCapture.isFailure(["result": ["ok": true]]))
 
+    print("\nCall capture: a failure read off raw bytes")
+
+    // The legacy branch of the gateway hands a child's reply on without
+    // decoding it, so the usage rollup judges failure from the bytes. The trap
+    // is the casing: a protocol fault names "error" and a refused tool names
+    // "isError", and `isError` contains no lowercase `error`. Scanning for the
+    // first alone read every refused tool call as a success.
+    func bytes(_ json: String) -> Data { Data(json.utf8) }
+    check(
+      "a JSON-RPC error frame reads as a failure",
+      CallCapture.reportsFailure(
+        bytes(#"{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"no"}}"#)))
+    check(
+      "and so does a refused tool, whose key is capitalised",
+      CallCapture.reportsFailure(
+        bytes(#"{"jsonrpc":"2.0","id":1,"result":{"content":[],"isError":true}}"#)))
+    check(
+      "a plain result does not",
+      !CallCapture.reportsFailure(
+        bytes(#"{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"ok"}]}}"#)))
+    // `isError: false` is a success that names the key, which is the case the
+    // cheap scan cannot answer alone — so it has to buy the parse and be right.
+    check(
+      "an explicit isError:false is a success",
+      !CallCapture.reportsFailure(
+        bytes(#"{"jsonrpc":"2.0","id":1,"result":{"content":[],"isError":false}}"#)))
+    // A result whose own TEXT says "error" must not be read as one. This is why
+    // the scan is a pre-filter and not the answer.
+    check(
+      "the word error in a payload is not a failure",
+      !CallCapture.reportsFailure(
+        bytes(#"{"jsonrpc":"2.0","id":1,"result":{"content":[{"text":"no error found"}]}}"#)))
+    check("rubbish is not a failure", !CallCapture.reportsFailure(bytes("{[")))
+
     print("\nCall capture: malformed input")
 
     check(
@@ -1435,6 +1469,18 @@ struct UnitCheck {
       "and never with both",
       !ToolCost.phrase(bytes: 63_000, partial: true).contains("about"))
 
+    // The millions tier, which arrived with the statistics pane: it is the
+    // first caller that sums a month of result bytes rather than weighing one
+    // listing, and "1014.4k" is a figure the reader has to convert themselves.
+    check("a million rounds to one M", ToolCost.short(1_000_000) == "1M")
+    check("and keeps one decimal", ToolCost.short(1_240_000) == "1.2M")
+    check("and rounds it", ToolCost.short(1_014_400) == "1M")
+    check("a big one still reads", ToolCost.short(12_500_000) == "12.5M")
+    // The handover is on the ROUNDED thousands, or this reads "1000k".
+    check("just under a million hands over cleanly", ToolCost.short(999_999) == "1M")
+    check("while the k tier is untouched", ToolCost.short(15_800) == "15.8k")
+    check("including its own boundary", ToolCost.short(999_000) == "999k")
+
     print("\nTool cost: whether a stored figure still describes the profile")
 
     func isCurrent(_ mv: String?, _ mw: Bool, _ v: String?, _ w: Bool) -> Bool {
@@ -1453,6 +1499,304 @@ struct UnitCheck {
     // keep a figure alive across the one event that most surely invalidates it.
     check("a package that went away drops it", !isCurrent("1.2.0", false, nil, false))
     check("and one that appeared drops it", !isCurrent(nil, false, "1.2.0", false))
+
+    print("\nUsage rollup: percentiles read off a histogram")
+
+    typealias Bucket = CallStatsRollup.Bucket
+
+    // A hundred samples with a known shape: ninety fast, ten slow. The p50 must
+    // land in the fast band and the p95 in the slow one, and neither may escape
+    // the bucket it was found in — interpolation inside a bucket is the whole
+    // reason this is not just "the bucket's upper bound".
+    var spread = Bucket()
+    for _ in 0..<90 { spread.record(milliseconds: 30, bytes: 100, failed: false) }
+    for _ in 0..<10 { spread.record(milliseconds: 3_000, bytes: 100, failed: false) }
+    let spreadMedian = spread.percentile(0.5)
+    let spreadTail = spread.percentile(0.95)
+    check("the median lands in the band that holds it", (spreadMedian?.milliseconds ?? 0) > 25)
+    check("and not past its upper bound", (spreadMedian?.milliseconds ?? .max) <= 50)
+    check("the 95th lands in the slow band", (spreadTail?.milliseconds ?? 0) > 2_500)
+    check("and not past its upper bound", (spreadTail?.milliseconds ?? .max) <= 5_000)
+    check("neither is a floor", !(spreadMedian?.isFloor ?? true) && !(spreadTail?.isFloor ?? true))
+
+    // The open-ended top bucket. There is no upper bound to interpolate
+    // towards, so a number here would be invented. It reports the lower bound
+    // and says so, and the phrase changes with it.
+    var slow = Bucket()
+    for _ in 0..<20 { slow.record(milliseconds: 90_000, bytes: 10, failed: false) }
+    check("a percentile in the top bucket is a floor", slow.percentile(0.95)?.isFloor == true)
+    check("and it reports the bound it knows", slow.percentile(0.95)?.milliseconds == 60_000)
+    check("and the latency says so", slow.latency.p95IsFloor)
+    check(
+      "and the sentence hedges the other way",
+      CallStatsRollup.phrase(milliseconds: 60_000, isFloor: true) == "at least 60s")
+    check(
+      "while a measured one does not",
+      CallStatsRollup.phrase(milliseconds: 240) == "about 240 ms")
+
+    // Nothing measured is not the same fact as measured at zero. A p95 rendered
+    // as `0 ms` reads as instantaneous, which is the opposite of unmeasured, so
+    // the empty case has to be nil the whole way down.
+    let empty = Bucket()
+    check("an empty bucket has no percentile", empty.percentile(0.5) == nil)
+    check("and no latency at all", empty.latency == CallStatsRollup.Latency.none)
+    check("which is not a zero", empty.latency.p50 == nil && empty.latency.max == nil)
+
+    // The maximum is the one statistic a histogram cannot approximate, which is
+    // why it is stored exactly beside it. Five hundred sub-millisecond calls and
+    // one slow one: the percentiles are coarse, the maximum is not.
+    var coarse = Bucket()
+    for _ in 0..<500 { coarse.record(milliseconds: 0, bytes: 1, failed: false) }
+    coarse.record(milliseconds: 8_111, bytes: 1, failed: false)
+    check("the maximum survives a coarse histogram exactly", coarse.latency.max == 8_111)
+    check("while the median stays in the fast bucket", (coarse.latency.p50 ?? .max) <= 1)
+
+    print("\nUsage rollup: merging, which the lock design rests on")
+
+    // `CallStats` accumulates under a plain lock with no ordering preserved,
+    // and the argument for that is entirely this: the merge is commutative and
+    // associative, so there is nothing for an executor to order. If this ever
+    // stops being true the threading design is wrong, not the test.
+    var left = Bucket()
+    left.record(milliseconds: 12, bytes: 400, failed: false)
+    left.record(milliseconds: 900, bytes: 50, failed: true)
+    var middle = Bucket()
+    middle.record(milliseconds: 4, bytes: 7, failed: false)
+    var right = Bucket()
+    right.record(milliseconds: 70_000, bytes: 1_000, failed: false)
+
+    check("merging commutes", left.merged(with: right) == right.merged(with: left))
+    check(
+      "and associates",
+      left.merged(with: middle).merged(with: right)
+        == left.merged(with: middle.merged(with: right)))
+    let summed = left.merged(with: middle).merged(with: right)
+    check("calls add", summed.calls == 4)
+    check("failures add", summed.failures == 1)
+    check("bytes add", summed.bytes == 1_457)
+    check("the maximum is a maximum, not a sum", summed.maxMilliseconds == 70_000)
+    check("and the histogram keeps every sample", summed.histogram.reduce(0, +) == 4)
+    check("merging an empty bucket changes nothing", left.merged(with: Bucket()) == left)
+
+    print("\nUsage rollup: which day an instant belongs to")
+
+    // A fixed offset rather than Calendar, because this runs on the gateway's
+    // hot path. The property that matters is that every instant lands in
+    // exactly one day and that a boundary is a boundary.
+    let paris = 3_600
+    let dayStart = CallStatsRollup.startOfDay(20_000, secondsFromGMT: paris)
+    let lateNight = dayStart.addingTimeInterval(86_399)
+    let justAfter = dayStart.addingTimeInterval(86_401)
+    check(
+      "midnight opens the day it names",
+      CallStatsRollup.day(for: dayStart, secondsFromGMT: paris) == 20_000)
+    check(
+      "a second before the next one is still that day",
+      CallStatsRollup.day(for: lateNight, secondsFromGMT: paris) == 20_000)
+    check(
+      "and a second after it is the next",
+      CallStatsRollup.day(for: justAfter, secondsFromGMT: paris) == 20_001)
+    // Summer time moves the boundary by an hour. Each instant still belongs to
+    // one day, which is all the rollup needs; the day is simply an hour longer.
+    let summer = 7_200
+    check(
+      "a shifted offset still maps an instant to one day",
+      CallStatsRollup.day(for: dayStart, secondsFromGMT: summer) == 20_000)
+    // The day number is cached and refreshed at most once a minute, so a sample
+    // within a minute of midnight can land in the previous day. It must never
+    // skip one.
+    check(
+      "a minute-stale cache is at worst one day behind, never two",
+      CallStatsRollup.day(for: justAfter.addingTimeInterval(-60), secondsFromGMT: paris) >= 20_000)
+    // Before 1970 is not a real case, but a rounded-towards-zero division would
+    // put two different days on the same number, and that is worth ruling out.
+    check(
+      "days before the epoch still descend",
+      CallStatsRollup.day(forSecondsSince1970: -1, secondsFromGMT: 0) == -1)
+
+    print("\nUsage rollup: retention")
+
+    func day(_ number: CallStatsRollup.DayNumber, rows: Int = 0) -> CallStatsRollup.Day {
+      var filled = CallStatsRollup.Day(day: number)
+      var bucket = Bucket()
+      bucket.record(milliseconds: 40, bytes: 900, failed: false)
+      filled.rows = (0..<rows).map {
+        CallStatsRollup.CallRow(
+          profile: "prod", server: "shopify", label: "get_order_\($0)", isTool: true, bucket: bucket
+        )
+      }
+      return filled
+    }
+
+    let history = (100...130).map { day($0) }
+    let kept = CallStatsRollup.prune(history, today: 130, maxDays: 7, maxBytes: 0)
+    check("retention keeps exactly the window", kept.count == 7)
+    // The boundary day is inside the window, not outside it. An off-by-one here
+    // silently shortens every range in the product by a day.
+    check("including the oldest day still inside it", kept.first?.day == 124)
+    check("and today", kept.last?.day == 130)
+    check(
+      "a day from the future is not kept",
+      CallStatsRollup.prune([day(200)], today: 130, maxDays: 7, maxBytes: 0).isEmpty)
+
+    // The byte ceiling is the second bound, and it drops oldest first — the day
+    // count stopped being a bound once one day could hold hundreds of rows.
+    let fat = (1...20).map { day($0, rows: 40) }
+    let ceiling = CallStatsRollup.encodedSize(of: Array(fat.suffix(5)))
+    let trimmed = CallStatsRollup.prune(fat, today: 20, maxDays: 90, maxBytes: ceiling)
+    check("the byte ceiling drops days", trimmed.count < fat.count)
+    check("oldest first", trimmed.last?.day == 20)
+    check("and it stops at the budget", CallStatsRollup.encodedSize(of: trimmed) <= ceiling)
+    check(
+      "a budget smaller than one day still keeps one",
+      CallStatsRollup.prune(fat, today: 20, maxDays: 90, maxBytes: 1).count == 1)
+
+    print("\nUsage rollup: the file")
+
+    var round = CallStatsRollup.File()
+    var rollupBusy = Bucket()
+    rollupBusy.record(milliseconds: 61, bytes: 4_000, failed: false)
+    rollupBusy.record(milliseconds: 3_400, bytes: 90, failed: true)
+    round.days = [
+      CallStatsRollup.Day(
+        day: 20_000,
+        rows: [
+          CallStatsRollup.CallRow(
+            profile: "prod", server: "shopify", label: "get_order", isTool: true, bucket: rollupBusy
+          )
+        ],
+        clients: [
+          CallStatsRollup.ClientRow(
+            client: "claude-code", profile: "prod", server: "shopify", bucket: rollupBusy)
+        ],
+        life: [
+          CallStatsRollup.LifeRow(
+            profile: "prod", server: "shopify", starts: 1, restarts: 2, exits: 1,
+            savedByGate: 900, savedByFacade: 40_000)
+        ])
+    ]
+    let encoded = try! CallStatsRollup.encoder().encode(round)
+    guard case .loaded(let back) = CallStatsRollup.decode(encoded) else {
+      check("a file we just wrote reads back", false)
+      exit(1)
+    }
+    check("a file we just wrote reads back", back.days.count == 1)
+    check("with its counters intact", back.days[0].rows[0].bucket == rollupBusy)
+    check("its client row intact", back.days[0].clients[0].client == "claude-code")
+    check("and what the facade saved", back.days[0].life[0].savedByFacade == 40_000)
+
+    // The claim every surface makes on this file's behalf. Counts only: no
+    // arguments, no results, no URIs, no ids. A payload leaking in here would
+    // make the EULA, the privacy page and the README wrong at once, so the
+    // assertion is on the bytes rather than on the intention.
+    let rollupWire = String(decoding: encoded, as: UTF8.self)
+    check("no argument ever reaches the file", !rollupWire.contains("arguments"))
+    check("no result either", !rollupWire.contains("result"))
+
+    // A file from a newer build is refused, not overwritten. A Sparkle rollback
+    // must not silently truncate a history it cannot read, which is the one
+    // place this deliberately behaves unlike ToolCostStore.
+    var future = round
+    future.version = CallStatsRollup.version + 1
+    let ahead = try! CallStatsRollup.encoder().encode(future)
+    if case .refused(let version) = CallStatsRollup.decode(ahead) {
+      check("a file from the future is refused", version == CallStatsRollup.version + 1)
+    } else {
+      check("a file from the future is refused", false)
+    }
+    // Additive fields decode against an older shape, which is why they are
+    // optional and why a row carrying an unknown key must not be fatal.
+    let stranger = Data(
+      #"{"v":1,"d":[{"d":20000,"rows":[{"p":"a","s":"b","l":"c","t":true,"k":{"n":1,"f":0,"b":2,"ms":3,"mx":3,"h":[1],"future":9}}],"c":[],"l":[]}]}"#
+        .utf8)
+    if case .loaded(let tolerant) = CallStatsRollup.decode(stranger) {
+      check(
+        "an unknown key does not stop a row decoding", tolerant.days[0].rows[0].bucket.calls == 1)
+      check(
+        "and a short histogram reads as zero-padded",
+        tolerant.days[0].rows[0].bucket.weight(at: 9) == 0)
+    } else {
+      check("an unknown key does not stop a row decoding", false)
+    }
+    check(
+      "rubbish is corrupt, not empty",
+      {
+        if case .corrupt = CallStatsRollup.decode(Data("{[".utf8)) {
+          return true
+        } else {
+          return false
+        }
+      }())
+
+    print("\nUsage rollup: the cardinality guard")
+
+    // Without a cap, a server with generated tool names grows the file without
+    // bound and "a few kilobytes a day" stops being true silently.
+    check(
+      "a label under the cap is itself",
+      CallStatsRollup.label("get_order", existingLabels: 3) == "get_order")
+    check(
+      "the one past it folds",
+      CallStatsRollup.label("get_order", existingLabels: CallStatsRollup.maxLabelsPerServer)
+        == CallStatsRollup.otherLabel)
+    // The fold truncates the breakdown and not the totals: everything past the
+    // cap is still counted, just counted together.
+    var breakdown: [String: Bucket] = [:]
+    for index in 0..<600 {
+      let name = CallStatsRollup.label("tool_\(index)", existingLabels: breakdown.count)
+      var bucket = breakdown[name] ?? Bucket()
+      bucket.record(milliseconds: 10, bytes: 100, failed: false)
+      breakdown[name] = bucket
+    }
+    check(
+      "the breakdown stops at the cap", breakdown.count == CallStatsRollup.maxLabelsPerServer + 1)
+    check("and the total is still exact", breakdown.values.reduce(0) { $0 + $1.calls } == 600)
+
+    print("\nUsage rollup: what ninety days actually costs")
+
+    // The size claim, asserted rather than intended. A realistic population is
+    // five servers, thirty labels each, plus a handful of clients — held for the
+    // full ninety days. If this ever fails, the sentence in the EULA is the
+    // thing that broke, not the test.
+    var loaded: [CallStatsRollup.Day] = []
+    for number in 0..<90 {
+      var filled = CallStatsRollup.Day(day: CallStatsRollup.DayNumber(number))
+      for server in 0..<5 {
+        for label in 0..<30 {
+          var bucket = Bucket()
+          bucket.record(milliseconds: 40 + label, bytes: 4_000, failed: label % 17 == 0)
+          filled.rows.append(
+            CallStatsRollup.CallRow(
+              profile: "profile\(server)", server: "server\(server)",
+              label: "some_tool_name_\(label)", isTool: true, bucket: bucket))
+        }
+        filled.clients.append(
+          CallStatsRollup.ClientRow(
+            client: "claude-code", profile: "profile\(server)", server: "server\(server)",
+            bucket: Bucket()))
+        filled.life.append(
+          CallStatsRollup.LifeRow(profile: "profile\(server)", server: "server\(server)", starts: 1)
+        )
+      }
+      loaded.append(filled)
+    }
+    let ninetyDays = CallStatsRollup.encodedSize(of: loaded)
+    print(
+      "       (measured: \(ninetyDays / 1_024) KB for ninety days, \(ninetyDays / 90 / 1_024) KB a day)"
+    )
+    // The ceiling has to leave the ninety-day promise intact for a population
+    // nobody realistically exceeds, or retention quietly stops meaning ninety
+    // days and the settings control becomes a suggestion.
+    check(
+      "ninety days of a busy machine fits under the ceiling",
+      ninetyDays < CallStatsRollup.defaultMaxBytes)
+    check("with room to spare", ninetyDays * 2 < CallStatsRollup.defaultMaxBytes)
+    check("and one day stays in the tens of kilobytes", ninetyDays / 90 < 64 * 1_024)
+    // Which is also the sentence on the privacy page: a day of this is small
+    // enough that nobody needs to be warned about it.
+    check(
+      "a quiet machine is smaller still", CallStatsRollup.encodedSize(of: [day(1, rows: 6)]) < 2_048
+    )
 
     print("\nTool facade: the index")
 

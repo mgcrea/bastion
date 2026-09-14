@@ -11,7 +11,7 @@
  * image cannot. This section is the other half of that arrangement: the window
  * as it actually renders, so a reader can check the drawings against it.
  *
- * Five of the six captures. `server` is promoted out of this section into
+ * Five of the seven captures. `server` is promoted out of this section into
  * `ServerPane.astro`, one scroll below the hero, because the drawing it
  * answers is up there — see that file's header.
  *
@@ -34,6 +34,7 @@ import clientShot from "../assets/shots/client.png";
 import licenceShot from "../assets/shots/licence.png";
 import logShot from "../assets/shots/log.png";
 import runningShot from "../assets/shots/running.png";
+import statsShot from "../assets/shots/stats.png";
 import SectionHeader from "./SectionHeader.astro";
 
 /**
@@ -58,10 +59,17 @@ const shots = [
     alt: "Bastion's Running pane: prod/shopify up two hours with two clients attached, acme/keycloak up 47 minutes, home/unifi-network stopped, and lab/unifi-network with a writes badge and restarted twice.",
   },
   {
+    image: statsShot,
+    id: "stats",
+    title: "What the tool lists cost you",
+    body: "Each server pane quotes its own cost, and each one looks survivable on its own. This adds them up: a tool list is sent to your editor before it can call anything and held for the whole conversation, so it is a charge you pay on every connect whether or not you use the server. The bar that fades out is a listing read one page at a time, where the figure is a floor and the sentence under it says «at least» rather than «about». Everything above the range picker is what a connect costs; everything below it is what actually happened.",
+    alt: "Bastion's Stats pane: a ranking of what each server's tool list costs on every connect, UniFi Network at 12.2k tokens, Keycloak at 8k and rising, Shopify at 6.1k, above a bar chart of calls a day for the last thirty days with one day's failures stacked in red.",
+  },
+  {
     image: logShot,
     id: "log",
     title: "The log, with the arguments",
-    body: "Not just which tool — what it was called with, and what came back for a profile that opts in. Credentials are redacted before the row is written rather than filtered out of it afterwards, which is why one entry here reads «redacted» where a client secret would have been. None of it is written to disk unless you ask for an audit log.",
+    body: "Not just which tool — what it was called with, and what came back for a profile that opts in. Credentials are redacted before the row is written rather than filtered out of it afterwards, which is why one entry here reads «redacted» where a client secret would have been. No argument and no result is written to disk unless you ask for an audit log.",
     alt: "Bastion's Log pane: timestamped calls across prod/shopify, acme/keycloak and home/unifi-network, each with its JSON arguments and result beneath it, and one row whose client_secret argument reads «redacted».",
   },
   {

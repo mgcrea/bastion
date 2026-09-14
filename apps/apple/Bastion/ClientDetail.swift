@@ -196,9 +196,16 @@ struct ClientDetail: View {
         header(snapshot)
         fileCard
         entriesCard(snapshot)
-        contextCard(snapshot)
+        // What Bastion wrote, then what it left alone, and only then what any
+        // of it costs. "The servers you configured by hand are left exactly as
+        // they are" is the claim this pane is captioned with, and its evidence
+        // is `othersCard` — which belongs beside the entries it contrasts with
+        // rather than three cards below them. The context ranking that used to
+        // sit here grew tall enough to push it out of the frame entirely.
         if !snapshot.others.isEmpty { othersCard(snapshot) }
         if !snapshot.projects.isEmpty { projectsCard(snapshot) }
+        contextCard(snapshot)
+        callsCard
         if let result {
           Text(result)
             .font(.caption).foregroundStyle(.secondary)
@@ -411,6 +418,29 @@ struct ClientDetail: View {
           Text(bill)
             .font(.caption).foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+
+          // Which server the sentence above is actually about. The total was
+          // the only thing on screen, and a total is the one number nobody can
+          // act on: two of these are usually most of it, and until they were
+          // ranked there was no way to see which two.
+          let rows = billRows(snapshot, defers: defers).rows
+          let heaviest = rows.map(\.sentBytes).max() ?? 0
+          if rows.count > 1, heaviest > 0 {
+            VStack(alignment: .leading, spacing: 8) {
+              ForEach(rows) { row in
+                RankedBar(
+                  label: row.displayName,
+                  fraction: Double(row.sentBytes) / Double(heaviest),
+                  value: ToolCost.short(ToolCost.tokens(bytes: row.sentBytes)),
+                  caption: row.isFronted
+                    ? "\(ToolFacade.names.count) tools instead of \(row.toolCount)"
+                    : "\(row.toolCount) tools",
+                  partial: row.partial,
+                  help: ToolCost.phrase(bytes: row.sentBytes, partial: row.partial))
+              }
+            }
+            .padding(.top, 2)
+          }
         }
 
         Text(contextDetail(defers))
@@ -456,49 +486,41 @@ struct ClientDetail: View {
   /// figure only for a profile something has actually listed, so a client wired
   /// to a server that has never started contributes nothing and the total is a
   /// floor. Naming the count is what keeps that honest.
-  private func contextBill(_ snapshot: Snapshot, defers: Bool) -> String? {
+  /// The rows behind the sentence, so the decomposition under it cannot
+  /// disagree with it.
+  ///
+  /// The loop that used to live inside `contextBill` computed every one of these
+  /// and threw all but the two totals away. `ContextBill` holds the rule now, so
+  /// the statistics pane ranks servers with the same arithmetic this bills them
+  /// with.
+  private func billRows(_ snapshot: Snapshot, defers: Bool) -> (rows: [ContextBill.Row], live: Int)
+  {
     let live = snapshot.rows.filter { $0.state == .matches && !$0.isDisabled && !$0.serverIsOff }
-    guard !live.isEmpty else { return nil }
+    let rows = live.compactMap { ContextBill.row(profile: $0.profile, defers: defers) }
+    return (rows.sorted { ($0.sentBytes, $0.profileID) > ($1.sentBytes, $1.profileID) }, live.count)
+  }
 
-    var measured = 0
-    var full = 0
-    var fronted = 0
-    for row in live {
-      guard let server = ServerStore.shared.server(id: row.profile.serverID),
-        let cost = ToolCostStore.shared.current(for: row.profile, server: server)
-      else { continue }
-      measured += 1
-      full += cost.bytes
-      // What THIS client is sent, which is the whole point of putting the
-      // figure here: the facade applies only where the server asked for it and
-      // the client cannot defer by itself, so the two axes land in one number.
-      let facade = ToolFacade.declarationBytes(
-        displayName: server.displayName, summary: server.summary, toolCount: cost.toolCount,
-        hasWriteDispatcher: (cost.writeToolCount ?? 0) > 0)
-      // Three axes now, and the third is measured rather than configured: a
-      // listing the declarations would not meaningfully shrink is forwarded
-      // whole, so counting the facade for it would understate what this client
-      // is actually sent. `partial` counts as fronted — the gateway decides on
-      // the whole list, and this figure stopped at page one.
-      if server.loadsToolsOnDemand, !defers,
-        cost.partial
-          || ToolFacade.worthFronting(
-            listingBytes: cost.bytes, listingCount: cost.toolCount, facadeBytes: facade,
-            facadeCount: ToolFacade.declarationCount(
-              hasWriteDispatcher: (cost.writeToolCount ?? 0) > 0))
-      {
-        fronted += facade
-      } else {
-        fronted += cost.bytes
-      }
-    }
-    guard measured > 0 else { return nil }
+  /// Shared with the Stats pane and `ServerDetail`, so the range means one
+  /// thing everywhere it appears.
+  @AppStorage(StatsRange.defaultsKey) private var statsRange = StatsRange.month.rawValue
+
+  private func contextBill(_ snapshot: Snapshot, defers: Bool) -> String? {
+    let (rows, live) = billRows(snapshot, defers: defers)
+    guard !rows.isEmpty, live > 0 else { return nil }
+
+    let full = rows.reduce(0) { $0 + $1.fullBytes }
+    let fronted = rows.reduce(0) { $0 + $1.sentBytes }
+    // A partial listing poisons every total it is in: the gateway read one page
+    // of an unknown number, so the sum is a floor and the sentence has to say
+    // "at least". This was read only as a fronting trigger until the ranking
+    // needed it, and the sentence had been quietly claiming "about" for a figure
+    // it could not claim that for.
+    let partial = rows.contains { $0.partial }
 
     let scope =
-      measured == live.count
-      ? "\(measured) wired profile\(measured == 1 ? "" : "s")"
-      : "\(measured) of \(live.count) wired profiles measured so far"
-    let sent = ToolCost.short(ToolCost.tokens(bytes: fronted))
+      rows.count == live
+      ? "\(rows.count) wired profile\(rows.count == 1 ? "" : "s")"
+      : "\(rows.count) of \(live) wired profiles measured so far"
 
     if defers {
       // No alarm, and no false comfort either. A deferring client IS sent all of
@@ -506,16 +528,18 @@ struct ClientDetail: View {
       // distinction is the entire reason it is exempt from the facade.
       return
         "Across \(scope), \(client.displayName) is sent "
-        + "\(ToolCost.short(ToolCost.tokens(bytes: full))) tokens of tool definitions and loads "
+        + "\(ToolCost.phrase(bytes: full, partial: partial)) of tool definitions and loads "
         + "each schema on demand, so its context holds the names."
     }
     guard fronted < full else {
       return
-        "Across \(scope), \(client.displayName) is sent \(sent) tokens of tool definitions on "
+        "Across \(scope), \(client.displayName) is sent "
+        + "\(ToolCost.phrase(bytes: fronted, partial: partial)) of tool definitions on "
         + "every connect, and holds them for the whole conversation."
     }
     return
-      "Across \(scope), \(client.displayName) is sent \(sent) tokens of tool definitions on "
+      "Across \(scope), \(client.displayName) is sent "
+      + "\(ToolCost.phrase(bytes: fronted, partial: partial)) of tool definitions on "
       + "every connect, down from \(ToolCost.short(ToolCost.tokens(bytes: full))) — the servers "
       + "loading on demand account for the difference."
   }
@@ -681,6 +705,56 @@ struct ClientDetail: View {
   /// token per client, a write gate per profile, one activity log — is exactly
   /// what they do not have. Removing one is the last step of moving it over, so
   /// the button is here rather than in a client's own settings screen.
+  /// What this client actually pulled through.
+  ///
+  /// **Last**, for the same fold reason `ServerDetail`'s usage card is: this is
+  /// the tallest pane in the app, and the evidence for the plate's claim that
+  /// hand-configured servers are left alone is `othersCard`. Anything inserted
+  /// above it pushes that evidence further down a pane that already overflows.
+  ///
+  /// A measurement, where `contextCard` above is a forecast. That one answers
+  /// what this client is sent on every connect; this answers what it went on to
+  /// ask for. They are never added together and they never share a card.
+  @ViewBuilder private var callsCard: some View {
+    let range =
+      DemoSeed.isEnabled ? DemoSeed.statsRange : StatsRange(rawValue: statsRange) ?? .month
+    // Bastion's own server included: this client really did call it, and this
+    // pane is about what this client did rather than a ranking the app could
+    // top.
+    let traffic = CallStats.shared.traffic(
+      forClient: client.id, window: range.window, includeBuiltin: true)
+    Card(title: "Calls") {
+      VStack(alignment: .leading, spacing: 10) {
+        if traffic.calls == 0 {
+          Text("\(client.displayName) has not called anything in \(range.phrase).")
+            .font(.callout).foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        } else {
+          MetricRow {
+            Tally(value: "\(traffic.calls)", label: "calls")
+            Tally(value: "\(traffic.failures)", label: "failed")
+            Tally(value: "\(traffic.profilesCalled)", label: "profiles")
+            if let median = traffic.latency.p50 {
+              Tally(
+                value: CallStatsRollup.duration(milliseconds: median), label: "median")
+            }
+          }
+          let heaviest = traffic.byServer.map(\.calls).max() ?? 0
+          ForEach(traffic.byServer.prefix(4)) { row in
+            RankedBar(
+              label: row.id,
+              fraction: heaviest > 0 ? Double(row.calls) / Double(heaviest) : 0,
+              value: "\(row.calls)",
+              caption: "about \(ToolCost.short(ToolCost.tokens(bytes: row.responseBytes))) "
+                + "tokens of results",
+              tint: row.failures > 0 ? StatTint.warn : StatTint.primary,
+              help: row.failures > 0 ? "\(row.failures) failed" : nil)
+          }
+        }
+      }
+    }
+  }
+
   private func othersCard(_ snapshot: Snapshot) -> some View {
     // What Configure would write, so a foreign entry is only flagged as
     // colliding with a key something is actually going to claim.

@@ -12,6 +12,7 @@ enum MainPane: Hashable {
   case server(String)
   case client(String)
   case running
+  case stats
   case log
   case chat
 }
@@ -24,6 +25,7 @@ extension MainPane: RawRepresentable {
   init?(rawValue: String) {
     switch rawValue {
     case "running": self = .running
+    case "stats": self = .stats
     case "log": self = .log
     case "chat": self = .chat
     default:
@@ -43,6 +45,7 @@ extension MainPane: RawRepresentable {
     case .server(let id): "server:\(id)"
     case .client(let id): "client:\(id)"
     case .running: "running"
+    case .stats: "stats"
     case .log: "log"
     case .chat: "chat"
     }
@@ -311,6 +314,10 @@ struct MainView: View {
 
       Section("Activity") {
         Label("Running", systemImage: "play.circle").tag(MainPane.running)
+        // Between the two it summarises, and the order is granularity
+        // descending with the verb last: Running is now, Stats is over time,
+        // Log is every line, Chat is a thing you do.
+        Label("Stats", systemImage: "chart.bar").tag(MainPane.stats)
         Label("Log", systemImage: "list.bullet.rectangle").tag(MainPane.log)
         Label("Chat", systemImage: "bubble.left.and.text.bubble.right").tag(MainPane.chat)
       }
@@ -397,11 +404,10 @@ struct MainView: View {
       // The headline numbers for the whole idea. With one process per
       // connection these first two were the same by construction, so there was
       // nothing to say.
-      HStack(spacing: 10) {
+      MetricRow {
         Tally(value: "\(activity.attachedClients.count)", label: "clients")
         Tally(value: "\(activity.runningCount)", label: "processes")
         Tally(value: "\(activity.totalCalls)", label: "calls")
-        Spacer()
       }
 
       HStack(spacing: 6) {
@@ -477,6 +483,8 @@ struct MainView: View {
       }
     case .running:
       RunningPane()
+    case .stats:
+      StatsPane()
     case .log:
       LogPane()
     case .chat:

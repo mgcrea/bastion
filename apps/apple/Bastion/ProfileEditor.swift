@@ -167,7 +167,8 @@ struct ProfileEditor: View {
           }
           Text(
             "For this profile alone. Another profile of the same server can record more, or "
-              + "nothing. Credentials are never recorded, and nothing is written to disk."
+              + "nothing. Credentials are never recorded, and nothing recorded here is written "
+              + "to disk."
           )
           .font(.caption).foregroundStyle(.secondary)
         } header: {

@@ -179,7 +179,17 @@ Three honest limits on that sentence:
       second switch, also off by default. Retention is yours to set and defaults
       to thirty days or a hundred megabytes, whichever comes first.
 
-      Credentials are never recorded in either. Neither leaves your Mac.
+      Separately from both, Bastion keeps a usage rollup on disk, and this one
+      is on by default. Per day, per profile and per tool it counts how many
+      calls were made, how many bytes came back, how long they took, how many
+      failed, and how many times a server restarted. It holds counts and
+      nothing else: no arguments, no results, no resource paths, no identifiers.
+      It is tens of kilobytes a day on a busy machine, under Application
+      Support, readable only by you, and kept for ninety days. Settings >
+      Activity turns it off and deletes it.
+
+      Credentials are never recorded in any of the three. None of it leaves
+      your Mac.
 
 8. WHAT IT ASKS OF YOUR SYSTEM
 

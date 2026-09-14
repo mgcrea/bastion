@@ -51,16 +51,28 @@ nonisolated enum ToolCost {
   /// Floors, so a partial token is never billed.
   static func tokens(bytes: Int) -> Int { bytes / bytesPerToken }
 
-  /// "870", "1k", "15.8k".
+  /// "870", "1k", "15.8k", "1.2M".
   ///
   /// Integer arithmetic rather than a formatter: this appears in a sentence
   /// beside a tool count, one decimal place is the whole requirement, and a
   /// locale that writes "15,8k" would make the unit test a lie about the build
   /// machine rather than about the code.
+  ///
+  /// The millions tier arrived with the statistics pane, which is the first
+  /// caller to sum a month of result bytes rather than weigh one listing: a
+  /// figure that reads "1014.4k" is one the reader has to convert themselves.
+  /// The handover is on the ROUNDED thousands, not on the raw count, so 999,999
+  /// reads as "1M" rather than as "1000k".
   static func short(_ tokens: Int) -> String {
     guard tokens >= 1000 else { return "\(tokens)" }
-    let tenths = (tokens + 50) / 100
-    return tenths % 10 == 0 ? "\(tenths / 10)k" : "\(tenths / 10).\(tenths % 10)k"
+    let thousandths = (tokens + 50) / 100
+    guard thousandths >= 10_000 else {
+      return thousandths % 10 == 0
+        ? "\(thousandths / 10)k" : "\(thousandths / 10).\(thousandths % 10)k"
+    }
+    let millionths = (tokens + 50_000) / 100_000
+    return millionths % 10 == 0
+      ? "\(millionths / 10)M" : "\(millionths / 10).\(millionths % 10)M"
   }
 
   /// Whether a stored measurement still describes what a client would be sent.

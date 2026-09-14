@@ -197,6 +197,20 @@ enum BuiltinTools {
         + "right now with its pid, uptime, attached clients and call count."),
 
     Declaration(
+      "server_stats", title: "Usage statistics",
+      "How much your profile has actually used each server: calls, failures, bytes returned and "
+        + "response times, per day and per tool, from Bastion's usage rollup. Counts only — it "
+        + "holds no arguments, no results and no resource paths. Other profiles' figures are not "
+        + "returned.",
+      properties: [
+        "window": schema(
+          "string", "How far back. 'today', '7d', '30d' or '90d'. Default '7d'."),
+        "server": schema("string", "Optional. Only this server id."),
+        "top": schema(
+          "integer", "How many server and tool rows. Default 5, max 20."),
+      ]),
+
+    Declaration(
       "recent_activity", title: "Recent activity",
       "Bastion's recent log: which profile, which method, and the name of whatever each request "
         + "reached for. Your own profile's lines also carry the arguments they were called with, "
@@ -445,6 +459,7 @@ enum BuiltinTools {
     case "list_clients": return listClients(arguments)
     case "status": return status()
     case "recent_activity": return recentActivity(arguments, caller: caller)
+    case "server_stats": return serverStats(arguments, caller: caller)
     case "check_server_update": return try checkServerUpdate(arguments)
 
     case "enable_server": return try setEnabled(arguments, to: true)
@@ -849,6 +864,9 @@ enum BuiltinTools {
       "base_url": "http://127.0.0.1:\(Gateway.shared.port)",
       "licence": entitlement,
       "protocol_versions": Dialect.supportedVersions.map(\.rawValue),
+      // About forty bytes, and it is how an agent discovers `server_stats`
+      // exists and whether enough history stands behind it to be worth asking.
+      "stats": statsAvailability(),
       "running": Activity.shared.instances.map { instance in
         var row: [String: Any] = [
           "id": instance.id, "profile": instance.profile, "server": instance.server,
@@ -910,6 +928,125 @@ enum BuiltinTools {
   /// The residual, worth knowing: two clients sharing one profile share one
   /// scope, so one can read the other's calls. Narrowing to per-client is
   /// possible; profile is the boundary everything else in Bastion uses.
+  private static func statsAvailability() -> [String: Any] {
+    guard CallStats.isEnabled else { return ["enabled": false] }
+    let snapshot = CallStats.shared.snapshot(window: .quarter)
+    return ["enabled": true, "days": snapshot.daysCovered]
+  }
+
+  /// The usage rollup, scoped to the profile that asked.
+  ///
+  /// **Scoped exactly as `recentActivity` is, and for the same reason.** A stats
+  /// tool that reported every profile by default would tell an agent on
+  /// `home/unifi-network` that `prod/shopify` did four thousand calls overnight.
+  /// That is a smaller leak than arguments and the same kind, so it honours the
+  /// same existing opt-in rather than minting a second one — and
+  /// `scripts/builtin-check.sh` asserts it the way it asserts the other.
+  ///
+  /// Never returns a histogram, only p50/p95/max: the buckets are an
+  /// implementation detail of how the percentiles are storable, and sixteen
+  /// numbers per row would spend the budget on something no caller can read.
+  private static func serverStats(_ arguments: [String: Any], caller: String?) -> Any {
+    guard CallStats.isEnabled else {
+      return ["enabled": false, "note": "Counting is off. Settings › Activity turns it on."]
+    }
+    let window: CallStats.Window =
+      switch arguments["window"] as? String {
+      case "today": .today
+      case "30d": .month
+      case "90d": .quarter
+      default: .week
+      }
+    let top = min(max(arguments["top"] as? Int ?? 5, 1), 20)
+    let requested = arguments["server"] as? String
+    let widened = CallCapture.reportsAllProfiles
+    let callerProfile = caller?.split(separator: "/").first.map(String.init)
+
+    let snapshot = CallStats.shared.snapshot(window: window)
+    let mine = { (profile: String) in widened || profile == callerProfile }
+    let servers = snapshot.servers.filter {
+      mine($0.profile) && (requested == nil || $0.server == requested)
+    }
+    let tools = snapshot.tools.filter {
+      mine($0.profile) && (requested == nil || $0.server == requested)
+    }
+
+    func timings(_ latency: CallStats.Latency) -> [String: Any] {
+      var row: [String: Any] = [:]
+      // Absent rather than zero: an unmeasured percentile reported as 0 reads
+      // as instantaneous, which is the opposite of what it means.
+      if let p50 = latency.p50 { row[latency.p50IsFloor ? "p50_ms_min" : "p50_ms"] = p50 }
+      if let p95 = latency.p95 { row[latency.p95IsFloor ? "p95_ms_min" : "p95_ms"] = p95 }
+      if let max = latency.max { row["max_ms"] = max }
+      return row
+    }
+
+    var totals: [String: Any] = [
+      "calls": servers.reduce(0) { $0 + $1.calls },
+      "failed": servers.reduce(0) { $0 + $1.failures },
+      "bytes": servers.reduce(0) { $0 + $1.responseBytes },
+      "estimated_tokens": ToolCost.tokens(
+        bytes: servers.reduce(0) { $0 + $1.responseBytes }),
+    ]
+    totals.merge(timings(snapshot.latency)) { current, _ in current }
+
+    var reply: [String: Any] = [
+      "window": window.days == 1 ? "today" : "\(window.days)d",
+      "days_covered": snapshot.daysCovered,
+      "totals": totals,
+    ]
+
+    var serverRows: [[String: Any]] = []
+    var toolRows: [[String: Any]] = []
+    var spent = weigh(totals)
+    var omitted = 0
+
+    for row in servers.prefix(top) {
+      var out: [String: Any] = [
+        "id": row.id, "calls": row.calls, "failed": row.failures,
+        "bytes": row.responseBytes, "restarts": row.restarts,
+      ]
+      out.merge(timings(row.latency)) { current, _ in current }
+      let cost = weigh(out)
+      guard spent + cost <= activityBudget else {
+        omitted += 1
+        continue
+      }
+      spent += cost
+      serverRows.append(out)
+    }
+
+    for row in tools.prefix(top) {
+      var out: [String: Any] = [
+        "id": "\(row.profile)/\(row.server)", "tool": row.label, "calls": row.calls,
+        "failed": row.failures, "bytes": row.responseBytes,
+      ]
+      out.merge(timings(row.latency)) { current, _ in current }
+      let cost = weigh(out)
+      guard spent + cost <= activityBudget else {
+        omitted += 1
+        continue
+      }
+      spent += cost
+      toolRows.append(out)
+    }
+
+    reply["servers"] = serverRows
+    reply["tools"] = toolRows
+    if omitted > 0 {
+      reply["omitted"] = omitted
+      reply["note"] =
+        "\(omitted) row(s) left out to stay inside a \(activityBudget / 1024) KB reply. "
+        + "Ask for a smaller 'top'."
+    }
+    if snapshot.isPartialWindow {
+      reply["partial"] =
+        "Only \(snapshot.daysCovered) day(s) of history stand behind this window, so every "
+        + "total here is a floor."
+    }
+    return reply
+  }
+
   private static func recentActivity(_ arguments: [String: Any], caller: String?) -> Any {
     let limit = min(max(arguments["limit"] as? Int ?? 20, 1), 500)
     let requested = arguments["origin"] as? String

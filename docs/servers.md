@@ -128,11 +128,15 @@ Bastion sees the JSON-RPC frames crossing the gateway: which profile, which
 tool, and the arguments it was called with — and what came back, for a profile
 that asks for it. A credential is never recorded.
 
-None of it is written to disk unless you turn on the audit log in
+No argument and no result is written to disk unless you turn on the audit log in
 Settings › Activity, which keeps append-only segments under Application Support
 with a hash chain over them. That chain detects an edited, removed or truncated
 record; it is not proof against anyone who can write the file, because they can
 recompute it.
+
+What is on disk by default is the usage rollup: counts per day, per profile and
+per tool, with no arguments, no results and no resource paths in it. Settings ›
+Activity turns it off and deletes it.
 
 It does **not** see what a server then does over the network or on the
 filesystem. A server that reads a file it was never asked about does so out of

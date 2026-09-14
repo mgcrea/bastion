@@ -295,12 +295,16 @@ struct LogPane: View {
         // app" is a setting. A footer that says "nothing is written to disk"
         // while an audit log is running would be the one sentence on screen
         // that is false.
+        // Narrowed to arguments and results once `CallStats` began keeping a
+        // usage rollup on disk by default. The unqualified sentence was about
+        // this feed and was read as being about the app, which is the same
+        // drift the website and the EULA were corrected for.
         Text(
           "Bastion records the JSON-RPC frames crossing the gateway — which profile, which tool, "
             + "and what it was called with. Credentials are never recorded. "
             + (AuditLog.isEnabled
               ? "An audit log is being kept on disk — see Settings › Activity. "
-              : "Nothing here is written to disk. ")
+              : "No arguments or results are written to disk. ")
             + "It does not see what a server then does over the network or on disk."
         )
         .font(.caption2)
@@ -451,6 +455,101 @@ struct Tally: View {
       Text(value).font(.system(.callout, design: .rounded)).monospacedDigit()
       Text(label).font(.caption2).foregroundStyle(.secondary)
     }
+  }
+}
+
+/// A line of `Tally`s, so the panes that report several numbers at once agree
+/// about the gap between them.
+///
+/// The sidebar footer drew exactly this by hand for as long as it was the only
+/// caller. There are three now, and hand-rolling it again is how they end up
+/// with three different spacings — the argument `Card` already makes one level
+/// up.
+struct MetricRow<Content: View>: View {
+  @ViewBuilder let content: () -> Content
+
+  var body: some View {
+    // Ten, because that is what the sidebar footer already used and the footer
+    // is the established look. Picking a new number here would have moved the
+    // one caller that exists in a shipped screenshot, to settle nothing.
+    HStack(spacing: 10) {
+      content()
+      Spacer(minLength: 0)
+    }
+  }
+}
+
+/// One row of a ranking: a name, a proportional rule, and the figure.
+///
+/// **The fraction is of the largest row, never of the total.** This ranks; it
+/// does not divide a whole. A bar drawn as a share of the sum would be a claim
+/// about the size of a context window, and the size of a context window is a
+/// number Bastion cannot see — it belongs to whatever model the editor runs.
+///
+/// Drawn with shapes rather than with Swift Charts, deliberately. A ranked list
+/// is a table with a rule in each row: it needs a label column, a right-aligned
+/// figure, a badge slot, a partial marker and per-row help, and a chart fights
+/// every one of those. The time series in `StatsCharts` is the case that is
+/// genuinely a chart.
+struct RankedBar: View {
+  let label: String
+  /// Of the largest row. Clamped, so a caller that divides by zero draws
+  /// nothing rather than a bar of infinite width.
+  let fraction: Double
+  let value: String
+  var caption: String? = nil
+  var badge: String? = nil
+  var tint: Color = .accentColor
+  /// The listing was read one page at a time, so the figure is a floor. The bar
+  /// fades out instead of ending, and the figure takes the `+` that
+  /// `ProfileRow.cost` already puts on a partial badge.
+  var partial: Bool = false
+  /// The hedged sentence, for the tooltip. A capture never photographs it,
+  /// which is also why nothing load-bearing may live only here.
+  var help: String? = nil
+
+  private var width: Double { min(1, max(0, fraction.isFinite ? fraction : 0)) }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      HStack(alignment: .firstTextBaseline, spacing: 8) {
+        Text(label).font(.callout)
+        if let badge { Badge(badge, tint: .secondary) }
+        Spacer(minLength: 8)
+        Text(partial ? "\(value)+" : value)
+          .font(.system(.callout, design: .rounded)).monospacedDigit()
+      }
+      // A GeometryReader is the safe primitive here: it takes the width it is
+      // proposed and reports nothing back up, which is more than can be said
+      // for a Text. See the note in `LogPane` about what a view with a large
+      // ideal width does to a NavigationSplitView.
+      GeometryReader { proxy in
+        ZStack(alignment: .leading) {
+          Capsule().fill(.quaternary.opacity(0.5))
+          Capsule()
+            .fill(
+              partial
+                ? AnyShapeStyle(
+                  LinearGradient(
+                    stops: [
+                      .init(color: tint, location: 0),
+                      .init(color: tint, location: 0.8),
+                      .init(color: tint.opacity(0), location: 1),
+                    ], startPoint: .leading, endPoint: .trailing))
+                : AnyShapeStyle(tint)
+            )
+            .frame(width: max(2, proxy.size.width * width))
+        }
+      }
+      .frame(height: 6)
+      if let caption {
+        Text(caption).font(.caption2).foregroundStyle(.secondary)
+      }
+    }
+    .help(help ?? "")
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel(label)
+    .accessibilityValue(help ?? value)
   }
 }
 

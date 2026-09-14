@@ -22,8 +22,8 @@ const BLIND = ["credentials", "egress", "file reads"] as const;
     <SectionHeader eyebrow="The record" heading="A record of requests, not a sandbox.">
       <p class="m-0 text-[16px] leading-[1.6] text-fg-dim text-pretty">
         Bastion sees the JSON-RPC frames crossing the gateway, down to what each tool was called
-        with. Credentials are never recorded, and nothing is written to disk unless you ask for an
-        audit log — which is chained, so an edited or missing record shows. It does not see what a
+        with. Credentials are never recorded, and no argument and no result is written to disk
+        unless you ask for an audit log — which is chained, so an edited or missing record shows. It does not see what a
         server then does over the network or on the filesystem — and the page says so rather than
         implying otherwise.
       </p>

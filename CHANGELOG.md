@@ -7,6 +7,67 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.17.1` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Added
+
+- **A Stats pane, and the number nobody could see.** Every server pane already quoted its own tool
+  list cost, and each one looked survivable alone; nothing added them up. The new pane ranks what
+  each server costs a client on every connect, says what the write gate and loading on demand keep
+  out of a context, and then — under a time range, because the two are different kinds of fact —
+  shows calls, failures, response times and restarts over the last 7, 30 or 90 days. `ServerDetail`
+  and `ClientDetail` grew the same figures scoped to one server and one client.
+
+- **A usage rollup, on disk and on by default.** Per day, per profile and per tool: how many calls,
+  how many bytes came back, how long they took, how many failed, how many times a server restarted.
+  Counts only, with no arguments, no results, no resource paths and no identifiers — which is what
+  lets it be on by default where the activity log is not. Tens of kilobytes a day on a busy machine,
+  kept ninety days, never uploaded. Settings ▸ Activity turns it off and deletes the file.
+
+- **`server_stats`**, a built-in tool returning the same figures for the calling profile, scoped the
+  way `recent_activity` is and held to the same 16 KB reply budget. `status` gained one key saying
+  whether counting is on and how much history stands behind it.
+
+### Fixed
+
+- **A refused tool call was recorded as a success.** A failure reaches the gateway either as a
+  JSON-RPC `error` or as a result carrying `isError: true`, and the cheap pre-filter on the
+  legacy-era path looked for the first spelling only — `isError` contains no lowercase `error`. Tool
+  refusals are counted as failures now, and `make unit` holds the casing.
+
+- **The client pane's context bill claimed "about" for a figure it could not claim that for.** A
+  listing read one page at a time makes every total built from it a floor. `partial` was read only
+  as a trigger for the facade and never reached the sentence, which now says "at least" and fades
+  the bar out rather than ending it.
+
+### Changed
+
+- **Wording, in nine places, because a new file writes to disk by default.** "Nothing recorded is
+  written to disk unless you ask for it" was true of the activity log and was read as being about
+  the app. It is now "no arguments and no results", in the EULA, the README, `docs/servers.md`, the
+  privacy page, two website components, `llms.txt`, the Log pane's own footer and the profile
+  sheet. The EULA's §7(c) has a third paragraph for the rollup — and its existing "with timings"
+  is true for the first time, since a per-call duration is measured now rather than a row stamp.
+
+### Internal
+
+- `ToolCost.short` gained a millions tier. The statistics pane is the first caller to sum a month of
+  result bytes rather than weigh one listing, and "1014.4k" is a figure the reader has to convert.
+
+- `CallStatsRollup` is dependency-free so `make unit` can compile it alone, which is the argument
+  `ToolCost` already makes: a percentile read out of a histogram is arithmetic nobody can eyeball,
+  and a retention rule that drops the wrong day is invisible until somebody opens the pane in
+  November. Fifty-seven checks, including that the merge is commutative — the whole lock design
+  rests on it — and that ninety days of a busy machine encodes under the stated ceiling.
+
+- `ContextBill` holds the forecast arithmetic that lived inside `ClientDetail.contextBill`, so the
+  client pane's sentence and the statistics pane's ranking cannot disagree about what a listing
+  costs.
+
+- `DemoSeed` seeds `ToolCostStore`, which blanked itself under a capture — so no plate in the app
+  had ever shown a cost badge or a measured facade sentence. The window is 32pt taller for the new
+  sidebar row, and every golden was re-accepted.
+
 ## [1.17.1] - 2026-09-11
 
 ### Fixed

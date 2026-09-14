@@ -89,6 +89,24 @@ final class ToolCostStore {
     save()
   }
 
+  /// Seed a measurement for `DemoSeed` only.
+  ///
+  /// In memory, written nowhere: `save()` already refuses under a capture, and
+  /// this bypasses it rather than relying on that. Without it the store is
+  /// simply empty on every staged screen — `load()` blanks itself — so no plate
+  /// in the app has ever shown a cost badge or a measured facade sentence, and
+  /// the statistics pane's headline card would have photographed as an empty
+  /// state.
+  func recordDemo(
+    profileID: String, bytes: Int, toolCount: Int, partial: Bool, version: String?,
+    allowWrites: Bool, writeToolCount: Int?
+  ) {
+    guard DemoSeed.isEnabled else { return }
+    measurements[profileID] = Measurement(
+      bytes: bytes, toolCount: toolCount, partial: partial, version: version,
+      allowWrites: allowWrites, measuredAt: DemoSeed.at(41, 0), writeToolCount: writeToolCount)
+  }
+
   private func load() {
     if DemoSeed.isEnabled {
       measurements = [:]

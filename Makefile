@@ -579,7 +579,7 @@ audit: app remote-check ## Assert the listener is loopback-only and refuses fore
 # none, and `audit-listener.sh` only ever sends the parser well-formed requests.
 # Malformed input against a parser that runs BEFORE authentication is exactly
 # the case worth having, and it needs no app at all.
-unit: ## Assert the translation, the parser, call capture, the audit chain, the tool-cost estimate and the tool facade, with no app and no network
+unit: ## Assert the translation, the parser, call capture, the audit chain, the tool-cost estimate, the usage rollup and the tool facade, with no app and no network
 	@mkdir -p apps/apple/.build
 	@swiftc -O -o apps/apple/.build/unit-check \
 		apps/apple/Bastion/Dialect.swift \
@@ -592,6 +592,7 @@ unit: ## Assert the translation, the parser, call capture, the audit chain, the 
 		apps/apple/Bastion/AuditChain.swift \
 		apps/apple/Bastion/Log.swift \
 		apps/apple/Bastion/ToolCost.swift \
+		apps/apple/Bastion/CallStatsRollup.swift \
 		apps/apple/Bastion/WriteGate.swift \
 		apps/apple/Bastion/ToolFacade.swift \
 		scripts/unit-check.swift
@@ -751,7 +752,7 @@ icon: ## Regenerate Bastion.icon and the web SVG from design/bastion-mark.svg
 # because cupertino captures on the same machine and the lock has no project
 # key.
 
-SHOT_SCREENS := running server log client chat licence
+SHOT_SCREENS := running stats server log client chat licence
 
 # Dark only. `appshot capture` does not read the config's "appearances" key —
 # only `appshot run` does — so it needs its own flag, defaulting to `dark,light`.
@@ -783,7 +784,8 @@ SHOT_ARGS := -ScreenshotMode YES \
              -AppleLocale en_US \
              -AppleLanguages '(en)' \
              -AppleHighlightColor '0.698039 0.843137 1.000000 Blue' \
-             -AppleShowScrollBars WhenScrolling
+             -AppleShowScrollBars WhenScrolling \
+             -lazyToolsDefault NO
 
 # A floor, not the whole wait: appshot then polls frames and shoots once the
 # window holds still. Left at appshot's own default because `--ready-file` makes
