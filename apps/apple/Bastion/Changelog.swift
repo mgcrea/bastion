@@ -194,7 +194,113 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_17_1, v1_17_0, v1_16_0, v1_15_0, v1_14_0]
+  static let releases: [Release] = [v1_18_0, v1_17_1, v1_17_0, v1_16_0, v1_15_0]
+
+  // swift-format-ignore
+  private static let v1_18_0: Release = Release(
+    version: "1.18.0",
+    date: "2026-09-14",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "A Stats pane, and the number nobody could see.",
+            body: [
+              "Every server pane already quoted its own tool list cost, and each one looked survivable alone; nothing added them up. The new pane ranks what each server costs a client on every connect, says what the write gate and loading on demand keep out of a context, and then — under a time range, because the two are different kinds of fact — shows calls, failures, response times and restarts over the last 7, 30 or 90 days. `ServerDetail` and `ClientDetail` grew the same figures scoped to one server and one client.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "A usage rollup, on disk and on by default.",
+            body: [
+              "Per day, per profile and per tool: how many calls, how many bytes came back, how long they took, how many failed, how many times a server restarted. Counts only, with no arguments, no results, no resource paths and no identifiers — which is what lets it be on by default where the activity log is not. Tens of kilobytes a day on a busy machine, kept ninety days, never uploaded. Settings ▸ Activity turns it off and deletes the file.",
+            ]),
+          Entry(
+            ordinal: 2,
+            headline: "`server_stats`",
+            body: [
+              ", a built-in tool returning the same figures for the calling profile, scoped the way `recent_activity` is and held to the same 16 KB reply budget. `status` gained one key saying whether counting is on and how much history stands behind it.",
+            ]),
+          Entry(
+            ordinal: 3,
+            headline: "Adding or removing a profile updates every client already wired to Bastion.",
+            body: [
+              "A client's config used to be written only by _Configure_ and the `wire_client` tool, so a profile added anywhere else left every client holding the previous list with nothing on screen to say so. A client Bastion was never configured into is still left alone, and a rewrite that cannot land — a read-only file, somebody else's entry in the way — is logged rather than failing the save. The Clients pane goes on reporting what each file actually holds.",
+            ]),
+          Entry(
+            ordinal: 4,
+            headline: "Click a server row in the menu bar to find its profile.",
+            body: [
+              "The panel lists what is running as `<profile> / <server>`; a click opens the main window on that server, scrolls the profile's row into view and lights it briefly.",
+            ]),
+          Entry(
+            ordinal: 5,
+            headline: "A Help pane in Settings, and an About pane with more in it.",
+            body: [
+              "Bastion lives in the menu bar, so the Help menu's links only existed while a window happened to be open; they have a pane of their own now. About gained the app icon, the System and Model rows, and a button that copies all of it for a bug report.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 6,
+            headline: "A second profile of a server renamed the first one's entry in every client config.",
+            body: [
+              "The key was a bare `<server>` until a second profile appeared, at which point both grew the profile name — and nothing rewrote the configs already holding the old one, so the new profile stayed invisible to every client until _Configure_ was pressed again. Every key is `<profile>-<server>` now, even for a server with one profile, and configs written under the old scheme are renamed in place on launch. The key is part of every tool name a client shows, so `mcp__shopify__…` becomes `mcp__prod-shopify__…` — worth knowing if a client's permission rules name the old one.",
+            ]),
+          Entry(
+            ordinal: 7,
+            headline: "A profile name ending in a space could not be saved, and the sheet did not say why.",
+            body: [
+              "Saving already trimmed the name, but the Save button and the missing-values line judged the raw field, so a pasted handle with a trailing space left Save disabled with nothing on the sheet to explain it. All three judge the trimmed name now.",
+            ]),
+          Entry(
+            ordinal: 8,
+            headline: "The EULA said the audit log is never written to disk.",
+            body: [
+              "That was true of the in-memory activity log the sentence was written about, and not of the durable audit log, which is off by default and writes under Application Support once turned on. §7(c) describes the two separately now, and the privacy page, `llms.txt` and the website's screens section, which carried the same sentence, were corrected with it.",
+            ]),
+          Entry(
+            ordinal: 9,
+            headline: "A refused tool call was recorded as a success.",
+            body: [
+              "A failure reaches the gateway either as a JSON-RPC `error` or as a result carrying `isError: true`, and the cheap pre-filter on the legacy-era path looked for the first spelling only — `isError` contains no lowercase `error`. Tool refusals are counted as failures now, and `make unit` holds the casing.",
+            ]),
+          Entry(
+            ordinal: 10,
+            headline: "The client pane's context bill claimed \"about\" for a figure it could not claim that for.",
+            body: [
+              "A listing read one page at a time makes every total built from it a floor. `partial` was read only as a trigger for the facade and never reached the sentence, which now says \"at least\" and fades the bar out rather than ending it.",
+            ]),
+        ]),
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 11,
+            headline: "Wording, in nine places, because a new file writes to disk by default.",
+            body: [
+              "\"Nothing recorded is written to disk unless you ask for it\" was true of the activity log and was read as being about the app. It is now \"no arguments and no results\", in the EULA, the README, `docs/servers.md`, the privacy page, two website components, `llms.txt`, the Log pane's own footer and the profile sheet. The EULA's §7(c) has a third paragraph for the rollup — and its existing \"with timings\" is true for the first time, since a per-call duration is measured now rather than a row stamp.",
+            ]),
+          Entry(
+            ordinal: 12,
+            headline: "The menu bar's gateway line is caption-sized.",
+            body: [
+              "It inherited body text and was the largest line in the panel, bigger than the Servers header it sits above; it matches the sidebar and Settings ▸ General now.",
+            ]),
+          Entry(
+            ordinal: 13,
+            headline: "Settings reads General, Activity, What's New, Updates, About, Help",
+            body: [
+              ", and a pane's heading stays put while its cards scroll. The pane you last had open is remembered across the change.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_17_1: Release = Release(
@@ -383,121 +489,11 @@ nonisolated enum Changelog {
         ]),
     ])
 
-  // swift-format-ignore
-  private static let v1_14_0: Release = Release(
-    version: "1.14.0",
-    date: "2026-09-07",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "A profile's tools, prompts and resources, in one place.",
-            body: [
-              "Every profile row has a `Tools…` button beside `Test`, and it opens the listing the app could not previously show: all three surfaces, read from the running server through that profile's own write gate, with a count on each tab, a filter, a per-tool token cost and the input schema behind a disclosure. Nothing in Bastion had ever asked a server for `prompts/list` or `resources/list`. The check sheet reads one page of tools and reports the five heaviest, on purpose; the Chat pane's picker is a budget control that drops everything the write gate touches. Neither answers \"what is in here\", and a static table in `servers.json` cannot: a Bastion listing is per profile and per client, which is the same reason `Dialect.listCacheScope` is `private`.",
-              "It says which of the possible listings it is showing, because a number here can honestly disagree with one elsewhere in the app. Whether the gate was on or off; which tools Bastion removed, named and struck through, for a remote server whose catalog entry marks them as writes — a child server switches its own off at startup and cannot be asked what they were; and whether loading on demand means a client is sent three declarations in place of this list. Walking every page also hands `ToolCostStore` a better measurement than the check's, which stops at page one. `Bastion --capabilities=<profile>/<server>` prints the same three lists from a Debug build.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "What changed, readable after you have already updated.",
-            body: [
-              "Release notes existed in exactly one place a user could reach: the sheet Sparkle puts up while it asks permission to install. That sheet is gone the moment you press Install, which left the one person most likely to want them — somebody who has just updated — with nowhere to look but `CHANGELOG.md` on GitHub. Settings has a **What's New** pane now, between About and Updates, because the three answer three parts of one question in that order: which build is this, what did it change, is there a newer one.",
-              "It is generated, not bundled. `make changelog` compiles the last five releases of `CHANGELOG.md` into `Changelog.swift` the same way `make servers` compiles `servers.json` into `ServerCatalog.swift`, and `changelog-check` fails CI if the two drift — so the notes in the app are the notes in the repository, or the build goes red. `### Internal` sections are dropped at generation time rather than hidden at render time, so repo-facing prose about CI never reaches the binary at all. `[Unreleased]` is emitted separately and shown only in a Debug build, where it is true of what is running.",
-              "The parse behind it is now shared with `changelog-notes.mjs`, which renders the appcast Sparkle reads, so the two cannot disagree about what a bullet is. Extracting it turned up a latent bug in the renderer's own placeholder scheme, and the tests in `scripts/lib/changelog.test.mjs` are written against the awkward shapes this file actually contains rather than tidy examples: a bullet with no bold headline, a headline with a code span inside it, and prose sitting between a `###` heading and its first bullet.",
-              "Anything that shipped since the version you last read is marked, and says so from the menu bar panel and the main window's footer as well as in Settings — once, until you look. A fresh install is treated as caught up rather than greeted with five unread releases.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 2,
-            headline: "A server that shells out to `npm` could not find it.",
-            body: [
-              "Children are spawned with a deliberately minimal `PATH`, which was `/usr/bin:/bin` — so `mcp-npm`'s publish tool, whose `npm pack` runs the package's own prepare script, died several layers down with `sh: npm: command not found`. Neither `Resources` nor `Resources/npm/bin` fixes it: the first holds an `npm` that is a directory, and the shims in the second locate npm relative to node's prefix (`<prefix>/bin/node` plus `<prefix>/lib/node_modules/npm`), which the flat bundle layout is not, so they fail with \"Could not determine Node.js install directory\". `make node` now stages a `Resources/bin` of symlinks to the `-cli.js` entrypoints, which skips prefix detection entirely, and every child gets that directory in front of `/usr/bin:/bin`. What is added is exactly node, npm and npx from this bundle — never the developer's shell PATH, and nothing a profile can point elsewhere.",
-              "`scripts/verify-servers.sh` now asserts it before signing, with `env -i` so an inherited PATH cannot pass the check on the developer's own npm. Every existing step ran the two binaries by absolute path, which is how a bundle that no child could shell out from passed all of them.",
-            ]),
-        ]),
-      Section(
-        name: "Changed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 3,
-            headline: "The npm catalog entry documents the variables it always read.",
-            body: [
-              "`NPM_BIN`, `NPM_TOTP_LABEL`, `NPM_TOTP_SECRET` and `NPM_TOTP_KEYCHAIN_SERVICE` are now in the profile editor, and `NPM_OTP_MODE` lists `totp` — the only mode that answers npm's second factor without a human, and therefore the only one an unattended publish or trusted-publisher batch can use. It was missing from the description, which made the mode undiscoverable from Bastion.",
-            ]),
-        ]),
-    ])
-
   /// Work that is written down but not shipped.
   ///
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  // swift-format-ignore
-  private static let unreleasedRelease: Release = Release(
-    version: "Unreleased",
-    date: "",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "A Stats pane, and the number nobody could see.",
-            body: [
-              "Every server pane already quoted its own tool list cost, and each one looked survivable alone; nothing added them up. The new pane ranks what each server costs a client on every connect, says what the write gate and loading on demand keep out of a context, and then — under a time range, because the two are different kinds of fact — shows calls, failures, response times and restarts over the last 7, 30 or 90 days. `ServerDetail` and `ClientDetail` grew the same figures scoped to one server and one client.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "A usage rollup, on disk and on by default.",
-            body: [
-              "Per day, per profile and per tool: how many calls, how many bytes came back, how long they took, how many failed, how many times a server restarted. Counts only, with no arguments, no results, no resource paths and no identifiers — which is what lets it be on by default where the activity log is not. Tens of kilobytes a day on a busy machine, kept ninety days, never uploaded. Settings ▸ Activity turns it off and deletes the file.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "`server_stats`",
-            body: [
-              ", a built-in tool returning the same figures for the calling profile, scoped the way `recent_activity` is and held to the same 16 KB reply budget. `status` gained one key saying whether counting is on and how much history stands behind it.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 3,
-            headline: "A refused tool call was recorded as a success.",
-            body: [
-              "A failure reaches the gateway either as a JSON-RPC `error` or as a result carrying `isError: true`, and the cheap pre-filter on the legacy-era path looked for the first spelling only — `isError` contains no lowercase `error`. Tool refusals are counted as failures now, and `make unit` holds the casing.",
-            ]),
-          Entry(
-            ordinal: 4,
-            headline: "The client pane's context bill claimed \"about\" for a figure it could not claim that for.",
-            body: [
-              "A listing read one page at a time makes every total built from it a floor. `partial` was read only as a trigger for the facade and never reached the sentence, which now says \"at least\" and fades the bar out rather than ending it.",
-            ]),
-        ]),
-      Section(
-        name: "Changed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 5,
-            headline: "Wording, in nine places, because a new file writes to disk by default.",
-            body: [
-              "\"Nothing recorded is written to disk unless you ask for it\" was true of the activity log and was read as being about the app. It is now \"no arguments and no results\", in the EULA, the README, `docs/servers.md`, the privacy page, two website components, `llms.txt`, the Log pane's own footer and the profile sheet. The EULA's §7(c) has a third paragraph for the rollup — and its existing \"with timings\" is true for the first time, since a per-call duration is measured now rather than a row stamp.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  static let unreleased: Release? = unreleasedRelease
+  static let unreleased: Release? = nil
   // </generated:changelog>
 }

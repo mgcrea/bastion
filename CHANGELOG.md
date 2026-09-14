@@ -4,10 +4,10 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.17.1` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.18.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.18.0] - 2026-09-14
 
 ### Added
 
@@ -28,7 +28,42 @@ are taken from this file, which is the curated summary.
   way `recent_activity` is and held to the same 16 KB reply budget. `status` gained one key saying
   whether counting is on and how much history stands behind it.
 
+- **Adding or removing a profile updates every client already wired to Bastion.** A client's config
+  used to be written only by _Configure_ and the `wire_client` tool, so a profile added anywhere
+  else left every client holding the previous list with nothing on screen to say so. A client
+  Bastion was never configured into is still left alone, and a rewrite that cannot land — a
+  read-only file, somebody else's entry in the way — is logged rather than failing the save. The
+  Clients pane goes on reporting what each file actually holds.
+
+- **Click a server row in the menu bar to find its profile.** The panel lists what is running as
+  `<profile> / <server>`; a click opens the main window on that server, scrolls the profile's row
+  into view and lights it briefly.
+
+- **A Help pane in Settings, and an About pane with more in it.** Bastion lives in the menu bar, so
+  the Help menu's links only existed while a window happened to be open; they have a pane of their
+  own now. About gained the app icon, the System and Model rows, and a button that copies all of it
+  for a bug report.
+
 ### Fixed
+
+- **A second profile of a server renamed the first one's entry in every client config.** The key
+  was a bare `<server>` until a second profile appeared, at which point both grew the profile name —
+  and nothing rewrote the configs already holding the old one, so the new profile stayed invisible
+  to every client until _Configure_ was pressed again. Every key is `<profile>-<server>` now, even
+  for a server with one profile, and configs written under the old scheme are renamed in place on
+  launch. The key is part of every tool name a client shows, so `mcp__shopify__…` becomes
+  `mcp__prod-shopify__…` — worth knowing if a client's permission rules name the old one.
+
+- **A profile name ending in a space could not be saved, and the sheet did not say why.** Saving
+  already trimmed the name, but the Save button and the missing-values line judged the raw field, so
+  a pasted handle with a trailing space left Save disabled with nothing on the sheet to explain it.
+  All three judge the trimmed name now.
+
+- **The EULA said the audit log is never written to disk.** That was true of the in-memory activity
+  log the sentence was written about, and not of the durable audit log, which is off by default and
+  writes under Application Support once turned on. §7(c) describes the two separately now, and the
+  privacy page, `llms.txt` and the website's screens section, which carried the same sentence, were
+  corrected with it.
 
 - **A refused tool call was recorded as a success.** A failure reaches the gateway either as a
   JSON-RPC `error` or as a result carrying `isError: true`, and the cheap pre-filter on the
@@ -49,7 +84,25 @@ are taken from this file, which is the curated summary.
   sheet. The EULA's §7(c) has a third paragraph for the rollup — and its existing "with timings"
   is true for the first time, since a per-call duration is measured now rather than a row stamp.
 
+- **The menu bar's gateway line is caption-sized.** It inherited body text and was the largest line
+  in the panel, bigger than the Servers header it sits above; it matches the sidebar and
+  Settings ▸ General now.
+
+- **Settings reads General, Activity, What's New, Updates, About, Help**, and a pane's heading stays
+  put while its cards scroll. The pane you last had open is remembered across the change.
+
 ### Internal
+
+- Settings is built on swift-support-kit's `SettingsScaffold` and `AboutSettingsPane`, which took the
+  package from 1.4.0 to 1.5.0.
+
+- A Debug build never rewrites client configs on a profile change, and neither does a check script
+  that spawns one: it keeps its own `profiles.json` but shares every config with the installed
+  Release app, and `make builtin` once left `checkro-bastion` entries in the real `~/.claude.json`
+  that way. `-autoWireClients YES` turns it back on, and a write that would change no bytes is
+  refused before it takes a backup, since every rewrite is now an unattended one.
+
+- `DemoSeed.version` is `1.18.0`, re-accepted across the six main-window plates.
 
 - `ToolCost.short` gained a millions tier. The statistics pane is the first caller to sum a month of
   result bytes rather than weigh one listing, and "1014.4k" is a figure the reader has to convert.
