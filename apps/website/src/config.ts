@@ -391,58 +391,73 @@ export const SOCIAL_CARD = {
 } as const;
 
 /**
- * The sibling app by the same studio, cross-linked from the homepage and the
- * footer. One constant feeds both, so the name, the URL and the icon cannot
- * drift between the two placements — which is the failure the r2/d1 pair has,
- * where the same URL is typed into two files.
+ * The sibling apps by the same studio, each given a card on the homepage. One
+ * constant feeds the cards, and the footer's `FOOTER_APPS` repeats the same URLs,
+ * so the name, the URL and the icon cannot drift within the card placement —
+ * which is the failure the r2/d1 pair has, where the same URL is typed into two
+ * files. Armada's site gives Bastion and Cupertino a card each in the same spot.
  *
- * There is no App Store URL and there is not going to be one: neither app is on
- * the store. Both sell through `/buy` and ship the build from GitHub.
+ * There is no App Store URL and there is not going to be one: none of the three
+ * apps is on the store. All sell through `/buy` and ship the build from GitHub.
  *
- * The pitch deliberately carries no surface count. Cupertino derives that from
- * its own `data/surfaces.ts`; a number typed out over here would be wrong the
+ * Cupertino's pitch deliberately carries no surface count. Cupertino derives that
+ * from its own `data/surfaces.ts`; a number typed out over here would be wrong the
  * day the next surface lands, in the one sentence on this site that describes a
  * product this site cannot see.
  *
- * It also does not claim the two interoperate. Cupertino's servers are wired to
- * clients by Cupertino's own app, nothing in either repo documents running them
- * under Bastion, and a cross-promo card is the worst possible place to invent an
- * integration.
+ * Neither pitch claims the apps interoperate. Cupertino's servers are wired to
+ * clients by Cupertino's own app, nothing in any of the repos documents running
+ * them under Bastion or Armada reading Bastion, and a cross-promo card is the
+ * worst possible place to invent an integration.
+ *
+ * The icons are each sibling's own `public/app-icon.svg`, copied into this site's
+ * `public/apps/`. Copied rather than hotlinked because astro.config.mjs sets
+ * `img-src 'self' data:`, so a cross-origin image is blocked with nothing on
+ * screen and nothing in the build log. They sit under `public/apps/` rather than
+ * the public root to keep hand-copied one-offs visibly apart from the three
+ * outputs `pnpm icons` writes — and nothing keeps these copies fresh, because
+ * that script only ever generates Bastion's own mark.
  */
-export const SIBLING_APP = {
-  name: "Cupertino",
-  tagline: "Your Apple apps, as MCP servers.",
-  pitch:
-    "Bastion supervises the servers you bring it. Cupertino is a set of them — Mail, Notes, Calendar, Messages and the rest of the Apple apps already on your Mac — behind a single Full Disk Access grant, held by a signed menu-bar app you can watch.",
-  url: "https://cupertino.mgcrea.io",
-  repo: "https://github.com/mgcrea/cupertino",
-  /**
-   * Cupertino's own `public/app-icon.svg`, copied into this site's `public/apps/`.
-   *
-   * Copied rather than hotlinked because astro.config.mjs sets `img-src 'self'
-   * data:`, so a cross-origin image is blocked with nothing on screen and
-   * nothing in the build log. It sits under `public/apps/` rather than the
-   * public root to keep a hand-copied one-off visibly apart from the three
-   * outputs `pnpm icons` writes — and nothing keeps this copy fresh, because
-   * that script only ever generates Bastion's own mark.
-   */
-  icon: "/apps/cupertino.svg",
-} as const;
+export const SIBLING_APPS = [
+  {
+    name: "Cupertino",
+    tagline: "Your Apple apps, as MCP servers.",
+    pitch:
+      "Bastion supervises the servers you bring it. Cupertino is a set of them — Mail, Notes, Calendar, Messages and the rest of the Apple apps already on your Mac — behind a single Full Disk Access grant, held by a signed menu-bar app you can watch.",
+    url: "https://cupertino.mgcrea.io",
+    repo: "https://github.com/mgcrea/cupertino",
+    icon: "/apps/cupertino.svg",
+  },
+  {
+    name: "Armada",
+    tagline: "Every coding agent, on one screen.",
+    pitch:
+      "A menu bar app for the agents on the other end of those servers: every Claude Code and Codex session on your Mac, what each one is doing, how full its context window is, and how much of each plan is left, read locally from what the agents already write to disk.",
+    url: "https://armada.mgcrea.io",
+    repo: "https://github.com/mgcrea/armada",
+    icon: "/apps/armada.svg",
+  },
+] as const;
 
 /**
  * The "More apps" column in the footer.
  *
- * Three, not nine. Every one of these sites is a subdomain of `mgcrea.io`, and a
+ * Four, not nine. Every one of these sites is a subdomain of `mgcrea.io`, and a
  * full mesh between all of them would read as a link farm rather than a
  * recommendation — so this is the short list a Bastion reader plausibly
- * also wants. Separate from `SIBLING_APP` above, which is the one app the
- * homepage gives a card of its own.
+ * also wants. The two `SIBLING_APPS` above lead it, since those are the apps
+ * the homepage gives a card of their own.
  */
 export const FOOTER_APPS = [
   {
     name: "Cupertino",
     url: "https://cupertino.mgcrea.io",
     blurb: "Your Apple apps as MCP servers, behind one Full Disk Access grant.",
+  },
+  {
+    name: "Armada",
+    url: "https://armada.mgcrea.io",
+    blurb: "Every Claude Code and Codex session on your Mac, in one menu bar window.",
   },
   {
     name: "DevPulse",
