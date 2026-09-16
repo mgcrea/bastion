@@ -356,21 +356,33 @@ final class ServerInstaller {
   /// How long npm gets before it is stopped.
   ///
   /// Generous — a cold cache on a slow link is genuinely slow — but finite,
-  /// which it was not. `readDataToEndOfFile` returns at EOF and the pipe reaches
-  /// EOF when the child exits, so a registry that accepted the connection and
-  /// then said nothing parked this forever. The visible symptom was worse than
-  /// the wait: `running[server.id]` is only cleared when the task returns, so
-  /// the guard in `install` refused every retry for the life of the app, and the
-  /// row sat on "Installing…" with no way to dismiss it.
+  /// which it was not. The read waited for EOF and npm does not exit while it
+  /// is still waiting on the network, so a registry that accepted the
+  /// connection and then said nothing parked this forever. The visible symptom
+  /// was worse than the wait: `running[server.id]` is only cleared when the
+  /// task returns, so the guard in `install` refused every retry for the life
+  /// of the app, and the row sat on "Installing…" with no way to dismiss it.
   nonisolated static let installTimeout: TimeInterval = 300
+
+  /// How long a stopped npm gets to exit on its own before it is killed.
+  nonisolated static let killGrace: TimeInterval = 5
+
+  /// How long to keep reading once the child has exited and nothing is
+  /// arriving. See `drain`.
+  nonisolated static let drainGrace: TimeInterval = 2
 
   /// Stop `process` if it is still running after `seconds`, and say so.
   ///
   /// `asyncAfter` rather than a `DispatchSourceTimer` because there is nothing
   /// to cancel: the closure retains what it needs, and once the child has
-  /// exited it does nothing at all. SIGTERM rather than SIGKILL — npm gets to
-  /// remove its own partial tree — and the EOF that follows is what releases the
-  /// thread blocked in `readDataToEndOfFile`.
+  /// exited it does nothing at all.
+  ///
+  /// SIGTERM first, so npm gets to remove its own partial tree, then SIGKILL
+  /// after `killGrace`. SIGTERM alone was the whole of it, and a child that
+  /// ignored it, or sat in a call that never returned to take it, ran on with
+  /// the install already reported as timed out. `isRunning` is what makes the
+  /// second signal safe: a child Foundation has not reaped still owns its pid,
+  /// so the kill cannot land on some other process that reused it.
   nonisolated private static func armWatchdog(
     _ process: Process, seconds: TimeInterval
   ) -> OSAllocatedUnfairLock<Bool> {
@@ -379,8 +391,63 @@ final class ServerInstaller {
       guard process.isRunning else { return }
       fired.withLock { $0 = true }
       process.terminate()
+      DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + killGrace) {
+        guard process.isRunning else { return }
+        kill(process.processIdentifier, SIGKILL)
+      }
     }
     return fired
+  }
+
+  /// Everything the child writes to `pipe`, read until EOF or until waiting for
+  /// one is pointless.
+  ///
+  /// This was `readDataToEndOfFile`, and EOF arrives only once EVERY holder of
+  /// the write end has closed it. Foundation closes the parent's copy at
+  /// launch, so that meant "when npm exits", until npm starts something of its
+  /// own: a lifecycle script, a `git` for a git dependency, anything that
+  /// outlives npm inherits the pipe and keeps the read open. The watchdog could
+  /// not end that wait, because it only signals the child it was given, and
+  /// that child had already exited.
+  ///
+  /// So once the child is gone, what is already in the pipe is still read (npm
+  /// writes its own output before it exits), and the read stops after
+  /// `drainGrace` of silence, or straight away if the watchdog fired.
+  nonisolated private static func drain(
+    _ pipe: Pipe, of process: Process, watchdog: OSAllocatedUnfairLock<Bool>
+  ) -> Data {
+    let fd = pipe.fileHandleForReading.fileDescriptor
+    var collected = Data()
+    var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+    var quietSince: Date?
+    while true {
+      var poller = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+      let ready = poll(&poller, 1, 200)
+      if ready < 0 {
+        if errno == EINTR { continue }
+        break
+      }
+      if ready > 0 {
+        let count = buffer.withUnsafeMutableBytes { read(fd, $0.baseAddress, $0.count) }
+        if count > 0 {
+          collected.append(contentsOf: buffer[..<count])
+          quietSince = nil
+          continue
+        }
+        if count < 0, errno == EINTR || errno == EAGAIN { continue }
+        break  // EOF: every writer has closed. Or a read error, which is final.
+      }
+      // Silence. Wait as long as the child lives; after that, only briefly.
+      guard !process.isRunning else { continue }
+      if watchdog.withLock({ $0 }) { break }
+      let now = Date()
+      if let quietSince {
+        if now.timeIntervalSince(quietSince) >= drainGrace { break }
+      } else {
+        quietSince = now
+      }
+    }
+    return collected
   }
 
   /// Install or re-install one server. Safe to call on something already there:
@@ -486,7 +553,7 @@ final class ServerInstaller {
 
   /// How many `npm --dry-run` subprocesses a check-all keeps in flight.
   ///
-  /// Not unbounded: `runCheck` blocks its thread on `readDataToEndOfFile` and
+  /// Not unbounded: `runCheck` blocks its thread on `drain` and
   /// `waitUntilExit`, so one task per server would park the whole cooperative
   /// pool on nine registry round trips and take the window down with it. Not
   /// one either — serial makes each check wait out the latency of the last for
@@ -643,7 +710,7 @@ final class ServerInstaller {
     // buffer holds, and waiting first would deadlock against a child blocked on
     // a write nobody is draining.
     let detail = String(
-      decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+      decoding: Self.drain(errors, of: process, watchdog: watchdog), as: UTF8.self)
     process.waitUntilExit()
 
     if watchdog.withLock({ $0 }) {
@@ -770,7 +837,7 @@ final class ServerInstaller {
 
     try process.run()
     let watchdog = armWatchdog(process, seconds: installTimeout)
-    let data = output.fileHandleForReading.readDataToEndOfFile()
+    let data = drain(output, of: process, watchdog: watchdog)
     process.waitUntilExit()
     // An update check that hung is "unknown", not "up to date": saying the
     // latter would be a claim about a registry that never answered.
