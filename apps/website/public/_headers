@@ -1,9 +1,20 @@
+# Cross-Origin-Opener-Policy: same-origin puts every page in its own browsing
+# context group, so a window it opens cannot reach back through window.opener
+# and a site that opens it cannot keep a handle on it. Nothing here needs the
+# opposite: /buy is a plain same-tab link to a redirect, every external link
+# already carries rel="noopener", and the feedback form posts with fetch.
+#
+# The Content-Security-Policy is deliberately NOT in this file. Astro emits it
+# per page as a <meta> tag carrying a sha256 for each inline script, and those
+# hashes change with the build, so a copy here would go stale on the next deploy
+# and start refusing the site's own scripts.
 /*
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Cross-Origin-Opener-Policy: same-origin
 
 # Everything under /_astro/ carries a content hash in its filename, so the URL
 # changes whenever the bytes do. Without this, Workers Assets serves them with

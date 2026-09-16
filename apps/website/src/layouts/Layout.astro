@@ -11,6 +11,12 @@ export interface Props {
   /** Describes the picture, not the product. Pass one with any custom `ogImage`. */
   ogImageAlt?: string;
   schema?: SchemaObject | SchemaObject[];
+  /**
+   * Keep the page out of search results. For a page nobody should land on from
+   * a search, like the 404: indexed, it is one more result competing with the
+   * real pages for the site's own name.
+   */
+  noindex?: boolean;
 }
 
 /**
@@ -32,6 +38,7 @@ const {
   ogImage = "/og-image.png",
   ogImageAlt = SOCIAL_CARD.alt,
   schema,
+  noindex = false,
 } = Astro.props;
 
 const canonicalHref = new URL(Astro.url.pathname, Astro.site).href;
@@ -54,6 +61,7 @@ const schemaEntries = Array.isArray(schema) ? schema : schema ? [schema] : [];
 
     <title>{title}</title>
     <meta name="description" content={description} />
+    {noindex && <meta name="robots" content="noindex" />}
     <link rel="canonical" href={canonicalHref} />
 
     <meta property="og:title" content={title} />
