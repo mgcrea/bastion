@@ -12,6 +12,18 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Read-only unless a job asks for more. Without this every job's GITHUB_TOKEN
+# gets the repository's default permissions, which can be read-write, so any
+# step in a check could push. `release-app` is the one job that writes, and it
+# says so itself.
+#
+# Third-party actions below are pinned to a full commit SHA, with the release
+# it was resolved from as a trailing comment. A tag is a pointer its owner can
+# move, and `release-app` runs those actions with a write token, the
+# notarization key and the Sparkle private key in reach.
+permissions:
+  contents: read
+
 jobs:
   # The manifest gate. Cheap, fast, and the reason `servers.json` is a source of
   # truth rather than a suggestion: without this, a generated copy can drift and
@@ -27,7 +39,7 @@ jobs:
       - name: Checkout 🛎️
         uses: actions/checkout@v5
       - name: Setup pnpm 🔧
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       # `24`, not `lts/*`: the app embeds Node 24 (NODE_VERSION in the Makefile),
       # and `lts/*` moves to the next major every October, which would put CI on
       # a runtime no shipped build has ever run.
@@ -98,7 +110,7 @@ jobs:
           # about the image format rather than about the checkout.
           lfs: true
       - name: Setup pnpm 🔧
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - name: Setup node 🔧
         uses: actions/setup-node@v6
         with:
@@ -148,7 +160,7 @@ jobs:
         uses: actions/checkout@v5
       - name: Setup pnpm 🔧
         if: steps.token.outputs.present == 'true'
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - name: Setup node 🔧
         if: steps.token.outputs.present == 'true'
         uses: actions/setup-node@v6
@@ -196,7 +208,7 @@ jobs:
           lfs: true
       - name: Setup pnpm 🔧
         if: steps.token.outputs.present == 'true'
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - name: Setup node 🔧
         if: steps.token.outputs.present == 'true'
         uses: actions/setup-node@v6
@@ -225,7 +237,7 @@ jobs:
       - name: Checkout 🛎️
         uses: actions/checkout@v5
       - name: Setup pnpm 🔧
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - name: Setup node 🔧
         uses: actions/setup-node@v6
         with:
@@ -336,7 +348,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup pnpm 🔧
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - name: Setup node 🔧
         uses: actions/setup-node@v6
         with:
