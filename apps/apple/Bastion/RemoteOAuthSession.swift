@@ -336,7 +336,10 @@ nonisolated final class RemoteOAuthSession: @unchecked Sendable {
       return request
     }()
 
-    let (status, json) = try await offMain { try self.sendJSON(request) }
+    // The bytes cross back rather than the dictionary: `[String: Any]` is not
+    // Sendable, and decoding it on this side costs nothing.
+    let (status, body, _) = try await offMain { try self.send(request) }
+    let json = Self.jsonObject(body)
     guard (200..<300).contains(status) else {
       throw RemoteOAuth.OAuthError.tokenFailed(
         (json["error_description"] as? String) ?? (json["error"] as? String) ?? "HTTP \(status)")
@@ -392,7 +395,11 @@ nonisolated final class RemoteOAuthSession: @unchecked Sendable {
 
   private func sendJSON(_ request: URLRequest) throws -> (Int, [String: Any]) {
     let (status, data, _) = try send(request)
-    let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
-    return (status, json)
+    return (status, Self.jsonObject(data))
+  }
+
+  /// A JSON object body, or empty for anything that is not one.
+  private static func jsonObject(_ data: Data) -> [String: Any] {
+    (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
   }
 }

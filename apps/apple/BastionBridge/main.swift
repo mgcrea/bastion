@@ -24,6 +24,7 @@
 // stdout is the JSON-RPC channel. Every diagnostic goes to stderr.
 
 import Foundation
+import Synchronization
 
 // Both things this writes to — its own stdout and stderr — belong to a process
 // that can exit first. SIGPIPE's default action would kill the bridge outright,
@@ -74,7 +75,7 @@ func die(_ message: String, code: Int32 = 1) -> Never {
 
 var profile: String?
 var server: String?
-var port = 8720
+var requestedPort = 8720
 
 for argument in CommandLine.arguments.dropFirst() {
   if argument.hasPrefix("--profile=") {
@@ -82,9 +83,15 @@ for argument in CommandLine.arguments.dropFirst() {
   } else if argument.hasPrefix("--server=") {
     server = String(argument.dropFirst("--server=".count))
   } else if argument.hasPrefix("--port=") {
-    port = Int(argument.dropFirst("--port=".count)) ?? port
+    requestedPort = Int(argument.dropFirst("--port=".count)) ?? requestedPort
   }
 }
+
+// A `let`, frozen once parsing is done. Top-level variables in `main.swift` are
+// main-actor isolated under Swift 6, and `gatewayIsUp` reads the port from a
+// nonisolated function; an immutable `Int` is Sendable and can be read from
+// anywhere, a `var` cannot.
+let port = requestedPort
 
 guard let profile, let server else {
   die("usage: bastion-bridge --profile=<name> --server=<id> [--port=8720]", code: 2)
@@ -175,6 +182,13 @@ func gatewayIsUp() -> Bool {
 /// item yet, so a stdio client launching its bridge is the one path that brings
 /// the gateway up on demand. A client configured with a plain `type: http` URL
 /// has no such path and needs Bastion already running.
+///
+/// **Bounded.** `open` returns once LaunchServices has taken the request, and
+/// nothing bounded how long that takes: a wedged `lsd`, or a first-launch
+/// prompt nobody can see, left `waitUntilExit` blocking forever, and with it
+/// the MCP host that spawned this bridge, which shows only a server that never
+/// starts. The gateway poll after this has its own deadline and does not need
+/// `open` to have finished; it needs Bastion to be listening.
 func launchApp() {
   let open = Process()
   open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
@@ -186,11 +200,23 @@ func launchApp() {
   }
   do {
     try open.run()
-    open.waitUntilExit()
   } catch {
     warn("could not launch Bastion: \(error.localizedDescription)")
+    return
+  }
+  let deadline = Date().addingTimeInterval(openTimeout)
+  while open.isRunning, Date() < deadline {
+    usleep(50_000)
+  }
+  if open.isRunning {
+    warn("`open` did not return within \(Int(openTimeout))s; waiting for the gateway anyway")
+    open.terminate()
   }
 }
+
+/// How long `open` gets. The same ten seconds the gateway poll allows a cold
+/// start, since `open` returning is only the first half of that start.
+let openTimeout: TimeInterval = 10
 
 if !gatewayIsUp() {
   warn("Bastion is not running; launching it")
@@ -336,44 +362,70 @@ func forward(_ line: Data) {
 /// written as its own line. That is all a stdio host needs for progress to
 /// work, and it is why Claude Desktop — the one client that cannot be handed a
 /// URL — is not left out of this.
+///
+/// URLSession's delegate protocols are `Sendable`, so this class is, and its
+/// state says so instead of being assumed: the mutable half sits in a `Mutex`,
+/// and the id is kept as bytes rather than as `Any`. The callbacks arrive one at
+/// a time on the session's delegate queue, so the lock is never contended; it is
+/// there because nothing in the type system knows about that queue.
 final class Exchange: NSObject, URLSessionDataDelegate {
-  private let id: Any?
-  private var status = 0
-  private var streaming = false
-  private var parser = ServerSentEvents.Parser()
-  private var buffered = Data()
-  private var wrote = false
+  /// The request's JSON-RPC id, as the JSON of the id alone. Decoded back only
+  /// to be written into an error frame. `nil` still means "no id at all", a
+  /// notification, which is not the same as an explicit `null`.
+  private let id: Data?
+  private let state = Mutex(State())
+
+  private struct State {
+    var status = 0
+    var streaming = false
+    var parser = ServerSentEvents.Parser()
+    var buffered = Data()
+    var wrote = false
+  }
 
   init(id: Any?) {
-    self.id = id
+    self.id = id.flatMap {
+      try? JSONSerialization.data(withJSONObject: $0, options: .fragmentsAllowed)
+    }
     super.init()
   }
 
   func urlSession(
     _ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse
   ) async -> URLSession.ResponseDisposition {
-    status = (response as? HTTPURLResponse)?.statusCode ?? 0
-    let contentType =
-      (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type") ?? ""
-    streaming = contentType.lowercased().contains("text/event-stream")
+    let http = response as? HTTPURLResponse
+    let status = http?.statusCode ?? 0
+    let contentType = http?.value(forHTTPHeaderField: "Content-Type") ?? ""
+    let streaming = contentType.lowercased().contains("text/event-stream")
+    state.withLock {
+      $0.status = status
+      $0.streaming = streaming
+    }
     return .allow
   }
 
   func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-    guard streaming else {
-      buffered.append(data)
-      return
+    // Collected under the lock, written outside it: `emit` takes the stdout
+    // lock and can block on a slow reader.
+    let payloads = state.withLock { state -> [Data] in
+      guard state.streaming else {
+        state.buffered.append(data)
+        return []
+      }
+      let ready = state.parser.feed(data).filter { !$0.isEmpty }
+      if !ready.isEmpty { state.wrote = true }
+      return ready
     }
-    for payload in parser.feed(data) where !payload.isEmpty {
-      wrote = true
-      emit(payload)
-    }
+    for payload in payloads { emit(payload) }
   }
 
   func urlSession(
     _ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?
   ) {
     defer { inFlight.leave() }
+    let id = self.id.flatMap {
+      try? JSONSerialization.jsonObject(with: $0, options: .fragmentsAllowed)
+    }
 
     if let error {
       // A notification has no id, so there is nobody to tell. Log it and move
@@ -392,13 +444,16 @@ final class Exchange: NSObject, URLSessionDataDelegate {
       return
     }
 
-    if streaming {
+    let (status, streaming, tail, wrote, buffered) = state.withLock { state in
       // A stream that ended without its trailing blank line still dispatched
       // its last event, which is where the response frame usually is.
-      for payload in parser.finish() where !payload.isEmpty {
-        wrote = true
-        emit(payload)
-      }
+      let tail = state.streaming ? state.parser.finish().filter { !$0.isEmpty } : []
+      if !tail.isEmpty { state.wrote = true }
+      return (state.status, state.streaming, tail, state.wrote, state.buffered)
+    }
+
+    if streaming {
+      for payload in tail { emit(payload) }
       if !wrote, id != nil {
         emitError(id: id, "Bastion streamed \(status) with no frames")
       }

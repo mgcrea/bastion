@@ -127,8 +127,8 @@ nonisolated final class Gateway: Sendable {
     // and with a shared instance that is now every other client's session too.
     _ = signal(SIGPIPE, SIG_IGN)
 
-    var chosen = UInt16(UserDefaults.standard.integer(forKey: "gatewayPort"))
-    if chosen == 0 { chosen = Self.defaultPort }
+    let stored = UInt16(UserDefaults.standard.integer(forKey: "gatewayPort"))
+    let chosen = stored == 0 ? Self.defaultPort : stored
     state.withLock { $0.port = chosen }
 
     do {

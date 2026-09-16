@@ -46,7 +46,11 @@ import os
 /// - Hands back the URL and nothing else. Every decision about it — the state
 ///   check above all — belongs to `RemoteOAuth`, which is where it can be
 ///   tested.
-nonisolated final class RemoteOAuthCallback {
+///
+/// Sendable, and checked rather than asserted: its state is two `let`s, a
+/// descriptor and the port it is bound to. That is what lets the flow wait on it
+/// off the main actor.
+nonisolated final class RemoteOAuthCallback: Sendable {
   enum CallbackError: LocalizedError {
     case cannotListen(String)
     case timedOut(seconds: Int)

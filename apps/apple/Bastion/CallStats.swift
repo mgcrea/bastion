@@ -247,7 +247,7 @@ nonisolated final class CallStats: Sendable {
   }
 
   private func mutateLife(
-    profile: String, server: String, _ body: (inout CallStatsRollup.LifeRow) -> Void
+    profile: String, server: String, _ body: @Sendable (inout CallStatsRollup.LifeRow) -> Void
   ) {
     state.withLock { table in
       guard table.writable else { return }

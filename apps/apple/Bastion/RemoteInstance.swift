@@ -61,7 +61,7 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
   private struct State {
     /// The one handshake, replayed to every client — the remote analogue of
     /// "the handshake happens once, at spawn".
-    var handshake: [String: Any]?
+    var handshake: SendableJSON<[String: Any]>?
     /// `Mcp-Session-Id`, if the server issued one. A server that does not is
     /// stateless and needs none.
     var session: String?
@@ -82,7 +82,7 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     /// Every tool upstream exposes, or nil for "not asked yet". `ToolFacade`
     /// cannot search a list it does not hold; `Supervisor.Instance.toolCatalog`
     /// says the rest, including why it is never written to disk.
-    var toolCatalog: [[String: Any]]?
+    var toolCatalog: SendableJSON<[[String: Any]]>?
   }
 
   private let state = OSAllocatedUnfairLock(initialState: State())
@@ -368,10 +368,10 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
   /// reply ever passes — so without this the detail pane would go blank for
   /// exactly the profiles where the number is most worth reading.
   private func ensureCatalog() throws -> [[String: Any]] {
-    if let held = state.withLock({ $0.toolCatalog }) { return held }
+    if let held = state.withLock({ $0.toolCatalog })?.value { return held }
     catalogGate.wait()
     defer { catalogGate.signal() }
-    if let held = state.withLock({ $0.toolCatalog }) { return held }
+    if let held = state.withLock({ $0.toolCatalog })?.value { return held }
 
     var collected: [[String: Any]] = []
     var cursor: String?
@@ -400,7 +400,8 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
         "stopped listing tools after \(pages) pages — the server keeps asking for another")
     }
     let catalog = collected
-    state.withLock { $0.toolCatalog = catalog }
+    let frozen = SendableJSON(catalog)
+    state.withLock { $0.toolCatalog = frozen }
     hostLog(key, .info, "catalog: \(catalog.count) tool(s) behind the facade")
     return catalog
   }
@@ -456,11 +457,11 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
   // MARK: - The handshake, once
 
   private func ensureHandshake() throws -> [String: Any] {
-    if let existing = state.withLock({ $0.handshake }) { return existing }
+    if let existing = state.withLock({ $0.handshake })?.value { return existing }
 
     handshakeGate.wait()
     defer { handshakeGate.signal() }
-    if let existing = state.withLock({ $0.handshake }) { return existing }
+    if let existing = state.withLock({ $0.handshake })?.value { return existing }
 
     let request: [String: Any] = [
       "jsonrpc": "2.0", "id": "bastion-init", "method": "initialize",
@@ -487,9 +488,11 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
       throw Supervisor.SupervisorError.startFailed("initialize returned no result")
     }
 
+    let frozen = SendableJSON(result)
+    let issued = response.sessionID
     state.withLock {
-      $0.handshake = result
-      if let issued = response.sessionID { $0.session = issued }
+      $0.handshake = frozen
+      if let issued { $0.session = issued }
     }
 
     // The same drift line the child case logs, and the same reason to want it:
@@ -559,9 +562,12 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
       let profileID = profile.id
       let allowWrites = profile.allowWrites
       let writes = facadeWriteTools(in: entries).count
+      // Counted here: the task runs on the main actor, and `entries` is not
+      // Sendable, so it may not follow.
+      let count = entries.count
       Task { @MainActor in
         ToolCostStore.shared.record(
-          profileID: profileID, bytes: bytes, toolCount: entries.count, partial: partial,
+          profileID: profileID, bytes: bytes, toolCount: count, partial: partial,
           version: nil, allowWrites: allowWrites, writeToolCount: writes)
       }
     }

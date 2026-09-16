@@ -55,7 +55,7 @@ enum AuditChain {
   ///
   /// A constant rather than an empty string so a file that begins with a
   /// truncated record cannot be mistaken for a file that begins at genesis.
-  static let genesis = "bastion-audit-v1-genesis"
+  nonisolated static let genesis = "bastion-audit-v1-genesis"
 
   enum Kind: String, Codable {
     case call, result, info, error

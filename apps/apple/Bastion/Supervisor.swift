@@ -316,7 +316,7 @@ nonisolated extension Supervisor {
       var pending: [Int: Waiter] = [:]
       var nextID = 1
       /// The child's `initialize` result, taken once at spawn.
-      var handshake: [String: Any]?
+      var handshake: SendableJSON<[String: Any]>?
       var clients: Set<String> = []
       /// Consecutive failures, for the backoff and the breaker.
       var failures = 0
@@ -343,7 +343,7 @@ nonisolated extension Supervisor {
       /// since moved on — so this is scoped to survive it: it lives on the
       /// instance, not on disk, and `childExited` clears it beside the handshake
       /// so a restarted child is never described by the dead one's tools.
-      var toolCatalog: [[String: Any]]?
+      var toolCatalog: SendableJSON<[[String: Any]]>?
       /// The idle-and-expiry sweep.
       ///
       /// In here rather than beside it as a bare `var` because `stop()` is
@@ -353,8 +353,12 @@ nonisolated extension Supervisor {
       var reaper: DispatchSourceTimer?
     }
 
-    private struct Waiter {
-      let clientID: Any?
+    /// Sendable because it crosses threads by design: the request's thread
+    /// stores it under `state`, and the reader, the reaper or the exit watcher
+    /// resumes it. The ids are JSON the client sent, so they travel as
+    /// `SendableJSON`, and every `resume` only records a result and signals.
+    private struct Waiter: Sendable {
+      let clientID: SendableJSON<Any>?
       let deadline: Date
       /// The log row this call is recorded in, so the reply can be attached to
       /// it. Correlating through `pending` rather than through a second table:
@@ -368,8 +372,8 @@ nonisolated extension Supervisor {
       /// and it is already emptied on reply, on expiry, on child death and on
       /// shutdown. A second map would be a second answer, with a fourth
       /// lifetime to get wrong.
-      let progress: (clientToken: Any, sink: ProgressSink)?
-      let resume: (Result<Data, Error>) -> Void
+      let progress: (clientToken: SendableJSON<Any>, sink: ProgressSink)?
+      let resume: @Sendable (Result<Data, Error>) -> Void
     }
 
     /// The manifest variables this profile's server marks secret.
@@ -895,9 +899,9 @@ nonisolated extension Supervisor {
       // The token sent upstream IS the internal id, so `pending` is the token
       // table as well as the id table and there is no second numbering to keep
       // in step with the first. `received` reverses it.
-      var carried: (clientToken: Any, sink: ProgressSink)?
+      var carried: (clientToken: SendableJSON<Any>, sink: ProgressSink)?
       if let progress, let clientToken = Dialect.requestedProgressToken(in: frame) {
-        carried = (clientToken, progress)
+        carried = (SendableJSON(clientToken), progress)
         frame = Dialect.rewriting(
           progressToken: Dialect.mintedProgressToken(for: internalID, like: clientToken),
           in: frame, at: .requestMeta)
@@ -906,7 +910,7 @@ nonisolated extension Supervisor {
       let outcome = OSAllocatedUnfairLock<Result<Data, Error>?>(initialState: nil)
       let semaphore = DispatchSemaphore(value: 0)
       let waiter = Waiter(
-        clientID: clientID,
+        clientID: clientID.map { SendableJSON($0) },
         deadline: Date().addingTimeInterval(Self.callTimeout),
         logID: logID,
         progress: carried
@@ -1022,12 +1026,12 @@ nonisolated extension Supervisor {
     /// a set of tools that have silently ceased to exist — which is the one way
     /// this feature could lose something rather than just cost something.
     private func ensureCatalog() throws -> [[String: Any]] {
-      if let held = state.withLock({ $0.toolCatalog }) { return held }
+      if let held = state.withLock({ $0.toolCatalog })?.value { return held }
       catalogGate.wait()
       defer { catalogGate.signal() }
       // Again, inside the gate: the walk this thread queued behind may have been
       // the walk it was about to start.
-      if let held = state.withLock({ $0.toolCatalog }) { return held }
+      if let held = state.withLock({ $0.toolCatalog })?.value { return held }
 
       var collected: [[String: Any]] = []
       var cursor: String?
@@ -1054,7 +1058,8 @@ nonisolated extension Supervisor {
           "stopped listing tools after \(pages) pages — the server keeps asking for another")
       }
       let catalog = collected
-      state.withLock { $0.toolCatalog = catalog }
+      let frozen = SendableJSON(catalog)
+      state.withLock { $0.toolCatalog = frozen }
       hostLog(key, .info, "catalog: \(catalog.count) tool(s) behind the facade")
       return catalog
     }
@@ -1166,7 +1171,7 @@ nonisolated extension Supervisor {
     /// client's id.
     private func handshakeReply(to clientID: Any, from request: [String: Any]) throws -> Data {
       try ensureRunning()
-      guard let result = state.withLock({ $0.handshake }) else {
+      guard let result = state.withLock({ $0.handshake })?.value else {
         throw SupervisorError.startFailed("the server did not complete its handshake")
       }
       return try encode(["jsonrpc": "2.0", "id": clientID, "result": result])
@@ -1180,7 +1185,7 @@ nonisolated extension Supervisor {
     /// only the child can say.
     private func discoverReply(to clientID: Any) throws -> Data {
       try ensureRunning()
-      guard let handshake = state.withLock({ $0.handshake }) else {
+      guard let handshake = state.withLock({ $0.handshake })?.value else {
         throw SupervisorError.startFailed("the server did not complete its handshake")
       }
       let result = Dialect.discoverResult(fromHandshake: handshake, serverID: server.id)
@@ -1240,7 +1245,8 @@ nonisolated extension Supervisor {
       // The handshake is Bastion's own request, not a client's, so there is no
       // log row for its reply to attach to and no client to report progress to.
       let waiter = Waiter(
-        clientID: id, deadline: Date().addingTimeInterval(30), logID: nil, progress: nil
+        clientID: SendableJSON<Any>(id), deadline: Date().addingTimeInterval(30), logID: nil,
+        progress: nil
       ) { result in
         outcome.withLock { current in
           guard current == nil else { return }
@@ -1265,7 +1271,8 @@ nonisolated extension Supervisor {
         throw SupervisorError.startFailed("the server's initialize reply was not a result")
       }
 
-      state.withLock { $0.handshake = payload }
+      let frozen = SendableJSON(payload)
+      state.withLock { $0.handshake = frozen }
       try write([
         "jsonrpc": "2.0", "method": "notifications/initialized",
       ])
@@ -1332,17 +1339,21 @@ nonisolated extension Supervisor {
         // the full walk there, which is the right amount of work in the rare
         // case and none at all in the common one.
         if payload["nextCursor"] == nil {
-          self?.state.withLock { $0.toolCatalog = entries }
+          let frozen = SendableJSON(entries)
+          self?.state.withLock { $0.toolCatalog = frozen }
         }
         let bytes = entries.reduce(0) { $0 + ToolCost.bytes(of: $1) }
         // Both of `WriteGate`'s sources, so a view can later tell "no writes
         // here" from "Bastion cannot tell" — see `ToolCostStore.Measurement`.
         let writes = Set(declaredWrites).union(WriteGate.annotatedWriteTools(in: entries)).count
+        // Read here rather than inside the task: the task runs on the main
+        // actor, and neither dictionary is Sendable, so neither may follow it.
+        let count = entries.count
+        let partial = payload["nextCursor"] != nil
         Task { @MainActor in
           ToolCostStore.shared.record(
-            profileID: profileID, bytes: bytes, toolCount: entries.count,
-            partial: payload["nextCursor"] != nil, version: version, allowWrites: allowWrites,
-            writeToolCount: writes)
+            profileID: profileID, bytes: bytes, toolCount: count, partial: partial,
+            version: version, allowWrites: allowWrites, writeToolCount: writes)
         }
       }
       state.withLock { $0.pending[id] = waiter }
@@ -1405,7 +1416,7 @@ nonisolated extension Supervisor {
           let carried = state.withLock({ $0.pending[requestID]?.progress })
         {
           let restored = Dialect.rewriting(
-            progressToken: carried.clientToken, in: frame, at: .notificationParams)
+            progressToken: carried.clientToken.value, in: frame, at: .notificationParams)
           if let payload = try? JSONSerialization.data(withJSONObject: restored) {
             // Outside the lock, deliberately. This ends in a socket write, and
             // `state` is contended by every other thread in this class — a
@@ -1437,7 +1448,7 @@ nonisolated extension Supervisor {
       // and must not start now: a client that saw an id it did not send would
       // treat the response as unsolicited and drop it.
       if let clientID = waiter.clientID {
-        frame["id"] = clientID
+        frame["id"] = clientID.value
       } else {
         frame.removeValue(forKey: "id")
       }

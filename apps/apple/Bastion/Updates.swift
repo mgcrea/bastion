@@ -27,6 +27,11 @@ final class UpdateController: NSObject {
 
   private var controller: SPUStandardUpdaterController?
   private var idleWatch: Timer?
+  /// Sparkle's install handler while `idleWatch` waits to call it. Held here
+  /// rather than captured by the timer, whose block is `@Sendable` when the
+  /// handler is not; both are only touched on the main actor, which is also
+  /// where Sparkle requires the handler to be called.
+  private var pendingInstall: (() -> Void)?
 
   private(set) var isChecking = false
   private(set) var lastCheck: Date?
@@ -91,6 +96,7 @@ final class UpdateController: NSObject {
   fileprivate func installWhenIdle(_ install: @escaping () -> Void) {
     let deadline = Date().addingTimeInterval(60)
     idleWatch?.invalidate()
+    pendingInstall = install
     idleWatch = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { timer in
       let inFlight = Supervisor.shared.inFlightCount
       guard inFlight == 0 || Date() >= deadline else { return }
@@ -99,11 +105,26 @@ final class UpdateController: NSObject {
         hostLog("update", .info, "installing with \(inFlight) request(s) still in flight")
       }
       Task { @MainActor in
-        UpdateController.shared.idleWatch = nil
-        install()
+        let controller = UpdateController.shared
+        controller.idleWatch = nil
+        let install = controller.pendingInstall
+        controller.pendingInstall = nil
+        install?()
       }
     }
   }
+}
+
+/// Sparkle's install handler, on its way to the main actor.
+///
+/// `@unchecked` because the handler is an Objective-C block and has no way to
+/// say it is Sendable. It is moved exactly once, from the delegate callback to
+/// the main actor, and only ever called there, which is also where Sparkle
+/// requires it to be called; nothing touches it in between. `assumeIsolated`
+/// in the callback would avoid the box, and would crash an update the day
+/// Sparkle calls the delegate off the main thread.
+nonisolated private struct InstallHandler: @unchecked Sendable {
+  let run: () -> Void
 }
 
 extension UpdateController: SPUUpdaterDelegate {
@@ -131,7 +152,8 @@ extension UpdateController: SPUUpdaterDelegate {
     let inFlight = Supervisor.shared.inFlightCount
     guard inFlight > 0 else { return false }
     hostLog("update", .info, "update ready — waiting for \(inFlight) request(s) to finish")
-    Task { @MainActor in UpdateController.shared.installWhenIdle(installHandler) }
+    let handler = InstallHandler(run: installHandler)
+    Task { @MainActor in UpdateController.shared.installWhenIdle(handler.run) }
     return true
   }
 

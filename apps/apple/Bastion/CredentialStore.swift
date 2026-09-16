@@ -330,8 +330,11 @@ nonisolated enum GatewayToken {
     // answering "unknown token" would tell a client its credential is wrong
     // when the truth is that this app cannot read its own.
     if map.isEmpty && !clients.isEmpty { return nil }
-    cache.withLock { $0 = (at: now, map: map) }
-    return map
+    // A `let` for the lock's closure, which would otherwise capture the
+    // variable rather than the finished map.
+    let snapshot = map
+    cache.withLock { $0 = (at: now, map: snapshot) }
+    return snapshot
   }
 
   /// Which client, if any, this token belongs to.

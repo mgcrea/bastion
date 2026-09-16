@@ -14,7 +14,7 @@ import Foundation
 ///    a JSON-RPC error. Anything checking only the JSON-RPC layer sees success.
 /// 2. The useful payload is JSON *encoded as text* inside `content`, so it
 ///    takes two decodes. A caller that stops after one gets a string.
-enum ToolReply {
+nonisolated enum ToolReply {
 
   enum ReplyError: LocalizedError {
     case malformed

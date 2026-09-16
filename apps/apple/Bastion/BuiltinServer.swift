@@ -258,12 +258,14 @@ nonisolated enum BuiltinServer {
     guard let name = params["name"] as? String else {
       return errorResult("tools/call needs a tool name")
     }
-    let arguments = params["arguments"] as? [String: Any] ?? [:]
+    // Frozen for the trip to the main actor: the client's arguments are JSON,
+    // and `[String: Any]` on its own may not cross.
+    let arguments = SendableJSON(params["arguments"] as? [String: Any] ?? [:])
 
     do {
       let value = try onMain {
         try BuiltinTools.invoke(
-          name: name, arguments: arguments, allowWrites: profile.allowWrites, caller: key)
+          name: name, arguments: arguments.value, allowWrites: profile.allowWrites, caller: key)
       }
       let text: String
       if let string = value as? String {
@@ -362,10 +364,17 @@ nonisolated enum BuiltinServer {
   /// The cost that is already real: `invoke` does file writes, Keychain writes
   /// and `ServerInstaller` bookkeeping while holding the main thread, so a
   /// management call is as slow as the slowest thing the UI is doing.
+  ///
+  /// Every result is JSON (the tool declarations, a tool's reply), built on the
+  /// main actor and read on the connection thread, so it crosses in a
+  /// `SendableJSON`, whose comment says why that is sound. Nothing that is not
+  /// JSON may be returned through here.
   private static func onMain<T>(_ body: @MainActor () throws -> T) rethrows -> T {
     if Thread.isMainThread {
-      return try MainActor.assumeIsolated(body)
+      return try MainActor.assumeIsolated { SendableJSON(try body()) }.value
     }
-    return try DispatchQueue.main.sync { try MainActor.assumeIsolated(body) }
+    return try DispatchQueue.main.sync {
+      try MainActor.assumeIsolated { SendableJSON(try body()) }
+    }.value
   }
 }

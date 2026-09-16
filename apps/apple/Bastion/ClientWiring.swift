@@ -406,7 +406,7 @@ enum ClientWiring {
   /// `ClientWiringMerge` already takes, which is the point of the shape: the
   /// whole policy layer -- `isOurs`, `state`, `audit`, `collisions`,
   /// `foreignEntries` -- never learns that one of these files is TOML.
-  struct Config {
+  nonisolated struct Config {
     let servers: [String: Any]
     /// The whole document, for the one question only Claude Code's file can
     /// answer. `nil` for TOML: Codex's project scope is a `.codex/config.toml`

@@ -54,18 +54,18 @@ final class AuditLog {
 
   // MARK: - Settings
 
-  static let enabledKey = "auditEnabled"
-  static let payloadsKey = "auditPayloads"
-  static let maxDaysKey = "auditMaxDays"
-  static let maxMegabytesKey = "auditMaxMegabytes"
+  nonisolated static let enabledKey = "auditEnabled"
+  nonisolated static let payloadsKey = "auditPayloads"
+  nonisolated static let maxDaysKey = "auditMaxDays"
+  nonisolated static let maxMegabytesKey = "auditMaxMegabytes"
 
   /// Absence means off, for both. An audit log that switched itself on would
   /// be writing a file nobody asked for out of what is otherwise memory.
   nonisolated static var isEnabled: Bool { UserDefaults.standard.bool(forKey: enabledKey) }
   nonisolated static var recordsPayloads: Bool { UserDefaults.standard.bool(forKey: payloadsKey) }
 
-  static let defaultMaxDays = 30
-  static let defaultMaxMegabytes = 100
+  nonisolated static let defaultMaxDays = 30
+  nonisolated static let defaultMaxMegabytes = 100
 
   nonisolated static var maxDays: Int {
     let set = UserDefaults.standard.integer(forKey: maxDaysKey)
@@ -102,7 +102,7 @@ final class AuditLog {
   /// What is actually on disk, as the writer knows it. See "When a write
   /// fails" above. Seeded by `open`, reset by `clear`, advanced only by a
   /// write that returned.
-  private struct Disk {
+  nonisolated private struct Disk {
     var seq = 0
     var head = AuditChain.genesis
     var failing = false
