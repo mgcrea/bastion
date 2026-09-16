@@ -163,7 +163,12 @@ final class ServerStore {
     /// the "not installed" state where it can be seen and fixed, not crash the
     /// app on launch.
     var transport: BastionServer.Transport {
-      if let url, let endpoint = URL(string: url), endpoint.scheme == "https" {
+      // Any URL makes this a remote row, whatever its scheme. Judging the
+      // scheme here would turn `http://…` into a package with an empty name,
+      // and the refusal the user saw would be about npm rather than about the
+      // URL they typed. `RemoteEndpoint` refuses it, with the right sentence,
+      // at save time and again before every request.
+      if let url, let endpoint = URL(string: url) {
         return .remote(endpoint: endpoint)
       }
       return .child(
@@ -471,6 +476,9 @@ final class ServerStore {
     // `fetch(whatever_you_typed)` are the same hole wearing two transports, and
     // the list is the one place either can be closed before anything reaches
     // the supervisor.
+    if let url = definition.url, URL(string: url) == nil {
+      throw StoreError.unusableEndpoint("'\(url)' is not a URL")
+    }
     switch definition.transport {
     case .child(let package):
       guard Self.isValidPackage(package.npmName) else {
