@@ -327,11 +327,18 @@ sign: ## Sign the Release bundle (Developer ID if present, else Apple Developmen
 		| grep -q 'TeamIdentifier=$(TEAM_ID)' \
 		|| { echo "  Sparkle is not signed by $(TEAM_ID) — library validation will reject it"; exit 1; }; \
 		echo "  Sparkle signed by $(TEAM_ID)"; } || true
-	@# A build whose public key is empty cannot verify an appcast, so Sparkle
+	@# A build whose public key is not a key cannot verify an appcast, so Sparkle
 	@# refuses every update it is offered. Safe, but silently un-updatable, and
 	@# the only moment anyone would notice is the release that needed to ship.
-	@/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$(RELEASE_APP)/Contents/Info.plist" 2>/dev/null \
-		| grep -q . || echo "  !! SUPublicEDKey is empty — this build can never be updated. Run 'make sparkle-keys'."
+	@# So this fails rather than warns. It used to print a line for an EMPTY key
+	@# only, and a truncated or mispasted one went through without a word.
+	@# 44 characters of base64 ending in one `=` is a raw 32-byte ed25519 key,
+	@# the only shape Sparkle reads; whether it is the RIGHT key is what
+	@# `appcast` checks, by verifying a signature against it.
+	@key=$$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$(RELEASE_APP)/Contents/Info.plist" 2>/dev/null); \
+	[ $${#key} -eq 44 ] && printf '%s\n' "$$key" | grep -Eq '^[A-Za-z0-9+/]{43}=$$' \
+		|| { echo "  !! SUPublicEDKey '$$key' is not a base64 ed25519 public key, so this build could never be updated. Run 'make sparkle-keys'." >&2; exit 1; }; \
+	echo "  SUPublicEDKey is a well-formed ed25519 public key"
 	@echo "  size: $$(du -sh "$(RELEASE_APP)" | cut -f1)"
 
 # Run once, ever. The private key goes into the login keychain and the public key
@@ -371,17 +378,24 @@ sparkle-keys: sparkle ## Generate or reuse the EdDSA update-signing key
 # into every binary ever shipped, so it has to be a URL that outlives any decision
 # about where files live. It previously wrote into the site and pointed at
 # bastion.mgcrea.io/releases/Bastion-<version>.zip, a path nothing serves.
-# The notes are the top CHANGELOG section rendered to HTML by
-# scripts/changelog-notes.mjs, because Sparkle renders the description as HTML
-# and used to be handed raw markdown, asterisks and all. The renderer escapes
-# `]]>`, and xmllint refuses a feed that is not well-formed rather than letting
-# every user's updater discover it.
+# The notes are the CHANGELOG section for the version inside the bundle, rendered
+# to HTML by scripts/changelog-notes.mjs, because Sparkle renders the description
+# as HTML and used to be handed raw markdown, asterisks and all. Selected by
+# version and not by position, since the first section is `[Unreleased]`
+# whenever the head was not retitled, and with `### Internal` left out. The
+# script fails on a missing or empty section, the renderer escapes `]]>`, and
+# xmllint refuses a feed that is not well-formed rather than letting every
+# user's updater discover it.
 # The update signature comes from the keychain on a developer's Mac and from
 # $SPARKLE_ED_PRIVATE_KEY in CI, which has no keychain to have generated one in.
 # Both produce the same signature over the same bytes, so the feed stays
 # reproducible either way — and the failure that used to be silent is now a
 # hard stop: sign_update printing nothing left `sparkle:edSignature=""` in a
 # well-formed feed that xmllint happily accepted and every updater refused.
+# Two more stops behind it. The extracted value must be exactly one base64
+# ed25519 signature, and it must verify over the zip against the SUPublicEDKey
+# in the built bundle (scripts/verify-update-signature.mjs): a signature from any other
+# key is just as well-formed and just as refused.
 # `stat` is called BSD-first, GNU-second: Homebrew's coreutils puts a GNU `stat`
 # ahead of /usr/bin on many machines, where `-f%z` fails with "invalid option"
 # and the enclosure came out as length="" — a malformed appcast whose only
@@ -412,10 +426,21 @@ appcast: sparkle ## Sign the release zip and write a one-item appcast
 		: "# locally without exporting the private key to do it."; \
 		raw=$$($(SPARKLE_TOOLS)/sign_update apps/apple/.build/Bastion.zip); \
 	fi; \
-	signature=$$(printf '%s' "$$raw" | sed 's/.*sparkle:edSignature="\([^"]*\)".*/\1/'); \
-	test -n "$$signature" && [ "$$signature" != "$$raw" ] \
-		|| { echo "  !! sign_update produced no edSignature; not shipping a feed" >&2; exit 1; }; \
-	notes=$$(node scripts/changelog-notes.mjs CHANGELOG.md); \
+	signature=$$(printf '%s\n' "$$raw" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p'); \
+	: "# Exactly one signature, in the shape of one. The extraction is a line"; \
+	: "# match, so two matching lines give two values joined by a newline, and"; \
+	: "# the old non-empty test passed anything at all. 88 characters with no"; \
+	: "# newline in them is one 64-byte ed25519 signature in base64."; \
+	[ $${#signature} -eq 88 ] && printf '%s\n' "$$signature" | grep -Eq '^[A-Za-z0-9+/]{86}==$$' \
+		|| { echo "  !! sign_update did not produce exactly one ed25519 edSignature; not shipping a feed" >&2; exit 1; }; \
+	: "# Signed by the key this bundle will check it with. sign_update uses"; \
+	: "# whichever private key it is handed, and nothing else ties that key to"; \
+	: "# SUPublicEDKey."; \
+	key=$$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$(RELEASE_APP)/Contents/Info.plist"); \
+	node scripts/verify-update-signature.mjs apps/apple/.build/Bastion.zip "$$signature" "$$key" \
+		|| { echo "  !! the update signature does not verify against SUPublicEDKey; not shipping a feed" >&2; exit 1; }; \
+	notes=$$(node scripts/changelog-notes.mjs "$$version" CHANGELOG.md) \
+		|| { echo "  !! no release notes for $$version in CHANGELOG.md; not shipping a feed" >&2; exit 1; }; \
 	printf '%s\n' \
 		'<?xml version="1.0" encoding="utf-8"?>' \
 		'<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">' \

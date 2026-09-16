@@ -1,10 +1,10 @@
-// Tests for the CHANGELOG parser and the appcast's HTML renderer.
+// Tests for the CHANGELOG parser, its two renderers and `changelog-notes.mjs`.
 //
-// The failure these guard against is silent in both directions. Two consumers
-// read this parse — the Sparkle appcast every user sees when they update, and
-// the generated What's New pane inside the app — and a shape neither anticipated
-// does not crash: it drops a bullet from one of them while the other keeps
-// rendering. Nobody notices for a release or two.
+// The failure these guard against is silent in both directions. Three consumers
+// read this parse — the Sparkle appcast every user sees when they update, the
+// GitHub release body, and the generated What's New pane inside the app — and a
+// shape one of them did not anticipate does not crash: it drops a bullet from one
+// while the others keep rendering. Nobody notices for a release or two.
 //
 // The fixture below is not a tidy example. It is every awkward shape the real
 // CHANGELOG.md actually contains, each of which broke something on the way in:
@@ -14,14 +14,18 @@
 //   - a bold headline with a code span inside it
 //   - a bullet with a second paragraph after a blank line
 //   - a bare number, which the placeholder restoration once ate as an index
+//   - an `### Internal` section, which 1.18.0 published to every update dialog
+//     and release page because only the pane's generator knew to drop it
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { parse, renderHTML } from "./changelog.mjs";
+import { HIDDEN_SECTIONS, parse, renderHTML, renderMarkdown, userFacing } from "./changelog.mjs";
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
@@ -51,6 +55,10 @@ Not every fix here is a bullet; this line is the group's own lead.
 ### Notes
 
 - No headline on this one at all.
+
+### Internal
+
+- **CI.** Repo-facing prose nobody updating the app should read.
 
 ## [1.0.0] - 2026-01-31
 
@@ -105,6 +113,21 @@ describe("parse", () => {
   });
 });
 
+describe("userFacing", () => {
+  it("drops the hidden sections and keeps the rest in order", () => {
+    const [, release] = parse(FIXTURE);
+    assert.deepEqual(
+      release.groups.map((g) => g.name),
+      ["Fixed", "Notes", "Internal"],
+    );
+    assert.deepEqual(
+      userFacing(release).groups.map((g) => g.name),
+      ["Fixed", "Notes"],
+    );
+    assert.ok(HIDDEN_SECTIONS.has("Internal"));
+  });
+});
+
 describe("renderHTML", () => {
   const [, release] = parse(FIXTURE);
   const html = renderHTML(release);
@@ -129,12 +152,95 @@ describe("renderHTML", () => {
     );
   });
 
+  it("leaves the Internal section out", () => {
+    assert.doesNotMatch(html, /Internal|Repo-facing/);
+  });
+
   it("does not eat a bare number as a code-span placeholder", () => {
     // The placeholder is NUL-delimited for exactly this reason. With spaces,
     // ` 400 ` read as placeholder 400 and rendered as the string "undefined"
     // in the release notes every user sees.
     assert.match(html, /answers 400 and/);
     assert.doesNotMatch(html, /undefined/);
+  });
+});
+
+describe("renderMarkdown", () => {
+  const [, release] = parse(FIXTURE);
+
+  it("renders the whole section exactly, one line per paragraph", () => {
+    assert.equal(
+      renderMarkdown(release),
+      [
+        "### Fixed",
+        "Not every fix here is a bullet; this line is the group's own lead.",
+        "- **A server that shells out to `npm` could not find it.** The gateway now answers 400 and keeps serving.",
+        "  A second paragraph, after a blank line.",
+        "- **Plain.** One line only.",
+        "### Notes",
+        "- No headline on this one at all.",
+      ].join("\n\n"),
+    );
+  });
+
+  it("keeps a release's own lead above its sections", () => {
+    const first = parse(FIXTURE).at(-1);
+    assert.equal(
+      renderMarkdown({ ...first, lead: ["First release."] }).split("\n")[0],
+      "First release.",
+    );
+  });
+});
+
+/** Run `body` with `text` written to a throwaway CHANGELOG.md. */
+const withFixture = (text, body) => {
+  const dir = mkdtempSync(join(tmpdir(), "changelog-notes-"));
+  try {
+    const file = join(dir, "CHANGELOG.md");
+    writeFileSync(file, text);
+    body(file);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+};
+
+describe("changelog-notes.mjs", () => {
+  const cli = join(root, "scripts/changelog-notes.mjs");
+  const run = (...args) => spawnSync(process.execPath, [cli, ...args], { encoding: "utf8" });
+
+  it("takes the section for the version asked for, not the first one", () => {
+    // `[Unreleased]` sits on top of the fixture. The script used to take it.
+    withFixture(FIXTURE, (file) => {
+      const html = run("1.2.0", file);
+      assert.equal(html.status, 0, html.stderr);
+      assert.match(html.stdout, /could not find it/);
+      assert.doesNotMatch(html.stdout, /In flight|Internal/);
+
+      const markdown = run("--markdown", "1.2.0", file);
+      assert.equal(markdown.status, 0, markdown.stderr);
+      assert.match(markdown.stdout, /^### Fixed$/m);
+      assert.doesNotMatch(markdown.stdout, /In flight|Internal|<h3>/);
+    });
+  });
+
+  it("fails on a version with no section", () => {
+    withFixture(FIXTURE, (file) => {
+      const result = run("1.1.0", file);
+      assert.equal(result.status, 1);
+      assert.equal(result.stdout, "");
+    });
+  });
+
+  it("fails on a section that holds only what users never see", () => {
+    const internalOnly = "## [2.0.0] - 2026-05-01\n\n### Internal\n\n- **CI.** Only this.\n";
+    withFixture(internalOnly, (file) => {
+      assert.equal(run("2.0.0", file).status, 1);
+      assert.equal(run("--markdown", "2.0.0", file).status, 1);
+    });
+  });
+
+  it("fails without a version", () => {
+    assert.equal(run().status, 2);
   });
 });
 
@@ -149,6 +255,13 @@ describe("the real CHANGELOG.md", () => {
       assert.match(release.date, /^\d{4}-\d{2}-\d{2}$/);
       assert.ok(release.groups.length > 0, `${release.version} has no sections`);
     }
+  });
+
+  it("keeps Internal out of both renderings of a release that has one", () => {
+    const release = releases.find((r) => r.groups.some((g) => g.name === "Internal"));
+    assert.ok(release, "no release with an Internal section left to check against");
+    assert.doesNotMatch(renderHTML(release), /<h3>Internal<\/h3>/);
+    assert.doesNotMatch(renderMarkdown(release), /^### Internal$/m);
   });
 
   it("renders the top section to HTML with no markdown left over", () => {

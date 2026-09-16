@@ -6,8 +6,9 @@
 // wrote, and the only way to guarantee that is to have one of them come out of
 // the other with a `--check` gate behind it.
 //
-// The parse is shared with `changelog-notes.mjs`, which renders the top section
-// as HTML for the Sparkle appcast. One file, one parser — see the header of
+// The parse is shared with `changelog-notes.mjs`, which renders the tagged
+// version's section as HTML for the Sparkle appcast and as markdown for the
+// GitHub release body. One file, one parser — see the header of
 // `lib/changelog.mjs` for why that matters more than it looks.
 //
 // ## What is dropped, and where
@@ -16,7 +17,9 @@
 // the binary and the decision is visible where the data is discarded:
 //
 //   - `### Internal` sections. Repo-facing prose about CI and generators; a user
-//     asking what changed in the app gets nothing from it.
+//     asking what changed in the app gets nothing from it. The list is
+//     `HIDDEN_SECTIONS` in `lib/changelog.mjs`, because the appcast and the
+//     release body have to leave out exactly the same sections.
 //   - Everything past the most recent `SHOWN` releases. This is the pane you
 //     open after updating, not an archive.
 //
@@ -24,7 +27,9 @@
 // and shown only in debug builds. A generator that silently discarded it would
 // be one whose --check could not tell you what went missing, and it genuinely
 // describes what a `make run` build contains — it just is not true of anything
-// shipped, and CI already asserts the CHANGELOG head equals the release tag.
+// shipped. The tag build refuses a CHANGELOG whose first `## [` heading, of any
+// kind, is not the tag's version, so a release cannot be cut with
+// `[Unreleased]` still on top.
 //
 //   node scripts/generate-changelog.mjs            # write
 //   node scripts/generate-changelog.mjs --check    # verify, write nothing
@@ -32,7 +37,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { parse } from "./lib/changelog.mjs";
+import { parse, userFacing } from "./lib/changelog.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const CHECK = process.argv.includes("--check");
@@ -41,9 +46,6 @@ const read = (rel) => readFileSync(join(ROOT, rel), "utf8");
 
 /** How many released versions reach the app. Raising it is this line. */
 const SHOWN = 5;
-
-/** Sections that exist for the repository rather than for the user. */
-const HIDDEN_SECTIONS = new Set(["Internal"]);
 
 const BANNER = "generated from CHANGELOG.md by `make changelog` — do not edit by hand";
 
@@ -71,9 +73,9 @@ const all = parse(read("CHANGELOG.md"));
 
 const visible = (release) => ({
   ...release,
-  sections: release.groups
-    .filter((group) => !HIDDEN_SECTIONS.has(group.name))
-    .filter((group) => group.lead.length > 0 || group.entries.length > 0),
+  sections: userFacing(release).groups.filter(
+    (group) => group.lead.length > 0 || group.entries.length > 0,
+  ),
 });
 
 const unreleased = all.find((r) => r.unreleased);

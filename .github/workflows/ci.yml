@@ -376,10 +376,14 @@ jobs:
             fail=1
           fi
           # The CHANGELOG is a shipped artifact twice over: `make appcast` puts
-          # its first section in the Sparkle feed, and the release body below is
-          # the same section as markdown. A stale heading ships the previous
-          # release's notes to everyone deciding whether to install.
-          head=$(sed -n 's/^## \[\([0-9][^]]*\)\].*/\1/p' CHANGELOG.md | head -1)
+          # the tag's section in the Sparkle feed, and the release body below is
+          # the same section as markdown. Both select it by version and fail
+          # when it is missing, so this is not what picks the notes; it is what
+          # refuses a release commit that forgot to retitle the head. The first
+          # `## [` heading of ANY kind: this used to match a leading digit, which
+          # skipped straight past `[Unreleased]` to the version below it and
+          # passed.
+          head=$(sed -n 's/^## \[\([^]]*\)\].*/\1/p' CHANGELOG.md | head -1)
           if [ "$head" != "$version" ]; then
             echo "::error::the first CHANGELOG section is [$head], not [$version] — is it still [Unreleased]?"
             fail=1
@@ -456,9 +460,12 @@ jobs:
           # that ships beside it.
           scripts/verify-servers.sh "$app"
           # The update signature is only worth as much as the key the shipped
-          # bundle will check it against.
+          # bundle will check it against. Its shape is asserted here and in
+          # `make sign`; `make appcast` below verifies the signature against
+          # this exact value, which is what says it is the right key.
           baked=$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$app/Contents/Info.plist")
-          test -n "$baked" || { echo "::error::no SUPublicEDKey in the built bundle"; exit 1; }
+          [ ${#baked} -eq 44 ] && printf '%s\n' "$baked" | grep -Eq '^[A-Za-z0-9+/]{43}=$' \
+            || { echo "::error::SUPublicEDKey in the built bundle is not a base64 ed25519 public key"; exit 1; }
           echo "SUPublicEDKey=$baked"
       # DIVERGES from Cupertino, which writes `shasum`'s default output. The
       # website serves /checksum raw, so this file has to be the bare digest:
@@ -481,24 +488,29 @@ jobs:
           SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
         run: make appcast
       - name: Attest provenance 🔏
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
         with:
           # The feed too: it names the bytes Sparkle will install, so it is part
           # of what a user ends up trusting.
           subject-path: |
             apps/apple/.build/Bastion.zip
             apps/apple/.build/appcast.xml
-      # DIVERGES from Cupertino's generate_release_notes. The body is the top
-      # CHANGELOG section verbatim, which is the same text the appcast renders
-      # to HTML — the two are one release described once. Generated notes would
-      # replace a curated summary with a list of commit subjects.
+      # DIVERGES from Cupertino's generate_release_notes. The body is the tag's
+      # CHANGELOG section as markdown, the same section the appcast renders to
+      # HTML with the same sections (`### Internal`) left out: the two are one
+      # release described once. It used to be an awk slice of whichever section
+      # came first, which could not leave anything out and was `[Unreleased]`
+      # whenever the head was not retitled. Generated notes would replace a
+      # curated summary with a list of commit subjects.
       - name: Release notes 📝
-        run: awk '/^## /{ if (n++) exit } n' CHANGELOG.md | tail -n +2 > "$RUNNER_TEMP/notes.md"
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: node scripts/changelog-notes.mjs --markdown "$VERSION" CHANGELOG.md > "$RUNNER_TEMP/notes.md"
       # The asset names carry no version on purpose: that is what makes
       # /releases/latest/download/<asset> a permanent URL, which all three
       # website redirects point at. The version lives in the tag.
       - name: Release 🚀
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           name: Bastion ${{ steps.version.outputs.version }}
           body_path: ${{ runner.temp }}/notes.md

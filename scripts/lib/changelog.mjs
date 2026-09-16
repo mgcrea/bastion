@@ -1,13 +1,21 @@
 // CHANGELOG.md, parsed once.
 //
-// Two things read this file and they must not disagree about it: the Sparkle
-// appcast, which renders the top section as HTML at release time, and the app's
+// Three things read this file and they must not disagree about it: the Sparkle
+// appcast, which renders the tagged version's section as HTML at release time,
+// the GitHub release body, which is the same section as markdown, and the app's
 // What's New pane, which is generated from the last few sections at build time.
-// Two parsers over one hand-written file drift the first time somebody writes a
-// bullet in a shape neither anticipated, and the failure is silent in both
-// directions — the appcast keeps rendering while the pane quietly drops a
+// Parsers over one hand-written file drift the first time somebody writes a
+// bullet in a shape one of them did not anticipate, and the failure is silent in
+// both directions — the appcast keeps rendering while the pane quietly drops a
 // bullet. So there is one parser, and `renderHTML` below is the appcast's
-// renderer moved here verbatim.
+// renderer moved here verbatim, changed since only to leave out
+// `HIDDEN_SECTIONS`.
+//
+// The sections users never see are decided here too, for the same reason.
+// `HIDDEN_SECTIONS` used to live in the pane's generator alone, so the pane left
+// `### Internal` out while the appcast and the release body, which had no such
+// list, published it: Bastion 1.18.0 went out with its `### Internal` notes in
+// every update dialog and on its release page.
 //
 // `renderHTML` reads `entry.paragraphs` and nothing else. That is the whole
 // reason entries carry their raw paragraphs alongside the `headline`/`body`
@@ -40,6 +48,27 @@
 
 /** The leading `**…**`, non-greedy so a headline containing a code span still ends at its own close. */
 const HEADLINE = /^\*\*(.+?)\*\*\s*/;
+
+/**
+ * Sections that exist for the repository rather than for the user.
+ *
+ * Every renderer that faces a user goes through `userFacing`, so adding a name
+ * here removes it from the appcast, the release body and the pane at once.
+ */
+export const HIDDEN_SECTIONS = new Set(["Internal"]);
+
+/**
+ * A release with its hidden sections removed. Empty groups are kept: whether one
+ * is worth a heading is each renderer's own decision, and `renderHTML` has always
+ * emitted it.
+ *
+ * @param {Release} release
+ * @returns {Release}
+ */
+export const userFacing = (release) => ({
+  ...release,
+  groups: release.groups.filter((group) => !HIDDEN_SECTIONS.has(group.name)),
+});
 
 /**
  * Every `## ` section, newest first.
@@ -132,7 +161,8 @@ export const parse = (markdown) => {
 
 // ─── HTML, for the appcast ────────────────────────────────────────────────────
 //
-// Moved here from `changelog-notes.mjs` character for character. Sparkle renders
+// Moved here from `changelog-notes.mjs` character for character, and since then
+// changed in one way: hidden sections are left out. Sparkle renders
 // the <description> as HTML, and the release path used to slice raw markdown
 // into it: every user's update dialog showed literal `**` and `- ` bullets. This
 // is the smallest renderer that covers what the CHANGELOG actually uses.
@@ -161,7 +191,7 @@ export const inline = (text) => {
 };
 
 /**
- * One release as the HTML Sparkle shows.
+ * One release as the HTML Sparkle shows, without its hidden sections.
  *
  * Reads `entry.paragraphs`, never `headline`/`body`, so the split those two
  * carry cannot move the output.
@@ -172,7 +202,7 @@ export const inline = (text) => {
 export const renderHTML = (release) => {
   const html = [];
   for (const text of release.lead) html.push(`<p>${inline(text)}</p>`);
-  for (const group of release.groups) {
+  for (const group of userFacing(release).groups) {
     html.push(`<h3>${inline(group.name)}</h3>`);
     for (const text of group.lead) html.push(`<p>${inline(text)}</p>`);
     if (group.entries.length === 0) continue;
@@ -183,4 +213,31 @@ export const renderHTML = (release) => {
     html.push("</ul>");
   }
   return html.join("\n");
+};
+
+// ─── markdown, for the GitHub release body ────────────────────────────────────
+//
+// The release body used to be an awk slice of the first `## ` section, which is
+// wrong twice: the first section is `[Unreleased]` whenever a tag is cut before
+// the heading is retitled, and a slice cannot leave a section out. Rendering
+// from the parse fixes both, at the cost of the source's line wrapping, which
+// GitHub would have shown as hard breaks anyway.
+
+/**
+ * One release as the markdown of its GitHub release, without its hidden
+ * sections. Each paragraph is one line, and bullets keep the blank line between
+ * them that the CHANGELOG itself uses.
+ *
+ * @param {Release} release
+ * @returns {string}
+ */
+export const renderMarkdown = (release) => {
+  const blocks = [...release.lead];
+  for (const group of userFacing(release).groups) {
+    blocks.push(`### ${group.name}`, ...group.lead);
+    for (const entry of group.entries) {
+      blocks.push(entry.paragraphs.map((p, i) => (i === 0 ? `- ${p}` : `  ${p}`)).join("\n\n"));
+    }
+  }
+  return blocks.join("\n\n");
 };
