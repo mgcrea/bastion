@@ -182,10 +182,20 @@ jobs:
         # follows.
         run: make api-deploy
 
+  # After the API, the order `make deploy` uses: the Worker the site talks to
+  # has to be live before the site that talks to it. The two used to start
+  # together. `deploy-api` in `needs` alone would break the other way, since a
+  # skipped dependency silently skips everything after it unless `if:` says
+  # otherwise. So the condition is spelled out: not cancelled, both checks
+  # green, and the API deploy either done or skipped, never failed.
   deploy-website:
     name: Deploy website
-    needs: [manifest, website]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [manifest, website, deploy-api]
+    if: >-
+      ${{ !cancelled()
+      && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && needs.manifest.result == 'success' && needs.website.result == 'success'
+      && (needs.deploy-api.result == 'success' || needs.deploy-api.result == 'skipped') }}
     runs-on: ubuntu-latest
     environment: production
     steps:
