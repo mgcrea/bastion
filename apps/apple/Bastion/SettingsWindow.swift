@@ -12,24 +12,25 @@ import SwiftUI
 /// The protocol is qualified because this enum has the same name as it, which
 /// is the fleet's convention.
 ///
-/// Two pairs after the configuration panes, then what was bought.
+/// Three sections, which is what Armada arrived at once the two pairs below
+/// outgrew sitting on the end of the configuration list, and what Cupertino
+/// took from it.
 ///
-/// What's New and Updates are the version pair: what did this build change, and
-/// is there a newer one. Updates is a pane rather than the Section in General it
-/// used to be — General is where the gateway port and the npm minimum age live,
-/// and the only manual check the app has was the fourth card down a page nobody
-/// scrolls to look for it.
+/// The first is what Bastion does: General and Activity.
 ///
-/// About and Help are the identity pair, and they sit last because that is
-/// where a settings window's footer material belongs. About used to lead the
-/// version pair, on the reading "which build is this, what did it change, is
-/// there a newer one" — but that was written when there was no Help pane, and
-/// About earns its place beside Help now: both are where somebody goes when
-/// something is wrong rather than when they are tuning something.
+/// The second is the fleet's two pairs. What's New and Updates are the version
+/// pair: what did this build change, and is there a newer one. Updates is a pane
+/// rather than the Section in General it used to be — General is where the
+/// gateway port and the npm minimum age live, and the only manual check the app
+/// has was the fourth card down a page nobody scrolls to look for it.
 ///
-/// Help is a pane at all because Bastion is `LSUIElement`, so the Help menu
-/// carrying these same three links only exists while a window happens to be
-/// open.
+/// About and Help are the identity pair, because both are where somebody goes
+/// when something is wrong rather than when they are tuning something. Help is a
+/// pane at all because Bastion is `LSUIElement`, so the Help menu carrying these
+/// same three links only exists while a window happens to be open.
+///
+/// Licence is last and alone: somebody opens it because of a refusal or a
+/// receipt, never to tune something.
 enum SettingsPane: String, SupportKitSettings.SettingsPane {
   case general
   case audit
@@ -63,10 +64,13 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
     }
   }
 
-  /// Licence is its own group, and the only reason the sidebar is in two rather
-  /// than one list. Somebody opens it because of a refusal or a receipt, never
-  /// because they are tuning something — the same split cupertino makes.
-  var group: SettingsPaneGroup { self == .licence ? .entitlement : .configuration }
+  var group: SettingsPaneGroup {
+    switch self {
+    case .general, .audit: .configuration
+    case .whatsNew, .updates, .about, .help: .information
+    case .licence: .entitlement
+    }
+  }
 
   /// Only ever on What's New, and only while something is genuinely unread. The
   /// package draws nothing for 0, so the read case needs no branch of its own.
@@ -84,6 +88,12 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
     guard DemoSeed.isEnabled, case .settings(let pane) = DemoSeed.stage.subject else { return nil }
     return pane
   }
+}
+
+/// Bastion's section between the package's pair. Sections draw in ascending
+/// `order`, and `.entitlement` sits at 1_000 to leave room for exactly this.
+extension SettingsPaneGroup {
+  nonisolated static let information = SettingsPaneGroup(order: 500)
 }
 
 /// Settings.
