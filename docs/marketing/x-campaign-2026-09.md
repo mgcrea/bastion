@@ -10,13 +10,13 @@ first, link in a self-reply, app named last or not at all.
 
 ## Where the account stands
 
-| | 2026-09-14 |
-| --- | --- |
-| Followers | 124 (following 712) |
-| Subscription | Premium, so posts over 280 characters are fine |
-| Pinned | "The blast radius" article, 469 views, 8 replies, 3 of them still unanswered |
-| Best Bastion-adjacent result | the article post itself |
-| Worst | bare-link pitches under @levelsio (8 views) and @yacineMTB (21 views) on 2026-09-11 |
+|                              | 2026-09-14                                                                          |
+| ---------------------------- | ----------------------------------------------------------------------------------- |
+| Followers                    | 124 (following 712)                                                                 |
+| Subscription                 | Premium, so posts over 280 characters are fine                                      |
+| Pinned                       | "The blast radius" article, 469 views, 8 replies, 3 of them still unanswered        |
+| Best Bastion-adjacent result | the article post itself                                                             |
+| Worst                        | bare-link pitches under @levelsio (8 views) and @yacineMTB (21 views) on 2026-09-11 |
 
 The X-POSTING finding holds again this week: an argument gets hundreds of views, a link with a
 pitch gets single digits.
@@ -39,18 +39,18 @@ Two limits of intents:
 
 Paris times, 14:00 to 16:00 (US East morning), per the parent plan.
 
-| Day | What | Draft |
-| --- | --- | --- |
-| **Mon 14** | Answer the three open replies under the pinned article | R1, R2, R3 |
-| Mon 14 | Reply into @0xZenad's quota thread (454 views, posted 13 Sep 20:14 UTC, closing) | R4 |
-| Mon 14, optional | Reply to @tpritha03's security poll (216 views) | R5 |
-| **Tue 15** | Tool listings cost tokens before any call | P1 |
-| **Thu 17** | The write gate removes tools rather than refusing them | P2 |
-| **Tue 22** | Loopback rules, and why 403 comes before 401 | P3 |
-| **Wed 23** | What a hash-chained audit log does not prove (2 posts) | P4 |
-| **Thu 24** | Measured protocol dialects across eleven third-party servers | P5 |
-| **Mon 28** | What leaks if a .mcp.json leaks, plus price | P6 |
-| Daily | One or two replies from the searches below, never more | |
+| Day              | What                                                                             | Draft      |
+| ---------------- | -------------------------------------------------------------------------------- | ---------- |
+| **Mon 14**       | Answer the three open replies under the pinned article                           | R1, R2, R3 |
+| Mon 14           | Reply into @0xZenad's quota thread (454 views, posted 13 Sep 20:14 UTC, closing) | R4         |
+| Mon 14, optional | Reply to @tpritha03's security poll (216 views)                                  | R5         |
+| **Tue 15**       | Tool listings cost tokens before any call                                        | P1         |
+| **Thu 17**       | The write gate removes tools rather than refusing them                           | P2         |
+| **Tue 22**       | Loopback rules, and why 403 comes before 401                                     | P3         |
+| **Wed 23**       | What a hash-chained audit log does not prove (2 posts)                           | P4         |
+| **Thu 24**       | Measured protocol dialects across eleven third-party servers                     | P5         |
+| **Mon 28**       | What leaks if a .mcp.json leaks, plus price                                      | P6         |
+| Daily            | One or two replies from the searches below, never more                           |            |
 
 P6 is the only post that sells. It sits last so it lands after five that did not, and the day before
 the Show HN date in the parent plan (Tue 29), which still depends on `/blog`, comparison page 1 and
@@ -242,11 +242,11 @@ X search reaches back 7 days, so re-run these every Monday with `x_count_recent`
 1k to 20k view posts under 24 hours old, and skip every other vendor's launch post (Sable, Exorails,
 TCB, OmaSeal this week: all traps).
 
-| For | Query |
-| --- | --- |
-| Context cost | `(mcp OR "mcp servers") ("claude code" OR cursor OR codex) ("too many" OR "context window" OR "tool list" OR tokens OR ".mcp.json") -is:retweet -is:reply lang:en` |
-| Security | `(mcp OR "mcp server" OR "mcp servers") ("prompt injection" OR "blast radius" OR "supply chain" OR "tool poisoning" OR localhost OR "dns rebinding" OR "api keys") -is:retweet -is:reply lang:en` |
-| Secrets in configs | `("mcp server" OR "mcp servers" OR ".mcp.json") (credentials OR secrets OR plaintext OR "api keys" OR keychain OR leaked) -is:retweet -is:reply lang:en` |
+| For                | Query                                                                                                                                                                                             |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Context cost       | `(mcp OR "mcp servers") ("claude code" OR cursor OR codex) ("too many" OR "context window" OR "tool list" OR tokens OR ".mcp.json") -is:retweet -is:reply lang:en`                                |
+| Security           | `(mcp OR "mcp server" OR "mcp servers") ("prompt injection" OR "blast radius" OR "supply chain" OR "tool poisoning" OR localhost OR "dns rebinding" OR "api keys") -is:retweet -is:reply lang:en` |
+| Secrets in configs | `("mcp server" OR "mcp servers" OR ".mcp.json") (credentials OR secrets OR plaintext OR "api keys" OR keychain OR leaked) -is:retweet -is:reply lang:en`                                          |
 
 Dropped: `("mcp gateway" OR "mcp proxy" OR "docker mcp" OR "mcp toolkit" OR metamcp)`. This week it
 returned listicles, Oracle and SAP press, and competitor launches, with no thread worth answering.
