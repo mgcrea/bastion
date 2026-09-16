@@ -4,10 +4,10 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.18.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.19.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.19.0] - 2026-09-16
 
 ### Added
 
@@ -17,6 +17,57 @@ are taken from this file, which is the curated summary.
   kept apart from what macOS reports, so an update that drops the registration has it put back on
   the next launch. A copy running from outside Applications says why it cannot be added instead of
   registering a path that will vanish, and one waiting on your approval in System Settings says so.
+
+### Fixed
+
+- **An npm install could hang with nothing left to wait for.** The installer read npm's output until
+  the pipe closed, and the pipe stays open for as long as anything holds its write end — so a
+  lifecycle script or a git dependency fetch that outlived npm kept the install spinning after npm
+  itself had exited, where the timeout could not reach it. Reading now stops once npm is gone and
+  its output has gone quiet, and an install that times out escalates to killing npm if it ignores
+  the request to stop.
+
+- **A custom server at an `http://` URL was refused as a bad npm package name.** Only `https` URLs
+  were recognised as remote, so anything else fell through to the npm branch with an empty package
+  name, and the error was about the wrong transport entirely. Any URL is a remote server now, and a
+  non-https one is refused for what it is. A URL field that is not a URL at all gets its own message.
+
+- **A stdio client could wait forever for Bastion to start.** When the app is not running, the
+  bridge a client launches opens it and waits; nothing bounded how long `open` itself could take, so
+  a wedged LaunchServices or a first-launch prompt nobody could see left the client showing a server
+  that never starts. `open` gets ten seconds now, after which the bridge goes on waiting for the
+  gateway the way it always did.
+
+### Changed
+
+- **Settings groups its sidebar into three sections**, as Cupertino and Armada do: General and
+  Activity; What's New, Updates, About and Help; then Licence on its own.
+
+### Internal
+
+- The app and the bridge build under Swift 6 with strict concurrency checking. JSON crossing an
+  actor boundary travels in a `SendableJSON` wrapper, and the check turned up one real bug: the
+  gateway token cache's lock closure captured the variable rather than the map it had just built.
+
+- The licence Worker claims each Stripe event and each send before handling it, so overlapping
+  webhook deliveries cannot mint or mail twice; refuses to run with a missing or malformed secret;
+  answers permanently unparseable events 200 so Stripe stops retrying; and checks revocation on
+  `/thanks`, which was still handing out a refunded key.
+
+- `make appcast` verifies the update signature it just made against the `SUPublicEDKey` in the
+  built app before writing the feed, and the Sparkle notes and the GitHub release body both select
+  the tagged version's section instead of whatever is first in this file.
+
+- CI defaults to a read-only token, pins pnpm's action to a SHA, and deploys the website only after
+  the API it talks to. swift-format's toolchain is asserted by Swift version against a list.
+
+- swift-support-kit moves from 1.5.0 to 1.8.0, for the `LoginItem` and `LaunchAtLoginSection` that
+  launch at login is built on, shared with Armada and Cupertino.
+
+- The website cross-links Armada beside Cupertino, sends `Cross-Origin-Opener-Policy: same-origin`,
+  and marks the 404 page `noindex`.
+
+- `DemoSeed.version` is `1.19.0`, re-accepted across the plates.
 
 ## [1.18.0] - 2026-09-14
 

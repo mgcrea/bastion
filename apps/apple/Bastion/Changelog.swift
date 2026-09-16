@@ -194,7 +194,59 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_18_0, v1_17_1, v1_17_0, v1_16_0, v1_15_0]
+  static let releases: [Release] = [v1_19_0, v1_18_0, v1_17_1, v1_17_0, v1_16_0]
+
+  // swift-format-ignore
+  private static let v1_19_0: Release = Release(
+    version: "1.19.0",
+    date: "2026-09-16",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Launch at login",
+            body: [
+              ", at the top of Settings ▸ General. Until now nothing started Bastion when you logged in, so a client configured with a URL found nothing listening until somebody opened the app; one that launches its own bridge still starts Bastion on demand either way. The choice is kept apart from what macOS reports, so an update that drops the registration has it put back on the next launch. A copy running from outside Applications says why it cannot be added instead of registering a path that will vanish, and one waiting on your approval in System Settings says so.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 1,
+            headline: "An npm install could hang with nothing left to wait for.",
+            body: [
+              "The installer read npm's output until the pipe closed, and the pipe stays open for as long as anything holds its write end — so a lifecycle script or a git dependency fetch that outlived npm kept the install spinning after npm itself had exited, where the timeout could not reach it. Reading now stops once npm is gone and its output has gone quiet, and an install that times out escalates to killing npm if it ignores the request to stop.",
+            ]),
+          Entry(
+            ordinal: 2,
+            headline: "A custom server at an `http://` URL was refused as a bad npm package name.",
+            body: [
+              "Only `https` URLs were recognised as remote, so anything else fell through to the npm branch with an empty package name, and the error was about the wrong transport entirely. Any URL is a remote server now, and a non-https one is refused for what it is. A URL field that is not a URL at all gets its own message.",
+            ]),
+          Entry(
+            ordinal: 3,
+            headline: "A stdio client could wait forever for Bastion to start.",
+            body: [
+              "When the app is not running, the bridge a client launches opens it and waits; nothing bounded how long `open` itself could take, so a wedged LaunchServices or a first-launch prompt nobody could see left the client showing a server that never starts. `open` gets ten seconds now, after which the bridge goes on waiting for the gateway the way it always did.",
+            ]),
+        ]),
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 4,
+            headline: "Settings groups its sidebar into three sections",
+            body: [
+              ", as Cupertino and Armada do: General and Activity; What's New, Updates, About and Help; then Licence on its own.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_18_0: Release = Release(
@@ -454,65 +506,11 @@ nonisolated enum Changelog {
         ]),
     ])
 
-  // swift-format-ignore
-  private static let v1_15_0: Release = Release(
-    version: "1.15.0",
-    date: "2026-09-08",
-    sections: [
-      Section(
-        name: "Changed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "X signs you in itself now, rather than asking for a client ID nothing read.",
-            body: [
-              "The `x` server's OAuth2 profile presented an `X_CLIENT_ID` field, and mcp-x has never read that variable — it holds its own token through child OAuth, like the other servers that sign in for themselves. The profile is **Sign in with X** now, wired to `x_login`, `x_get_auth_status` and `x_logout`, with no environment of its own. Anyone who filled that field in was configuring nothing; the sign-in button is what actually grants access.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "The EULA names Magenta Creations.",
-            body: [
-              "It was the last surface still naming an individual, where the website's legal pages and the footer name the company throughout. It moves in two steps, which is worth stating rather than discovering: the site imports this file at build time, so the terms page changed on its next deploy, while the app carries its own copy and only agrees again with this release. It is also the document Stripe Checkout links as the terms consented to at purchase.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 2,
-            headline: "The What's New pane broke sentences that run on past the bold part.",
-            body: [
-              "Most entries here open with a complete bolded sentence, which reads well pulled onto its own line — but some bold only the subject and continue straight into the clause that explains it. The pane treated every lead as a standalone headline, so it put a line break before the comma and stranded the explanation. It tests for sentence-final punctuation to tell the two shapes apart now, and reassembles a flowing lead into a single markdown string, so emphasis and code spans still parse across the join.",
-            ]),
-        ]),
-    ])
-
   /// Work that is written down but not shipped.
   ///
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  // swift-format-ignore
-  private static let unreleasedRelease: Release = Release(
-    version: "Unreleased",
-    date: "",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Launch at login",
-            body: [
-              ", at the top of Settings ▸ General. Until now nothing started Bastion when you logged in, so a client configured with a URL found nothing listening until somebody opened the app; one that launches its own bridge still starts Bastion on demand either way. The choice is kept apart from what macOS reports, so an update that drops the registration has it put back on the next launch. A copy running from outside Applications says why it cannot be added instead of registering a path that will vanish, and one waiting on your approval in System Settings says so.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  static let unreleased: Release? = unreleasedRelease
+  static let unreleased: Release? = nil
   // </generated:changelog>
 }
