@@ -5,13 +5,15 @@
 // `event.data.object` off an unchecked cast throws a TypeError when the shape
 // surprises us, which becomes a 500, which becomes Stripe retrying every few
 // hours for three days with nothing in the log saying what was wrong. A named
-// validation error costs the same line count and says it.
+// validation error costs the same line count and says it: the handler logs it
+// and answers 200, because a payload that failed once fails identically on every
+// retry.
 //
 // The envelope is separate from the session ON PURPOSE. Stripe delivers every
 // event type this endpoint is subscribed to, and a single schema over the whole
 // payload would reject `payment_intent.succeeded` and friends as malformed —
-// turning "an event we do not care about" into the same retry loop. So: parse
-// the envelope, decide whether it is ours, and only then insist on a shape.
+// filling the error log with "an event we do not care about". So: parse the
+// envelope, decide whether it is ours, and only then insist on a shape.
 
 import { z } from "zod";
 
@@ -44,8 +46,8 @@ export const checkoutSession = z.object({
    * Required, unlike its neighbours. Everything else here fails soft because
    * a missing currency should cost a default; a missing payment status would
    * cost a licence, since the only safe reading of "unknown" is "not paid" and
-   * a session Stripe sends without one is not a shape this knows. 400 says
-   * which field moved, and stops the retries.
+   * a session Stripe sends without one is not a shape this knows. The handler
+   * logs which field moved and answers 200, since no retry will bring it back.
    */
   payment_status: z.string(),
   customer_details: z.object({ email: z.string().nullish() }).nullish(),

@@ -5,7 +5,7 @@
 // keypair minted for the run, and the webhook secret the signatures below use.
 // The table is emptied before each test, so each one seeds what it needs.
 import { createExecutionContext, env, waitOnExecutionContext } from "cloudflare:test";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import worker from "../../src/index";
 
@@ -18,6 +18,11 @@ const INTENT = "pi_test_1";
 beforeEach(async () => {
   await env.DB.prepare("DELETE FROM licenses").run();
   await env.DB.prepare("DELETE FROM stripe_events").run();
+});
+
+// Several tests spy on `console.error` or stub `fetch`; none may leak into the next.
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 // Every event needs its own id, because the Worker now refuses to handle the
@@ -65,11 +70,23 @@ const testEnv = (overrides: Partial<Env> = {}, sender?: () => Promise<void>) => 
 
 const limiter = (success: boolean): RateLimit => ({ limit: async () => ({ success }) });
 
+/** A request, and everything it handed to `waitUntil`, run to completion. */
 const call = async (request: Request, forEnv: Env): Promise<Response> => {
   const context = createExecutionContext();
-  const response = await worker.fetch(request, forEnv);
+  const response = await worker.fetch(request, forEnv, context);
   await waitOnExecutionContext(context);
   return response;
+};
+
+const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const recorded = async (forEnv: Env, id: string): Promise<boolean> =>
+  (await forEnv.DB.prepare("SELECT id FROM stripe_events WHERE id = ?").bind(id).first()) !== null;
+
+/** What was logged through `console.error`, joined, for a test to match on. */
+const errorLog = () => {
+  const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+  return () => spy.mock.calls.map((args) => args.join(" ")).join("\n");
 };
 
 const hmacHex = async (secret: string, message: string): Promise<string> => {
@@ -178,6 +195,16 @@ describe("the router", () => {
     expect(response.status).toBe(404);
     expect(response.headers.get("content-type")).toContain("text/html");
   });
+
+  it("escapes SITE_URL on the 404 page", async () => {
+    const hostile = 'https://bastion.test/"><script>alert(1)</script>';
+    // Cast: the generated `Env` types SITE_URL as the literal in wrangler.jsonc.
+    const hostileEnv = { ...testEnv().env, SITE_URL: hostile } as unknown as Env;
+    const response = await call(new Request("https://api.test/nope"), hostileEnv);
+    const page = await response.text();
+    expect(page).not.toContain("<script>");
+    expect(page).toContain('href="https://bastion.test/&quot;&gt;&lt;script&gt;');
+  });
 });
 
 describe("the webhook", () => {
@@ -185,7 +212,8 @@ describe("the webhook", () => {
     const built = testEnv();
     const response = await webhook(built.env, completed(), { secret: "whsec_other" });
     expect(response.status).toBe(400);
-    expect(await response.text()).toMatch(/^signature:/);
+    // Bare: the reason is for the log, not for whoever sent an unsigned body.
+    expect(await response.text()).toBe("invalid signature");
     expect(await count(built.env)).toBe(0);
     expect(built.sent).toEqual([]);
   });
@@ -231,19 +259,48 @@ describe("the webhook", () => {
     expect(await count(built.env)).toBe(0);
   });
 
-  it("refuses a session with no payment status rather than guessing", async () => {
+  // 200, not 4xx: Stripe retries every non-2xx, and this payload will be the
+  // same on every attempt. Recorded, so a redelivery is a duplicate, not a
+  // second log line.
+  it("drops a session with no payment status rather than guessing, and records it", async () => {
     const built = testEnv();
-    const response = await webhook(built.env, completed({ payment_status: undefined }));
-    expect(response.status).toBe(400);
+    const log = errorLog();
+    const event = completed({ payment_status: undefined });
+    const response = await webhook(built.env, event);
+    expect(response.status).toBe(200);
     expect(await response.text()).toContain("payment_status");
+    expect(log()).toContain("payment_status");
+    expect(await count(built.env)).toBe(0);
+    expect(await recorded(built.env, event.id)).toBe(true);
+    expect(await (await webhook(built.env, event)).text()).toBe("duplicate");
+  });
+
+  it("drops a session with no email", async () => {
+    const built = testEnv();
+    errorLog();
+    const response = await webhook(built.env, completed({ customer_details: {} }));
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("no email");
     expect(await count(built.env)).toBe(0);
   });
 
-  it("refuses a session with no email", async () => {
+  it("drops a signed body that is not JSON, with a 200", async () => {
     const built = testEnv();
-    const response = await webhook(built.env, completed({ customer_details: {} }));
-    expect(response.status).toBe(400);
-    expect(await count(built.env)).toBe(0);
+    const log = errorLog();
+    const response = await webhook(built.env, null, { body: "{not json" });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("body is not JSON");
+    expect(log()).toContain("body is not JSON");
+  });
+
+  it("drops a signed charge it cannot parse, and records it", async () => {
+    const built = testEnv();
+    errorLog();
+    const event = stamped({ type: "charge.refunded", data: { object: { amount: 1499 } } });
+    const response = await webhook(built.env, event);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toMatch(/^charge:/);
+    expect(await recorded(built.env, event.id)).toBe(true);
   });
 
   it("returns 500 when the mail fails, keeps the row, and sends on the retry", async () => {
@@ -274,6 +331,107 @@ describe("the webhook", () => {
   });
 });
 
+describe("overlapping deliveries", () => {
+  // A retry landing while a slow first attempt is still sending, or a "Resend"
+  // clicked in the dashboard at the wrong moment. Both used to read "not seen"
+  // and "not sent" before either wrote anything, and both mailed the key.
+  it("sends one mail when the same event arrives twice at once", async () => {
+    const built = testEnv({}, () => pause(25));
+    const event = { ...completed(), id: "evt_twice" };
+    const answers = await Promise.all([webhook(built.env, event), webhook(built.env, event)]);
+    expect(answers.map((answer) => answer.status)).toEqual([200, 200]);
+    const texts = await Promise.all(answers.map((answer) => answer.text()));
+    expect(texts).toHaveLength(2);
+    expect(texts).toEqual(expect.arrayContaining(["duplicate", "ok"]));
+    expect(built.sent).toHaveLength(1);
+    expect(await count(built.env)).toBe(1);
+  });
+
+  // Two different events for one session, which the event gate cannot see as
+  // the same thing. The claim on `last_sent_at` is what holds here.
+  it("sends one mail when two events for one session arrive at once", async () => {
+    const built = testEnv({}, () => pause(25));
+    await Promise.all([
+      webhook(built.env, completed()),
+      webhook(built.env, { ...completed(), type: "checkout.session.async_payment_succeeded" }),
+    ]);
+    expect(built.sent).toHaveLength(1);
+    expect(await count(built.env)).toBe(1);
+  });
+
+  it("gives the event back when the handler throws, so the retry is handled", async () => {
+    const log = errorLog();
+    const built = testEnv();
+    // D1 failing mid-fulfilment: the licence insert throws, nothing else does.
+    const flaky = {
+      ...built.env,
+      DB: {
+        prepare: (sql: string) => {
+          if (sql.includes("INSERT INTO licenses")) throw new Error("D1 is down");
+          return built.env.DB.prepare(sql);
+        },
+      } as unknown as D1Database,
+    };
+    const event = { ...completed(), id: "evt_throws" };
+    const first = await webhook(flaky, event);
+    expect(first.status).toBe(500);
+    expect(log()).toContain("D1 is down");
+    expect(await recorded(built.env, event.id)).toBe(false);
+
+    const retry = await webhook(built.env, event);
+    expect(await retry.text()).toBe("ok");
+    expect(built.sent).toHaveLength(1);
+  });
+});
+
+describe("configuration", () => {
+  // Every one of these used to throw from inside WebCrypto or `atob` and reach
+  // Stripe as workerd's bare 500, with nothing in the log naming the secret.
+  const cases: [string, Partial<Env>, RegExp][] = [
+    ["an unset webhook secret", { STRIPE_WEBHOOK_SECRET: "" }, /STRIPE_WEBHOOK_SECRET is not set/],
+    [
+      "a webhook secret that is not one",
+      { STRIPE_WEBHOOK_SECRET: "sk_live_pasted_in_the_wrong_slot" },
+      /STRIPE_WEBHOOK_SECRET does not start with whsec_/,
+    ],
+    ["an unset signing key", { LICENSE_SIGNING_KEY: "" }, /LICENSE_SIGNING_KEY is not set/],
+    [
+      "a signing key that is not base64",
+      { LICENSE_SIGNING_KEY: "not base64 at all!" },
+      /LICENSE_SIGNING_KEY is not a base64 PKCS#8 Ed25519 private key/,
+    ],
+    [
+      "a signing key that is base64 but not a key",
+      { LICENSE_SIGNING_KEY: btoa("truncated") },
+      /LICENSE_SIGNING_KEY is not a base64 PKCS#8 Ed25519 private key/,
+    ],
+  ];
+
+  for (const [label, overrides, named] of cases) {
+    it(`answers 500 and names the secret for ${label}`, async () => {
+      const log = errorLog();
+      const broken = testEnv(overrides);
+      const event = { ...completed(), id: `evt_config_${label.length}` };
+      const response = await webhook(broken.env, event);
+      expect(response.status).toBe(500);
+      const body = await response.text();
+      expect(body).toBe("misconfigured");
+      expect(log()).toMatch(named);
+      // The log names the secret; it never carries a value.
+      for (const value of Object.values(overrides)) {
+        if (value) expect(log()).not.toContain(value);
+      }
+      expect(await count(broken.env)).toBe(0);
+      expect(await recorded(broken.env, event.id)).toBe(false);
+
+      // 500 so Stripe retries, and the retry works once the secret is fixed.
+      const fixed = testEnv();
+      expect(await (await webhook(fixed.env, event)).text()).toBe("ok");
+      expect(fixed.sent).toHaveLength(1);
+    });
+  }
+});
+
 describe("the product guard", () => {
   // The mix-up this exists to stop: bastion-api and cupertino-api are two
   // webhook endpoints on ONE Stripe account, so every checkout event reaches
@@ -298,6 +456,34 @@ describe("the product guard", () => {
     expect(await response.text()).toBe("ok");
     expect(await count(built.env)).toBe(1);
     expect(built.sent).toHaveLength(1);
+  });
+
+  // With a key configured, a lookup that FAILS is not the same as one that finds
+  // no price. Letting it through skipped the guard whenever Stripe was slow or
+  // the key was wrong; 500 has Stripe retry until the lookup can answer.
+  it("answers 500 when the price lookup fails, and mints nothing", async () => {
+    errorLog();
+    const fetched = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 401 }));
+    const built = testEnv({ STRIPE_SECRET_KEY: "rk_test_x" });
+    const event = completed({ metadata: {} });
+    const response = await webhook(built.env, event);
+    expect(fetched).toHaveBeenCalledOnce();
+    expect(response.status).toBe(500);
+    expect(await count(built.env)).toBe(0);
+    expect(await recorded(built.env, event.id)).toBe(false);
+    expect(built.sent).toEqual([]);
+  });
+
+  it("guards a sale whose price came from the lookup", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({ data: [{ price: { id: "price_other" } }] }),
+    );
+    const built = testEnv({ STRIPE_SECRET_KEY: "rk_test_x" });
+    const response = await webhook(built.env, completed({ metadata: {} }));
+    expect(await response.text()).toBe("not this product");
+    expect(await count(built.env)).toBe(0);
   });
 
   // Unset means unguarded, which is what makes this safe to deploy before the
@@ -513,6 +699,20 @@ describe("/thanks", () => {
     expect(page).not.toContain((await row(built.env))?.key);
   });
 
+  // `fulfil` and the resend route stopped handing out a revoked key; this page
+  // kept showing it for a week to anyone holding the session id.
+  it("does not show a refunded licence's key", async () => {
+    const built = await fulfilled();
+    const key = (await row(built.env))?.key ?? "";
+    await webhook(built.env, chargeEvent("charge.refunded", { amount_refunded: 1499 }));
+    const response = await thanks(built.env);
+    expect(response.status).toBe(200);
+    const page = await response.text();
+    expect(page).toContain("Licence revoked");
+    expect(page).not.toContain(key);
+    expect(page).not.toContain("—");
+  });
+
   it("answers the pending page when the address is over its limit", async () => {
     const built = await fulfilled();
     const limited = { ...built.env, THANKS_LIMIT: limiter(false) };
@@ -566,6 +766,87 @@ describe("/license/resend", () => {
     const response = await resend(limited, JSON.stringify({ email: "buyer@example.com" }));
     expect(await response.json()).toEqual({ ok: true });
     expect(built.sent).toHaveLength(1);
+  });
+
+  // No CORS on this route, so a browser on another origin can only reach it
+  // with a request that needs no preflight: `text/plain`, or a form.
+  // Requiring JSON is what closes that.
+  // The tests below that expect a send stub the limiter open. The pool's real
+  // RESEND_LIMIT keys every request here on "unknown", and the tests above have
+  // already spent most of its five a minute.
+  it("answers 415 and sends nothing unless the body is declared JSON", async () => {
+    const built = await fulfilled();
+    await cooled(built.env);
+    built.env.RESEND_LIMIT = limiter(true);
+    const body = JSON.stringify({ email: "buyer@example.com" });
+    expect((await resend(built.env, body, { "content-type": "text/plain" })).status).toBe(415);
+    expect(
+      (await resend(built.env, body, { "content-type": "application/x-www-form-urlencoded" }))
+        .status,
+    ).toBe(415);
+    expect(built.sent).toHaveLength(1);
+
+    const declared = await resend(built.env, body, {
+      "content-type": "Application/JSON; charset=utf-8",
+    });
+    expect(declared.status).toBe(200);
+    expect(built.sent).toHaveLength(2);
+  });
+
+  it("limits by address as well as by client, and sends nothing past it", async () => {
+    const built = await fulfilled();
+    await cooled(built.env);
+    const keys: string[] = [];
+    const byAddress: RateLimit = {
+      limit: async ({ key }) => {
+        keys.push(key);
+        return { success: !key.startsWith("address:") };
+      },
+    };
+    const response = await resend(
+      { ...built.env, RESEND_LIMIT: byAddress },
+      JSON.stringify({ email: "Buyer@Example.com" }),
+      { "cf-connecting-ip": "203.0.113.7" },
+    );
+    expect(await response.json()).toEqual({ ok: true });
+    expect(keys).toEqual(["203.0.113.7", "address:buyer@example.com"]);
+    expect(built.sent).toHaveLength(1);
+  });
+
+  it("sends one mail when the same address asks several times at once", async () => {
+    const built = await fulfilled();
+    await cooled(built.env);
+    const slow = testEnv({ RESEND_LIMIT: limiter(true) }, () => pause(25));
+    const body = JSON.stringify({ email: "buyer@example.com" });
+    await Promise.all([resend(slow.env, body), resend(slow.env, body), resend(slow.env, body)]);
+    expect(slow.sent).toHaveLength(1);
+  });
+
+  // The body and status were always the same; the time was not. A customer's
+  // request used to wait on a D1 lookup and a mail send before answering.
+  it("answers before the send, so the timing says nothing either", async () => {
+    const built = await fulfilled();
+    await cooled(built.env);
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const held = testEnv({ RESEND_LIMIT: limiter(true) }, () => gate);
+    const context = createExecutionContext();
+    const response = await worker.fetch(
+      new Request("https://api.test/license/resend", {
+        method: "POST",
+        body: JSON.stringify({ email: "buyer@example.com" }),
+        headers: { "content-type": "application/json" },
+      }),
+      held.env,
+      context,
+    );
+    expect(await response.json()).toEqual({ ok: true });
+    expect(held.sent).toEqual([]);
+    release?.();
+    await waitOnExecutionContext(context);
+    expect(held.sent).toHaveLength(1);
   });
 
   it("answers identically to a body that is not JSON, or is too large", async () => {

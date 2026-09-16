@@ -54,7 +54,11 @@ if (!privateKey) {
   process.exit(2);
 }
 
-const email = valueOf("email", "");
+// Trimmed and lowercased, as the Worker does to the address on a Stripe
+// session. The address is signed into the key, so a replacement minted here for
+// ` Buyer@Example.com` and the key the Worker minted for the same purchase would
+// otherwise disagree about who the licence belongs to.
+const email = valueOf("email", "").trim().toLowerCase();
 if (!email.includes("@")) {
   console.error("FATAL: --email=<address> is required, and must look like one");
   process.exit(2);

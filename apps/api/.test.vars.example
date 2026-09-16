@@ -8,13 +8,25 @@
 # default here is the Worker taking real money at api.bastion.mgcrea.io — so the
 # earlier version of this line replaced the LIVE webhook signing secret with a
 # test-mode one. Every genuine payment was then refused as an invalid signature,
-# and nothing said why until a buyer wrote in. The `test` environment is declared
-# in wrangler.jsonc; deploy it once with `wrangler deploy --env test`.
+# and nothing said why until a buyer wrote in.
 #
-# The same three keys as `.prod.vars`, from the test-mode side of the Stripe
+# The `test` environment is declared in wrangler.jsonc, but its database is not
+# created yet, and its binding has no `database_id` until one is pasted in. So,
+# once, from apps/api and before the first deploy:
+#
+#   pnpm exec wrangler d1 create bastion-licenses-test
+#     then paste the database_id it prints into `env.test.d1_databases` in
+#     wrangler.jsonc
+#   pnpm exec wrangler d1 migrations apply bastion-licenses-test --remote --env test
+#   pnpm exec wrangler deploy --env test
+#
+# Then push these secrets with the command above.
+#
+# The same two keys as `.prod.vars`, from the test-mode side of the Stripe
 # dashboard. The licence signing key is the SAME value as production: a key
 # minted through a test purchase has to verify against the public key compiled
 # into the app, or the end-to-end test proves nothing.
 LICENSE_SIGNING_KEY=
 STRIPE_WEBHOOK_SECRET=
-STRIPE_SECRET_KEY=
+# Optional, as in `.prod.vars`. Uncomment only with a TEST-mode key.
+# STRIPE_SECRET_KEY=

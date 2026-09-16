@@ -67,6 +67,24 @@ stopped showing it after a week.</p>
   );
 
 /**
+ * The same URL, after the licence was refunded or lost a dispute.
+ *
+ * `fulfil` and the resend route already refuse to mail a revoked key, and this
+ * page was the one place still showing it: for a week after the purchase, the
+ * session id in the buyer's history kept displaying a key whose money had been
+ * given back. It says what happened and nothing else, not even the address.
+ */
+export const revokedPage = (): string =>
+  shell(
+    "Your Bastion licence",
+    `<h1>Licence revoked.</h1>
+<p>The payment for this licence was refunded or disputed, so the licence has been revoked
+and its key is no longer shown here.</p>
+<p>If you think that is a mistake, reply to your Stripe receipt and it will be sorted out
+by hand.</p>`,
+  );
+
+/**
  * Stripe redirects the moment payment succeeds, which can outrun the webhook.
  * This is that gap, and it says so rather than showing an error for a purchase
  * that went through perfectly.
@@ -85,9 +103,16 @@ will be sorted out by hand.</p>`,
  * `site` comes from the SITE_URL binding, which was declared in wrangler.jsonc
  * and read by nothing — so the host was hardcoded here and a move would have
  * left this page pointing at the old one.
+ *
+ * Escaped like every other value on these pages, although it is configuration
+ * rather than input. A quote in it would otherwise end the `href` and write
+ * whatever followed into the page, and "only we set it" is the assumption that
+ * stops holding the day it is set from somewhere else.
  */
 export const notFoundPage = (site = "https://bastion.mgcrea.io"): string =>
   shell(
     "Not found",
-    `<h1>Not found.</h1><p><a href="${site}">${site.replace(/^https?:\/\//, "")}</a></p>`,
+    `<h1>Not found.</h1><p><a href="${escapeHtml(site)}">${escapeHtml(
+      site.replace(/^https?:\/\//, ""),
+    )}</a></p>`,
   );

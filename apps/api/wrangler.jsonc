@@ -66,6 +66,10 @@
         {
           "binding": "DB",
           "database_name": "bastion-licenses-test",
+          // No `database_id` yet, because the database does not exist yet.
+          // Create it with `wrangler d1 create bastion-licenses-test`, paste
+          // the id it prints here, and apply the migrations before the first
+          // `wrangler deploy --env test`. The steps are in .test.vars.example.
           "migrations_dir": "./migrations"
         }
       ],

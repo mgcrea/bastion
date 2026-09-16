@@ -3,18 +3,28 @@
 # validates the file and runs `wrangler secret bulk`). Never committed, never
 # read by `wrangler dev` — that reads `.dev.vars`.
 
-# The licence signing key, same value as the repo-root .env. Using the real one
-# locally means keys minted here verify against the public key already compiled
-# into the app, which is what makes an end-to-end test meaningful.
+# Production is these two values. The Worker checks both on every webhook and
+# answers 500, naming the one that is missing or malformed in Workers Logs,
+# until they are right.
+
+# The licence signing key, same value as the repo-root .env: the private half of
+# the public key compiled into the app, base64 PKCS#8.
 LICENSE_SIGNING_KEY=
 
-# From the Stripe dashboard, or printed by `stripe listen` when testing locally.
-# Used verbatim, `whsec_` prefix and all, as the HMAC key.
+# From the LIVE-mode webhook endpoint in the Stripe dashboard. Used verbatim,
+# `whsec_` prefix and all, as the HMAC key.
 STRIPE_WEBHOOK_SECRET=
 
-# OPTIONAL, and normally unset. The price paid arrives as `price_id` in the
+# OPTIONAL, and unset in production, which is why it is commented out: the push
+# script refuses an empty value. The price paid arrives as `price_id` in the
 # Payment Link's metadata, which Stripe copies onto every session it creates, so
-# the Worker reads it out of the webhook it is already verifying. This key is the
-# fallback for a session created some other way, and fulfilment never depends on
-# it either way.
-STRIPE_SECRET_KEY=
+# the Worker reads it out of the webhook it is already verifying.
+#
+# What this key enables is the fallback for a link or session WITHOUT that
+# metadata: the Worker asks Stripe for the price, records it, and the product
+# guard (EXPECTED_PRICE_ID) can check it. Without the key such a sale is
+# fulfilled with a blank price and no guard. With it, a failed lookup answers
+# 500 so Stripe retries, which means a key from the wrong Stripe mode, or one
+# without read access to Checkout Sessions, holds up exactly those sales. Use a
+# LIVE restricted key.
+# STRIPE_SECRET_KEY=

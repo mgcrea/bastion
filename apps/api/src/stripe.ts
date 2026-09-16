@@ -90,30 +90,37 @@ export const verifySignature = async (
   return { ok: true };
 };
 
+/** A price, possibly blank, or the reason Stripe could not be asked. */
+export type PriceLookup = { ok: true; priceId: string } | { ok: false; reason: string };
+
 /**
- * Which price the customer actually paid, for the upgrade maths at 2.0.
+ * Which price the customer actually paid, for the upgrade maths at 2.0 and for
+ * the product guard in `fulfil`.
  *
- * The FALLBACK path. A session created by our Payment Link carries `price_id` in
- * the metadata Stripe copies onto it, and `fulfil` prefers that — no API key, no
- * second round trip on the one path that must not fail. This covers a session
- * created some other way, and only when a key happens to be configured.
+ * The FALLBACK path. A session created by a Payment Link that sets `price_id`
+ * in its metadata carries it onto the session, and `fulfil` prefers that: no
+ * API key, no second round trip on the one path that must not fail. This covers
+ * a link or session without that metadata, and only when a key is configured.
  *
  * `checkout.session.completed` does not carry line items, so this is a second
- * call — and it is deliberately incapable of failing the fulfilment it belongs
- * to. A licence that reached a paying customer with an empty `price_id` is a
- * reporting gap; a licence that never reached them because a reporting call
- * timed out is a refund.
+ * call, and it tells a failed call apart from an answer with no price in it.
+ * The two used to collapse into "", which let a session through the product
+ * guard unchecked whenever Stripe was slow or the key was wrong. `fulfil` now
+ * answers a failure with 500, so Stripe retries once the lookup can succeed; a
+ * blank answer is still a blank price, not an error.
  */
-export const priceIdFor = async (sessionId: string, secretKey: string): Promise<string> => {
+export const priceIdFor = async (sessionId: string, secretKey: string): Promise<PriceLookup> => {
   try {
     const response = await fetch(
       `https://api.stripe.com/v1/checkout/sessions/${sessionId}/line_items?limit=1`,
       { headers: { Authorization: `Bearer ${secretKey}` } },
     );
-    if (!response.ok) return "";
+    // The status only. Stripe's error body is safe, but it is not needed to
+    // tell a wrong key (401) from a wrong mode (404) from an outage (5xx).
+    if (!response.ok) return { ok: false, reason: `Stripe answered ${response.status}` };
     const body = (await response.json()) as { data?: { price?: { id?: string } }[] };
-    return body.data?.[0]?.price?.id ?? "";
-  } catch {
-    return "";
+    return { ok: true, priceId: body.data?.[0]?.price?.id ?? "" };
+  } catch (error) {
+    return { ok: false, reason: `Stripe could not be reached: ${String(error)}` };
   }
 };

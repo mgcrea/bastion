@@ -157,9 +157,14 @@ constraint on `stripe_session_id` stops a second LICENCE: Stripe redelivers for
 days, and a redelivery must not mean a second key. The `stripe_events` table
 stops a second EMAIL, which the first does not — past the five-minute send
 cooldown, a redelivery or a "Resend" from the Stripe dashboard used to mail the
-key again. An event is recorded only once it has been handled successfully, so a
-failed email still returns 500, Stripe still retries, and the send is attempted
-again.
+key again. The event row is claimed with an insert _before_ the event is handled,
+so two deliveries arriving at once cannot both get past it, and the claim is
+deleted again when handling answers 300 or above or throws, so a failed email
+still returns 500, Stripe still retries, and the send is attempted again. The
+send itself is claimed the same way, with a conditional update on `last_sent_at`
+that is put back if the email fails. One gap is left: a Worker killed between
+the claim and its answer leaves the row behind, and Stripe's retries of that
+event are then answered as duplicates until the row is deleted by hand.
 
 Refunds and lost disputes mark `revoked_at` along with `revoked_reason`. A
 dispute **won** clears it only when the dispute is what set it — otherwise a
@@ -180,7 +185,10 @@ building one means changing all three. Resends are support-driven — somebody
 replies to their receipt — and the endpoint exists so that answering them is one
 request rather than a hand-written database query. It answers identically whether
 or not the address is a customer, which is what stops it being an oracle for who
-bought Bastion.
+bought Bastion, and at the same speed: the lookup and the send run after the
+answer, in `waitUntil`. A body not sent as `application/json` is refused with 415,
+which keeps a cross-origin page from driving it with a plain form post, and the
+address has its own rate limit beside the caller's IP.
 
 The mark beside the line item on the checkout page is `product.images` on the
 Stripe product, pointing at `https://bastion.mgcrea.io/product-image.png` —
@@ -193,14 +201,14 @@ be touched.
 Everything below is held by one person on one machine, and the first row is the
 one with no recovery. `.env.example` says where each lives and how to make it.
 
-| Secret                                   | Lives in                                                                               | Lost                                                                                                                 | Leaked                                                                                    |
-| ---------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `LICENSE_SIGNING_KEY` (Ed25519, private) | repo-root `.env`; the Worker's secret store via `pnpm secrets:prod`                    | **No key can ever be issued for 1.x again**, replacements for lost keys included. Back it up off this machine.       | Anyone can mint keys. Rotating means a new major with a new public key compiled in.       |
-| Sparkle EdDSA key (private)              | The login keychain, written by `generate_keys`; shared with Cupertino                  | No update can be signed; every installed copy stops updating and needs a manual reinstall of a build with a new key. | Anyone can push an update to both apps. Ship a signed release carrying the new key first. |
-| `STRIPE_WEBHOOK_SECRET`                  | The Worker's secret store; the Stripe dashboard                                        | Rotate in Stripe and push again.                                                                                     | Forged webhooks mint licences until it is rotated.                                        |
-| `STRIPE_SECRET_KEY` (optional)           | The Worker's secret store                                                              | Nothing: it is a fallback fulfilment never depends on.                                                               | Stripe account access. Rotate in Stripe.                                                  |
-| Developer ID certificate; `AC_*` API key | The login keychain; the `.p8` at `AC_KEY_PATH`                                         | Cannot sign or notarize until re-issued at developer.apple.com.                                                      | Revoke at developer.apple.com; notarization ties every build to the account.              |
-| Cloudflare API token                     | `wrangler login` on the deploying machine (`account_id` in `wrangler.jsonc` is public) | Deploys stop until a new token is made.                                                                              | Rotate in the Cloudflare dashboard.                                                       |
+| Secret                                   | Lives in                                                                               | Lost                                                                                                                 | Leaked                                                                                                    |
+| ---------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `LICENSE_SIGNING_KEY` (Ed25519, private) | repo-root `.env`; the Worker's secret store via `pnpm secrets:prod`                    | **No key can ever be issued for 1.x again**, replacements for lost keys included. Back it up off this machine.       | Anyone can mint keys. Rotating means a new major with a new public key compiled in.                       |
+| Sparkle EdDSA key (private)              | The login keychain, written by `generate_keys`; shared with Cupertino                  | No update can be signed; every installed copy stops updating and needs a manual reinstall of a build with a new key. | Anyone can push an update to both apps. Ship a signed release carrying the new key first.                 |
+| `STRIPE_WEBHOOK_SECRET`                  | The Worker's secret store; the Stripe dashboard                                        | Rotate in Stripe and push again.                                                                                     | Forged webhooks mint licences until it is rotated.                                                        |
+| `STRIPE_SECRET_KEY` (optional)           | The Worker's secret store                                                              | Price lookups stop, so the product guard relies on the payment link's `price_id` metadata alone.                     | Stripe account access. Rotate in Stripe. While it is set, a failed lookup answers 500 and Stripe retries. |
+| Developer ID certificate; `AC_*` API key | The login keychain; the `.p8` at `AC_KEY_PATH`                                         | Cannot sign or notarize until re-issued at developer.apple.com.                                                      | Revoke at developer.apple.com; notarization ties every build to the account.                              |
+| Cloudflare API token                     | `wrangler login` on the deploying machine (`account_id` in `wrangler.jsonc` is public) | Deploys stop until a new token is made.                                                                              | Rotate in the Cloudflare dashboard.                                                                       |
 
 ## Not decided
 

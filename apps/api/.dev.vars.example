@@ -13,6 +13,8 @@ STRIPE_WEBHOOK_SECRET=
 # OPTIONAL, and normally unset. The price paid arrives as `price_id` in the
 # Payment Link's metadata, which Stripe copies onto every session it creates, so
 # the Worker reads it out of the webhook it is already verifying. This key is the
-# fallback for a session created some other way, and fulfilment never depends on
-# it either way.
+# fallback for a link or session without that metadata: set, a failed price
+# lookup answers 500 so Stripe retries, so it must be the same Stripe mode as
+# the webhook secret. The name stays here, empty, because `wrangler types`
+# reads secret names from this file into `Env`.
 STRIPE_SECRET_KEY=
