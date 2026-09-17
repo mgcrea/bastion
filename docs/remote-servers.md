@@ -47,6 +47,13 @@ yesterday can resolve somewhere else today. A cross-origin redirect is refused
 rather than followed without the credential, because following it without the
 header just fails, and following it with the header is how a token is stolen.
 
+One exception, for a server you run on this machine: a URL typed with the
+literal `127.0.0.1` or `[::1]` is accepted over http or https, on any port but
+the gateway's. https exists here so the credential cannot be read on its way
+off the machine, and a loopback request never leaves it. Literals only, because
+a literal cannot be rebound: `localhost`, the rest of `127/8`, an IPv4-mapped
+loopback, and a public name that resolves to loopback are all still refused.
+
 `make remote-check` asserts this as a pure function of a URL: no app, no
 network.
 

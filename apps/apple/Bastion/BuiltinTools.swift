@@ -263,8 +263,9 @@ enum BuiltinTools {
       "Add any MCP server, as either an npm package or a remote https endpoint. Give npm_name "
         + "for one Bastion runs, or url for one somebody else runs — never both. Bastion runs a "
         + "package by package and bin name, never by command line, so there is no way to specify "
-        + "arguments or a path; and a url must be https to a public host, so it cannot be pointed "
-        + "at this machine or this network.",
+        + "arguments or a path; and a url must be https to a public host, or http(s) to the literal "
+        + "127.0.0.1 or [::1] for a server on this machine (never Bastion's own port). localhost, "
+        + "private, link-local and names resolving to them are refused.",
       properties: [
         "id": schema("string", "Kebab-case. Becomes a URL path segment and a directory name."),
         "display_name": schema("string", "Shown in the window."),
@@ -274,7 +275,8 @@ enum BuiltinTools {
         "bin_name": schema("string", "The bin entry to run. Optional; resolved from the package."),
         "url": schema(
           "string",
-          "For a REMOTE server: the https endpoint, e.g. 'https://mcp.example.com'. Nothing is "
+          "For a REMOTE server: the https endpoint, e.g. 'https://mcp.example.com', or "
+            + "'http://127.0.0.1:<port>/mcp' for one on this machine. Nothing is "
             + "installed and no process is started. Every variable then needs a header, because "
             + "there is no environment to put it in."),
         "docs_url": schema("string", "Optional documentation URL."),

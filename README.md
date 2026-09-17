@@ -254,7 +254,10 @@ analogue of a command line — `fetch(whatever_you_typed)` beside `spawn(whateve
    private, link-local and the cloud metadata address are refused; so is Bastion's own gateway,
    which is the sharp one — a "remote server" pointed at `127.0.0.1:8720` would be a way to replay
    one client's bearer token against every other profile in the app. A cross-origin redirect is
-   refused rather than followed without the credential.
+   refused rather than followed without the credential. The one exception is a server you run on
+   this machine, typed as the literal `127.0.0.1` or `[::1]`: http is allowed there, because the
+   credential never leaves the machine, and the gateway's own port is still refused. `localhost`,
+   and any name that resolves to loopback, are not part of it.
 
 ```bash
 make audit

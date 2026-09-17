@@ -71,6 +71,21 @@ struct RemoteCheck {
     check("https:// is accepted", acceptsShape("https://mcp.stripe.com"))
     check("https with a path is accepted", acceptsShape("https://mcp.example.com/v1/mcp"))
 
+    print("\nA server on this machine")
+    // The one exception: a typed loopback literal, where a credential never
+    // leaves the machine. Narrow on purpose, so each neighbour is asserted too.
+    check("http://127.0.0.1 is accepted", acceptsShape("http://127.0.0.1:8788/mcp"))
+    check("https://127.0.0.1 is accepted", acceptsShape("https://127.0.0.1:8788/mcp"))
+    check("http://[::1] is accepted", acceptsShape("http://[::1]:8788/mcp"))
+    check("http://localhost is still refused", refusesShape("http://localhost:8788/mcp"))
+    check("http://127.0.0.2 is still refused", refusesShape("http://127.0.0.2:8788/mcp"))
+    check(
+      "http to an IPv4-mapped loopback is still refused",
+      refusesShape("http://[::ffff:127.0.0.1]:8788/mcp"))
+    check("http to a private address is still refused", refusesShape("http://192.168.1.1:8788"))
+    check("ws://127.0.0.1 is still refused", refusesShape("ws://127.0.0.1:8788"))
+    check("the gateway port over http is refused", refusesShape("http://127.0.0.1:8720/s/p/x"))
+
     print("\nBastion's own gateway")
     // The sharpest one. A client's bearer token is minted for the gateway, so a
     // "remote server" pointed back at it is a way to replay that token against
@@ -119,6 +134,12 @@ struct RemoteCheck {
     check("a metadata peer is refused", refusesAddress("169.254.169.254"))
     check("an IPv6 loopback peer is refused", refusesAddress("::1"))
     check("a public peer is accepted", !refusesAddress("93.184.216.34"))
+    func landed(_ address: String, typed host: String) -> Bool {
+      (try? RemoteEndpoint.verify(connectedTo: address, host: host)) != nil
+    }
+    check("a typed 127.0.0.1 may land on loopback", landed("127.0.0.1", typed: "127.0.0.1"))
+    check("a typed ::1 may land on loopback", landed("::1", typed: "::1"))
+    check("a typed 127.0.0.1 may not land elsewhere", !landed("192.168.1.10", typed: "127.0.0.1"))
     // Nothing observed is not the same as nothing wrong, but there is also
     // nothing to judge — `preflight` is what covers this case, and it ran
     // before the request.

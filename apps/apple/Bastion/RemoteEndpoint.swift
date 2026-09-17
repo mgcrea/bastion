@@ -23,6 +23,10 @@ import Foundation
 ///   pointed back at it would be a way to replay that token against every other
 ///   profile in the app, from inside the one component allowed to hold it.
 ///
+/// One exception: a server the user runs on this machine, typed as the literal
+/// `127.0.0.1` or `[::1]`, over http or https, on any port but the gateway's.
+/// `isLoopbackLiteral` says why it is safe and how narrow it is kept.
+///
 /// This file is the whole answer, in one readable place on purpose:
 /// `scripts/audit-remote.sh` asserts it against a running build, and an
 /// assertion is only worth as much as the reader's ability to check what it
@@ -53,7 +57,8 @@ nonisolated enum RemoteEndpoint {
       case .notHTTPS(let scheme):
         return
           "a remote server must be https, not \(scheme.isEmpty ? "a bare host" : scheme) — the "
-          + "credential for it leaves this machine on every call"
+          + "credential for it leaves this machine on every call. A server on this machine can "
+          + "use http://127.0.0.1 or http://[::1]"
       case .noHost:
         return "that URL has no host"
       case .privateAddress(let host, let address):
@@ -61,6 +66,8 @@ nonisolated enum RemoteEndpoint {
           "\(host) resolves to \(address), which is on this machine or this network — a remote "
           + "server has to be somewhere else, or 'add a server' becomes a way to reach anything "
           + "you can reach"
+          + (host.lowercased() == "localhost" || host.lowercased().hasSuffix(".localhost")
+            ? ". For a server on this machine, type 127.0.0.1 or [::1] instead of the name" : "")
       case .bastionItself(let host):
         return
           "\(host) is Bastion's own gateway. Pointing a server at it would let one profile's "
@@ -80,7 +87,15 @@ nonisolated enum RemoteEndpoint {
   /// someone is still typing — `ServerEditor` uses it to enable its Save
   /// button, so it must not touch the network.
   static func validateShape(_ url: URL) throws {
-    guard url.scheme?.lowercased() == "https" else {
+    // The one exception, before the scheme rule because it is the one place
+    // http is allowed. See `isLoopbackLiteral`.
+    let scheme = url.scheme?.lowercased() ?? ""
+    if scheme == "http" || scheme == "https", let host = url.host(), isLoopbackLiteral(host) {
+      let port = url.port ?? (scheme == "https" ? 443 : 80)
+      if gatewayPorts.contains(port) { throw EndpointError.bastionItself(host) }
+      return
+    }
+    guard scheme == "https" else {
       throw EndpointError.notHTTPS(url.scheme ?? "")
     }
     guard let host = url.host(), !host.isEmpty else { throw EndpointError.noHost }
@@ -105,6 +120,8 @@ nonisolated enum RemoteEndpoint {
   static func preflight(_ url: URL) throws {
     try validateShape(url)
     guard let host = url.host() else { throw EndpointError.noHost }
+    // A literal needs no resolver, and `validateShape` has already judged it.
+    if isLoopbackLiteral(host) { return }
 
     for address in try resolve(host) {
       if let judgement = judge(literal: address) { throw judgement.error(host: host) }
@@ -118,7 +135,49 @@ nonisolated enum RemoteEndpoint {
   /// too late to stop the request, in time to refuse the answer.
   static func verify(connectedTo address: String?, host: String) throws {
     guard let address, !address.isEmpty else { return }
-    if let judgement = judge(literal: address.lowercased()) { throw judgement.error(host: host) }
+    let judgement = judge(literal: address.lowercased())
+    // A typed loopback literal lands on loopback, and that is the one answer
+    // allowed back from there. A NAME that lands on loopback is still refused.
+    if isLoopbackLiteral(host), case .bastion? = judgement { return }
+    if let judgement { throw judgement.error(host: host) }
+  }
+
+  // MARK: - The loopback exception
+
+  /// Whether `host` is typed as `127.0.0.1` or `::1`, and nothing else.
+  ///
+  /// The one hole in "a public host", made for an MCP server the user runs on
+  /// this machine over plain http. The reason for https does not apply there:
+  /// a credential sent to loopback never leaves the machine. What does still
+  /// apply is Bastion's own gateway, so `gatewayPorts` is refused on it.
+  ///
+  /// Kept narrow on purpose:
+  /// - **Literals only.** `localhost`, or a public name that resolves to
+  ///   127.0.0.1, is still refused. A literal cannot be rebound; a name can.
+  /// - **Those two addresses only.** Not the rest of 127/8, not
+  ///   `::ffff:127.0.0.1`, not the LAN, link-local or the metadata address.
+  ///
+  /// The residual risk is that a URL in the list can reach any other port on
+  /// this machine. The URL is still the user's to choose, and what reaches
+  /// that port is an MCP POST with the headers of the profile they set up.
+  nonisolated static func isLoopbackLiteral(_ host: String) -> Bool {
+    let bare =
+      host.hasPrefix("[") && host.hasSuffix("]") ? String(host.dropFirst().dropLast()) : host
+    if let v4 = IPv4(bare) { return v4.octets == [127, 0, 0, 1] }
+    if let v6 = IPv6(bare) { return v6.isLoopback }
+    return false
+  }
+
+  /// The gateway's default port. Defined here and read by `Gateway.defaultPort`,
+  /// so that `make remote-check`, which compiles this file without the gateway,
+  /// asserts against the same number the app listens on.
+  static let gatewayDefaultPort: UInt16 = 8720
+
+  /// The port the gateway listens on now, and the default, in case the setting
+  /// changed without a restart.
+  private static var gatewayPorts: Set<Int> {
+    let stored = UserDefaults.standard.integer(forKey: "gatewayPort")
+    return [Int(gatewayDefaultPort), stored == 0 ? Int(gatewayDefaultPort) : stored]
   }
 
   // MARK: - Judging one address

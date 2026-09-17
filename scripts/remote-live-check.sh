@@ -3,9 +3,11 @@
 #
 # The awkward part of testing this is that the security rules and the test want
 # opposite things: a local fake server would live on 127.0.0.1, which
-# `RemoteEndpoint` refuses BY DESIGN and must go on refusing. Adding a bypass so
-# the test can pass would delete the property under test — so nothing here has
-# one, and the coverage is split instead:
+# `RemoteEndpoint` refuses BY DESIGN and must go on refusing. The one exception,
+# a typed 127.0.0.1 or [::1] for a server the user runs on this machine, is not a
+# test bypass: it is the user's own server, and the property under here is the
+# path to a server somewhere else. So nothing here uses it, and the coverage is
+# split instead:
 #
 #   scripts/remote-check.swift   the rules and the SSE collapse, as pure
 #                                functions, with no network and no app

@@ -54,7 +54,10 @@ metadata address included, and Bastion's own gateway most of all, since a
 server pointed back at `127.0.0.1:8720` would be a way to replay one client's
 bearer token against every other profile. It is checked on every request rather
 than once when the entry is added, because a name that passed yesterday can
-resolve somewhere else today. `make remote-check` asserts all of it.
+resolve somewhere else today. The one exception is a server you run on this
+machine, typed as the literal `127.0.0.1` or `[::1]`, on any port but the
+gateway's; `docs/remote-servers.md` says why it is safe and how narrow it is.
+`make remote-check` asserts all of it.
 
 Bastion curates lightly, and only to fill the first screen. The catalog seeds
 thirty-four entries — twelve servers written here, eleven somebody else

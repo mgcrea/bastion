@@ -39,7 +39,8 @@ nonisolated final class Gateway: Sendable {
   /// for their OAuth callbacks — reddit is on 8724 and x on 8723, and a
   /// gateway that collided with the thing it supervises would be a bad first
   /// impression.
-  static let defaultPort: UInt16 = 8720
+  /// The number lives in `RemoteEndpoint`, which refuses it as a remote server.
+  static let defaultPort: UInt16 = RemoteEndpoint.gatewayDefaultPort
 
   /// Rule 6's numbers.
   ///
