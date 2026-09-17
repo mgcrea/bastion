@@ -4,8 +4,21 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.19.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.20.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
+
+## [1.20.0] - 2026-09-17
+
+### Added
+
+- **A server running on this Mac can be added as a remote server.** A remote URL had to be https to
+  a public host, which shut out an MCP server you run yourself on this Mac over plain http. A URL
+  typed with the literal `127.0.0.1` or `[::1]` is now accepted over http or https, on any port but
+  Bastion's own gateway. The credential never leaves the machine, so the reason for https does not
+  apply. It stays narrow on purpose: `localhost`, the rest of `127/8` and any name that resolves to
+  loopback are still refused, because a name can be rebound and a literal cannot. Typing
+  `localhost` gets a message pointing at `127.0.0.1` instead. The same rule applies to
+  `add_custom_server`, whose description now says so.
 
 ## [1.19.0] - 2026-09-16
 

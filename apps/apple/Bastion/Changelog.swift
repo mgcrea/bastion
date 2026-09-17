@@ -194,7 +194,25 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_19_0, v1_18_0, v1_17_1, v1_17_0, v1_16_0]
+  static let releases: [Release] = [v1_20_0, v1_19_0, v1_18_0, v1_17_1, v1_17_0]
+
+  // swift-format-ignore
+  private static let v1_20_0: Release = Release(
+    version: "1.20.0",
+    date: "2026-09-17",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "A server running on this Mac can be added as a remote server.",
+            body: [
+              "A remote URL had to be https to a public host, which shut out an MCP server you run yourself on this Mac over plain http. A URL typed with the literal `127.0.0.1` or `[::1]` is now accepted over http or https, on any port but Bastion's own gateway. The credential never leaves the machine, so the reason for https does not apply. It stays narrow on purpose: `localhost`, the rest of `127/8` and any name that resolves to loopback are still refused, because a name can be rebound and a literal cannot. Typing `localhost` gets a message pointing at `127.0.0.1` instead. The same rule applies to `add_custom_server`, whose description now says so.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_19_0: Release = Release(
@@ -431,77 +449,6 @@ nonisolated enum Changelog {
             headline: "The menu bar's trial banner offered a licence the rest of the app would not sell.",
             body: [
               "Its buy button was not gated on `isSelling`, which the Settings licence pane has always gated its identical button on — so a build made while the store is closed answered the same question two ways depending on where you asked it.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_16_0: Release = Release(
-    version: "1.16.0",
-    date: "2026-09-08",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "A reply can be stopped, and the chat says which tool it is waiting on.",
-            body: [
-              "The Send button becomes Stop while an answer is arriving rather than a second control appearing beside it, so the thing you reach for does not move. Stopping drops that question from what the model remembers — said in the transcript rather than left to be inferred — and rebuilds the session from the last complete answer, so an abandoned half-turn cannot sit in the context poisoning everything after it.",
-              "Beside the spinner is the name of the tool currently in flight. A call is allowed three minutes before Bastion gives up on it, and a bare spinner for three minutes is indistinguishable from a hang. One question is also capped at six tool calls now: every call's output can be 2000 characters, so a handful is the rest of the window, and a model looping on a failing tool could otherwise spend six timeouts before anybody could type again.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "One press asks about every installed server, and the sidebar says which ones answered.",
-            body: [
-              "Whether a server had a newer version was a fact you could only collect one server at a time: open its pane, press the button, read the badge, go back, repeat. The Servers header carries a check-all control now, rows npm would move get an orange dot beside whatever else they were already saying, and Settings ▸ Updates has grown a Servers section listing every npm-installed server with its state — with Update All behind a confirmation that counts the running processes it is about to stop.",
-              "Still not a timer. Nothing checks on launch, on a window appearing, or on a schedule; an answer is as fresh as the last press and is forgotten when Bastion quits rather than shown stale. What changed is that one press now covers nine servers instead of one.",
-              "The Sparkle pane's caption was corrected on the way: it claimed the appcast was \"the only network connection Bastion makes\", which was never quite what was meant and stopped being defensible with an npm check sitting under it. It says \"the only connection Bastion opens on its own\" now, which is the claim `UpdateController` and `ServerInstaller` have both always actually made.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 2,
-            headline: "Leaving the chat pane threw the conversation away.",
-            body: [
-              "The pane was one arm of the window's `switch`, so a trip to the Log and back destroyed it — the transcript, the tools it was started with, the live session, and a reply that was still arriving with nobody left to receive it. The conversation is owned by the window now rather than by the view, so it survives navigating away, closing the window, and reopening it.",
-            ]),
-          Entry(
-            ordinal: 3,
-            headline: "The transcript scrolled to the wrong place, or not at all.",
-            body: [
-              "It followed the last message's text, which a tool call is not — so a call arriving mid-answer grew the transcript under the fold and moved nothing. It also fought anyone scrolling up to re-read, dragging them back on every token. It follows the tail until you scroll away, stops, and offers **Jump to latest** while a reply is still arriving; asking something new starts following again.",
-            ]),
-          Entry(
-            ordinal: 4,
-            headline: "Shift-Return did nothing in the composer.",
-            body: [
-              "Return was bound twice — once by the text field and once as the Send button's key equivalent — and removing the duplicate was not enough on its own: Shift-Return was then swallowed outright, no newline and no send, so the field never had the multiline behaviour its own line limit advertised. It inserts a newline now, and plain Return still sends.",
-              "The tool picker is also disabled while a reply is arriving, with a note saying why. Changing the selection rebuilds the session, which would have discarded the answer being written into it.",
-            ]),
-          Entry(
-            ordinal: 5,
-            headline: "A streamed token re-rendered the whole pane.",
-            body: [
-              "Every token re-ran the profile picker's pass over every server crossed with every profile, plus the budget arithmetic and the banners, because one view body read the messages. The header, transcript and composer are three views now, and only the transcript reads them.",
-            ]),
-          Entry(
-            ordinal: 6,
-            headline: "Claude Desktop was being fronted with the facade it never needed.",
-            body: [
-              "\"Load tools on demand\" replaces a server's listing with a search tool and a dispatcher, and it is skipped for clients that already fetch a schema only when something reaches for it — a list that had one entry, Claude Code, because Claude Code documents the mechanism. Claude Desktop sat outside it on the grounds that no equivalent was documented for it, and `docs/clients.md` and the client pane both went further and stated as fact that Desktop takes the whole listing on connect. Nobody had checked.",
-              "It was checked on 2026-09-08, and it defers. A one-tool server was wired into `claude_desktop_config.json` beside the usual surface, carrying two freshly generated tokens: one in the tool's description, one as the only allowed value of its required argument. Asked to quote either from context, Desktop 1.46388.4 produced neither, named the tool under a deferred listing, and then called it with the correct passphrase — a value nothing but the schema carried, fetched on the already-open connection with no second `tools/list`. Chat and Cowork behaved the same way.",
-              "So the facade was costing these users rather than saving them anything: Desktop never held the schemas it buys back, and being fronted took its own tool search away, leaving three generic entries indexed where eighty-five specific ones used to be. `claude-desktop` joins the list, the website's figures say which clients they do not describe, and the flat claims in the docs and the pane are gone.",
-            ]),
-          Entry(
-            ordinal: 7,
-            headline: "The per-client escape hatch was withheld from the clients that needed it.",
-            body: [
-              "The Context pane offered \"set this to No\" only for clients Bastion already believed defer. The reverse case — a client that starts deferring before Bastion learns it has — is the one nobody can report, and it is exactly what just happened. Both directions are offered now, and the pane says what Bastion has watched rather than asserting what a client does.",
             ]),
         ]),
     ])
