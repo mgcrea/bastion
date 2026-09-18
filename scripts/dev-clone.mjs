@@ -8,8 +8,8 @@
 // script from writing over the real app's state — so this does not remove it.
 // It copies across it, once, when you ask.
 //
-// Three things move, by three different routes, because they are three
-// different kinds of thing:
+// Four things move, by three different routes, because they are different
+// kinds of thing:
 //
 //   servers.json   a plain file copy. Carries catalog rows and the definitions
 //                  of any custom server, which a catalog lookup cannot rebuild.
@@ -23,6 +23,9 @@
 //                  values are read out of the Release Keychain and written into
 //                  that file; the app moves them into the DEBUG Keychain on
 //                  next launch and strips the file to `imported.json`.
+//   gateway tokens the installed app's per-client tokens, through the same
+//                  file, so every config it wrote is accepted by the Debug
+//                  build too — both listen on the same port, one at a time.
 //
 // What deliberately does NOT move: OAuth token sets. See `oauthProfiles` below
 // — copying one risks signing the real app out, and re-authorizing in the Debug
@@ -148,6 +151,59 @@ const keychain = (service, account) => {
 
 const PROFILE_SERVICE = "io.mgcrea.bastion.profile";
 const OAUTH_SERVICE = "io.mgcrea.bastion.oauth";
+const GATEWAY_SERVICE = "io.mgcrea.bastion.gateway";
+
+/**
+ * The account names under one keychain service. Names only.
+ *
+ * `security dump-keychain` without `-d` prints each item's attributes and never
+ * its secret, which is the only way to enumerate a service from the command
+ * line — `find-generic-password` needs the account up front. Parsed per item
+ * (items begin at a `keychain:` line) because an attribute's neighbours in the
+ * output belong to a different item often enough to matter.
+ */
+const accountsIn = (service) => {
+  let dump;
+  try {
+    dump = execFileSync("security", ["dump-keychain"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      maxBuffer: 64 * 1024 * 1024,
+    });
+  } catch {
+    return [];
+  }
+  const out = new Set();
+  for (const item of dump.split(/^keychain: /m)) {
+    const svce = item.match(/"svce"<blob>="([^"]*)"/)?.[1];
+    const acct = item.match(/"acct"<blob>="([^"]*)"/)?.[1];
+    if (svce === service && acct) out.add(acct);
+  }
+  return [...out].toSorted();
+};
+
+/**
+ * The installed app's gateway tokens, by client — so the Debug build accepts
+ * the tokens every client config already carries.
+ *
+ * Without this a Debug build is a 401 for every editor the moment it is the one
+ * listening on the gateway port: the configs were written by the installed app,
+ * and each build checks tokens against its own keychain service. A gateway token
+ * never rotates, so unlike an OAuth token set this copy cannot sign anything
+ * out.
+ *
+ * `dev` is the one account left alone. It is the Debug build's own scripting
+ * identity: the smoke, builtin and dialect checks read it back from the
+ * `dev-token` file beside it, as do `.mcp.json` files `make migrate` repointed,
+ * and replacing the Keychain half would leave every one of them holding a token
+ * the Debug build no longer accepts.
+ */
+const gatewayTokens = {};
+for (const client of accountsIn(GATEWAY_SERVICE)) {
+  if (client === "dev") continue;
+  const token = keychain(GATEWAY_SERVICE, client);
+  if (token) gatewayTokens[client] = token;
+}
 
 /**
  * Profiles whose credential is an OAuth token set rather than a typed secret.
@@ -225,6 +281,16 @@ if (absent.length > 0) {
   for (const account of absent) say(`    ${account}`);
   say("  (set them in the Debug app, or they were never set in the Release one)");
 }
+const adopted = Object.keys(gatewayTokens);
+say("");
+if (adopted.length > 0) {
+  say(`${adopted.length} client gateway token(s) carried across, so clients keep working when`);
+  say("the Debug build is the one listening:");
+  for (const client of adopted) say(`    ${client}`);
+} else {
+  say("No client gateway tokens found in the Release keychain; clients wired by the");
+  say("installed app will be refused by the Debug build until you press Configure there.");
+}
 if (unresolvable.length > 0) {
   say("");
   say(`${unresolvable.length} profile(s) name a server that is neither installed nor in the`);
@@ -298,13 +364,17 @@ if (!NO_INSTALLS && existsSync(join(RELEASE, "servers"))) {
 }
 
 // The profiles, as the document `DevSeed` already knows how to consume.
-const document = { profiles: rows };
+const document = { gatewayTokens, profiles: rows };
 const out = join(DEBUG, "import.json");
 writeFileSync(out, `${JSON.stringify(document, null, 2)}\n`, { mode: 0o600 });
-say(`Wrote ${rows.length} profile(s) to import.json (mode 600)`);
+say(
+  `Wrote ${rows.length} profile(s) and ${adopted.length} gateway token(s) to import.json (mode 600)`,
+);
 
 say("");
 say("Next: launch the Debug build. It consumes import.json on startup, moves every");
-say("secret into the Debug keychain, and leaves imported.json with the values stripped.");
+say("secret and token into the Debug keychain, and leaves imported.json with the values");
+say("stripped. Both builds listen on the same port, so the installed app has to be quit");
+say("first — which `make run` does, since `make stop` matches both.");
 say("");
 say("    make run");

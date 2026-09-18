@@ -31,6 +31,9 @@
       AppSupport.directory.appendingPathComponent("dev-token")
     }
 
+    /// What a moved secret is replaced with in `imported.json`.
+    private static let movedPlaceholder = "(moved to the Keychain)"
+
     private struct Document: Codable {
       var token: String?
       /// Extra clients to mint a token for, each left in `dev-token-<client>`.
@@ -44,6 +47,22 @@
       /// credential in a shell variable and make the check depend on whether
       /// that client happens to be wired.
       var tokens: [String]?
+      /// Existing gateway tokens to adopt, by client, verbatim.
+      ///
+      /// Not minted, unlike the two fields above — carried. This is how
+      /// `make dev-clone` makes a Debug build a drop-in replacement for the
+      /// installed app on the same port: every client config Bastion wrote
+      /// carries the INSTALLED app's token, and a Debug build checks tokens
+      /// against its own Keychain service, so without this every editor gets a
+      /// 401 the moment the Debug build is the one listening.
+      ///
+      /// Safe to copy where an OAuth token set is not, because a gateway token
+      /// never rotates: `ClientWiring.token(for:)` mints one once and reuses it.
+      /// Written here, by the app, rather than by `security` in the script, so
+      /// the Keychain item carries this build's own ACL — an item the `security`
+      /// tool created would prompt on every read — and the value never sits in
+      /// a process's argv.
+      var gatewayTokens: [String: String]?
       var profiles: [Row]
 
       struct Row: Codable {
@@ -93,6 +112,30 @@
       }
 
       var stripped = document
+      if let adopted = document.gatewayTokens, !adopted.isEmpty {
+        for (client, token) in adopted.sorted(by: { $0.key < $1.key }) {
+          // The placeholder this very file is stripped to, refused by name. A
+          // stripped document re-imported once stored the literal "(moved to
+          // the Keychain)" over a real credential — see the note at the bottom.
+          guard !token.isEmpty, token != Self.movedPlaceholder else {
+            hostLog("import", .error, "no usable gateway token for '\(client)', skipped")
+            continue
+          }
+          do {
+            try CredentialStore.write(.gatewayToken, account: client, value: token)
+            hostLog("import", .info, "adopted the installed app's gateway token for '\(client)'")
+          } catch {
+            hostLog(
+              "import", .error,
+              "could not adopt a token for '\(client)': \(error.localizedDescription)")
+          }
+          stripped.gatewayTokens?[client] = Self.movedPlaceholder
+        }
+        // Once, after every write, so the gateway's identity cache cannot
+        // answer with the tokens this build held before.
+        GatewayToken.forget()
+      }
+
       for (index, row) in document.profiles.enumerated() {
         // Install it if the import names a catalog entry that is not in the
         // list yet. A seed file exists to get a working setup in one step, and
@@ -149,7 +192,7 @@
         }
 
         for key in row.values.keys where secretNames.contains(key) {
-          stripped.profiles[index].values[key] = "(moved to the Keychain)"
+          stripped.profiles[index].values[key] = Self.movedPlaceholder
         }
       }
 

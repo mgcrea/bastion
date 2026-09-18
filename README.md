@@ -490,6 +490,12 @@ for the mechanism above to consume. Your Release setup is only ever read. The pr
 `servers.json` and `profiles.json` are kept under `clone-backup/`, and no secret value is ever
 printed.
 
+It also carries each client's **gateway token**, so the Debug build is a drop-in replacement for the
+installed one: both listen on the same port, and every config Bastion wrote holds the installed
+app's token, which a Debug build would otherwise refuse with a 401. A gateway token never rotates,
+so this copy cannot sign anything out. The `dev` token is left alone, because the check scripts
+read it back from the `dev-token` file beside it.
+
 Two things deliberately do not come across. **OAuth token sets** are left behind because a refresh
 token is frequently single-use: the first build to refresh it rotates it, and the other build's
 copy stops working — so copying one would risk signing the real app out to save a button press.
