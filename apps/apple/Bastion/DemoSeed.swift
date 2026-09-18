@@ -1043,10 +1043,13 @@ enum DemoSeed {
       switch window.frameAutosaveName {
       case MainWindowController.autosaveName: contentSize
       case SettingsWindowController.autosaveName: settingsContentSize
-      // A window nothing named. `HostedWindow` skips `setFrameAutosaveName`
-      // under demo, so this is in fact EVERY window here — which is why the
-      // match below is on the intended size rather than on the name, and why
-      // the sizing is `HostedWindow`'s job and not this function's.
+      // A window nothing named, which is in fact EVERY window here — and now
+      // in every build, not only under demo: `HostedWindow` restores with
+      // `setFrameUsingName` and persists through `FrameSaver`, so nothing ever
+      // calls `setFrameAutosaveName` and `frameAutosaveName` is always empty.
+      // Which is why the match below is on the intended size rather than on the
+      // name, and why the sizing is `HostedWindow`'s job and not this
+      // function's.
       default: nil
       }
     if let wanted, window.contentRect(forFrameRect: window.frame).size != wanted {
