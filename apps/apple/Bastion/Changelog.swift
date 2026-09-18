@@ -194,7 +194,25 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_20_0, v1_19_0, v1_18_0, v1_17_1, v1_17_0]
+  static let releases: [Release] = [v1_21_0, v1_20_0, v1_19_0, v1_18_0, v1_17_1]
+
+  // swift-format-ignore
+  private static let v1_21_0: Release = Release(
+    version: "1.21.0",
+    date: "2026-09-18",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Entries Bastion left behind can be cleaned up without unwiring the client.",
+            body: [
+              "An entry Bastion wrote for a profile that no longer exists went on sitting in the config, sending requests the gateway refuses, and it was invisible on the client pane: `isOurs` claimed it, so it was not listed among the servers Bastion did not write, and no profile matched it, so it earned no row either. The only remedy was _Remove Bastion's entries_, which took out the working ones too. A **Stale entries** card now lists each one with the profile it points at, and one button removes all of them in a single write. It stays narrow on purpose: an entry filed under an older key is a rename, one pointing at a stale port is _points elsewhere_ and Configure rewrites it, and a profile whose server is merely switched off still exists — none of the three is touched. Removal is a button rather than something Bastion does on its own, because the instance most likely to misjudge which profiles exist is a second copy of Bastion, which is where these came from — and for that same reason a Debug build, which keeps its own profiles and shares these configs with the installed app, draws the card but refuses the removal.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_20_0: Release = Release(
@@ -401,82 +419,11 @@ nonisolated enum Changelog {
         ]),
     ])
 
-  // swift-format-ignore
-  private static let v1_17_0: Release = Release(
-    version: "1.17.0",
-    date: "2026-09-11",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Help ▸ Report an Issue, Send Feedback and Bastion Support.",
-            body: [
-              "The Help menu opens the issue tracker, a feedback form on the website and a new support page, from the same shared package the other mgcrea apps use. The app still sends nothing: each item hands your browser a URL, and the app version, macOS version, Mac model and language it carries are in the address bar and editable on the form before anything goes anywhere. The tracker stays the primary channel; the form is for reports that quote your own servers, profiles or activity log.",
-            ]),
-        ]),
-      Section(
-        name: "Changed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 1,
-            headline: "The app icon's fort sits behind the ridge instead of on top of it.",
-            body: [
-              "Standing in front of both hills at 580 wide, the fort's 90% ink laid a pale translucent band across the ridge wherever the two crossed, and at 16px the two shapes merged into one. The fort is 24/29 of that size now and takes the ridge itself as its base — the same curve, re-expressed between its two feet — so fort and hill share one edge and never overlap. The `.icon` bundle, the lockup and every website favicon, touch icon and card are regenerated from the new mark. The menu bar glyphs are deliberately untouched: they still draw the fort standing on the ridge, recorded in `design/README.md` as a known divergence rather than quietly changed.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 2,
-            headline: "A gateway that had died went on showing green.",
-            body: [
-              "`Gateway` keeps its state behind a lock and is `Sendable`, with nothing for SwiftUI to subscribe to, so `Gateway.shared.port` read inside a view body was a value sampled once and never revisited. The menu bar panel got away with it because `MenuBarExtra` rebuilds its content every time it opens; the main window has no such rebuild, so the sidebar's status row could sit on \"Serving on 127.0.0.1:…\" indefinitely — the one line whose whole job is to beat a client's \"connection refused\" to you. Both read an observable projection now, published by `Gateway.start()` on the failure path as well as the success one.",
-            ]),
-          Entry(
-            ordinal: 3,
-            headline: "The menu bar panel had a phantom gap above the gateway line when licensed.",
-            body: [
-              "The licensed case returned an empty view from inside a `TimelineView`, which measures zero but remains a laid-out child, so the stack allocated spacing on both sides of nothing and the header sat 24pt above the line instead of 12. It also ran a fifteen-second timer for the lifetime of every panel open with no countdown to show for it. The licensed case contributes no view at all now, and only the trial and refused states build the timer.",
-            ]),
-          Entry(
-            ordinal: 4,
-            headline: "The menu bar's trial banner offered a licence the rest of the app would not sell.",
-            body: [
-              "Its buy button was not gated on `isSelling`, which the Settings licence pane has always gated its identical button on — so a build made while the store is closed answered the same question two ways depending on where you asked it.",
-            ]),
-        ]),
-    ])
-
   /// Work that is written down but not shipped.
   ///
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  // swift-format-ignore
-  private static let unreleasedRelease: Release = Release(
-    version: "Unreleased",
-    date: "",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Entries Bastion left behind can be cleaned up without unwiring the client.",
-            body: [
-              "An entry Bastion wrote for a profile that no longer exists went on sitting in the config, sending requests the gateway refuses, and it was invisible on the client pane: `isOurs` claimed it, so it was not listed among the servers Bastion did not write, and no profile matched it, so it earned no row either. The only remedy was _Remove Bastion's entries_, which took out the working ones too. A **Stale entries** card now lists each one with the profile it points at, and one button removes all of them in a single write. It stays narrow on purpose: an entry filed under an older key is a rename, one pointing at a stale port is _points elsewhere_ and Configure rewrites it, and a profile whose server is merely switched off still exists — none of the three is touched. Removal is a button rather than something Bastion does on its own, because the instance most likely to misjudge which profiles exist is a second copy of Bastion, which is where these came from — and for that same reason a Debug build, which keeps its own profiles and shares these configs with the installed app, draws the card but refuses the removal.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  static let unreleased: Release? = unreleasedRelease
+  static let unreleased: Release? = nil
   // </generated:changelog>
 }
