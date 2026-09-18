@@ -4,10 +4,10 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.21.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.22.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.22.0] - 2026-09-18
 
 ### Added
 
@@ -29,6 +29,30 @@ are taken from this file, which is the curated summary.
   has been pressed on it once, and says so. Pressing it renames the entries to the current scheme
   in place, issues that profile its own token, and leaves a backup beside the file. Clients with a
   single config file are unaffected.
+
+### Fixed
+
+- **A window resize could take the app down.** AppKit's frame autosave writes from inside the
+  `setFrame` that prompted it, so a resize SwiftUI drives itself meant writing to `UserDefaults` in
+  the middle of the window's own layout pass — and that write was enough to abort the process.
+  Persisting posts `NSUserDefaultsDidChange`, SwiftUI's `@AppStorage` observer reads it as a
+  settings change and dirties the hosting view, and the constraint update that follows lands inside
+  the layout pass still running; AppKit throws rather than re-enter, and nothing catches it. It
+  needed no bad frame and no bad window — one `@AppStorage` anywhere in the app was fuel enough.
+  Window frames are now restored with `setFrameUsingName` and written back on a turn of their own,
+  and only for a resize or a move you performed. A frame remembered by an earlier version still
+  restores.
+
+### Internal
+
+- `make dev-clone` copies the installed Release app's servers, profiles and secrets into a Debug
+  build, so development happens against the setup actually in use. The two builds stay isolated by
+  bundle identifier — separate Application Support directories and separate Keychain services — and
+  this copies across that line once when asked rather than removing it: the server list moves as a
+  file, the downloaded packages are cloned with `clonefile(2)`, and the profiles go through the
+  `import.json` path the Debug build already has, which is what routes each secret into the Debug
+  Keychain. OAuth token sets are deliberately left behind, because a refresh token is frequently
+  single-use and copying one risks rotating it out from under the installed app.
 
 ## [1.21.0] - 2026-09-18
 

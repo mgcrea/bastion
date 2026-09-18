@@ -194,7 +194,42 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_21_0, v1_20_0, v1_19_0, v1_18_0, v1_17_1]
+  static let releases: [Release] = [v1_22_0, v1_21_0, v1_20_0, v1_19_0, v1_18_0]
+
+  // swift-format-ignore
+  private static let v1_22_0: Release = Release(
+    version: "1.22.0",
+    date: "2026-09-18",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Claude Code's other config directories are offered as clients of their own.",
+            body: [
+              "Claude Code reads `CLAUDE_CONFIG_DIR`, so one Mac can run several profiles side by side with separate server lists — and Bastion knew about exactly one of them, `~/.claude.json`. The other was left to be kept in step by hand, which meant copying entries between files and inheriting the first profile's token with them: one revocation signed out both, and nothing on screen said the second had fallen behind. Bastion now finds `~/.claude-<name>` directories and gives each a row with its own gateway token, its own audit trail and its own Configure button. Detection is a switch in Settings, beside a list for a config directory that lives somewhere no scan would look. The default profile's file is deliberately not discovered but named outright, because Claude Code keeps it _outside_ its config directory — `~/.claude.json`, not `~/.claude/.claude.json`, and the latter does exist, holding first-run bookkeeping and no servers at all.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "A config directory Bastion has not written is left alone until you ask.",
+            body: [
+              "Automatic rewiring decides what is wired by looking for entries shaped like Bastion's, and never at the token — so a second Claude profile filled in by copying entries out of the first passes that test without Bastion having touched the file. Such a row is now kept out of automatic updates until Configure has been pressed on it once, and says so. Pressing it renames the entries to the current scheme in place, issues that profile its own token, and leaves a backup beside the file. Clients with a single config file are unaffected.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 2,
+            headline: "A window resize could take the app down.",
+            body: [
+              "AppKit's frame autosave writes from inside the `setFrame` that prompted it, so a resize SwiftUI drives itself meant writing to `UserDefaults` in the middle of the window's own layout pass — and that write was enough to abort the process. Persisting posts `NSUserDefaultsDidChange`, SwiftUI's `@AppStorage` observer reads it as a settings change and dirties the hosting view, and the constraint update that follows lands inside the layout pass still running; AppKit throws rather than re-enter, and nothing catches it. It needed no bad frame and no bad window — one `@AppStorage` anywhere in the app was fuel enough. Window frames are now restored with `setFrameUsingName` and written back on a turn of their own, and only for a resize or a move you performed. A frame remembered by an earlier version still restores.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_21_0: Release = Release(
@@ -390,65 +425,11 @@ nonisolated enum Changelog {
         ]),
     ])
 
-  // swift-format-ignore
-  private static let v1_17_1: Release = Release(
-    version: "1.17.1",
-    date: "2026-09-11",
-    sections: [
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "The menu bar panel came up empty in 1.17.0.",
-            body: [
-              "Moving the panel's chrome onto swift-support-kit's shared `MenuBarPanel` took the package at 1.2.0, whose panel laid its middle band out at no height — so it drew a header and a footer with nothing between them, and the gateway line and the servers section were rendered below the panel's own bottom edge. Everything the menu bar exists to show was off-panel; the release that introduced the shared chrome is the release that shipped it bodyless. The requirement is 1.2.1 or newer now.",
-            ]),
-        ]),
-      Section(
-        name: "Changed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 1,
-            headline: "The menu bar header pins the version to its trailing edge.",
-            body: [
-              "The name stays at the leading edge and the version goes hard right, which is the arrangement the fleet settled on. Bastion's own suffix placement was one of the two inputs to that decision and lost it.",
-            ]),
-        ]),
-    ])
-
   /// Work that is written down but not shipped.
   ///
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  // swift-format-ignore
-  private static let unreleasedRelease: Release = Release(
-    version: "Unreleased",
-    date: "",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Claude Code's other config directories are offered as clients of their own.",
-            body: [
-              "Claude Code reads `CLAUDE_CONFIG_DIR`, so one Mac can run several profiles side by side with separate server lists — and Bastion knew about exactly one of them, `~/.claude.json`. The other was left to be kept in step by hand, which meant copying entries between files and inheriting the first profile's token with them: one revocation signed out both, and nothing on screen said the second had fallen behind. Bastion now finds `~/.claude-<name>` directories and gives each a row with its own gateway token, its own audit trail and its own Configure button. Detection is a switch in Settings, beside a list for a config directory that lives somewhere no scan would look. The default profile's file is deliberately not discovered but named outright, because Claude Code keeps it _outside_ its config directory — `~/.claude.json`, not `~/.claude/.claude.json`, and the latter does exist, holding first-run bookkeeping and no servers at all.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "A config directory Bastion has not written is left alone until you ask.",
-            body: [
-              "Automatic rewiring decides what is wired by looking for entries shaped like Bastion's, and never at the token — so a second Claude profile filled in by copying entries out of the first passes that test without Bastion having touched the file. Such a row is now kept out of automatic updates until Configure has been pressed on it once, and says so. Pressing it renames the entries to the current scheme in place, issues that profile its own token, and leaves a backup beside the file. Clients with a single config file are unaffected.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  static let unreleased: Release? = unreleasedRelease
+  static let unreleased: Release? = nil
   // </generated:changelog>
 }
