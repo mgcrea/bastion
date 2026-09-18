@@ -134,6 +134,9 @@ dev-config: ## Point the Debug app at the mgcrea-ai checkout instead of bundled 
 	@chmod 600 "$(SUPPORT)/dev.json"
 	@echo "  $(SUPPORT)/dev.json -> $(MCP_ROOT)"
 
+dev-clone: ## Copy the installed Release app's servers, profiles and secrets into the Debug build
+	@node scripts/dev-clone.mjs $(if $(DRY),--dry-run,) $(if $(NO_INSTALLS),--no-installs,)
+
 clean: ## Remove the app build output
 	@rm -rf apps/apple/.build
 

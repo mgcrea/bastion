@@ -471,6 +471,35 @@ be re-imported. Debug-only by design: a release build that imported credentials 
 could drop in its Application Support directory would be a way to add a profile to somebody else's
 gateway.
 
+### Developing against your real setup
+
+Writing that file by hand is the long way round when the installed Release app already has the
+servers and profiles you use. `make dev-clone` copies its setup into the Debug build:
+
+```sh
+make dev-clone DRY=1   # report what would move, write nothing
+make dev-clone         # do it
+```
+
+The two builds are isolated on purpose — a Debug build has its own bundle identifier, so its own
+Application Support directory **and** its own Keychain services — and this copies across that line
+once, when you ask, rather than removing it. It moves `servers.json` (custom server definitions
+included), clones the downloaded npm trees with `clonefile(2)` so 300MB of them costs almost
+nothing, reads each secret out of the Release Keychain, and writes the profiles as an `import.json`
+for the mechanism above to consume. Your Release setup is only ever read. The previous Debug
+`servers.json` and `profiles.json` are kept under `clone-backup/`, and no secret value is ever
+printed.
+
+Two things deliberately do not come across. **OAuth token sets** are left behind because a refresh
+token is frequently single-use: the first build to refresh it rotates it, and the other build's
+copy stops working — so copying one would risk signing the real app out to save a button press.
+Press _Authorize_ on those profiles in the Debug app; the script names them. **Profiles whose
+server is neither installed nor in the catalog** cannot be rebuilt, and are named too.
+
+It refuses to run while the Debug app is up, because the app holds both files in memory and writes
+them back on the next edit. Add `NO_INSTALLS=1` to skip the server trees and let the Debug app
+download what it needs.
+
 In a Debug build a checkout wins over an install, so dogfooding wants
 `~/Library/Application Support/io.mgcrea.bastion.debug/dev.json` pointing at the checkout:
 
