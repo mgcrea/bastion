@@ -782,7 +782,11 @@ enum BuiltinTools {
         // An array rather than a sentence, because the consumer is a model, and
         // absent rather than empty so the common case adds nothing.
         if row["lazy_tools"] as? Bool == true {
-          let exempt = ClientWiring.all.filter { ToolFacade.clientDefersSchemas($0.id) }.map(\.id)
+          // Families, not ids. An agent asking which clients the facade skips does
+          // not need to learn that this Mac has two Claude Code config
+          // directories, and `claude-code@skitrust` in that list would read as a
+          // separate product rather than as the same client twice.
+          let exempt = ClientWiring.exemptFamilies()
           if !exempt.isEmpty { row["lazy_tools_exempt_clients"] = exempt }
         }
         guard let server = ServerStore.shared.server(id: profile.serverID) else { return row }
@@ -1428,7 +1432,8 @@ enum BuiltinTools {
       "lazy_tools": lazyServer.loadsToolsOnDemand,
     ]
     if lazyServer.loadsToolsOnDemand {
-      let exempt = ClientWiring.all.filter { ToolFacade.clientDefersSchemas($0.id) }.map(\.id)
+      // Families, not ids. See the sibling in `listProfiles`.
+      let exempt = ClientWiring.exemptFamilies()
       if !exempt.isEmpty { out["lazy_tools_exempt_clients"] = exempt }
     }
     let missing = ProfileEnvironment.missing(for: profile, server: server)

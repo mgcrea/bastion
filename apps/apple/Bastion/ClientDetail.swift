@@ -311,6 +311,25 @@ struct ClientDetail: View {
           .fixedSize(horizontal: false, vertical: true)
       }
 
+      // A config directory Bastion found but has never written.
+      //
+      // Worth a line of its own because the state is invisible otherwise: a
+      // profile populated by copying entries out of another one LOOKS wired —
+      // `isOurs` claims every entry, and the dot is the same amber a genuinely
+      // half-configured client gets — while `rewire` is deliberately leaving it
+      // alone. Without this, the file silently stops tracking profile changes
+      // and nothing on screen says why.
+      if !ClientWiring.isAdopted(client) && snapshot.hasOurEntries {
+        Label(
+          "Bastion has not written this file, so it is left out of automatic updates. "
+            + "Configuring it renames the entries to Bastion's current scheme and issues this "
+            + "profile its own token.",
+          systemImage: "info.circle"
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      }
+
       HStack(spacing: 8) {
         Button("Configure") { wire() }
           .disabled(writable.isEmpty || !client.isInstalled)
@@ -375,7 +394,7 @@ struct ClientDetail: View {
   /// before Bastion learns it has.
   private func contextCard(_ snapshot: Snapshot) -> some View {
     let key = ToolFacade.clientOverrideKey(client.id)
-    let table = ToolFacade.clientsDeferringSchemas.contains(client.id)
+    let table = ToolFacade.clientsDeferringSchemas.contains(client.family)
     // Resolved from the @State tag rather than re-read from the defaults
     // domain, so the verdict below moves with the picker in the same frame the
     // user clicks it. `Bool("")` is nil, which is the Default position falling
@@ -573,7 +592,7 @@ struct ClientDetail: View {
     // and they are Claude Code's alone. Naming them under any other client on
     // the list — Claude Desktop, whose deferral has no user-visible switch —
     // would be advice that does not apply.
-    guard client.id == "claude-code" else { return base }
+    guard client.family == ClaudeProfiles.family else { return base }
     return base
       + " Set this to No if you have turned that off — ENABLE_TOOL_SEARCH=false, a custom "
       + "ANTHROPIC_BASE_URL, or a version before 2.1.191."

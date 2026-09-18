@@ -90,6 +90,16 @@ enum ClientWiring {
     /// `ClientIconView` for why the last of those is deliberate.
     let symbol: String
 
+    /// The client this row is a profile of.
+    ///
+    /// Computed rather than stored, and that is not a shortcut. A stored field
+    /// defaulting to `id` would put a line on all seven literals below plus
+    /// seven in `DemoSeed`, and would let a row exist whose family disagrees
+    /// with its own id — a class of bug with no symptom. Derived from the id,
+    /// it cannot drift, and it is the same answer `ToolFacade` reaches from the
+    /// gateway's thread, where no `Client` exists to ask.
+    var family: String { ClientIdentity.family(of: id) }
+
     /// Spelled out rather than memberwise, so that adding a format did not put
     /// a line on every client that does not have one.
     init(
@@ -132,14 +142,72 @@ enum ClientWiring {
     }
   }
 
+  /// The discovered Claude Code profile rows, for at most `profileCacheTTL`.
+  ///
+  /// A cache in a file whose whole design is "read it again, cache nothing", so
+  /// it needs its reason stated. That rule is about the CONTENTS of a config
+  /// file, which belongs to another application and can change under Bastion at
+  /// any moment. This caches which config FILES exist, which changes when
+  /// somebody creates a config directory and at no other time.
+  ///
+  /// Required rather than tidy. `all` is read per sidebar redraw, per detail
+  /// route — and, the one that decides it, once per row per redraw from
+  /// `StatsPane`'s display-name lookup. An unguarded `readdir` of a home
+  /// directory on that path is not something to ship. Same shape as
+  /// `GatewayToken.issued()`, and for the same reason.
+  private static var profileCache: (rows: [ClaudeProfiles.Row], at: Date)?
+  private static let profileCacheTTL: TimeInterval = 5
+
+  /// Drop the cache now. Settings calls this on every mutation, so a directory
+  /// added by hand appears in the sidebar before the next redraw rather than
+  /// within five seconds of it.
+  static func forgetDiscoveredProfiles() {
+    profileCache = nil
+    ClientConfigRevision.shared.bump()
+  }
+
+  private static var discoveredProfiles: [ClaudeProfiles.Row] {
+    if let cached = profileCache, Date().timeIntervalSince(cached.at) < profileCacheTTL {
+      return cached.rows
+    }
+    let rows = ClaudeProfiles.discovered()
+    profileCache = (rows, Date())
+    return rows
+  }
+
   static var all: [Client] {
+    // Before the scan, deliberately. Under a capture the fixture IS the list,
+    // so discovery never runs and no golden screenshot can move with the
+    // developer's home directory.
     if DemoSeed.isEnabled { return DemoSeed.clients }
     let home = FileManager.default.homeDirectoryForCurrentUser
     let support = home.appendingPathComponent("Library/Application Support")
+    // Claude Code's other config directories, immediately after its default
+    // row, so the sidebar groups them. Everything else about them is the
+    // default row's — same file format, same root key, same transport — and the
+    // only thing that varies is which file they point at.
+    let profiles = discoveredProfiles.map { profile in
+      Client(
+        id: profile.id,
+        displayName: profile.displayName,
+        configURL: profile.configURL,
+        rootKey: "mcpServers",
+        transport: .http,
+        caveat:
+          "a second Claude Code config directory — CLAUDE_CONFIG_DIR=\(profile.directory.path)",
+        bundleID: nil,
+        symbol: "terminal")
+    }
     return [
       Client(
         id: "claude-code",
         displayName: "Claude Code",
+        // Outside `~/.claude`, and that is Claude Code's own layout rather than
+        // an oversight: the default profile keeps its MCP config here, while
+        // every directory named by `CLAUDE_CONFIG_DIR` holds its own. See
+        // `ClaudeProfiles.configName` — a recent Claude Code also leaves a
+        // `~/.claude/.claude.json` holding first-run bookkeeping and no
+        // servers, so this row is a literal and never comes through discovery.
         configURL: home.appendingPathComponent(".claude.json"),
         rootKey: "mcpServers",
         transport: .http,
@@ -147,7 +215,8 @@ enum ClientWiring {
         // A command, not an app: there is nothing for LaunchServices to find,
         // and `terminal` is what it is.
         bundleID: nil,
-        symbol: "terminal"),
+        symbol: "terminal")
+    ] + profiles + [
       Client(
         id: "claude-desktop",
         displayName: "Claude Desktop",
@@ -461,10 +530,26 @@ enum ClientWiring {
       case .audited(.notConfigured): return "not configured"
       case .audited(.stale(let where_)): return "points elsewhere — \(where_)"
       case .audited(.incomplete(let missing)):
-        return "missing \(missing.joined(separator: ", "))"
+        // Capped, because this is a tooltip and a header line. A config on an
+        // older key scheme audits as EVERY expected key missing — sixteen of
+        // them on the machine this was written against — and a sentence that
+        // long stops being read at all. The count is the fact; the names are
+        // the sample. `ClientDetail`'s entries card lists them in full.
+        return "missing \(Status.sample(missing))"
       case .audited(.collides(let keys)):
         return "\(keys.joined(separator: ", ")) already taken by another server"
       }
+    }
+
+    /// A few names and then a count, for a list that has no upper bound.
+    ///
+    /// Four because that is about what fits before a tooltip wraps, and the
+    /// shape — names, then "and N more" — keeps the sentence true at every
+    /// length rather than only at short ones.
+    static func sample(_ names: [String], limit: Int = 4) -> String {
+      guard names.count > limit else { return names.joined(separator: ", ") }
+      let shown = names.prefix(limit).joined(separator: ", ")
+      return "\(shown) and \(names.count - limit) more"
     }
   }
 
@@ -589,12 +674,38 @@ enum ClientWiring {
       backup = try ClientWiringMerge.write(
         merged, to: client.configURL, backupSuffix: "bastion-backup", expecting: stamp)
     }
+    // Bastion has now written this file, so `rewire` may keep it current. A
+    // no-op for every client with a single config file.
+    ClaudeProfiles.adopt(client.id)
     ClientConfigRevision.shared.bump()
     hostLog(
       "wiring", .info,
       "\(client.displayName): wrote \(entries.count) entr\(entries.count == 1 ? "y" : "ies")"
         + (backup.map { " (backup at \($0.lastPathComponent))" } ?? ""))
     return backup
+  }
+
+  /// The client families the tool facade will not apply to, deduplicated.
+  ///
+  /// Families rather than ids, because this answers "which clients defer
+  /// schemas themselves", and a second config directory is the same client
+  /// twice rather than a second one. Sorted so a tool's output does not depend
+  /// on the order the home directory happened to be read in.
+  static func exemptFamilies() -> [String] {
+    var seen: Set<String> = []
+    for client in all where ToolFacade.clientDefersSchemas(client.id) {
+      seen.insert(client.family)
+    }
+    return seen.sorted()
+  }
+
+  /// Whether `rewire` will keep this client's config current by itself.
+  ///
+  /// True for every client with one config file. For a discovered Claude Code
+  /// profile it is false until Configure has been pressed once — see `rewire`.
+  static func isAdopted(_ client: Client) -> Bool {
+    guard ClientIdentity.suffix(of: client.id) != nil else { return true }
+    return ClaudeProfiles.adopted().contains(client.id)
   }
 
   /// Bring every client that already points at Bastion back in line with the
@@ -622,7 +733,23 @@ enum ClientWiring {
   static func rewire(retiring: Set<String> = []) {
     guard autoWires else { return }
     let profiles = ProfileStore.shared.onEnabledServers
+    let adopted = ClaudeProfiles.adopted()
     for client in all where client.isInstalled {
+      // A discovered profile row is not Bastion's to keep current until Bastion
+      // has written it once.
+      //
+      // `isWired` is the wrong question for these, and only for these. It asks
+      // whether the file holds an entry `isOurs` claims — loopback host, three
+      // path segments — and a config populated by copying entries out of
+      // another Claude profile's file passes that test without Bastion ever
+      // having touched it. So the first launch after this shipped would rewrite
+      // somebody's hand-made file unasked, which is exactly what `isWired`'s own
+      // comment below says must not happen.
+      //
+      // Only profile rows are gated. The default `claude-code` row has no
+      // suffix, so every config Bastion has been writing all along goes on
+      // taking the path it always has.
+      if ClientIdentity.suffix(of: client.id) != nil, !adopted.contains(client.id) { continue }
       guard isWired(client) else { continue }
       do {
         try wire(client, profiles: profiles, retiring: retiring)

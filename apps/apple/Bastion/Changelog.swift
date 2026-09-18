@@ -424,6 +424,31 @@ nonisolated enum Changelog {
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  static let unreleased: Release? = nil
+  // swift-format-ignore
+  private static let unreleasedRelease: Release = Release(
+    version: "Unreleased",
+    date: "",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Claude Code's other config directories are offered as clients of their own.",
+            body: [
+              "Claude Code reads `CLAUDE_CONFIG_DIR`, so one Mac can run several profiles side by side with separate server lists — and Bastion knew about exactly one of them, `~/.claude.json`. The other was left to be kept in step by hand, which meant copying entries between files and inheriting the first profile's token with them: one revocation signed out both, and nothing on screen said the second had fallen behind. Bastion now finds `~/.claude-<name>` directories and gives each a row with its own gateway token, its own audit trail and its own Configure button. Detection is a switch in Settings, beside a list for a config directory that lives somewhere no scan would look. The default profile's file is deliberately not discovered but named outright, because Claude Code keeps it _outside_ its config directory — `~/.claude.json`, not `~/.claude/.claude.json`, and the latter does exist, holding first-run bookkeeping and no servers at all.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "A config directory Bastion has not written is left alone until you ask.",
+            body: [
+              "Automatic rewiring decides what is wired by looking for entries shaped like Bastion's, and never at the token — so a second Claude profile filled in by copying entries out of the first passes that test without Bastion having touched the file. Such a row is now kept out of automatic updates until Configure has been pressed on it once, and says so. Pressing it renames the entries to the current scheme in place, issues that profile its own token, and leaves a backup beside the file. Clients with a single config file are unaffected.",
+            ]),
+        ]),
+    ])
+
+  // swift-format-ignore
+  static let unreleased: Release? = unreleasedRelease
   // </generated:changelog>
 }

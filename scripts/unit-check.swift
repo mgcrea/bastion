@@ -2223,6 +2223,189 @@ struct UnitCheck {
     check("an override can front Claude Code anyway", !defers("claude-code", false))
     check("and can exempt a client the table has never heard of", defers("acme", true))
     check("no override falls back to the table", defers("claude-code", nil))
+    // The table is keyed on the FAMILY, which is what lets Claude Code have
+    // several config directories. Keyed on the id, every profile row but the
+    // first would fall through to "does not defer" and be fronted with the
+    // facade — the one thing Claude Code must not get, and a bug whose only
+    // symptom is a listing that quietly shrank.
+    check("a Claude Code profile defers, like the client it is", defers("claude-code@skitrust"))
+    check("and its override is still its own", !defers("claude-code@skitrust", false))
+    check("a profile of an unknown client still does not defer", !defers("acme@x"))
+    check("nor does a bare separator", !defers("@skitrust"))
+
+    print("\nClient ids: families and profiles")
+
+    // The identity function on every id that exists today, which is what makes
+    // this type free to add.
+    for id in [
+      "claude-code", "claude-desktop", "vscode", "cursor", "lm-studio", "windsurf", "codex",
+    ] {
+      check("'\(id)' is its own family", ClientIdentity.family(of: id) == id)
+      check("and has no profile suffix", ClientIdentity.suffix(of: id) == nil)
+    }
+    check(
+      "a profile id reduces to its client",
+      ClientIdentity.family(of: "claude-code@skitrust") == "claude-code")
+    check(
+      "and carries its suffix", ClientIdentity.suffix(of: "claude-code@skitrust") == "skitrust")
+    check("a trailing separator is not a suffix", ClientIdentity.suffix(of: "claude-code@") == nil)
+    check("and the family survives it", ClientIdentity.family(of: "claude-code@") == "claude-code")
+    check(
+      "compose is the inverse",
+      ClientIdentity.compose(family: "claude-code", suffix: "skitrust") == "claude-code@skitrust")
+    // Profile.isValidName's rule, deliberately: the suffix lands in a Keychain
+    // account and a defaults key, which is the same exposure a profile name has.
+    check("a suffix is lowercase kebab", ClientIdentity.isValidSuffix("skitrust"))
+    check("digits and dashes are fine", ClientIdentity.isValidSuffix("work-2"))
+    check("uppercase is not", !ClientIdentity.isValidSuffix("Skitrust"))
+    check("nor a leading dash", !ClientIdentity.isValidSuffix("-work"))
+    check("nor empty", !ClientIdentity.isValidSuffix(""))
+    check("nor a separator inside one", !ClientIdentity.isValidSuffix("a@b"))
+
+    print("\nClaude Code: which config directories count")
+
+    let home = URL(fileURLWithPath: "/Users/you")
+    let defaultConfig = home.appendingPathComponent(".claude.json")
+
+    func candidate(
+      _ name: String, isDirectory: Bool = true, holdsConfig: Bool = true, detected: Bool = true
+    ) -> ClaudeProfiles.Candidate {
+      ClaudeProfiles.Candidate(
+        url: home.appendingPathComponent(name), isDirectory: isDirectory,
+        holdsConfig: holdsConfig, isAutoDetected: detected)
+    }
+    func ids(_ candidates: [ClaudeProfiles.Candidate], autoDetect: Bool = true) -> [String] {
+      ClaudeProfiles.rows(from: candidates, autoDetect: autoDetect, excluding: defaultConfig)
+        .map(\.id)
+    }
+
+    // The names that are actually in a home directory that has run Claude Code
+    // and a few tools that rewrite its config. Every one of them begins
+    // `.claude.` — a dot — and the filter is `.claude-`, with a dash.
+    for name in [
+      ".claude.json", ".claude.json.backup", ".claude.json.bastion-backup",
+      ".claude.json.armada-backup", ".claude.json.cupertino-backup", ".claude",
+    ] {
+      check("'\(name)' is not a profile directory", !ClaudeProfiles.isCandidateName(name))
+    }
+    check("'.claude-skitrust' is", ClaudeProfiles.isCandidateName(".claude-skitrust"))
+    check("uppercase is not a profile directory", !ClaudeProfiles.isCandidateName(".claude-Work"))
+    check("nor a bare dash", !ClaudeProfiles.isCandidateName(".claude-"))
+
+    check(
+      "a detected directory with a config becomes a row",
+      ids([candidate(".claude-skitrust")]) == ["claude-code@skitrust"])
+    // A `~/.claude-old` left by a `mv` would otherwise become a client whose
+    // Configure writes a file no Claude Code will ever read.
+    check(
+      "a detected directory with no config does not",
+      ids([candidate(".claude-old", holdsConfig: false)]).isEmpty)
+    check(
+      "and neither does a file that happens to be named like one",
+      ids([candidate(".claude-old", isDirectory: false)]).isEmpty)
+    // The user asked for this one by name, so "not configured" is the honest
+    // answer rather than a reason to hide it.
+    check(
+      "an explicitly named directory with no config still counts",
+      ids([candidate(".claude-fresh", holdsConfig: false, detected: false)])
+        == ["claude-code@fresh"])
+    check(
+      "but an explicit one that is not a directory never does",
+      ids([candidate(".claude-fresh", isDirectory: false, detected: false)]).isEmpty)
+
+    // The trap this whole file exists for. `~/.claude/.claude.json` EXISTS —
+    // a few hundred bytes of first-run bookkeeping with no `mcpServers` — so a
+    // rule that only asked "is there a config here" would hand the default
+    // profile a second, permanently-empty row beside its real one.
+    check(
+      "the default config directory is never a second row",
+      ids([candidate(".claude", detected: false)]).isEmpty)
+    check(
+      "and neither is the default config file's own directory by another spelling",
+      ids([
+        ClaudeProfiles.Candidate(
+          url: home.appendingPathComponent("./.claude"), isDirectory: true, holdsConfig: true,
+          isAutoDetected: false)
+      ]).isEmpty)
+
+    check(
+      "the toggle suppresses detected rows",
+      ids([candidate(".claude-skitrust")], autoDetect: false).isEmpty)
+    check(
+      "and never suppresses an explicit one",
+      ids([candidate(".claude-work", detected: false)], autoDetect: false)
+        == ["claude-code@work"])
+
+    // One directory reached twice — found by the scan and also named by hand —
+    // is one row. Two rows over one file would mean two gateway tokens
+    // overwriting each other in it.
+    check(
+      "a directory reached by both routes appears once",
+      ids([candidate(".claude-skitrust"), candidate(".claude-skitrust", detected: false)])
+        == ["claude-code@skitrust"])
+    check(
+      "detected rows sort, and explicit rows keep their order",
+      ids([
+        candidate(".claude-zeta"), candidate(".claude-alpha"),
+        candidate(".claude-work", detected: false), candidate(".claude-team", detected: false),
+      ]) == [
+        "claude-code@alpha", "claude-code@zeta", "claude-code@work", "claude-code@team",
+      ])
+
+    // An arbitrary path is the real case: CLAUDE_CONFIG_DIR points wherever it
+    // likes, and a second field asking for the name the path already carries is
+    // a field somebody fills in wrong.
+    check(
+      "an explicit path outside the home folder takes its name from the path",
+      ClaudeProfiles.suffix(
+        forExplicitDirectory: URL(fileURLWithPath: "/Volumes/Work/Claude Config"))
+        == "claude-config"
+    )
+    check(
+      "a dotted name loses its dot",
+      ClaudeProfiles.suffix(forExplicitDirectory: URL(fileURLWithPath: "/tmp/.work")) == "work")
+    check(
+      "and a name with nothing usable in it is refused",
+      ClaudeProfiles.suffix(forExplicitDirectory: URL(fileURLWithPath: "/tmp/---")) == nil)
+
+    // Adoption: which config files `rewire` may keep current by itself.
+    //
+    // A throwaway domain rather than the real one, and removed straight after.
+    // The pair takes its defaults as an argument precisely so this is possible
+    // without a launched app.
+    let suite = "io.mgcrea.bastion.unit-check.adoption"
+    if let scratch = UserDefaults(suiteName: suite) {
+      scratch.removePersistentDomain(forName: suite)
+      check("nothing is adopted to begin with", ClaudeProfiles.adopted(scratch).isEmpty)
+      ClaudeProfiles.adopt("claude-code@skitrust", scratch)
+      check(
+        "writing a profile's config adopts it",
+        ClaudeProfiles.adopted(scratch) == ["claude-code@skitrust"])
+      ClaudeProfiles.adopt("claude-code@skitrust", scratch)
+      check("and adopting twice is not two entries", ClaudeProfiles.adopted(scratch).count == 1)
+      // The default row, and every other client, has no suffix. Recording them
+      // would be a list that grows forever and gates nothing.
+      ClaudeProfiles.adopt("claude-code", scratch)
+      ClaudeProfiles.adopt("cursor", scratch)
+      check(
+        "a client with one config file is never recorded",
+        ClaudeProfiles.adopted(scratch) == ["claude-code@skitrust"])
+      // The gate `rewire` applies, spelled out here so the rule is pinned even
+      // though the loop itself lives behind AppKit.
+      func rewires(_ id: String, _ defaults: UserDefaults) -> Bool {
+        ClientIdentity.suffix(of: id) == nil || ClaudeProfiles.adopted(defaults).contains(id)
+      }
+      check(
+        "the default Claude Code row is rewired as it always was", rewires("claude-code", scratch))
+      check("and so is every other client", rewires("codex", scratch))
+      check("an adopted profile is rewired too", rewires("claude-code@skitrust", scratch))
+      // The whole point: a file populated by hand looks wired and is still left
+      // alone until somebody presses Configure on it.
+      check("a profile Bastion has not written is not", !rewires("claude-code@work", scratch))
+      scratch.removePersistentDomain(forName: suite)
+    } else {
+      check("a scratch defaults domain is available", false)
+    }
 
     print("\nTool facade: routing")
 

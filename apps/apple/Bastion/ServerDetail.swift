@@ -1107,7 +1107,17 @@ struct ServerDetail: View {
 /// config files with no caching by design — per profile row, per redraw. This
 /// asks which clients are exempt at all: a defaults read and a set lookup.
 @MainActor private func facadeExemptClients() -> [String] {
-  ClientWiring.all.filter { ToolFacade.clientDefersSchemas($0.id) }.map(\.displayName)
+  // By family, deduplicated. Claude Code may have several config directories,
+  // and each is its own row with its own id — but this sentence names the
+  // clients the facade will not apply to, and "Claude Code, Claude Code
+  // (skitrust) and Claude Desktop" names one of them twice.
+  var seen: Set<String> = []
+  return ClientWiring.all
+    .filter { ToolFacade.clientDefersSchemas($0.id) && seen.insert($0.family).inserted }
+    // The first row of a family is the one whose id IS the family — Claude
+    // Code's own row, ahead of its profiles in `all` — so this is already the
+    // base name rather than one of the parenthesised ones.
+    .map(\.displayName)
 }
 
 /// " Claude Code loads schemas on demand and gets the real list." — and the

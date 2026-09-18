@@ -6,6 +6,11 @@ MCP clients Bastion knows how to configure, why they do not all get the same
 entry, and what the client pane can and cannot tell you about a file it does not
 own.
 
+Seven **clients**, which is not quite seven rows. Claude Code reads
+`CLAUDE_CONFIG_DIR`, so one Mac can run several of its profiles side by side and
+each gets a row of its own — see [Claude Code's config
+directories](#claude-codes-config-directories).
+
 ## The seven clients
 
 | Client          | Config                                                            | Root key      | Format | Transport  |
@@ -60,6 +65,69 @@ The asymmetry is the point: a bridge entry spawns a process, which is a cost. An
 HTTP entry a client silently ignores is a client that does not work, with nothing
 on either side saying why. Either row moves to `.http` the moment somebody
 watches a header carry a token into it.
+
+## Claude Code's config directories
+
+Every other client here is one application reading one file, and the table above
+can name it. Claude Code is not. It reads `CLAUDE_CONFIG_DIR`, so one Mac can run
+several independent profiles, each with its own server list, and Bastion cannot
+know their names in advance.
+
+**The default profile's config file sits outside its config directory.** With the
+variable unset, the directory is `~/.claude` and the file is `~/.claude.json`.
+Set it to `~/.claude-skitrust` and the file moves inside, to
+`~/.claude-skitrust/.claude.json`. That asymmetry is the one trap in this
+feature, and it has teeth: a recent Claude Code also writes a
+`~/.claude/.claude.json` holding a few hundred bytes of first-run bookkeeping and
+no `mcpServers` at all. A rule shaped "is there a `.claude.json` in this
+directory" therefore finds a file for the default profile and finds the **wrong
+one**. So the default row is a literal, exactly as it has always been, and
+discovery only ever answers about the others.
+
+Bastion looks for `~/.claude-<name>` directories — with the dash, which is what
+excludes `.claude.json`, `.claude.json.backup`, `.claude.json.bastion-backup`
+and every other sibling a tool has ever left beside the real file. A detected
+directory earns a row only if it already holds a `.claude.json`; a directory
+named by hand in Settings earns one either way, because somebody asked for it.
+`~/.claude` offered explicitly is dropped rather than duplicated: two rows over
+one file would mean two gateway tokens overwriting each other in it, which is the
+same trap [the ChatGPT & Codex row](#the-seven-clients) exists to avoid.
+
+Each row is a full client. Its id is `claude-code@<name>`, it gets **its own
+gateway token**, its own entry in the audit log, and its own Configure button.
+Revoking one profile's token signs out that profile and no other — which a
+hand-copied config cannot do, because it carries the first profile's token.
+
+The id's `@` is the one place a client id has ever had structure, and everything
+that reads an id reduces it to the **family** before deciding anything about the
+client itself. `claude-code@skitrust` is a Claude Code, so it defers tool schemas
+and is never fronted with the facade. What stays keyed on the full id is what is
+genuinely per-file: the token, and the per-client tool-loading override.
+
+### Bastion will not adopt a config directory it has not written
+
+`rewire` keeps every wired client's config current when profiles change, and it
+decides what is wired by asking whether the file holds an entry that looks like
+one of Bastion's — a loopback URL with three path segments. It never looks at the
+token.
+
+A second Claude profile populated by **copying entries out of the first** passes
+that test without Bastion ever having touched the file. Left alone, the first
+launch after this shipped would rewrite somebody's hand-made config unasked,
+which is precisely what `isWired` says must not happen: _a client Bastion has
+never been configured into stays untouched._
+
+So a discovered profile row is left out of automatic rewiring until Configure has
+been pressed on it once. The pane says so on any such row that already holds
+Bastion-shaped entries. Pressing Configure renames those entries to the current
+`<profile>-<server>` scheme in place — `merged` drops an entry of ours that
+reaches an endpoint being written under a different key, so the file gains no
+duplicates — issues the profile its own token, and leaves a `.bastion-backup`
+beside it. The default `claude-code` row has no suffix and is not gated, so
+nothing about an existing install changes.
+
+Detection is a switch in Settings, along with a list of directories to name by
+hand for a config directory that lives somewhere no scan would look.
 
 ## What a client pays to be wired at all
 

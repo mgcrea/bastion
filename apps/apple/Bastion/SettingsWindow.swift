@@ -305,6 +305,8 @@ private struct GeneralPane: View {
         Text("MCP clients")
       }
 
+      ClaudeProfilesSection()
+
       Section {
         Picker("Minimum package age", selection: $releaseAge) {
           Text("Whatever npm is configured to do").tag(-1)
@@ -340,6 +342,121 @@ private struct GeneralPane: View {
       }
     }
     .formStyle(.grouped)
+  }
+}
+
+// MARK: - Claude Code profiles
+
+/// Which of Claude Code's config directories Bastion offers as clients.
+///
+/// Its own view rather than another block inside `GeneralPane` because it holds
+/// mutable list state, and because every mutation has to reach
+/// `ClientWiring.forgetDiscoveredProfiles()` — one place to remember that is
+/// better than five.
+private struct ClaudeProfilesSection: View {
+  @AppStorage(ClaudeProfiles.detectKey) private var detect = true
+  /// `@AppStorage` has no array form, so this is held in `@State` and written
+  /// through explicitly. Loaded once in `onAppear`; nothing else writes it.
+  @State private var directories: [String] = []
+
+  private var rows: [ClaudeProfiles.Row] { ClaudeProfiles.discovered() }
+
+  var body: some View {
+    Section {
+      Toggle("Detect Claude Code config directories", isOn: $detect)
+        .onChange(of: detect) { ClientWiring.forgetDiscoveredProfiles() }
+      Text(
+        "Claude Code reads CLAUDE_CONFIG_DIR, so one Mac can run several profiles with separate "
+          + "server lists. Bastion looks for ~/.claude-<name> directories and offers each as its "
+          + "own client, with its own token. The default profile's own file, ~/.claude.json, is "
+          + "always listed and is not affected by this."
+      )
+      .font(.caption).foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+
+      ForEach(directories, id: \.self) { path in
+        HStack(spacing: 6) {
+          Text(abbreviate(path))
+            .font(.system(.caption, design: .monospaced))
+            .lineLimit(1).truncationMode(.middle)
+          if !exists(path) {
+            // The one place a typo can be seen. Discovery drops a path that is
+            // not there rather than showing it as an absent client, because
+            // `list_clients` would then claim Bastion could still wire it.
+            Label("not found", systemImage: "exclamationmark.triangle.fill")
+              .font(.caption).foregroundStyle(.orange).labelStyle(.titleAndIcon)
+          }
+          Spacer()
+          Button {
+            directories.removeAll { $0 == path }
+            save()
+          } label: {
+            Image(systemName: "minus.circle")
+          }
+          .buttonStyle(.borderless)
+          .help("Stop offering this directory as a client. The file itself is left alone.")
+        }
+      }
+
+      Button("Add Directory…") { add() }
+      Text(
+        "For a config directory outside your home folder, or one this does not name. Adding a "
+          + "directory here never writes to it — press Configure on its row to do that."
+      )
+      .font(.caption).foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+
+      // The same shape as the entry-prefix preview above: what the setting does
+      // to the real data, rather than to an invented example.
+      if rows.isEmpty {
+        Text("No additional profiles. Claude Code is listed once, as ~/.claude.json.")
+          .font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      } else {
+        Text(
+          "Also listed: "
+            + rows.map { "\($0.displayName) — \(abbreviate($0.configURL.path))" }
+            .joined(separator: ", ") + "."
+        )
+        .font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      }
+    } header: {
+      Text("Claude Code profiles")
+    }
+    .onAppear {
+      directories = UserDefaults.standard.stringArray(forKey: ClaudeProfiles.extraDirsKey) ?? []
+    }
+  }
+
+  private func add() {
+    let panel = NSOpenPanel()
+    panel.canChooseDirectories = true
+    panel.canChooseFiles = false
+    panel.allowsMultipleSelection = false
+    panel.showsHiddenFiles = true
+    panel.prompt = "Add"
+    panel.message = "Choose a Claude Code config directory — the one CLAUDE_CONFIG_DIR points at."
+    guard panel.runModal() == .OK, let url = panel.url else { return }
+    let path = url.standardizedFileURL.path
+    guard !directories.contains(path) else { return }
+    directories.append(path)
+    save()
+  }
+
+  private func save() {
+    UserDefaults.standard.set(directories, forKey: ClaudeProfiles.extraDirsKey)
+    ClientWiring.forgetDiscoveredProfiles()
+  }
+
+  private func exists(_ path: String) -> Bool {
+    var isDirectory: ObjCBool = false
+    let there = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
+    return there && isDirectory.boolValue
+  }
+
+  private func abbreviate(_ path: String) -> String {
+    (path as NSString).abbreviatingWithTildeInPath
   }
 }
 

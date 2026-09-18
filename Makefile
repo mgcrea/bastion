@@ -580,7 +580,8 @@ wiring-check-real: wiring-check ## Prove the merge against the real client confi
 		"$(HOME)/.claude.json" \
 		"$(HOME)/Library/Application Support/Claude/claude_desktop_config.json" \
 		"$(HOME)/Library/Application Support/Code/User/mcp.json" \
-		"$(HOME)/.codex/config.toml"
+		"$(HOME)/.codex/config.toml" \
+		"$(HOME)/.claude-skitrust/.claude.json"
 
 audit: app remote-check ## Assert the listener is loopback-only and refuses foreign Origin/Host
 	@scripts/audit-listener.sh
@@ -619,6 +620,7 @@ unit: ## Assert the translation, the parser, call capture, the audit chain, the 
 		apps/apple/Bastion/ToolCost.swift \
 		apps/apple/Bastion/CallStatsRollup.swift \
 		apps/apple/Bastion/WriteGate.swift \
+		apps/apple/Bastion/ClientProfiles.swift \
 		apps/apple/Bastion/ToolFacade.swift \
 		scripts/unit-check.swift
 	@apps/apple/.build/unit-check

@@ -133,10 +133,19 @@ nonisolated enum ToolFacade {
   /// identifies the CLIENT, not the conversation — so a split would have left
   /// one of the two modes wrong whichever way the entry went.
   ///
-  /// Matched exactly and case-sensitively against the Keychain account the
-  /// bearer token was issued to, which `ClientWiring.token(for:)` always writes
-  /// from `client.id` — lowercase kebab. A fuzzy identity test on a credential's
-  /// account name is worse than a strict one that is occasionally too narrow.
+  /// Matched exactly and case-sensitively against the FAMILY of the Keychain
+  /// account the bearer token was issued to, which `ClientWiring.token(for:)`
+  /// always writes from `client.id` — lowercase kebab. A fuzzy identity test on
+  /// a credential's account name is worse than a strict one that is
+  /// occasionally too narrow.
+  ///
+  /// The family and not the id, because Claude Code may have several config
+  /// directories and each gets its own id and its own token —
+  /// `claude-code@skitrust`. What this table records is what a client DOES with
+  /// a tool listing, and a second config directory does not change that. Keyed
+  /// on the id, every profile row but the first would fall through to "does not
+  /// defer" and be fronted with the facade, which is the one thing Claude Code
+  /// must not get.
   static let clientsDeferringSchemas: Set<String> = ["claude-code", "claude-desktop"]
 
   /// Where one client's override lives, for `ClientDetail`'s picker and for the
@@ -163,7 +172,7 @@ nonisolated enum ToolFacade {
   /// from fixed. `scripts/facade-check.sh`, whose token names an arbitrary
   /// client, depends on this answer.
   static func clientDefersSchemas(_ client: String, override: Bool?) -> Bool {
-    override ?? clientsDeferringSchemas.contains(client)
+    override ?? clientsDeferringSchemas.contains(ClientIdentity.family(of: client))
   }
 
   /// The same question against the stored override. The only form the gateway
