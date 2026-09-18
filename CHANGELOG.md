@@ -7,6 +7,24 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.20.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Added
+
+- **Entries Bastion left behind can be cleaned up without unwiring the client.** An entry Bastion
+  wrote for a profile that no longer exists went on sitting in the config, sending requests the
+  gateway refuses, and it was invisible on the client pane: `isOurs` claimed it, so it was not
+  listed among the servers Bastion did not write, and no profile matched it, so it earned no row
+  either. The only remedy was _Remove Bastion's entries_, which took out the working ones too. A
+  **Stale entries** card now lists each one with the profile it points at, and one button removes
+  all of them in a single write. It stays narrow on purpose: an entry filed under an older key is a
+  rename, one pointing at a stale port is _points elsewhere_ and Configure rewrites it, and a
+  profile whose server is merely switched off still exists — none of the three is touched. Removal
+  is a button rather than something Bastion does on its own, because the instance most likely to
+  misjudge which profiles exist is a second copy of Bastion, which is where these came from — and
+  for that same reason a Debug build, which keeps its own profiles and shares these configs with
+  the installed app, draws the card but refuses the removal.
+
 ## [1.20.0] - 2026-09-17
 
 ### Added

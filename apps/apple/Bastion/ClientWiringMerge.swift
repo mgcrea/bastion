@@ -146,6 +146,49 @@ enum ClientWiringMerge {
     }
   }
 
+  /// An entry Bastion wrote that no profile serves any more.
+  ///
+  /// `endpoint` is the `<profile>/<server>` it points at, and `nil` for an entry
+  /// of ours that names none — a bridge entry whose `--profile=`/`--server=`
+  /// args cannot be read. Listing that one anyway is the same judgement
+  /// `ForeignEntry` makes about a malformed shape: it is in the file, nothing
+  /// can repair it, and a view that skipped it would be lying about what the
+  /// file holds.
+  struct StaleEntry: Equatable {
+    let key: String
+    let endpoint: String?
+  }
+
+  /// Entries of ours pointing at a profile that no longer exists.
+  ///
+  /// The third question to ask of a servers object, after `collisions` ("what is
+  /// in my way") and `foreignEntries` ("what is still bypassing Bastion"): what
+  /// did Bastion leave behind. Until this existed the answer was invisible in
+  /// the pane — `isOurs` claims these, so `foreignEntries` does not list them,
+  /// and no profile matches them, so they get no row of their own either.
+  ///
+  /// `serving` is every `<profile>/<server>` that currently exists, passed in
+  /// rather than read so this file goes on importing nothing but Foundation.
+  /// It must be built from EVERY profile and not only the ones on enabled
+  /// servers: a switched-off server's profile still exists, and treating its
+  /// entries as stale would delete a correct config the moment somebody flipped
+  /// a switch.
+  ///
+  /// Three things it deliberately does not claim, because each has a remedy of
+  /// its own and deleting the entry would be throwing away a working one:
+  /// an entry filed under a key the current scheme would not write (`merged`
+  /// renames it), an entry pointing at a stale host or port (`state` reports it
+  /// and Configure rewrites it), and anything `isOurs` does not claim.
+  static func staleEntries(in servers: [String: Any], serving: Set<String>) -> [StaleEntry] {
+    servers
+      .compactMap { key, entry -> StaleEntry? in
+        guard isOurs(entry) else { return nil }
+        guard let endpoint = endpoint(of: entry) else { return StaleEntry(key: key, endpoint: nil) }
+        return serving.contains(endpoint) ? nil : StaleEntry(key: key, endpoint: endpoint)
+      }
+      .sorted { $0.key < $1.key }
+  }
+
   /// Of the keys we are about to write, the ones already taken by an entry this
   /// app did not write.
   ///
@@ -264,6 +307,32 @@ enum ClientWiringMerge {
     // Assigned back even when this empties it: an absent `mcpServers` and an
     // empty one are different statements, and `projectScopeServers` reads the
     // difference.
+    root[rootKey] = servers
+    return root
+  }
+
+  /// Remove every entry of ours that no profile serves, and nothing else.
+  ///
+  /// The third door, and the two beside it are the reason it has to be its own
+  /// function rather than a flag on one of them: `unmerged` takes out every
+  /// entry of ours regardless of whether it works, and `removing(key:)` refuses
+  /// a key `isOurs` claims. Neither can express "ours, and dead", so a caller
+  /// reaching for this through either of them would be reaching for the wrong
+  /// behaviour.
+  ///
+  /// A no-op when nothing is stale — the dictionary comes back equal, which is
+  /// what lets `write` refuse it and keeps the button from rotating a backup of
+  /// a file it had nothing to change in.
+  static func removingStale(
+    from root: [String: Any],
+    rootKey: String,
+    serving: Set<String>
+  ) -> [String: Any] {
+    var root = root
+    guard var servers = root[rootKey] as? [String: Any] else { return root }
+    for entry in staleEntries(in: servers, serving: serving) {
+      servers.removeValue(forKey: entry.key)
+    }
     root[rootKey] = servers
     return root
   }

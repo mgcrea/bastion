@@ -77,6 +77,8 @@ struct ClientDetail: View {
     var status: ClientWiring.Status
     var rows: [Row]
     var others: [ClientWiringMerge.ForeignEntry]
+    /// Entries of ours that no profile serves any more.
+    var stale: [ClientWiringMerge.StaleEntry]
     var projects: [(folder: String, entries: [ClientWiringMerge.ForeignEntry])]
     var hasOurEntries: Bool
   }
@@ -124,7 +126,7 @@ struct ClientDetail: View {
             profile: $0.profile, key: $0.key, state: .missing,
             reach: reachLine(for: $0.profile))
         },
-        others: [], projects: [], hasOurEntries: false)
+        others: [], stale: [], projects: [], hasOurEntries: false)
     }
 
     guard client.isInstalled else { return unread(.notInstalled) }
@@ -174,6 +176,10 @@ struct ClientDetail: View {
             .map { (key: $0.key, label: $0.profile.serverID, state: $0.state) })),
       rows: rows,
       others: ClientWiringMerge.foreignEntries(in: servers),
+      // Read against every profile that exists rather than the writable ones:
+      // a switched-off server's profile still serves its entry, and the row
+      // above already says so.
+      stale: ClientWiringMerge.staleEntries(in: servers, serving: ClientWiring.serving),
       // Claude Code's alone. Codex keeps its project scope in a
       // `.codex/config.toml` inside each repository rather than a block in this
       // file, so there is nothing here to list -- and a card that rendered
@@ -202,6 +208,7 @@ struct ClientDetail: View {
         // is `othersCard` — which belongs beside the entries it contrasts with
         // rather than three cards below them. The context ranking that used to
         // sit here grew tall enough to push it out of the frame entirely.
+        if !snapshot.stale.isEmpty { staleCard(snapshot) }
         if !snapshot.others.isEmpty { othersCard(snapshot) }
         if !snapshot.projects.isEmpty { projectsCard(snapshot) }
         contextCard(snapshot)
@@ -696,6 +703,80 @@ struct ClientDetail: View {
     }
   }
 
+  /// What Bastion left behind: entries it wrote for profiles that no longer
+  /// exist.
+  ///
+  /// Its own card rather than rows in `entriesCard`, because a row there is
+  /// keyed by a profile and these have none — that is the whole definition of
+  /// them. And above `othersCard` rather than below, because this is Bastion's
+  /// own mess and that one is the evidence that everybody else's is left alone;
+  /// the two read in the wrong order if the apology comes after the claim.
+  ///
+  /// Conditional, so the pane a correctly wired client shows is unchanged and
+  /// `othersCard` keeps its position in the common case.
+  private func staleCard(_ snapshot: Snapshot) -> some View {
+    let count = snapshot.stale.count
+    return Card(title: "Stale entries (\(count))") {
+      VStack(alignment: .leading, spacing: 10) {
+        Text(
+          "Bastion wrote \(count == 1 ? "this entry" : "these entries") and no profile serves "
+            + "\(count == 1 ? "it" : "them") any more. \(client.displayName) still sends "
+            + "\(count == 1 ? "its" : "their") requests to the gateway, which refuses every one. "
+            + "Removing \(count == 1 ? "it" : "them") leaves every other entry in the file alone."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+        ForEach(snapshot.stale, id: \.key) { entry in
+          Divider()
+          HStack(alignment: .firstTextBaseline, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+              Text(entry.key)
+                .font(.system(.caption, design: .monospaced)).bold()
+                .textSelection(.enabled)
+              // The endpoint rather than the whole URL: what makes this entry
+              // stale is the profile it names, and that is the half worth
+              // reading against the profiles that exist.
+              Text(
+                entry.endpoint.map { "no profile serves \($0)" }
+                  ?? "this entry names no profile at all"
+              )
+              .font(.system(.caption2, design: .monospaced))
+              .foregroundStyle(.secondary)
+              .lineLimit(2).truncationMode(.middle)
+              .textSelection(.enabled)
+            }
+            Spacer(minLength: 8)
+          }
+        }
+
+        Divider()
+        // The list above is a true statement about THIS instance's profiles,
+        // which in a Debug build is not the set these entries were written
+        // from. Shown rather than hidden, because a developer exercising this
+        // path needs to see what it found — and refused rather than offered,
+        // because the same disagreement that makes the list wrong makes the
+        // button destructive.
+        if !ClientWiring.profilesAreAuthoritative {
+          Text(
+            "This build keeps its own profiles, separate from the installed Bastion that wrote "
+              + "these entries, so the list above is computed from the wrong set. Removing is "
+              + "switched off here. Run the installed app, or pass "
+              + "-trustProfilesForStaleEntries YES to override."
+          )
+          .font(.caption2).foregroundStyle(.orange)
+          .fixedSize(horizontal: false, vertical: true)
+        }
+        HStack {
+          Spacer()
+          Button("Remove stale entries") { removeStale(count) }
+            .controlSize(.small)
+            .disabled(!ClientWiring.profilesAreAuthoritative)
+        }
+      }
+    }
+  }
+
   // MARK: - What Bastion did not write
 
   /// The servers in this file that go around Bastion.
@@ -902,6 +983,21 @@ struct ClientDetail: View {
       // survives after the alert is dismissed.
       result = ClientWiring.WireError.collision(client: name, keys: keys).localizedDescription
       collision = keys
+    } catch {
+      result = "Could not write \(client.configURL.path): \(error.localizedDescription)"
+    }
+  }
+
+  /// Deliberately without a confirmation, unlike the per-entry Remove above.
+  /// That one takes out a server somebody configured by hand; this takes out
+  /// entries Bastion wrote and nothing can use, and the pane has already listed
+  /// every one of them by name. A backup is written either way.
+  private func removeStale(_ count: Int) {
+    do {
+      let backup = try ClientWiring.removeStaleEntries(client, serving: ClientWiring.serving)
+      result =
+        "Removed \(count) stale entr\(count == 1 ? "y" : "ies") from \(client.configURL.path)."
+        + (backup.map { " Previous version saved as \($0.lastPathComponent)." } ?? "")
     } catch {
       result = "Could not write \(client.configURL.path): \(error.localizedDescription)"
     }

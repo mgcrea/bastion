@@ -724,6 +724,99 @@ enum ClientWiring {
     return backup
   }
 
+  /// Whether this instance's profiles are the ones these configs were written
+  /// from.
+  ///
+  /// The same split `autoWires` is about, reached from the other side. A Debug
+  /// build keeps its own `profiles.json` under `io.mgcrea.bastion.debug` and
+  /// shares every client config with the installed Release app, so `serving`
+  /// there describes a different machine's worth of profiles than the file it
+  /// is about to be compared against. On the machine this was written on that
+  /// is nine profiles against eighteen: `prod/reddit` exists only in the Debug
+  /// set and `olouv/reddit` only in the real one, so the two instances disagree
+  /// about which entries are dead in both directions at once.
+  ///
+  /// `autoWires` keeps that instance from acting on the disagreement unasked.
+  /// This keeps it from asking somebody else to: a stale list computed from the
+  /// wrong profile set is not a warning a person can act on, it is fifteen
+  /// working entries with a Remove button under them.
+  ///
+  /// Release on, Debug off, `-trustProfilesForStaleEntries YES` for a developer
+  /// exercising the path deliberately — pointing a Debug build at a config it
+  /// really did write.
+  nonisolated static var profilesAreAuthoritative: Bool {
+    if let override = UserDefaults.standard.object(forKey: "trustProfilesForStaleEntries") as? Bool
+    {
+      return override
+    }
+    #if DEBUG
+      return false
+    #else
+      return true
+    #endif
+  }
+
+  /// Every `<profile>/<server>` Bastion currently serves.
+  ///
+  /// EVERY profile, deliberately, and not `onEnabledServers` the way `rewire`
+  /// reads it. A switched-off server's profile still exists and its entry is
+  /// still correct — the door behind it is shut, which is what the row in the
+  /// pane says — so counting it as unserved would make `removeStaleEntries`
+  /// delete a good config the moment somebody flipped a switch.
+  static var serving: Set<String> {
+    Set(ProfileStore.shared.profiles.map(\.id))
+  }
+
+  /// Take out the entries Bastion wrote for profiles that no longer exist.
+  ///
+  /// The third door, beside `unwire` (every entry of ours) and `removeEntry`
+  /// (exactly one of somebody else's). What makes it worth its own path is that
+  /// neither of the other two can express it: unwiring a client to clear four
+  /// dead entries would take the seventeen working ones with it, and
+  /// `removing(key:)` refuses a key `isOurs` claims.
+  ///
+  /// Never called unattended. `rewire` runs from a profile save and is gated on
+  /// `autoWires` for a reason this path makes sharper: a Debug build keeps its
+  /// own `profiles.json`, so `serving` there is not the user's profile set, and
+  /// a sweep from that instance would read every real entry as stale. Requiring
+  /// a press keeps the one instance that would get the answer wrong out of it.
+  @discardableResult
+  static func removeStaleEntries(_ client: Client, serving: Set<String>) throws -> URL? {
+    try retryingIfChanged(client.configURL) {
+      try removeStaleEntriesOnce(client, serving: serving)
+    }
+  }
+
+  private static func removeStaleEntriesOnce(_ client: Client, serving: Set<String>) throws -> URL?
+  {
+    let stamp = ClientWiringMerge.stamp(of: client.configURL)
+    guard stamp != .absent else { return nil }
+    let backup: URL?
+    let removed: Int
+    switch client.format {
+    case .toml:
+      let document = try ClientWiringTOML.read(client.configURL)
+      let stripped = ClientWiringMerge.removingStale(
+        from: [client.rootKey: document.servers], rootKey: client.rootKey, serving: serving)
+      removed = document.servers.count - servers(stripped, client.rootKey).count
+      backup = try splice(
+        client, document, into: servers(stripped, client.rootKey), expecting: stamp)
+    case .json:
+      let root = try ClientWiringMerge.readJSON(client.configURL)
+      let before = (root[client.rootKey] as? [String: Any])?.count ?? 0
+      let stripped = ClientWiringMerge.removingStale(
+        from: root, rootKey: client.rootKey, serving: serving)
+      removed = before - servers(stripped, client.rootKey).count
+      backup = try ClientWiringMerge.write(
+        stripped, to: client.configURL, backupSuffix: "bastion-backup", expecting: stamp)
+    }
+    ClientConfigRevision.shared.bump()
+    hostLog(
+      "wiring", .info,
+      "\(client.displayName): removed \(removed) stale entr\(removed == 1 ? "y" : "ies")")
+    return backup
+  }
+
   /// Take out one entry Bastion did not write.
   ///
   /// The counterpart to `unwire`, and pointed the other way: that removes every

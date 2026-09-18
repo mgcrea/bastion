@@ -122,6 +122,7 @@ struct WiringCheck {
     perEntryStateAgreesWithAudit()
     foreignEntriesAreEverythingNotOurs()
     removingTakesExactlyOneKey()
+    staleEntriesAreOnlyOrphansOfOurs()
     staleWriteIsRefused()
 
     tomlScannerFindsEveryServer()
@@ -1743,6 +1744,99 @@ struct WiringCheck {
   /// while the file was being read. Which matters more here than it would for a
   /// config full of commands: these entries carry a bearer token, so a lost
   /// write leaves a client that reaches the endpoint and fails to authenticate.
+
+  /// The third door into somebody else's config, and the one that has to be
+  /// narrowest.
+  ///
+  /// `unmerged` takes out every entry of ours and `removing(key:)` refuses one
+  /// of ours outright; this takes out only the ones no profile serves any more.
+  /// The hazard is entirely in what it must NOT claim: `serving` is the set of
+  /// profiles that exist, so a caller that computes it from the wrong place —
+  /// enabled servers only, or a Debug build's own `profiles.json` — turns this
+  /// into a delete-everything button. Every check below is that boundary.
+  static func staleEntriesAreOnlyOrphansOfOurs() {
+    print("\nStale entries")
+    let serving: Set<String> = ["prod/shopify", "prod/keycloak", "olouv/reddit"]
+    let servers: [String: Any] = [
+      // Ours, and still served.
+      "prod-shopify": entry(httpReach("shopify")),
+      // Ours, served, but filed under a name the current scheme would not
+      // write. A rename is `merged`'s job, not this one's.
+      "keycloak": entry(httpReach("keycloak")),
+      // Ours, served, pointing at a stale port. That is a `.stale` row with a
+      // remedy of its own — Configure rewrites it — and deleting it would be
+      // throwing away a working entry to avoid rewriting it.
+      "prod-keycloak-old": entry(httpReach("keycloak", port: 8721)),
+      // Ours, and served by nothing. The case this exists for.
+      "prod-reddit": entry(httpReach("reddit")),
+      "checkro-bastion": entry(httpReach("bastion", profile: "checkro")),
+      // Ours by shape, but naming no endpoint at all: a bridge entry whose
+      // args cannot be read. No rewire can ever repair it.
+      "broken-bridge": ["command": bridge, "args": ["--server=shopify"]],
+      // Not ours, and pointing at a loopback URL that is nearly the grammar.
+      "someone-elses": ["type": "http", "url": "http://127.0.0.1:8720/mcp"],
+      "theirs": ["command": "npx", "args": ["-y", "someone-elses-server"]],
+    ]
+
+    let stale = ClientWiringMerge.staleEntries(in: servers, serving: serving)
+    let keys = stale.map(\.key)
+
+    check("the orphaned profile is named", keys.contains("prod-reddit"))
+    check("so is the one from a scratch profile", keys.contains("checkro-bastion"))
+    check("and the entry of ours that names no endpoint", keys.contains("broken-bridge"))
+    check("a served entry is not stale", !keys.contains("prod-shopify"))
+    check("nor is one served under an older key", !keys.contains("keycloak"))
+    check("nor is one pointing at the wrong port", !keys.contains("prod-keycloak-old"))
+    check("somebody else's loopback URL is untouched", !keys.contains("someone-elses"))
+    check("and so is their stdio server", !keys.contains("theirs"))
+    check("nothing else was claimed", stale.count == 3)
+    check("the list is sorted by key", keys == keys.sorted())
+    check(
+      "a stale entry carries the endpoint it points at",
+      stale.first { $0.key == "prod-reddit" }?.endpoint == "prod/reddit")
+    check(
+      "and nil where there is none to read",
+      stale.first { $0.key == "broken-bridge" }?.endpoint == nil)
+
+    // A profile whose server is switched off still EXISTS, so its entry is not
+    // stale. This is the check that stands between the feature and deleting a
+    // correct config the moment somebody flips a server off.
+    let offServer = ClientWiringMerge.staleEntries(
+      in: ["prod-shopify": entry(httpReach("shopify"))], serving: serving)
+    check("a switched-off server's profile is still served", offServer.isEmpty)
+
+    let out = ClientWiringMerge.removingStale(
+      from: ["mcpServers": servers, "preferences": ["theme": "dark"]],
+      rootKey: "mcpServers", serving: serving)
+    let after = out["mcpServers"] as? [String: Any] ?? [:]
+    check("the orphan is removed", after["prod-reddit"] == nil)
+    check("and the scratch-profile entry", after["checkro-bastion"] == nil)
+    check("and the unreadable bridge entry", after["broken-bridge"] == nil)
+    check("every entry still served survives", after["prod-shopify"] != nil)
+    check("including the one under an older key", after["keycloak"] != nil)
+    check("including the one at the wrong port", after["prod-keycloak-old"] != nil)
+    check("somebody else's entries survive", after["theirs"] != nil)
+    check("and their loopback one", after["someone-elses"] != nil)
+    check("nothing else was removed", after.count == servers.count - 3)
+    check("unrelated top-level keys survive", out["preferences"] != nil)
+
+    // Nothing stale is a no-op rather than a rewrite. `write` refuses a write
+    // that changes nothing, so this is what keeps the button from rotating a
+    // backup of a file it had nothing to change in.
+    let clean: [String: Any] = ["mcpServers": ["prod-shopify": entry(httpReach("shopify"))]]
+    let unchanged = ClientWiringMerge.removingStale(
+      from: clean, rootKey: "mcpServers", serving: serving)
+    check("a config with nothing stale comes back identical", deepEqual(clean, unchanged))
+
+    // The empty set is the shape a caller hands over when no profile exists at
+    // all. It must not become a licence to delete: every entry of ours is then
+    // stale, which is TRUE, and is why the button is gated on somebody pressing
+    // it rather than run unattended.
+    let none = ClientWiringMerge.staleEntries(in: servers, serving: [])
+    check("with no profiles at all, every entry of ours is stale", none.count == 6)
+    check("and still none of somebody else's", !none.map(\.key).contains("theirs"))
+  }
+
   static func staleWriteIsRefused() {
     print("\nRefusing a stale write")
     let fm = FileManager.default

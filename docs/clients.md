@@ -625,6 +625,64 @@ Bastion's own entries is _Remove Bastion's entries_, which knows about the whole
 set, and the two paths must not be able to do each other's job by accident.
 Emptying a servers object leaves it `{}` rather than deleting the key.
 
+### Entries Bastion left behind
+
+An entry `isOurs` claims whose `<profile>/<server>` matches no profile that
+exists is **stale**, and until 1.21 it was invisible on this pane. It fell
+between the two lists: `isOurs` claims it, so the card above does not list it,
+and no profile matches it, so it earns no row of its own either. The only remedy
+was _Remove Bastion's entries_, which takes out the working ones too.
+
+They come from a profile deleted after a client was wired, and from a second
+instance of Bastion writing configs with a different profile set — a Debug build
+keeps its own `profiles.json` and shares every client config with the installed
+Release app, which is how three `checkro-bastion` entries and a `prod-reddit`
+once ended up in the real `~/.claude.json` from a `make builtin` run. `autoWires`
+closed that door; this card is for what was already through it.
+
+The _Stale entries_ card lists each one with the profile it points at, and one
+button removes all of them in a single write. What it must **not** claim is the
+whole of the design, because each of these has a remedy of its own and deleting
+the entry would throw away a working one:
+
+| Not stale                                            | Why, and what handles it                                                      |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Filed under a key the current scheme would not write | A rename; `merged` drops the old one on the next write                        |
+| Pointing at a stale host or port                     | `state` reports it as _points elsewhere_ and Configure rewrites it            |
+| A profile whose **server is switched off**           | The profile still exists. The row says `server off`, and the entry is correct |
+| Anything `isOurs` does not claim                     | Somebody else's, permanently                                                  |
+
+The third is the one with teeth. `serving` is built from **every** profile and
+not from `onEnabledServers` the way `rewire` reads it, because otherwise
+flipping a server off would turn its correct entries into deletable ones.
+
+An entry of ours that names no endpoint at all — a bridge entry whose
+`--profile=`/`--server=` args cannot be read — is stale too, and listed saying
+so. No rewire can ever repair it.
+
+**The button is the only way in, and that is deliberate.** Sweeping these during
+`rewire` would mean the instance most likely to get `serving` wrong is the one
+doing it unattended: a Debug build reads its own profiles, finds the user's real
+entries served by none of them, and is then correct to delete all of them.
+Requiring a press keeps that instance out of it. A config with nothing stale
+comes back byte-identical, so the write is refused rather than rotating a backup
+of a file it had nothing to change in.
+
+**A press is not enough on its own, though, which is the second guard.**
+`profilesAreAuthoritative` asks whether this instance's profiles are the ones
+these entries were written from, and it is false in a Debug build for the same
+reason `autoWires` is. The disagreement runs in both directions at once: on the
+machine this was written on the Debug set holds `prod/reddit` and the real one
+does not, while `olouv/reddit`, `mgcrea/x` and six more exist only in the real
+one — so the Debug instance hides the entry actually worth removing and offers
+fifteen working ones in its place, four becoming fifteen.
+
+The card is still drawn there, because a developer exercising the path needs to
+see what it found, and because the list is a true statement about the profiles
+that instance holds. The button is disabled with the reason under it.
+`-trustProfilesForStaleEntries YES` overrides it, for pointing a Debug build at
+a config it really did write.
+
 ## Writing into somebody else's file
 
 Four properties, because the file is not Bastion's:
