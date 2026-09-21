@@ -14,14 +14,12 @@ import { DOCS } from "../config";
  * right and this is stale — and /checked covers a different kind of limit, what
  * the checks do not prove rather than what the app does not do.
  *
- * The first one bites today. It is a consequence of the migration having
- * already happened, not a future risk.
+ * "Login item" used to lead this list, and bit today rather than tomorrow: the
+ * repointed repos needed Bastion running and nothing started it at login. 1.19.0
+ * added launch at login, so the row went; what is left is what a shared
+ * instance cannot do by design, not what it does not do yet.
  */
 const GAPS = [
-  {
-    k: "Login item",
-    v: "The repointed repos need Bastion running: four .mcp.json files now call the gateway instead of spawning anything, and nothing starts it at login yet.",
-  },
   {
     k: "Server-initiated",
     v: "Sampling, elicitation and roots are refused with an explanatory error, not routed — a shared instance has no single client to ask.",

@@ -341,19 +341,17 @@ gets. A live handshake negotiates `2025-03-26`, two revisions behind that defaul
 why the default is never left in place: the manifest would have claimed a version this server does
 not speak, and nothing would have looked wrong.
 
-Not built yet: a Homebrew cask, and a login item — which is what would let a `type: http` client
-reach Bastion from cold the way a bridge-spawning one already can. The signed release path itself
-(Developer ID signing, notarization, Sparkle and the appcast) has shipped since 1.0.0; see
-[Working on it](#working-on-it).
+Not built yet: a Homebrew cask. The signed release path itself (Developer ID signing,
+notarization, Sparkle and the appcast) has shipped since 1.0.0, and launch at login since 1.19.0 —
+which is what lets a `type: http` client reach Bastion from cold the way a bridge-spawning one
+already could; see [Working on it](#working-on-it).
 
-Seven limitations worth knowing now:
+Six limitations worth knowing now:
 
-- **Bastion has no login item yet.** A stdio client's bridge starts it on demand, so a Claude
-  Desktop entry works from cold. A client configured with a plain `type: http` URL has no such
-  path and needs Bastion already up — which is the case for the four repos below.
 - **The repointed repos need Bastion running.** `mgcrea-ai/mcp-{shopify,keycloak,appstore-connect}/.mcp.json`
   now call `http://127.0.0.1:8720/...` instead of spawning anything, so with Bastion stopped those
-  servers are simply unreachable. There is no login item yet; that lands with the release path.
+  servers are simply unreachable. A stdio client's bridge starts it on demand; a plain `type: http`
+  client relies on launch at login being switched on in Settings ▸ General.
 
 - **A remote server's write gate is a filter, not a boundary.** A child gets an environment
   variable that switches its destructive tools off inside the server. A remote server has no
