@@ -52,6 +52,13 @@ demo-seeded, so quote no figure from them. Attach by hand.
 
 ## 1. PR to punkpeye/awesome-mcp-servers
 
+**Blocked, not opened (21 Sep).** The list now requires every entry to be listed on Glama, which
+runs the server from a Dockerfile and checks that it answers introspection. A bot asks for the
+Glama score badge on every PR without one, and the maintainer repeats it (see #12295, an unrelated
+"Bastion" SAST server, open since 17 Aug for exactly this). A signed macOS app cannot start in a
+Linux container, so this PR cannot pass. The draft stays below in case the rule changes; the
+awesomeclaude.ai listing goes with it.
+
 Section `### 🔗 Aggregators`. The section is not alphabetical in practice, so add at the bottom.
 
 ```
@@ -84,11 +91,11 @@ Hi,
 
 I just submitted github.com/mgcrea/bastion through the server form, though not sure it is the right place for it.
 
-Bastion is a macOS menu bar app that supervises MCP servers rather than being one: each server runs once, its credentials are Keychain items, and every client on the Mac reaches it over loopback with its own token. It does ship one built-in server (to manage Bastion itself), which is probably what your tool detection will pick up.
+Bastion is not an MCP server itself, it is a macOS menu bar app that runs them: each server runs once, its credentials are Keychain items, and every client on the Mac reaches it over loopback with its own token. It does ship one built-in server (to manage Bastion itself), which is probably what your tool detection will pick up.
 
-It could also sit next to Docker MCP Gateway in your gateways comparison, as the local option that needs no container runtime. The source is public and the signed build is $14.99 with a 30-minute trial.
+It could also sit next to Docker MCP Gateway in your gateways comparison, as the local option that needs no container runtime. The source is public and the signed build is $14.99 with a 30-minute trial:
 
-Two screenshots attached, let me know if you need anything else,
+https://bastion.mgcrea.io
 
 Thanks,
 Olivier
@@ -103,7 +110,7 @@ Subject: `Bastion, for your MCP gateway survey`
 ```
 Hi Daniel,
 
-I read your Q1 survey of MCP aggregation gateways and built one that is not in it: Bastion, a macOS menu bar app that runs each MCP server once and lets every client on the machine share it over loopback HTTP.
+I read your Q1 survey of MCP aggregation gateways and wanted to point you to one that is not in it: Bastion, a macOS menu bar app I built that runs each MCP server once and lets every client on the machine share it over loopback HTTP.
 
 It is macOS only and does not do namespaces or nested aggregation, so it will not match your target architecture. What it does cover from your criteria is tool-level controls (a per-profile write gate that leaves the mutating tools out of tools/list rather than refusing them), a separate revocable token per client, and a record of every call per client.
 
@@ -138,9 +145,12 @@ Olivier
 
 | Target | Sent | Reply | Listed |
 | --- | --- | --- | --- |
-| punkpeye PR | | | |
-| awesomeclaude.ai (check two weeks after the PR merges) | | | |
-| mcp.directory form | | | |
-| mcp.directory email | | | |
-| heyitworks | | | |
-| zimaspace | | | |
+| punkpeye PR | Blocked by the Glama requirement | | |
+| awesomeclaude.ai | Blocked with it | | |
+| mcp.directory form | 21 Sep, no email given | | |
+| mcp.directory email | Draft in Mail, 21 Sep | | |
+| heyitworks | Draft in Mail, 21 Sep | | |
+| zimaspace | Held until the two mails are out | | |
+
+The two Mail drafts carry no attachment and do not mention one; each links the site or the repo
+instead. Add the screenshots by hand only if you also add a line saying so.
