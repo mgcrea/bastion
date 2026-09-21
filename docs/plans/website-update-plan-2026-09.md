@@ -58,13 +58,24 @@ Three static pages, in the site's existing "what Bastion checks, and what everyo
 
 Mechanics: a `src/data/compare.ts` with one object per competitor so the rows are data, not prose, and a single `[slug].astro` route rendering them; a "last checked" date on each page pulled from that file; every competitor claim links to their own docs or issue, never to a third-party roundup. Add the three pages to the sitemap and a small "Compared with…" link row in the Footer, not the nav — these are landing pages for search, not for someone already on the site.
 
-Keep `Gaps.astro`'s discipline: the Bastion column must include "macOS only", "no isolation between clients of the same profile", "no sandbox", "login item not yet" (until Phase 5 lands), and "remote write gate is a filter".
+Keep `Gaps.astro`'s discipline: the Bastion column must include "macOS only", "no isolation between clients of the same profile", "no sandbox", and "remote write gate is a filter". (The "login item" entry is gone: it shipped in 1.19.0 and the row was removed from `Gaps.astro` and the README on 20 Sep.)
+
+**Row to add on all three pages, "Usage and observability" (added 20 Sep, from 1.18.0):**
+
+| | Bastion | Docker MCP Toolkit | ToolHive | MCP Router |
+|---|---|---|---|---|
+| What is counted | Per day, per profile, per tool: calls, bytes returned, latency, failures, restarts. Counts only: no arguments, no results, no paths, no identifiers. | `--log-calls` interceptor writes call logs; structured events streamed to a SIEM are enterprise-only. | OpenTelemetry traces and Prometheus metrics; audit logs. | Request logs with per-server statistics. |
+| On by default | Yes; tens of kilobytes a day, kept 90 days, never uploaded. Settings ▸ Activity switches it off and deletes the file. | No (flag). | Requires an OTel collector or Prometheus to be useful. | Yes (local). |
+| Where you read it | Stats pane in the app, `ServerDetail` and `ClientDetail` scoped to one server or client, and `server_stats` as a tool your agent can call. | CLI output / enterprise dashboard. | Your own Grafana/Jaeger. | In-app dashboard. |
+| What is deliberately not there | Arguments and results, unless the separate opt-in audit log is on. | | Nothing withheld: traces carry what you configure them to. | Not documented. |
+
+Wording rule for the row: say what Bastion counts and what it refuses to count in the same cell, because the "on by default" claim only holds up if the reader sees at once why it is safe to be on by default. Competitor cells are as of 7 Sep; re-check ToolHive's before publishing, since v0.48–0.50 changed nothing here but the cadence says they could.
 
 **Acceptance:** someone who prefers Docker should be able to read the Docker page and agree it is fair. That is the whole test.
 
 ## Phase 5 — Close the one gap a feature table exposes (app work, not website)
 
-The site's own `Gaps.astro` lists "Login item: nothing starts it at login yet". Both free desktop competitors start at login. Ship it before Phase 4 goes live, then delete that row from `GAPS`. Everything else in the gaps list is a design choice that the comparison pages can defend; this one is just missing.
+**Done.** Launch at login shipped in 1.19.0 (16 Sep); the stale "Login item" row was removed from `Gaps.astro` and the README's limitations list on 20 Sep. Everything left in the gaps list is a design choice the comparison pages can defend.
 
 ## Phase 6 — Changelog and FAQ on the site (small, whenever)
 
@@ -80,6 +91,6 @@ The site's own `Gaps.astro` lists "Login item: nothing starts it at login yet". 
 
 ## Order and effort
 
-Phase 1 and 2 together in one PR this week (copy only, no new components). Phase 3 next. Phase 5 in the app whenever it fits, and Phase 4 lands the week after it ships. Phase 6 is filler for a quiet afternoon. Total website effort is in the region of three to four days; the app work for the login item is separate.
+Phase 1 and 2 together in one PR this week (copy only, no new components). Phase 3 next. Phase 5 is done, so Phase 4 is unblocked. Phase 6 is filler for a quiet afternoon. Total website effort is in the region of three to four days; the app work for the login item is separate.
 
 Off-site, in parallel and free: get Bastion listed in the heyitworks Q1-2026 gateway survey, mcp.directory, zimaspace's "top 10 MCP gateways", and awesomeclaude.ai's aggregator list — all of which list MCP Router today and not Bastion. Phase 4's pages are what those lists will link to.
