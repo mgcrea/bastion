@@ -1,196 +1,155 @@
-# Bastion — Awareness Campaign Brief, September 2026
+# Bastion — Awareness Campaign Brief, September 2026 (revised 21 Sep)
 
-**Prepared:** Monday 7 September 2026
-**Window:** four weeks of content, Mon 7 Sep → Sun 4 Oct 2026, with the Show HN on Tue 29 Sep and the readout one week after it (Fri 9 Oct)
-**Decision (7 Sep):** no Show HN today; bootstrap early feedback via Reddit and X in week 1, and submit the Show HN roughly three weeks out, once the measurement post, the demo and the vs-Docker page are live.
-**Budget:** $0 — time only
-**Channels:** Hacker News, X (@mgcrea), Reddit, bastion.mgcrea.io (blog / SEO)
-**Inputs:** the September competitive brief (`docs/marketing/competitive-brief-2026-09.md`), the repo at `app-v1.12.0` (6 Sep 2026), and the website source in `apps/website/src`.
+**Prepared:** Mon 7 September 2026. **Revised:** Mon 21 September 2026, at the start of what was week 3.
+**Window (revised):** Mon 21 Sep → Fri 16 Oct 2026, Show HN moved to **Tue 6 Oct**, readout Fri 16 Oct.
+**Budget:** $0 — time only. **Channels:** Hacker News, X (@mgcrea), Reddit, blog (now `mg-crea.com/blog`, see below).
+**Inputs:** the competitive brief, the 14 Sep X sub-plan (`docs/marketing/x-campaign-2026-09.md`), the repo at `app-v1.22.0` (18 Sep), the website source, the X API and HN Algolia as of 21 Sep.
 
 ---
 
-## 1. Campaign overview
+## 0. What happened in the first two weeks
 
-**Working name:** _One process, on the record_ — or, if a plainer label is wanted internally, _Bastion Category Entry, Sep 2026_.
+**Shipped (product).** Bastion went from 1.12.0 to 1.22.0 in eleven days. Launch at login landed in 1.19.0 (16 Sep), which closes the one feature-table row where the free Electron apps beat Bastion; the Gaps section already reflects it. A feedback form and a `/support` page shipped, the site stopped claiming the activity log never touches disk (correct, since the durable audit is opt-in), screenshots were regenerated for the new Stats pane, and a COOP header and 404 noindex went in. A third app, **Armada** (armada.mgcrea.io, "every coding agent you have running, on one screen"), went from first commit to signed 1.0 on 11 Sep and is cross-linked from the Bastion site.
 
-**In one sentence:** four weeks of measured, checkable content that puts Bastion into the conversations and roundups where developers currently discover Docker MCP Toolkit, ToolHive Studio and MCP Router, by publishing the two arguments nobody else in the category has made in public: what per-client MCP duplication actually costs a Mac, and what an audit log can and cannot prove.
+**Shipped (content).** Three essays on `mg-crea.com/blog`, each mirrored as an X Article: *The late software developer* (8 Sep), *The blast radius* (11 Sep), *The input layer* (18 Sep). X results: 14 → 577 → 227 views for the article posts, 8 and 6 replies on the last two, Premium now on the account. Hacker News: 2, 3 and 1 points respectively as plain links; no front page. Followers 123 → 126. The X sub-plan's finding holds: an argument gets hundreds of views, a bare link with a pitch gets single digits (8 and 21 views under two big accounts on 11 Sep; 22 views for the Armada launch post on 19 Sep).
 
-**Primary objective.** By 4 October, Bastion is listed in at least three of the four third-party roundups that currently define the "MCP gateway" category and omit it (heyitworks, mcp.directory, zimaspace, awesomeclaude.ai), and at least one Bastion-authored piece reaches the Hacker News front page (≥100 points).
+**Not shipped.** Everything the 7 Sep calendar put in week 1 as a blocker: no `/blog` or `/changelog` route on bastion.mgcrea.io, no measurement script, no Post 1 ("What three MCP clients cost your Mac"), no comparison page, no Post 2 (audit log), no Reddit post, no newsletter pitch. The "No container runtime, no Docker Desktop" line is still only on the pricing card, not under the hero. The X sub-plan's six receipt posts (P1–P6, 15–28 Sep) have not started either; the two slots already passed (15 and 17 Sep) were missed. Roundup outreach status is unknown to me; treat as not sent unless you say otherwise.
 
-**Secondary objectives.** Establish the site as a place that publishes (a `/blog` route with three posts and a live changelog page, so the site has search surface it currently lacks). Ship the four "quick win" site copy changes from the competitive brief. Build a small, real following on X that is sustained after the campaign. Collect a baseline of traffic, downloads and trial starts so the _next_ campaign — the sales push — has numbers to aim at.
+**Baselines.** Still not captured (Cloudflare referrers, GitHub stars, downloads, Stripe). Without them the readout cannot be written; this is now the first task, not a nice-to-have.
 
-This is explicitly not a sales campaign. Purchases will happen and should be counted, but the plan is judged on whether Bastion becomes a name a developer encounters when they search the category, not on revenue in the window.
-
----
-
-## 2. Target audience
-
-**Primary: the multi-client Mac developer.** A developer on macOS who runs two or more MCP clients side by side — Claude Code, Cursor, Claude Desktop, VS Code, Codex — against a growing set of servers, and who has noticed the cost: duplicate processes in Activity Monitor, the same API keys pasted into three JSON files, no idea what a tool call did last Tuesday. They found the category via a roundup, a Reddit thread or a colleague; they have probably already tried Docker's MCP Toolkit and hit the "needs Docker Desktop" wall, or use OrbStack and never got past it. They discover tools through Hacker News, X, r/ClaudeAI and r/cursor, GitHub trending and the "top N MCP gateways" listicles. They care about: not installing a container runtime for a config problem, credentials that are not in plaintext, being able to read the source, and a price that is a number rather than a form.
-
-> _Profile:_ a senior developer or indie founder on a Mac who runs three agent clients against fifteen-plus MCP servers, is tired of pasting the same tokens into three config files and watching duplicate `npx` children eat memory, and wants a native, auditable way to run each server once. They find tools through HN, X, Reddit and roundups, and they trust `make`-target evidence over marketing claims.
-
-**Secondary: the people who write the roundups.** Individual bloggers, directory maintainers and newsletter writers (heyitworks, mcp.directory, zimaspace, awesomeclaude.ai, PulseMCP, the various "awesome-mcp" lists) who are currently defining the category and who list MCP Router but not Bastion. They are a small audience, they are reached one at a time, and their pages compound for months. They care about accuracy, a clear one-line description, screenshots, and a feature table that is honest about gaps.
-
-**Tertiary (do not target, but do not repel):** platform/security engineers who arrive from the Docker and Stacklok governance narrative. Bastion's audit story should stay technical enough that they respect it without the campaign adopting "governance" vocabulary.
-
-**Buying stage.** Awareness → consideration. Most of the primary audience does not yet know a native no-Docker option exists; the campaign's job is to make them aware and to give them enough proof to shortlist it. Decision-stage content (the comparison pages) is included because it is also the highest-intent search surface, but conversion is not the KPI.
+**What this means.** The plan's structure was right and its week-1 load was wrong: it front-loaded site engineering onto the same person who was shipping ten app releases. Meanwhile the thing that did happen, essays on your own domain with an X Article on top, is the only channel that produced readers. The revision below keeps the two arguments (measurement, audit) and the Show HN, drops the bastion-site blog as a prerequisite, and moves every remaining piece onto the surface that already works.
 
 ---
 
-## 3. Key messages
+## 1. Campaign overview (unchanged in substance)
 
-**Core message.** _Run each MCP server once, for every client on your Mac — credentials in the Keychain, writes gated per profile, every call recorded — with no container runtime and source you can read first._
+**Working name:** *One process, on the record.*
 
-**Supporting messages and their proof.**
+**Primary objective (revised dates).** By 16 October, Bastion is listed in at least three of the four roundups that define the category and omit it (heyitworks, mcp.directory, zimaspace, awesomeclaude.ai), and at least one Bastion-authored piece reaches the HN front page (≥100 points).
 
-_Duplicate clients are costing you real memory and you have never measured it._ Proof: the 3.5 GB / 5.7 GiB / 82-children figures already on the Problem section, reproduced in a published, scriptable measurement on a stock Mac, before and after Bastion; plus the four competitor issue-tracker links already cited on the site. This is the campaign's lead argument because nobody else in the category has put numbers on it.
+**Secondary objectives.** The measurement post and the audit post published; one comparison page live; the hero copy change shipped; a captured baseline so the sales push has numbers. `mg-crea.com/blog` is now the publishing surface; a bastion.mgcrea.io blog is out of scope for this campaign. Whether Armada rides along is an open decision (§10).
 
-_Your secrets should be Keychain items, not lines in a JSON file._ Proof: each credential is its own Keychain item, per profile; no tool can return one; the audit log blanks it. Contrast, stated factually: Docker's secret store is Desktop-only and falls back to `.env` on Linux; ToolHive's keyring protects a single encrypted file; MetaMCP, 1MCP and both mcp-proxies use env vars or JSON. No competitor can currently write this sentence.
-
-_A write gate that the model never sees._ Proof: gated tools are absent from `tools/list`, so an agent never plans around a tool it cannot call. Framed as reliability, not just safety — an angle nobody else is making.
-
-_An audit log that says what it cannot prove._ Proof: opt-in durable JSONL, 0600, hash-chained, exportable with a manifest; the `/checked` page and a dedicated post on what a hash chain on a single machine does and does not establish. mcp-proxy users are filing issues asking for exactly this (#224).
-
-_No Docker Desktop, no account, one price._ Proof: the pricing card already says it; the OrbStack request open since July 2025 and the "gateway panics when Docker Desktop sleeps" issue say why it matters. $14.99 once per major version, a 30-minute in-memory trial, source public.
-
-**Variations by channel.** On Hacker News the tone is the site's own: exact, sceptical, evidence first, no adjectives; lead with the measurement, mention the product second. On X, the same facts as a build-in-public thread — one screenshot or one number per post, and the "what we check vs what others assert" framing works well as a recurring format. On Reddit, lead with the reader's problem in the subreddit's own vocabulary ("Cursor and Claude Code both spawning my servers") and disclose that you are the author in the first line. On the blog, full length, with the script, the raw numbers and the gaps column.
-
-**What not to say.** "Governance", "control plane", "enterprise-grade", "secure by default". The competitive brief's threat analysis is clear that borrowing the incumbents' vocabulary makes Bastion's audit read as a toy version of theirs rather than a different design.
+This is still not a sales campaign.
 
 ---
 
-## 4. Channel strategy
+## 2. Target audience — unchanged, one addition
 
-With no paid budget the plan is owned content, earned placement, and community presence. Effort is the only currency, so each channel is rated on it.
-
-**Blog and site (owned) — effort: high, and the foundation.** The site currently has an index, `/checked`, privacy and terms pages and no blog or changelog route; every other channel in this plan links back to a post, so the `/blog` route must exist before anything else ships. Three posts in four weeks: the measured cost post, the audit-log design post, and the first comparison page (vs Docker MCP Toolkit), with two more comparison pages (vs ToolHive Studio, vs MCP Router) if time allows. Publish `CHANGELOG.md` on the site as `/changelog` — it is already written and the ToolHive weekly updates page shows the SEO value of a changelog that lives at a URL. Ship the four quick-win copy changes from the competitive brief in week one.
-
-**Hacker News (earned) — effort: medium, highest variance.** Two submissions, deliberately different in kind. First, the measured post as a plain link submission (week 2): a measurement with a script is the kind of thing HN upvotes on its merits and the product is a footnote to it. Second, a _Show HN_ for the app itself (Tue 29 Sep, week 4), with the 90-second demo and the comparison page live so the inevitable "how is this different from Docker's thing / MCP Router" comment has a link. Submit Tuesday–Thursday, 14:00–16:00 Paris (morning US East). Stay in the thread for the first six hours and answer every question, including the hostile ones, in the site's voice. Do not ask anyone to upvote.
-
-**X / @mgcrea (owned + earned) — effort: medium, sustained.** The X connector is already wired through Bastion, so posting cost is low. Cadence: one substantive post or short thread per working day for four weeks, twenty posts total — each a single number, screenshot, diff or checkable claim from the content above, plus the launch threads for each blog post. Reply to people describing the problem (search "Docker Desktop" + "MCP", "mcp.json" + "secret", "Cursor" + "Claude Code" + "MCP" weekly via the X search tool) with help first and a link only when it answers the question. Quote-post competitor announcements only to add a factual comparison, never to dunk.
-
-**Reddit (community) — effort: medium, rule-bound.** Target r/ClaudeAI, r/cursor, r/macapps, r/LocalLLaMA and r/mcp (check each subreddit's current self-promotion rules before the first post; several restrict developer posts to a weekly thread or require flair). Two kinds of post: the measurement post in the AI-tool subs (a "I measured what three MCP clients cost my Mac" thread, author disclosed), and a "developer of" post in r/macapps for the app itself. Use the Reddit connector to find and answer existing threads about duplicate MCP processes, Docker Desktop hangs and secrets in config files — genuinely helpful answers with no link are worth more here than a promotional post.
-
-**Roundup outreach (earned) — effort: low per item, highest leverage.** One email or PR each to heyitworks (Q1-2026 survey), mcp.directory, zimaspace's top-10, awesomeclaude.ai's aggregator list, and the main awesome-mcp lists. Each with a one-line description, a screenshot, the comparison-table row in the roundup's own format and an honest gaps note. Do this in week one — pages take weeks to update, and the listings are the primary KPI.
-
-**Not used, by choice.** Product Hunt (wrong audience for a $14.99 developer utility, and it would compete with the Show HN for the same week). Newsletters as sponsorship (no budget) — but pitch the measurement post to TLDR, Console.dev and Changelog News as an editorial item in week 2; that costs an email.
+See the 7 Sep version: the multi-client Mac developer (primary), the roundup writers (secondary), platform/security engineers (do not repel). One addition from two weeks of X replies: the questions that actually came in were about **rate limits and running many sessions** (the *Input layer* thread, the quota thread you replied into), not about credentials. That audience overlaps Armada's exactly and Bastion's partially; it is why the Armada decision matters.
 
 ---
 
-## 5. Content calendar
+## 3. Key messages — unchanged, one re-ordering
 
-Week 1 is preparation, roundup outreach and a low-key feedback post on Reddit and X; week 2 carries the measurement post and its HN link submission; week 3 builds the demo and the comparison page; week 4 is the Show HN, followed by the readout a week later.
+The five supporting messages stand (memory cost, Keychain items, write gate removes tools from `tools/list`, audit that admits its limits, no Docker / no account / one price). Re-order for the next three weeks: lead with the **write gate** and the **audit log**, because those are the two receipts already drafted in the X sub-plan (P2, P4) and because *The blast radius*, which is about exactly that, is the best-performing thing you have published. The memory measurement stays the HN bet, but it moves to second because it still needs the script.
 
-| Week                    | Content piece                                                                                                                                                                                            | Channel    | Owner / notes                                                                                                                                                                                                                                                                                                                  | Status  |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| **Wk 1** (7–13 Sep)     | Capture baselines: site analytics, GitHub stars, X followers, downloads, trial starts, purchases                                                                                                         | —          | Day 1. Everything in §7 is measured against this.                                                                                                                                                                                                                                                                              | Pending |
-| Wk 1                    | Ship the four quick wins: "No container runtime. No Docker Desktop. No account." under the hero; the Keychain-item sentence; `/changelog` page from `CHANGELOG.md`; the "macOS only, by design" FAQ line | Site       | Copy is already written in the competitive brief; the changelog page is an Astro route.                                                                                                                                                                                                                                        | Pending |
-| Wk 1                    | Scaffold `/blog` on the Astro site (index, post layout, RSS, OG images)                                                                                                                                  | Site       | **Blocks every post below.**                                                                                                                                                                                                                                                                                                   | Pending |
-| Wk 1                    | Roundup outreach: heyitworks, mcp.directory, zimaspace, awesomeclaude.ai, awesome-mcp lists                                                                                                              | Earned     | One-line description + screenshot + table row + gaps note, per site. Track replies in a sheet.                                                                                                                                                                                                                                 | Pending |
-| Wk 1                    | Run the measurement: three clients × N servers, before/after, on a clean user account; publish the script in `scripts/`                                                                                  | Repo       | Raw data for the week-2 post. Reproduce the 3.5 GB / 5.7 GiB / 82-children figures on your own machine.                                                                                                                                                                                                                        | Pending |
-| Wk 1                    | Start the daily X cadence: build-in-public posts on the measurement as it runs (the Activity Monitor screenshot is the hook)                                                                             | X          | 5 posts. Disclose it's your app from the first post.                                                                                                                                                                                                                                                                           | Pending |
-| Wk 1                    | Check subreddit self-promotion rules; answer 3–5 existing threads on duplicate MCP processes / Docker Desktop hangs                                                                                      | Reddit     | No links unless asked.                                                                                                                                                                                                                                                                                                         | Pending |
-| Wk 1                    | Low-key feedback post: "developer of" in r/macapps + problem-first post in r/ClaudeAI, mirrored as a short X thread — author disclosed, asking what breaks                                               | Reddit / X | Mon 7 or Tue 8 Sep. Purpose is early downloads and bug reports, not a launch.                                                                                                                                                                                                                                                  | Pending |
-| **Wk 2** (14–20 Sep)    | **Post 1: "What three MCP clients actually cost your Mac"** — the measured post, script, numbers, before/after, links to the four competitor trackers                                                    | Blog       | Publish Mon 14 or Tue 15 Sep.                                                                                                                                                                                                                                                                                                  | Pending |
-| Wk 2                    | HN link submission of Post 1                                                                                                                                                                             | HN         | Tue 15 or Wed 16 Sep, 14:00–16:00 Paris. Six hours in the thread.                                                                                                                                                                                                                                                              | Pending |
-| Wk 2                    | Reddit thread of Post 1 in r/ClaudeAI, r/cursor (and r/LocalLLaMA if rules allow) — author disclosed, numbers in the body, link at the end                                                               | Reddit     | Same day as HN or the day after, not before.                                                                                                                                                                                                                                                                                   | Pending |
-| Wk 2                    | X launch thread for Post 1 (5–7 posts) + daily posts                                                                                                                                                     | X          | 5 posts.                                                                                                                                                                                                                                                                                                                       | Pending |
-| Wk 2                    | Pitch Post 1 to TLDR, Console.dev, Changelog News as an editorial item                                                                                                                                   | Earned     | One email each.                                                                                                                                                                                                                                                                                                                | Pending |
-| Wk 2                    | Take the three screenshots (profile pane, config diff, audit line) that every later post reuses                                                                                                          | Site / kit | Replaces the demo video as the must-have visual.                                                                                                                                                                                                                                                                               | Pending |
-| Wk 2                    | Draft comparison page 1: Bastion vs Docker MCP Toolkit (with a gaps column for Bastion)                                                                                                                  | Blog       | Must be live before the Show HN.                                                                                                                                                                                                                                                                                               | Pending |
-| **Wk 3** (21–27 Sep)    | Publish comparison page 1 (vs Docker MCP Toolkit)                                                                                                                                                        | Blog       | Mon 21 Sep.                                                                                                                                                                                                                                                                                                                    | Pending |
-| Wk 3                    | Optional: a short demo GIF if time allows; otherwise the three screenshots are the visual for the Show HN                                                                                                | Video      | Nice-to-have.                                                                                                                                                                                                                                                                                                                  | Pending |
-| Wk 3                    | Fold week-1 Reddit/X feedback into a point release if warranted; close the login-item gap if feasible                                                                                                    | Repo       | So the Show HN ships against the best build.                                                                                                                                                                                                                                                                                   | Pending |
-| Wk 3                    | Draft Post 2: "What a hash-chained audit log on one machine can and cannot prove"                                                                                                                        | Blog       | Technical, admits limits; cite mcp-proxy #224.                                                                                                                                                                                                                                                                                 | Pending |
-| Wk 3                    | Follow up with roundups that have not replied; send them the measurement-post HN thread as social proof                                                                                                  | Earned     | —                                                                                                                                                                                                                                                                                                                              | Pending |
-| Wk 3                    | Write the Show HN title and first comment; X daily posts                                                                                                                                                 | HN / X     | 5 posts.                                                                                                                                                                                                                                                                                                                       | Pending |
-| **Wk 4** (28 Sep–4 Oct) | Publish Post 2 (audit-log design)                                                                                                                                                                        | Blog       | Mon 28 Sep, so it is on the site when the Show HN thread arrives.                                                                                                                                                                                                                                                              | Pending |
-| Wk 4                    | **Show HN: Bastion — a menu-bar app that runs each MCP server once for every client on your Mac**                                                                                                        | HN         | Tue 29 Sep (fallback Wed 30), 14:00–16:00 Paris. Screenshots (or demo GIF if made), comparison page and source linked in the first comment. Offer free licences to anyone who wants to test past the trial — by email, never tied to commenting or voting (HN guidelines forbid soliciting comments). Six hours in the thread. | Pending |
-| Wk 4                    | Second r/macapps / r/ClaudeAI post with the demo, referencing what changed since the week-1 feedback post                                                                                                | Reddit     | Day after the Show HN.                                                                                                                                                                                                                                                                                                         | Pending |
-| Wk 4                    | X launch thread for the Show HN + daily posts; reply to every mention                                                                                                                                    | X          | 5 posts.                                                                                                                                                                                                                                                                                                                       | Pending |
-| Wk 4                    | Comparison pages 2 and 3: vs ToolHive Studio, vs MCP Router                                                                                                                                              | Blog       | The MCP Router page is the more important one — it is the free look-alike.                                                                                                                                                                                                                                                     | Pending |
-| **Wk 5** (5–9 Oct)      | Campaign wrap: measure everything in §7 against the week-1 baseline; write a one-page readout; decide the sales-push plan                                                                                | —          | Fri 9 Oct. Feeds `/marketing:performance-report`.                                                                                                                                                                                                                                                                              | Pending |
-
-**Dependencies.** `/blog` before any post. Measurement data before Post 1. Post 1 before its HN/Reddit/X launch. Screenshots, comparison page 1 and Post 2 before the Show HN on 29 Sep; the demo GIF is optional. Baselines before anything, or the KPIs cannot be reported. The "login item" gap (competitive brief, action 8) should ideally close before the comparison pages go live, since it is the one row where MCP Router and ToolHive Studio beat Bastion in a feature table; if it cannot, list it honestly in the gaps column rather than delaying the pages.
-
-About 20% of the calendar is deliberately unassigned — the second halves of weeks 3 and 4 — so that a good HN thread, a competitor release or a roundup reply can be responded to.
+**What not to say** stands: no "governance", "control plane", "enterprise-grade". Add, from the X evidence: no bare links, no pitches under other people's posts.
 
 ---
 
-## 6. Content pieces needed
+## 4. Channel strategy — what changes
 
-| Asset                                                    | Type                         | What it contains                                                                                                                  | Priority | When   |
-| -------------------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | -------- | ------ |
-| Four quick-win copy changes                              | Site copy                    | Hero line, Keychain sentence, FAQ "macOS only, by design", changelog link                                                         | Must     | Wk 1   |
-| `/blog` route                                            | Site build                   | Index, post layout, RSS, OG image, author line                                                                                    | Must     | Wk 1   |
-| `/changelog` page                                        | Site build                   | Renders `CHANGELOG.md` at a URL                                                                                                   | Must     | Wk 1   |
-| Measurement script                                       | Repo (`scripts/`)            | Spawns the three clients' configs, samples RSS/children, prints a table; reproducible                                             | Must     | Wk 1   |
-| Post 1 — "What three MCP clients actually cost your Mac" | Blog post, ~1,500 words      | Method, numbers, before/after, four competitor tracker links, the script, the honest caveats                                      | Must     | Wk 2   |
-| Roundup outreach kit                                     | Email/PR template            | One-liner, 2 screenshots, table row in each site's format, gaps note                                                              | Must     | Wk 1   |
-| Three annotated screenshots                              | PNG                          | Menu bar + profile pane, the client-config diff (before/after), the audit line — for HN, Reddit, X and the roundup kit            | Must     | Wk 1   |
-| 90-second demo                                           | Screen recording (MP4 + GIF) | Catalog → profile → wire two clients → audit line. Decided 7 Sep: nice-to-have — screenshots carry the story for a developer tool | Nice     | Wk 3   |
-| Comparison page 1 — vs Docker MCP Toolkit                | Blog/site page               | Factual table incl. Bastion's own gaps; "what we check vs what they assert" voice                                                 | Must     | Wk 2–3 |
-| Show HN post + first comment                             | HN copy                      | Title, 3-paragraph first comment: what, why no Docker, what it doesn't do, price                                                  | Must     | Wk 3   |
-| Post 2 — audit-log design                                | Blog post, ~1,200 words      | Hash chain, manifest, 0600, what it cannot prove, why that is the honest claim                                                    | Must     | Wk 3–4 |
-| Comparison page 3 — vs MCP Router                        | Blog/site page               | The free look-alike; the 20% it cannot match                                                                                      | Must     | Wk 4   |
-| Comparison page 2 — vs ToolHive Studio                   | Blog/site page               | Container-runtime requirement, keyring-file vs Keychain items                                                                     | Nice     | Wk 4   |
-| ~20 X posts / 4 threads                                  | Social copy                  | One number, screenshot or diff each                                                                                               | Must     | Daily  |
-| 3 Reddit posts + ongoing replies                         | Community copy               | Author-disclosed, problem-first                                                                                                   | Must     | Wk 2–4 |
-| 3 newsletter pitch emails                                | Email                        | Two sentences and the link                                                                                                        | Nice     | Wk 2   |
-| Campaign readout                                         | Internal doc                 | KPIs vs baseline, what to do next                                                                                                 | Must     | Wk 4   |
+**Blog: `mg-crea.com/blog`, not bastion.mgcrea.io.** It exists, it has OG tags and a canonical, it is already indexed, and three posts are on it. The measurement post and the audit post go there. The comparison page is the one thing that belongs on the product site, as a single Astro page (`/compare`), not a blog. Drop `/blog` and `/changelog` on the Bastion site from this campaign; the changelog is already served by GitHub releases.
+
+**Hacker News.** Three plain links have scored 1–3 points, which tells you nothing except that essays about your job are not what HN wants from an unknown account. The measurement post is a different kind of submission (a number, a script, a reproducible claim) and remains the bet. The Show HN moves to **Tue 6 Oct**, one week later than planned, gated on three things being live: the comparison page, the audit post, and the screenshots. If any of the three is missing on Mon 5 Oct, the Show HN moves again rather than going out thin. No more plain-link essay submissions until then; they cost nothing but they shape the account's history.
+
+**X.** Follow the 14 Sep sub-plan as written, compressed: P1–P6 in the next eight working days rather than two weeks, one per working day, links in a self-reply, product named last. It is the only X activity that has evidence behind it. Answer every reply on the *Input layer* thread. Do not post another Armada launch post until the Armada decision is made.
+
+**Reddit.** Nothing has gone out and that is fine; Reddit was always the channel with the worst effort-to-evidence ratio here. Keep one post: the measurement thread in r/ClaudeAI and r/cursor the day after its HN submission. Drop the r/macapps "developer of" post unless the HN thread goes well.
+
+**Roundup outreach.** Still the highest-leverage, lowest-effort item and still the primary KPI. If it has not gone out, it goes out this week, before anything else. The kit is three sentences, two screenshots (you have them now), one table row.
 
 ---
 
-## 7. Success metrics
+## 5. Content calendar (revised)
 
-Baselines are not known today, so day one of week 1 is a measurement day; every target below is a delta from that baseline, and the ones marked as ranges should be firmed up once the baseline exists.
+| Week | Content piece | Channel | Notes | Status |
+|---|---|---|---|---|
+| **Wk 3** (21–25 Sep) | Capture baselines: Cloudflare referrers for bastion.mgcrea.io, GitHub stars, downloads, Stripe, X followers (126) | — | Mon 21. Non-negotiable; the readout depends on it. | Pending |
+| Wk 3 | Roundup outreach × 4 (+ awesome-mcp lists) | Earned | Tue 22 at the latest. Screenshots exist since 1.22. | Pending / unknown |
+| Wk 3 | Hero line: "No container runtime, no Docker Desktop, no account." under the h1 | Site | 25 words, already written in the website-update plan. | Pending |
+| Wk 3 | X receipts P1, P2, P3 (tool listings cost tokens; write gate removes tools; loopback rules) | X | Tue, Wed, Thu 14:00–16:00 Paris. Replies only from the sub-plan's searches. | Pending |
+| Wk 3 | Write the measurement script (`scripts/measure-clients.mjs`) and run it on a clean account | Repo | The one engineering task in the campaign. If it slips past Fri 25, the measurement post slips a week and the Show HN does not. | Pending |
+| **Wk 4** (28 Sep–2 Oct) | **Post 1: "What three MCP clients actually cost your Mac"** on mg-crea.com/blog | Blog | Mon 28 or Tue 29. Numbers, script, before/after, four competitor tracker links. | Pending |
+| Wk 4 | HN plain link of Post 1 | HN | Tue 29 or Wed 30, 14:00–16:00 Paris. Six hours in the thread. | Pending |
+| Wk 4 | Reddit thread of Post 1 in r/ClaudeAI, r/cursor | Reddit | Day after HN. Author disclosed, numbers in the body. | Pending |
+| Wk 4 | X receipts P4 (audit, 2 posts), P5 (dialects), P6 (what leaks, plus price) + Post 1 launch post | X | P6 last, as the sub-plan says. | Pending |
+| Wk 4 | **Post 2: "What a hash-chained audit log on one machine can and cannot prove"** on mg-crea.com/blog | Blog | Thu 1 Oct. Expand P4 into 1,000 words; cite mcp-proxy #224. | Pending |
+| Wk 4 | `/compare` page on bastion.mgcrea.io: Bastion vs Docker MCP Toolkit vs MCP Router, one table, gaps column for Bastion | Site | Fri 2 Oct. One page, two competitors; ToolHive can be a row rather than a page. | Pending |
+| **Wk 5** (5–9 Oct) | Gate check Mon 5 Oct: comparison page, Post 2, screenshots all live? | — | If not, Show HN → Tue 13 Oct. | Pending |
+| Wk 5 | **Show HN: Bastion – run each MCP server once for every client on your Mac** | HN | Tue 6 Oct (fallback Wed 7), 14:00–16:00 Paris. First comment: what, why no Docker, what it does not do, price; screenshots; `/compare` and source linked. Licence offer by email only, never tied to commenting. | Pending |
+| Wk 5 | X thread for the Show HN; reply to every mention | X | — | Pending |
+| Wk 5 | Follow up with roundups that have not replied, with the HN threads as social proof | Earned | — | Pending |
+| **Wk 6** (12–16 Oct) | Readout: KPIs vs baseline, what worked (essays) and what did not (plain links, pitches), decide the sales push and the Armada question | — | Fri 16 Oct, via `/marketing:performance-report`. | Pending |
 
-**Primary KPI — category presence.** Bastion listed in ≥3 of the 4 named roundups (heyitworks, mcp.directory, zimaspace, awesomeclaude.ai) by 9 Oct, and ≥1 Bastion piece on the HN front page (≥100 points). Tracked by hand: a sheet of outreach targets with reply/listing status, and the HN item pages.
+**Dependencies.** Baselines before anything. Script before Post 1; Post 1 before its HN/Reddit/X. Post 2, `/compare` and screenshots before the Show HN; the gate check on 5 Oct is real. Nothing depends on bastion.mgcrea.io having a blog.
 
-**Secondary KPIs.**
-
-Referral traffic to bastion.mgcrea.io: ≥3,000 sessions over the four weeks from HN, Reddit, X and roundups combined (an HN front-page hit alone typically brings 2–5k sessions in 48 hours; adjust after the first submission). The site currently ships no analytics script (and the privacy page's "no analytics, no telemetry" promise is worth keeping), so use the Cloudflare dashboard's request analytics and referrer data for the Worker — server-side, no script, no cookie — and note on day 1 what it can and cannot break down by referrer. If that proves too coarse, Cloudflare Web Analytics (cookieless) is the least-bad addition, with the privacy page updated to say so.
-
-GitHub stars on `mgcrea/bastion`: +150 over baseline. Tracked from the repo page weekly.
-
-X: +300 followers on @mgcrea and ≥50k impressions across campaign posts. Tracked via the X connector's usage/stat tools weekly.
-
-Downloads and trial starts: reported as a leading indicator (target: 3× the baseline weekly rate in weeks 2–3), not a pass/fail. Purchases: counted (Stripe), not targeted — this is the awareness campaign; the sales campaign follows.
-
-Search surface: five new indexed URLs (`/blog`, `/changelog`, three posts/comparison pages), and Bastion appearing on page one for "Bastion vs Docker MCP Toolkit" and "MCP Router alternative" within 60 days (this one lands after the window).
-
-**Reporting cadence.** A five-line note every Friday (traffic, stars, followers, downloads, listings), and the full readout on Fri 9 Oct using `/marketing:performance-report`.
-
----
-
-## 8. Budget allocation
-
-There is no cash budget. The allocation is of time, and a rough honest estimate for a solo developer is around 60–70 hours over the four weeks: about 20 on site work (blog route, changelog, quick wins, comparison pages as pages), 15 on the three posts and the measurement, 5 on screenshots (and a demo GIF only if time allows), 10 on X (roughly half an hour a day), 8 on Reddit and HN threads (front-loaded on the two submission days), and 5 on outreach and reporting. If any paid spend does appear later, the first $200 should go to a Console.dev or TLDR sponsorship slot for Post 1, and nothing to social ads — this audience does not click them.
-
----
-
-## 9. Risks and mitigations
-
-**The Show HN gets a "how is this different from Docker's toolkit / MCP Router, and why is it $15?" top comment and stalls.** This is the most likely failure and it is why comparison page 1 and the demo must be live before the submission. Mitigation: write the answer into the first comment pre-emptively — no container runtime, Keychain items, write gate removes tools from `tools/list`, chained audit, and the price is a number because there is no account and no telemetry. Answer the pricing question with the trial and refund, not a defence.
-
-**Everything depends on `/blog` shipping in week 1 and it slips.** Mitigation: if the route is not live by Thu 10 Sep, publish Post 1 as a page (`/blog/mcp-clients-cost` can be a single Astro page without an index) and backfill the index later; do not let the blog scaffold delay the measurement post.
-
-**Reddit posts get removed as self-promotion.** Mitigation: read each subreddit's rules in week 1, prefer the weekly promo threads where they exist, and lead every post with the problem and the numbers rather than the product; the campaign still works if Reddit contributes only replies.
-
-**A competitor ships something in the window — Docker adds a no-container mode, or MCP Router adds Keychain storage.** Mitigation: the comparison pages are factual with dates, so they get updated rather than retracted; the measurement post and the audit-log post are independent of any competitor's roadmap and remain true.
-
-**The measurement does not reproduce the site's figures.** Mitigation: publish whatever the clean-room numbers are and update the Problem section to match. A smaller, reproducible number beats a larger, disputed one on Hacker News every time.
+**Load.** About 35–40 hours over four weeks, roughly half the original estimate, because the site engineering is gone and the X copy is already drafted. If it still does not fit beside the release cadence, drop Reddit first, then the comparison page (list the gaps in the Show HN comment instead), never the baselines or the measurement.
 
 ---
 
-## 10. Next steps
+## 6. Content pieces needed (revised)
 
-Today and tomorrow: capture the baselines from the Cloudflare dashboard, GitHub, X and Stripe; open the outreach sheet and send the four roundup emails; start the `/blog` and `/changelog` routes; post the first X update. By Friday 11 Sep: quick-win copy live, the measurement run on a clean account with the script committed, and subreddit rules checked.
-
-Decisions that are yours alone: whether to close the login-item gap before or after the comparison pages; whether Post 2 goes to HN as a link after the Show HN or waits; and, at the 9 Oct readout, whether the sales push follows immediately (if the roundups listed you and the Show HN landed) or after another content cycle.
-
-No stakeholder approvals are required — this is a one-person SARL — but the comparison pages quote competitors' documentation and issue trackers, so each factual claim about a competitor should carry a link and a date, as the competitive brief already does.
+| Asset | Type | Priority | When | State |
+|---|---|---|---|---|
+| Baseline sheet | Internal | Must | Wk 3 | Not started |
+| Roundup outreach kit (3 sentences, 2 screenshots, 1 row) | Email/PR | Must | Wk 3 | Screenshots done; kit not sent (?) |
+| Hero "no Docker" line | Site copy | Must | Wk 3 | Not started |
+| X receipts P1–P6 | Social | Must | Wk 3–4 | Drafted in the X sub-plan |
+| Measurement script | Repo | Must | Wk 3 | Not started |
+| Post 1, measurement | Blog, ~1,500 words | Must | Wk 4 | Not started |
+| Post 2, audit log | Blog, ~1,000 words | Must | Wk 4 | P4 draft exists |
+| `/compare` page | Site | Must | Wk 4 | Not started |
+| Show HN title + first comment | HN copy | Must | Wk 5 | Not started |
+| Reddit measurement thread | Community | Nice | Wk 4 | Not started |
+| Demo GIF | Video | Dropped | — | — |
+| `/blog`, `/changelog` on bastion site | Site | Dropped | — | — |
+| Readout | Internal | Must | Wk 6 | — |
 
 ---
 
-_Would you like me to dive deeper into any section, draft specific pieces from the calendar (Post 1 outline, the Show HN first comment, the roundup email), build the comparison-page tables, or adjust the plan for a different timeline?_
+## 7. Success metrics (revised dates, targets adjusted)
+
+Primary: ≥3 of 4 roundup listings and ≥1 HN front page (≥100 points) by 16 Oct. Secondary: ≥3,000 referral sessions over the window (Cloudflare, server-side); +150 GitHub stars; downloads and trial starts at 3× the baseline weekly rate around the two HN dates; purchases counted, not targeted. X: two weeks in, follower growth is +3 and the best post is 577 views, so the honest target is +100 followers and 10k impressions, not +300 and 50k.
+
+New leading indicator from the evidence so far: **views per X post by kind**. Articles and arguments: 227–577. Links and pitches: 4–32. If a P-post lands under 100 views, its framing is wrong, not the channel.
+
+Reporting: five lines every Friday; full readout 16 Oct.
+
+---
+
+## 8. Budget — unchanged
+
+$0. Time, roughly 35–40 hours over four weeks (see §5). If cash appears, $200 on a Console.dev or TLDR slot for Post 1; nothing on social ads.
+
+---
+
+## 9. Risks and mitigations (revised)
+
+**The script slips again.** It has slipped once and it is the campaign's only engineering task competing with product releases. Mitigation: time-box it to one afternoon; a `ps`-based sampler that prints RSS and child counts for each client's config is enough, the polish can follow. If it is not done by Fri 25, publish Post 1 with the figures already on the Problem section plus a manual Activity Monitor screenshot, and say so.
+
+**The Show HN goes out thin because the date arrived.** Mitigation: the 5 Oct gate is a rule, not a hope. A Show HN on 13 Oct with the comparison page beats one on 6 Oct without it.
+
+**Armada eats the attention.** A third product launched mid-campaign, with a launch post that got 22 views. Mitigation: decide (§10) rather than drift. Either Armada joins as the "rate limits" story the X audience is already asking about, with its own Show HN two weeks after Bastion's, or it stays quiet until this window closes.
+
+**Plain-link essays keep scoring 1–3 on HN and it gets discouraging.** Mitigation: stop submitting them. The essays are doing their job on X and on your own domain; HN is for the measurement and the Show HN.
+
+**Baselines never get captured and the readout is vibes.** Mitigation: it is the first row of the calendar and it takes an hour.
+
+---
+
+## 10. Next steps and decisions
+
+**This week:** baselines (Mon), roundup emails (Tue), hero line (Tue), P1–P3 on X (Tue–Thu), measurement script (by Fri).
+
+**Decisions that are yours:**
+
+1. **Armada: in or out of this campaign?** In: it answers the question your X audience is actually asking (rate limits, many sessions), it shares the Show HN prerequisites (screenshots, a price, public source) and it could take a second Show HN slot on Tue 20 Oct. Out: it splits a one-person effort three ways and the Bastion KPIs have not moved yet. Recommendation: out until 16 Oct, with one exception: if a P-post about rate limits performs, let Armada be the self-reply link.
+2. **Roundup outreach: has any of it gone out?** If yes, say which and the sheet gets updated; if no, it is Tuesday's job.
+3. **Show HN date:** 6 Oct with the gate, or 13 Oct without the stress. Either is defensible; what is not is 29 Sep.
+
+No stakeholder approvals needed. Comparison claims about competitors carry a link and a date, as before.
+
+---
+
+*Would you like me to draft the measurement script, the `/compare` table, the Show HN first comment, or the roundup email next?*
