@@ -40,7 +40,7 @@ export default defineConfig({
        * `'self'` has to be repeated here. The per-script hashes are still appended.
        */
       scriptDirective: {
-        resources: ["'self'", "https://static.cloudflareinsights.com/beacon.min.js"],
+        resources: ["'self'", "https://static.cloudflareinsights.com"],
       },
       // The marquee, the fan-in connector lanes and the staggered dash
       // animations carry computed delays in per-element `style` attributes. CSP
