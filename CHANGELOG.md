@@ -4,10 +4,10 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.22.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.23.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.23.0] - 2026-09-22
 
 ### Added
 
@@ -19,6 +19,24 @@ are taken from this file, which is the curated summary.
   blocks; a parent folder is expanded to every repository below it. Managed in Settings →
   Workspaces, or with the new `list_workspaces`, `upsert_workspace` and `remove_workspace` tools.
   Claude Code only for now.
+
+### Fixed
+
+- **Usage stats count what you asked for, not what the client's SDK sent on its own.** The
+  handshake and listing methods a client sends by itself on every connect (`initialize`,
+  `tools/list` and the other listings, `ping`, `logging/setLevel`) were recorded as calls, so
+  `tools/list` topped every ranking, the call totals measured how often clients reconnected, and
+  the median latency was mostly that of a cached listing. They are no longer recorded, and days
+  already on disk are filtered when read. The per-client totals have no method to filter on, so
+  they keep counting old handshakes until those days age out of the window.
+
+### Internal
+
+- `make dev-clone` also carries each client's gateway token into the Debug build, so editors keep
+  working when the Debug build is the one on the gateway port.
+- The website no longer loads the Cloudflare analytics beacon twice, and its CSP now allows the
+  one the edge injects, which it had been refusing on every page. It also takes
+  `@mgcrea/feedback-contract` 0.3.0, which knows about Bastion.
 
 ## [1.22.0] - 2026-09-18
 

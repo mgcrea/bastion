@@ -194,7 +194,36 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_22_0, v1_21_0, v1_20_0, v1_19_0, v1_18_0]
+  static let releases: [Release] = [v1_23_0, v1_22_0, v1_21_0, v1_20_0, v1_19_0]
+
+  // swift-format-ignore
+  private static let v1_23_0: Release = Release(
+    version: "1.23.0",
+    date: "2026-09-22",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Workspaces scope profiles to folders.",
+            body: [
+              "A workspace is a set of folders and the profiles that belong there. A profile in one is left out of every client's global list and written into Claude Code's per-folder project blocks instead, so a session in an `rgis` repository sees the `rgis` servers and nothing from another account. A folder inside a git repository means the whole repository, its subfolders and its worktrees, which is how Claude Code itself files project blocks; a parent folder is expanded to every repository below it. Managed in Settings → Workspaces, or with the new `list_workspaces`, `upsert_workspace` and `remove_workspace` tools. Claude Code only for now.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 1,
+            headline: "Usage stats count what you asked for, not what the client's SDK sent on its own.",
+            body: [
+              "The handshake and listing methods a client sends by itself on every connect (`initialize`, `tools/list` and the other listings, `ping`, `logging/setLevel`) were recorded as calls, so `tools/list` topped every ranking, the call totals measured how often clients reconnected, and the median latency was mostly that of a cached listing. They are no longer recorded, and days already on disk are filtered when read. The per-client totals have no method to filter on, so they keep counting old handshakes until those days age out of the window.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_22_0: Release = Release(
@@ -319,136 +348,11 @@ nonisolated enum Changelog {
         ]),
     ])
 
-  // swift-format-ignore
-  private static let v1_18_0: Release = Release(
-    version: "1.18.0",
-    date: "2026-09-14",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "A Stats pane, and the number nobody could see.",
-            body: [
-              "Every server pane already quoted its own tool list cost, and each one looked survivable alone; nothing added them up. The new pane ranks what each server costs a client on every connect, says what the write gate and loading on demand keep out of a context, and then — under a time range, because the two are different kinds of fact — shows calls, failures, response times and restarts over the last 7, 30 or 90 days. `ServerDetail` and `ClientDetail` grew the same figures scoped to one server and one client.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "A usage rollup, on disk and on by default.",
-            body: [
-              "Per day, per profile and per tool: how many calls, how many bytes came back, how long they took, how many failed, how many times a server restarted. Counts only, with no arguments, no results, no resource paths and no identifiers — which is what lets it be on by default where the activity log is not. Tens of kilobytes a day on a busy machine, kept ninety days, never uploaded. Settings ▸ Activity turns it off and deletes the file.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "`server_stats`",
-            body: [
-              ", a built-in tool returning the same figures for the calling profile, scoped the way `recent_activity` is and held to the same 16 KB reply budget. `status` gained one key saying whether counting is on and how much history stands behind it.",
-            ]),
-          Entry(
-            ordinal: 3,
-            headline: "Adding or removing a profile updates every client already wired to Bastion.",
-            body: [
-              "A client's config used to be written only by _Configure_ and the `wire_client` tool, so a profile added anywhere else left every client holding the previous list with nothing on screen to say so. A client Bastion was never configured into is still left alone, and a rewrite that cannot land — a read-only file, somebody else's entry in the way — is logged rather than failing the save. The Clients pane goes on reporting what each file actually holds.",
-            ]),
-          Entry(
-            ordinal: 4,
-            headline: "Click a server row in the menu bar to find its profile.",
-            body: [
-              "The panel lists what is running as `<profile> / <server>`; a click opens the main window on that server, scrolls the profile's row into view and lights it briefly.",
-            ]),
-          Entry(
-            ordinal: 5,
-            headline: "A Help pane in Settings, and an About pane with more in it.",
-            body: [
-              "Bastion lives in the menu bar, so the Help menu's links only existed while a window happened to be open; they have a pane of their own now. About gained the app icon, the System and Model rows, and a button that copies all of it for a bug report.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 6,
-            headline: "A second profile of a server renamed the first one's entry in every client config.",
-            body: [
-              "The key was a bare `<server>` until a second profile appeared, at which point both grew the profile name — and nothing rewrote the configs already holding the old one, so the new profile stayed invisible to every client until _Configure_ was pressed again. Every key is `<profile>-<server>` now, even for a server with one profile, and configs written under the old scheme are renamed in place on launch. The key is part of every tool name a client shows, so `mcp__shopify__…` becomes `mcp__prod-shopify__…` — worth knowing if a client's permission rules name the old one.",
-            ]),
-          Entry(
-            ordinal: 7,
-            headline: "A profile name ending in a space could not be saved, and the sheet did not say why.",
-            body: [
-              "Saving already trimmed the name, but the Save button and the missing-values line judged the raw field, so a pasted handle with a trailing space left Save disabled with nothing on the sheet to explain it. All three judge the trimmed name now.",
-            ]),
-          Entry(
-            ordinal: 8,
-            headline: "The EULA said the audit log is never written to disk.",
-            body: [
-              "That was true of the in-memory activity log the sentence was written about, and not of the durable audit log, which is off by default and writes under Application Support once turned on. §7(c) describes the two separately now, and the privacy page, `llms.txt` and the website's screens section, which carried the same sentence, were corrected with it.",
-            ]),
-          Entry(
-            ordinal: 9,
-            headline: "A refused tool call was recorded as a success.",
-            body: [
-              "A failure reaches the gateway either as a JSON-RPC `error` or as a result carrying `isError: true`, and the cheap pre-filter on the legacy-era path looked for the first spelling only — `isError` contains no lowercase `error`. Tool refusals are counted as failures now, and `make unit` holds the casing.",
-            ]),
-          Entry(
-            ordinal: 10,
-            headline: "The client pane's context bill claimed \"about\" for a figure it could not claim that for.",
-            body: [
-              "A listing read one page at a time makes every total built from it a floor. `partial` was read only as a trigger for the facade and never reached the sentence, which now says \"at least\" and fades the bar out rather than ending it.",
-            ]),
-        ]),
-      Section(
-        name: "Changed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 11,
-            headline: "Wording, in nine places, because a new file writes to disk by default.",
-            body: [
-              "\"Nothing recorded is written to disk unless you ask for it\" was true of the activity log and was read as being about the app. It is now \"no arguments and no results\", in the EULA, the README, `docs/servers.md`, the privacy page, two website components, `llms.txt`, the Log pane's own footer and the profile sheet. The EULA's §7(c) has a third paragraph for the rollup — and its existing \"with timings\" is true for the first time, since a per-call duration is measured now rather than a row stamp.",
-            ]),
-          Entry(
-            ordinal: 12,
-            headline: "The menu bar's gateway line is caption-sized.",
-            body: [
-              "It inherited body text and was the largest line in the panel, bigger than the Servers header it sits above; it matches the sidebar and Settings ▸ General now.",
-            ]),
-          Entry(
-            ordinal: 13,
-            headline: "Settings reads General, Activity, What's New, Updates, About, Help",
-            body: [
-              ", and a pane's heading stays put while its cards scroll. The pane you last had open is remembered across the change.",
-            ]),
-        ]),
-    ])
-
   /// Work that is written down but not shipped.
   ///
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  // swift-format-ignore
-  private static let unreleasedRelease: Release = Release(
-    version: "Unreleased",
-    date: "",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Workspaces scope profiles to folders.",
-            body: [
-              "A workspace is a set of folders and the profiles that belong there. A profile in one is left out of every client's global list and written into Claude Code's per-folder project blocks instead, so a session in an `rgis` repository sees the `rgis` servers and nothing from another account. A folder inside a git repository means the whole repository, its subfolders and its worktrees, which is how Claude Code itself files project blocks; a parent folder is expanded to every repository below it. Managed in Settings → Workspaces, or with the new `list_workspaces`, `upsert_workspace` and `remove_workspace` tools. Claude Code only for now.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  static let unreleased: Release? = unreleasedRelease
+  static let unreleased: Release? = nil
   // </generated:changelog>
 }
