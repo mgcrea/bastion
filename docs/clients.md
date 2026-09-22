@@ -516,6 +516,41 @@ of the build that changed it. The rename is safe because `merged` drops an entry
 of ours that reaches an endpoint being written under a different key, so the old
 `shopify` and the new `prod-shopify` never coexist.
 
+## Workspaces
+
+A workspace is a named set of folders plus the profiles that should appear only
+there. A profile in any workspace leaves every client's global list, and is
+written into Claude Code's per-folder project blocks
+(`projects[<folder>].mcpServers` in `.claude.json`) for the folders its
+workspaces resolve to.
+
+Claude Code files a project block under the **git repository root** and applies
+it in every subfolder and worktree. Outside git it applies to that exact folder
+only (measured 2026-09-22). So a folder is resolved before it is written: one
+inside a repository becomes that repository, and any other folder becomes itself
+plus every repository up to three levels below it. Hidden folders and
+`node_modules` are skipped. Resolution runs again on every rewire, so a
+repository cloned later is picked up on the next one.
+
+Keys are physical paths, from `realpath(3)`. `URL.resolvingSymlinksInPath()`
+strips a leading `/private`, and Claude Code keys by the path `getcwd` returns,
+which keeps it — a block filed under `/tmp/x` is one it never reads for a
+session in `/private/tmp/x`, and `wiring-check` holds that line.
+
+Nothing records where Bastion wrote. `isOurs` claims the entries, as it does in
+the global block, so a folder or profile taken out of a workspace is cleaned up
+on the next write, and Unwire strips every project block too.
+
+Only Claude Code has project blocks Bastion writes. The other clients keep
+per-project servers in files inside each repository, which would put a gateway
+token in a file that is routinely committed. Those clients simply do not get
+scoped profiles.
+
+This is about what a session **sees**, not what it may reach. Every token a
+client holds sits in the same file, which the agent can read, and any token
+reaches every profile (see above). A per-workspace token would protect nothing
+until that changes.
+
 ## Keeping configs current
 
 Adding or removing a profile rewrites the config of **every client already wired

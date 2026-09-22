@@ -7,6 +7,19 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.22.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Added
+
+- **Workspaces scope profiles to folders.** A workspace is a set of folders and the profiles that
+  belong there. A profile in one is left out of every client's global list and written into Claude
+  Code's per-folder project blocks instead, so a session in an `rgis` repository sees the `rgis`
+  servers and nothing from another account. A folder inside a git repository means the whole
+  repository, its subfolders and its worktrees, which is how Claude Code itself files project
+  blocks; a parent folder is expanded to every repository below it. Managed in Settings →
+  Workspaces, or with the new `list_workspaces`, `upsert_workspace` and `remove_workspace` tools.
+  Claude Code only for now.
+
 ## [1.22.0] - 2026-09-18
 
 ### Added

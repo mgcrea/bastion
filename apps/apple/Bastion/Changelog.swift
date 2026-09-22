@@ -430,6 +430,25 @@ nonisolated enum Changelog {
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  static let unreleased: Release? = nil
+  // swift-format-ignore
+  private static let unreleasedRelease: Release = Release(
+    version: "Unreleased",
+    date: "",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Workspaces scope profiles to folders.",
+            body: [
+              "A workspace is a set of folders and the profiles that belong there. A profile in one is left out of every client's global list and written into Claude Code's per-folder project blocks instead, so a session in an `rgis` repository sees the `rgis` servers and nothing from another account. A folder inside a git repository means the whole repository, its subfolders and its worktrees, which is how Claude Code itself files project blocks; a parent folder is expanded to every repository below it. Managed in Settings → Workspaces, or with the new `list_workspaces`, `upsert_workspace` and `remove_workspace` tools. Claude Code only for now.",
+            ]),
+        ]),
+    ])
+
+  // swift-format-ignore
+  static let unreleased: Release? = unreleasedRelease
   // </generated:changelog>
 }
