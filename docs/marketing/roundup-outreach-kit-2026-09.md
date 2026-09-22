@@ -11,12 +11,12 @@ line should come out of the brief and the plan.
 
 Two of the four are also poor fits, for a reason the brief did not look at:
 
-| Target | What it actually is | Route | Fit |
-| --- | --- | --- | --- |
-| awesomeclaude.ai/mcp/aggregators | 24 entries in `owner/repo` form, the same shape as the Aggregators section of `punkpeye/awesome-mcp-servers`. It appears to mirror that list; the site's own repo (`webfuse-com/awesome-claude`) holds no aggregator list. | PR to punkpeye | **Good.** One PR, probably two listings. |
-| mcp.directory | A server directory with a submit form (GitHub URL, reviewed within 24 hours) and a blog that compares gateways (Composio, Docker, MCPJungle, Obot). Contact: hello@mcp.directory. | Form, then email | **Good** |
-| heyitworks Q1-2026 survey | Daniel Rosehill's personal blog. He runs Linux (KDE) and scores 17 server-side tools against his own target architecture: three-level hierarchy, nested aggregation, self-hosted, per-endpoint auth, client-dimension visibility. Contact: public@danielrosehill.com. | Email | **Weak.** Mac only, no namespaces. Worth one honest mail, low odds. |
-| zimaspace "10 Best MCP Gateways & Proxies for Local AI" | Content marketing on a home-server hardware shop (Eva Wong, 2 Sep 2026). Ten server-side tools, no desktop app, no Mac app. Contact form only. | Form | **Poor.** Their readers run Zima boxes, not Macs. Send last or skip. |
+| Target                                                  | What it actually is                                                                                                                                                                                                                                                   | Route            | Fit                                                                  |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | -------------------------------------------------------------------- |
+| awesomeclaude.ai/mcp/aggregators                        | 24 entries in `owner/repo` form, the same shape as the Aggregators section of `punkpeye/awesome-mcp-servers`. It appears to mirror that list; the site's own repo (`webfuse-com/awesome-claude`) holds no aggregator list.                                            | PR to punkpeye   | **Good.** One PR, probably two listings.                             |
+| mcp.directory                                           | A server directory with a submit form (GitHub URL, reviewed within 24 hours) and a blog that compares gateways (Composio, Docker, MCPJungle, Obot). Contact: hello@mcp.directory.                                                                                     | Form, then email | **Good**                                                             |
+| heyitworks Q1-2026 survey                               | Daniel Rosehill's personal blog. He runs Linux (KDE) and scores 17 server-side tools against his own target architecture: three-level hierarchy, nested aggregation, self-hosted, per-endpoint auth, client-dimension visibility. Contact: public@danielrosehill.com. | Email            | **Weak.** Mac only, no namespaces. Worth one honest mail, low odds.  |
+| zimaspace "10 Best MCP Gateways & Proxies for Local AI" | Content marketing on a home-server hardware shop (Eva Wong, 2 Sep 2026). Ten server-side tools, no desktop app, no Mac app. Contact form only.                                                                                                                        | Form             | **Poor.** Their readers run Zima boxes, not Macs. Send last or skip. |
 
 Two constraints to know before sending:
 
@@ -143,14 +143,14 @@ Olivier
 
 ## Tracking
 
-| Target | Sent | Reply | Listed |
-| --- | --- | --- | --- |
-| punkpeye PR | Blocked by the Glama requirement | | |
-| awesomeclaude.ai | Blocked with it | | |
-| mcp.directory form | 21 Sep, no email given | | |
-| mcp.directory email | Draft in Mail, 21 Sep | | |
-| heyitworks | Draft in Mail, 21 Sep | | |
-| zimaspace | Held until the two mails are out | | |
+| Target              | Sent                             | Reply | Listed |
+| ------------------- | -------------------------------- | ----- | ------ |
+| punkpeye PR         | Blocked by the Glama requirement |       |        |
+| awesomeclaude.ai    | Blocked with it                  |       |        |
+| mcp.directory form  | 21 Sep, no email given           |       |        |
+| mcp.directory email | Draft in Mail, 21 Sep            |       |        |
+| heyitworks          | Draft in Mail, 21 Sep            |       |        |
+| zimaspace           | Held until the two mails are out |       |        |
 
 The two Mail drafts carry no attachment and do not mention one; each links the site or the repo
 instead. Add the screenshots by hand only if you also add a line saying so.

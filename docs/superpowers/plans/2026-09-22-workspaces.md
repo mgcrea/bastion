@@ -25,22 +25,22 @@
 
 ## File map
 
-| File | Change | Responsibility |
-|---|---|---|
-| `apps/apple/Bastion/WorkspaceScope.swift` | create | Pure: `Workspace` model, filesystem protocol, folder → project-key resolution, workspace → folder assignments |
-| `apps/apple/Bastion/ClientWiringMerge.swift` | modify | Pure: `reconciledProjects`, `projectCollisions`, `hasOurProjectEntries` |
-| `scripts/wiring-check.swift` | modify | Checks for both pure layers, and the real-file check |
-| `Makefile` | modify | Compile `WorkspaceScope.swift` into `wiring-check` |
-| `apps/apple/Bastion/Workspaces.swift` | create | `WorkspaceStore`: persistence, resolution cache, and the scoped/global split the wiring asks for |
-| `apps/apple/Bastion/ClientWiring.swift` | modify | `Client.supportsProjectScope`; the split in `wireOnce`, `unwireOnce`, `isWired`, `status`, `rewire` |
-| `apps/apple/Bastion/ServerStore.swift` | modify | `setEnabled` rewires |
-| `apps/apple/Bastion/DemoSeed.swift` | modify | Fixture workspace |
-| `apps/apple/Bastion/ClientDetail.swift` | modify | Global rows exclude scoped profiles; a Workspaces card; Unwire also counts project entries |
-| `apps/apple/Bastion/WorkspacesPane.swift` | create | Settings → Workspaces |
-| `apps/apple/Bastion/SettingsWindow.swift` | modify | Register the pane |
-| `apps/apple/Bastion/ProfileEditor.swift` | modify | Scope line |
-| `apps/apple/Bastion/BuiltinTools.swift` | modify | `list_workspaces`, `upsert_workspace`, `remove_workspace` |
-| `docs/clients.md`, `CHANGELOG.md` | modify | Documentation |
+| File                                         | Change | Responsibility                                                                                                |
+| -------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------- |
+| `apps/apple/Bastion/WorkspaceScope.swift`    | create | Pure: `Workspace` model, filesystem protocol, folder → project-key resolution, workspace → folder assignments |
+| `apps/apple/Bastion/ClientWiringMerge.swift` | modify | Pure: `reconciledProjects`, `projectCollisions`, `hasOurProjectEntries`                                       |
+| `scripts/wiring-check.swift`                 | modify | Checks for both pure layers, and the real-file check                                                          |
+| `Makefile`                                   | modify | Compile `WorkspaceScope.swift` into `wiring-check`                                                            |
+| `apps/apple/Bastion/Workspaces.swift`        | create | `WorkspaceStore`: persistence, resolution cache, and the scoped/global split the wiring asks for              |
+| `apps/apple/Bastion/ClientWiring.swift`      | modify | `Client.supportsProjectScope`; the split in `wireOnce`, `unwireOnce`, `isWired`, `status`, `rewire`           |
+| `apps/apple/Bastion/ServerStore.swift`       | modify | `setEnabled` rewires                                                                                          |
+| `apps/apple/Bastion/DemoSeed.swift`          | modify | Fixture workspace                                                                                             |
+| `apps/apple/Bastion/ClientDetail.swift`      | modify | Global rows exclude scoped profiles; a Workspaces card; Unwire also counts project entries                    |
+| `apps/apple/Bastion/WorkspacesPane.swift`    | create | Settings → Workspaces                                                                                         |
+| `apps/apple/Bastion/SettingsWindow.swift`    | modify | Register the pane                                                                                             |
+| `apps/apple/Bastion/ProfileEditor.swift`     | modify | Scope line                                                                                                    |
+| `apps/apple/Bastion/BuiltinTools.swift`      | modify | `list_workspaces`, `upsert_workspace`, `remove_workspace`                                                     |
+| `docs/clients.md`, `CHANGELOG.md`            | modify | Documentation                                                                                                 |
 
 The Xcode project uses synchronized groups, so new files under `apps/apple/Bastion/` are picked up with no `project.pbxproj` edit. Check this in Task 3 Step 4. If `make app` doesn't see the new file, stop and report it rather than hand-editing the pbxproj.
 
@@ -49,11 +49,13 @@ The Xcode project uses synchronized groups, so new files under `apps/apple/Basti
 ### Task 1: Folder resolution (pure)
 
 **Files:**
+
 - Create: `apps/apple/Bastion/WorkspaceScope.swift`
 - Modify: `Makefile` (the `wiring-check` target, currently around line 570)
 - Test: `scripts/wiring-check.swift`
 
 **Interfaces:**
+
 - Produces:
   - `struct Workspace: Codable, Equatable, Identifiable { var name: String; var folders: [String]; var profiles: [String]; var id: String }`
   - `protocol WorkspaceFileSystem { isDirectory, isFile, contents, children, canonical }`
@@ -432,10 +434,12 @@ git commit -m "feat(workspaces): resolve folders into Claude Code project keys"
 ### Task 2: Reconciling project blocks (pure)
 
 **Files:**
+
 - Modify: `apps/apple/Bastion/ClientWiringMerge.swift`: add three functions at the end of the enum, after `mergedIntoProject` (around line 624)
 - Test: `scripts/wiring-check.swift`
 
 **Interfaces:**
+
 - Consumes: `ClientWiringMerge.isOurs`, `collisions(servers:keys:)`, `projectScopeServers(in:folder:)` (all existing).
 - Produces:
   - `ClientWiringMerge.reconciledProjects(_ root: [String: Any], desired: [String: [String: [String: Any]]]) -> [String: Any]`
@@ -638,11 +642,13 @@ git commit -m "feat(workspaces): reconcile Bastion's entries across Claude Code 
 ### Task 3: WorkspaceStore
 
 **Files:**
+
 - Create: `apps/apple/Bastion/Workspaces.swift`
 - Modify: `apps/apple/Bastion/DemoSeed.swift` (add `workspaces` next to `static var profiles`, around line 406)
 - Modify: `apps/apple/Bastion/ServerStore.swift:617-630` (`setEnabled`)
 
 **Interfaces:**
+
 - Consumes: everything Task 1 produces; `AppSupport.directory`, `AppSupport.ensureDirectory()`, `DemoSeed.isEnabled`, `hostLog`, `ClientWiring.rewire()`, `Profile`.
 - Produces (all `@MainActor`):
   - `WorkspaceStore.shared`
@@ -835,9 +841,11 @@ git commit -m "feat(workspaces): persist workspaces and split scoped from global
 ### Task 4: The wiring path
 
 **Files:**
+
 - Modify: `apps/apple/Bastion/ClientWiring.swift`: `Client` (around line 70), `status(of:profiles:)` (around 556), `wireOnce` (615–686), `rewire` (733), `isWired` (around 820), `unwireOnce` (832)
 
 **Interfaces:**
+
 - Consumes: `WorkspaceStore.shared.{scopedProfileIDs, globalOnly, projectAssignments, rescan}`, `ClientWiringMerge.{reconciledProjects, projectCollisions, hasOurProjectEntries}`.
 - Produces: `ClientWiring.Client.supportsProjectScope: Bool`, and `ClientWiring.projectEntries(for client: Client) -> [String: [Profile: String]]` (project key → profile → entry key), used by Task 5.
 
@@ -1009,6 +1017,7 @@ make run
 ```
 
 Then:
+
 1. In the app, open the **Claude Code (wsprobe)** client row and press Configure. Every global profile is written.
 2. Create `~/Library/Application Support/io.mgcrea.bastion.debug/workspaces.json` with `[{"name":"probe","folders":["/private/tmp/wsprobe"],"profiles":["<one of your profile ids>"]}]`, then run `make run` again and press Configure on the same row. (The UI arrives in Task 6.)
 3. Run `python3 -c "import json,os;d=json.load(open(os.path.expanduser('~/.claude-wsprobe/.claude.json')));print(list(d['mcpServers']));print({k:list(v['mcpServers']) for k,v in d.get('projects',{}).items()})"`.
@@ -1033,9 +1042,11 @@ git commit -m "feat(workspaces): write scoped profiles into Claude Code project 
 ### Task 5: Client pane
 
 **Files:**
+
 - Modify: `apps/apple/Bastion/ClientDetail.swift`: `profiles` and `writable` (lines 43–46), `Snapshot` (76–84), `read()` (around 100–200), `body` (the card list), plus a new `workspacesCard`
 
 **Interfaces:**
+
 - Consumes: `ClientWiring.projectEntries(for:)`, `ClientWiring.reach(for:transport:)`, `ClientWiringMerge.state(of:key:reach:)`, `ClientWiringMerge.projectScopeServers(in:folder:)`, `ClientWiringMerge.hasOurProjectEntries`.
 
 - [ ] **Step 1: Global rows exclude scoped profiles**
@@ -1163,16 +1174,19 @@ git commit -m "feat(workspaces): show scoped folders in the client pane"
 ### Task 6: Settings pane and profile Scope line
 
 **Files:**
+
 - Create: `apps/apple/Bastion/WorkspacesPane.swift`
 - Modify: `apps/apple/Bastion/SettingsWindow.swift`: the `SettingsPane` enum (around lines 34–71) and the `SettingsView` switch (around 142)
 - Modify: `apps/apple/Bastion/ProfileEditor.swift`: add a Section after the Activity section (around line 176)
 
 **Interfaces:**
+
 - Consumes: `WorkspaceStore.shared` (Task 3), `ProfileStore.shared.profiles`.
 
 - [ ] **Step 1: Register the pane**
 
 In `enum SettingsPane`, add `case workspaces` after `case audit`, and extend each switch:
+
 - title: `case .workspaces: "Workspaces"`
 - symbol: `case .workspaces: "folder.badge.gearshape"`
 - group: change `case .general, .audit: .configuration` to `case .general, .audit, .workspaces: .configuration`
@@ -1343,6 +1357,7 @@ In `ProfileStore.upsert(_:)` (`Profiles.swift`, around line 250), inside the `el
 
 Run: `make app && make run`
 Check in the running app:
+
 1. Settings shows **Workspaces** under General and Activity.
 2. Add a workspace `probe`. Add a folder containing two git repos. The summary reads "Written into 3 folders".
 3. Tick a profile. Open that profile's editor: Scope reads `probe`.
@@ -1361,9 +1376,11 @@ git commit -m "feat(workspaces): Settings pane, profile scope line, join by name
 ### Task 7: Built-in MCP tools
 
 **Files:**
+
 - Modify: `apps/apple/Bastion/BuiltinTools.swift`: declarations (next to `list_profiles`, around line 173, and `remove_profile`, around 380), the `invoke` switch (around 460), implementations (next to `listProfiles`, around 765)
 
 **Interfaces:**
+
 - Consumes: `WorkspaceStore.shared`, `ToolError.badArgument(name:expected:)`, the `string(_:_:)` argument helper, `schema(_:_:)`, `Declaration(...)` (all existing in this file).
 
 - [ ] **Step 1: Declarations**
@@ -1497,6 +1514,7 @@ git commit -m "feat(workspaces): list, upsert and remove workspaces over Bastion
 ### Task 8: Documentation
 
 **Files:**
+
 - Modify: `docs/clients.md`: a new `## Workspaces` section before the section on the one TOML client
 - Modify: `CHANGELOG.md`: an `## [Unreleased]` heading above `## [1.22.0]` if none exists, with an `### Added` entry
 

@@ -271,7 +271,8 @@ final class ProfileStore {
       // A profile named after a workspace joins it, so `rgis/ovh` lands where
       // the other `rgis` profiles already are. Only on creation: taking it out
       // of the workspace afterwards sticks. The workspace save rewires itself.
-      if var workspace = WorkspaceStore.shared.workspaces.first(where: { $0.name == profile.name }) {
+      if var workspace = WorkspaceStore.shared.workspaces.first(where: { $0.name == profile.name })
+      {
         workspace.profiles.append(profile.id)
         if (try? WorkspaceStore.shared.upsert(workspace)) != nil { return }
       }

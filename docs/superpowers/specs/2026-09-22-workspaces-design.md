@@ -108,6 +108,7 @@ using the workspace snapshot:
   to a project block by hand is reconciled away, as it would be globally.
   A block Bastion emptied is left as `{"mcpServers": {}}` rather than deleted,
   because Claude Code may have written other fields into it.
+
 - **Collisions**: the foreign-key check runs against each desired project block
   as well as the global one, refusing with the same `WireError.collision` and
   the same "Overwrite anyway" escape.

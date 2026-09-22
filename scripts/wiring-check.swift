@@ -2083,7 +2083,8 @@ struct WiringCheck {
     check(
       "hidden folders and node_modules are skipped",
       !parent.contains("/w/rgis/.hidden/secret") && !parent.contains("/w/rgis/node_modules/pkg"))
-    check("the scan does not descend into a repository", !parent.contains("/w/rgis/api/vendor/nested"))
+    check(
+      "the scan does not descend into a repository", !parent.contains("/w/rgis/api/vendor/nested"))
     check("exactly those keys", parent.count == 4)
 
     check(
