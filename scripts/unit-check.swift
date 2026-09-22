@@ -1500,6 +1500,24 @@ struct UnitCheck {
     check("a package that went away drops it", !isCurrent("1.2.0", false, nil, false))
     check("and one that appeared drops it", !isCurrent(nil, false, "1.2.0", false))
 
+    print("\nUsage rollup: plumbing is not usage")
+
+    for method in ["initialize", "server/discover", "tools/list", "prompts/list", "ping"] {
+      check("\(method) is plumbing", CallStatsRollup.isPlumbing(method, isTool: false))
+    }
+    // Every listing the dialect annotates, so a listing added there cannot
+    // quietly start topping the ranking here.
+    check(
+      "every annotated listing is plumbing",
+      Dialect.listMethods.allSatisfy { CallStatsRollup.isPlumbing($0, isTool: false) })
+    for method in ["resources/read", "prompts/get", "completion/complete"] {
+      check("but \(method) is usage", !CallStatsRollup.isPlumbing(method, isTool: false))
+    }
+    // A tool is matched by name, and a server is free to name one after a method.
+    check(
+      "and a tool named like a method is still a tool",
+      !CallStatsRollup.isPlumbing("ping", isTool: true))
+
     print("\nUsage rollup: percentiles read off a histogram")
 
     typealias Bucket = CallStatsRollup.Bucket

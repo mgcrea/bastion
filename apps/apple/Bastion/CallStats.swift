@@ -194,6 +194,7 @@ nonisolated final class CallStats: Sendable {
     let milliseconds = Int(elapsed / 1_000_000)
     let requested = sample.tool ?? sample.method ?? "unknown"
     let isTool = sample.tool != nil
+    guard !CallStatsRollup.isPlumbing(requested, isTool: isTool) else { return }
 
     state.withLock { table in
       guard table.writable else { return }
@@ -713,7 +714,10 @@ extension CallStats {
       var overall = Bucket()
 
       for (day, rows) in table.calls where day >= earliest && day <= today {
-        for (key, bucket) in rows where visible(key.profile, key.server) {
+        for (key, bucket) in rows
+        where visible(key.profile, key.server)
+          && !CallStatsRollup.isPlumbing(key.label, isTool: key.isTool)
+        {
           present.insert(day)
           overall.merge(bucket)
           let serverKey = ServerKey(profile: key.profile, server: key.server)
@@ -832,6 +836,9 @@ extension CallStats {
     // card counting everything but Bastion's own server, and the client card
     // under it counting that too.
     let builtin = includeBuiltin ?? Self.includesBuiltin
+    // No plumbing filter here, because a client row carries no method to filter
+    // on. `record` stops writing plumbing, so this is clean going forward; days
+    // written before that still count their handshakes until they age out.
     return state.withLock { table in
       let today = Self.today(&table)
       let earliest = today - DayNumber(Swift.max(1, window.days)) + 1
@@ -895,7 +902,10 @@ extension CallStats {
       var points: [DayNumber: (Point, Bucket)] = [:]
       var present: Set<DayNumber> = []
       for (day, rows) in table.calls where day >= earliest && day <= today {
-        for (key, bucket) in rows where key.profile == profile && key.server == server {
+        for (key, bucket) in rows
+        where key.profile == profile && key.server == server
+          && !CallStatsRollup.isPlumbing(key.label, isTool: key.isTool)
+        {
           present.insert(day)
           var point =
             points[day]?.0

@@ -321,6 +321,32 @@ nonisolated enum CallStatsRollup {
     }
   }
 
+  // MARK: - What a client asked for, and what its SDK sent on its own
+
+  /// Methods a client's SDK sends by itself, on every connect and refresh.
+  ///
+  /// None of them is something the person asked for. Counted as calls, they
+  /// outnumbered the real traffic on every server: `tools/list` topped every
+  /// ranking, the call totals measured how often clients reconnected, and the
+  /// median latency was mostly the latency of a cached listing. What a listing
+  /// costs is `ToolCostStore`'s question and `noteSaved`'s, never this one's.
+  ///
+  /// `resources/read`, `prompts/get` and `completion/complete` are deliberately
+  /// NOT here. A client sends those because somebody picked a resource, a
+  /// prompt or an argument, which is usage in the only sense the pane means.
+  static let plumbingMethods: Set<String> = Dialect.listMethods.union([
+    "initialize", "server/discover", "subscriptions/listen", "ping", "logging/setLevel",
+  ])
+
+  /// Whether a row or a sample is protocol plumbing rather than usage.
+  ///
+  /// Asked twice: when a sample is recorded, so plumbing stops being written
+  /// and stops spending `maxLabelsPerServer`; and when a window is read, so the
+  /// days already on disk from before the first check are cleaned up too.
+  static func isPlumbing(_ label: String, isTool: Bool) -> Bool {
+    !isTool && plumbingMethods.contains(label)
+  }
+
   // MARK: - The cardinality guard
 
   /// How many distinct labels one server may mint in one day.
