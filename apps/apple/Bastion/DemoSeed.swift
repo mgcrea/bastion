@@ -435,6 +435,13 @@ enum DemoSeed {
     ]
   }
 
+  /// One workspace scoping the Keycloak profile, so the Workspaces pane and the
+  /// client pane's card have something to draw. The folder is invented and does
+  /// not exist, so a capture resolves it to nothing and scans nothing real.
+  nonisolated static var workspaces: [Workspace] {
+    [Workspace(name: "acme", folders: ["/Users/demo/Projects/acme"], profiles: ["acme/keycloak"])]
+  }
+
   /// Which secrets each profile holds, standing in for the Keychain.
   ///
   /// One deliberate omission — `staging/shopify` has no `SHOPIFY_CLIENT_SECRET`

@@ -626,6 +626,9 @@ final class ServerStore {
       }
     }
     try save()
+    // Project blocks are written from the switched-on set, so they follow the
+    // switch. The global block is additive and is not changed by a disable.
+    ClientWiring.rewire()
     hostLog("servers", .info, "\(enabled ? "enabled" : "disabled") '\(id)'")
   }
 
