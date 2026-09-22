@@ -142,6 +142,7 @@ struct WiringCheck {
 
     workspaceResolution()
     workspaceAssignments()
+    projectReconcile()
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 { exit(1) }
@@ -286,6 +287,34 @@ struct WiringCheck {
         if !deepEqual(value, target[key]) { targetKeysIntact = false }
       }
       check("the target folder's other keys survive", targetKeysIntact)
+    }
+
+    if before["projects"] != nil {
+      let folder = (before["projects"] as? [String: Any])?.keys.sorted().first ?? "/tmp/none"
+      let reconciled = ClientWiringMerge.reconciledProjects(
+        before, desired: [folder: ["bastion-probe": entry(httpReach("probe"))]])
+      let beforeProjects = before["projects"] as? [String: Any] ?? [:]
+      let afterProjects = reconciled["projects"] as? [String: Any] ?? [:]
+      var otherBlocksIntact = true
+      var fieldsIntact = true
+      for (key, value) in beforeProjects {
+        let hasOurs =
+          ((value as? [String: Any])?["mcpServers"] as? [String: Any])?.values
+          .contains(where: { ClientWiringMerge.isOurs($0) }) == true
+        if key != folder && !hasOurs && !deepEqual(value, afterProjects[key]) {
+          otherBlocksIntact = false
+        }
+      }
+      for (field, value) in beforeProjects[folder] as? [String: Any] ?? [:]
+      where field != "mcpServers" {
+        if !deepEqual(value, (afterProjects[folder] as? [String: Any])?[field]) {
+          fieldsIntact = false
+        }
+      }
+      check(
+        "reconciling one project block leaves the other \(beforeProjects.count - 1) alone",
+        otherBlocksIntact)
+      check("and every other field of the block it wrote", fieldsIntact)
     }
   }
 
@@ -2102,5 +2131,82 @@ struct WiringCheck {
     check(
       "scoped ids are every id listed, live or not",
       WorkspaceScope.scopedIDs(workspaces) == ["rgis/ovh", "prod/npm", "mgcrea/x", "gone/x"])
+  }
+
+  // MARK: - Workspaces: project blocks
+
+  static func projectReconcile() {
+    print("\nWorkspaces: reconciling project blocks")
+    let ovh = entry(httpReach("ovh", profile: "rgis"))
+    let npm = entry(httpReach("npm", profile: "prod"))
+    let foreign: [String: Any] = ["command": "npx", "args": ["some-server"]]
+    let root: [String: Any] = [
+      "numStartups": 12,
+      "mcpServers": ["rgis-ovh": ovh],
+      "projects": [
+        "/r/api": [
+          "allowedTools": ["Bash"],
+          "mcpServers": ["theirs": foreign, "prod-npm": npm],
+        ],
+        "/r/old": ["mcpServers": ["rgis-ovh": ovh]],
+        "/untouched": ["hasTrustDialogAccepted": true, "mcpServers": ["x": foreign]],
+      ],
+    ]
+
+    let after = ClientWiringMerge.reconciledProjects(
+      root, desired: ["/r/api": ["rgis-ovh": ovh], "/r/new": ["rgis-ovh": ovh]])
+    let projects = after["projects"] as? [String: Any] ?? [:]
+    func servers(_ folder: String) -> [String: Any]? {
+      (projects[folder] as? [String: Any])?["mcpServers"] as? [String: Any]
+    }
+
+    check("a desired entry is written", servers("/r/api")?["rgis-ovh"] != nil)
+    check(
+      "an entry of ours no longer desired there is removed", servers("/r/api")?["prod-npm"] == nil)
+    check(
+      "a foreign entry in a touched block survives",
+      deepEqual(servers("/r/api")?["theirs"], foreign))
+    check(
+      "other fields of a touched block survive",
+      deepEqual((projects["/r/api"] as? [String: Any])?["allowedTools"], ["Bash"]))
+    check(
+      "a block holding only stale entries of ours is emptied, not deleted",
+      servers("/r/old").map { $0.isEmpty } == true)
+    check(
+      "a new folder gets a bare mcpServers block",
+      (projects["/r/new"] as? [String: Any]).map { Array($0.keys) } == ["mcpServers"])
+    check(
+      "a block with nothing of ours is byte-identical",
+      deepEqual(projects["/untouched"], (root["projects"] as? [String: Any])?["/untouched"]))
+    check(
+      "the global block is not this function's business",
+      deepEqual(after["mcpServers"], root["mcpServers"]))
+    check("top-level keys survive", deepEqual(after["numStartups"], 12))
+
+    let stripped = ClientWiringMerge.reconciledProjects(after, desired: [:])
+    check(
+      "an empty desired set removes every entry of ours",
+      !ClientWiringMerge.hasOurProjectEntries(stripped))
+    check(
+      "and leaves foreign ones",
+      ((stripped["projects"] as? [String: Any])?["/r/api"] as? [String: Any])
+        .flatMap { $0["mcpServers"] as? [String: Any] }?["theirs"] != nil)
+
+    let bare: [String: Any] = ["mcpServers": [String: Any]()]
+    check(
+      "a config with no projects and nothing desired gains no projects key",
+      ClientWiringMerge.reconciledProjects(bare, desired: [:])["projects"] == nil)
+
+    check(
+      "hasOurProjectEntries sees an entry of ours", ClientWiringMerge.hasOurProjectEntries(root))
+    check(
+      "and not a foreign one",
+      !ClientWiringMerge.hasOurProjectEntries(["projects": ["/x": ["mcpServers": ["x": foreign]]]]))
+
+    let taken = ClientWiringMerge.projectCollisions(
+      in: root, keys: ["/r/api": ["theirs", "rgis-ovh"], "/nowhere": ["theirs"]])
+    check(
+      "a foreign key under a desired key is a collision, named with its folder",
+      taken == ["/r/api: theirs"])
   }
 }

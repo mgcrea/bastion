@@ -634,4 +634,65 @@ enum ClientWiringMerge {
     root["projects"] = projects
     return root
   }
+
+  /// Make Bastion's entries in every project block exactly `desired`.
+  ///
+  /// `desired` maps a project key to the entries that belong there. Every block
+  /// that is either desired or already holds an entry `isOurs` claims is
+  /// visited: desired entries are written, entries of ours not desired there
+  /// are removed, and nothing else in the block changes. Every other block is
+  /// left alone.
+  ///
+  /// No ledger of past writes, on purpose. `isOurs` is the ledger here as it is
+  /// for the global block, so a folder, a profile or a whole workspace taken
+  /// away cleans up by itself. A block this empties keeps its `mcpServers: {}`
+  /// rather than being deleted, because Claude Code may have filed other fields
+  /// under that folder.
+  static func reconciledProjects(
+    _ root: [String: Any], desired: [String: [String: [String: Any]]]
+  ) -> [String: Any] {
+    var projects = root["projects"] as? [String: Any] ?? [:]
+    var folders = Set(desired.keys)
+    for (folder, block) in projects {
+      let servers = (block as? [String: Any])?["mcpServers"] as? [String: Any] ?? [:]
+      if servers.values.contains(where: { isOurs($0) }) { folders.insert(folder) }
+    }
+    guard !folders.isEmpty else { return root }
+
+    var root = root
+    for folder in folders {
+      var project = projects[folder] as? [String: Any] ?? [:]
+      var servers = project["mcpServers"] as? [String: Any] ?? [:]
+      let wanted = desired[folder] ?? [:]
+      for (key, entry) in servers where isOurs(entry) && wanted[key] == nil {
+        servers.removeValue(forKey: key)
+      }
+      for (key, entry) in wanted { servers[key] = entry }
+      project["mcpServers"] = servers
+      projects[folder] = project
+    }
+    root["projects"] = projects
+    return root
+  }
+
+  /// `collisions`, asked of every project block Bastion is about to write. Each
+  /// answer names its folder, because the same key can be foreign in one
+  /// repository and free in the next.
+  static func projectCollisions(
+    in root: [String: Any], keys: [String: [String]]
+  ) -> [String] {
+    keys.keys.sorted().flatMap { folder -> [String] in
+      let servers = projectScopeServers(in: root, folder: folder) ?? [:]
+      return collisions(servers: servers, keys: keys[folder] ?? []).map { "\(folder): \($0)" }
+    }
+  }
+
+  /// Whether any project block holds an entry `isOurs` claims.
+  static func hasOurProjectEntries(_ root: [String: Any]) -> Bool {
+    guard let projects = root["projects"] as? [String: Any] else { return false }
+    return projects.values.contains { block in
+      ((block as? [String: Any])?["mcpServers"] as? [String: Any])?.values
+        .contains(where: { isOurs($0) }) == true
+    }
+  }
 }
