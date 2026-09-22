@@ -179,6 +179,12 @@ enum BuiltinTools {
       ]),
 
     Declaration(
+      "list_workspaces", title: "List workspaces",
+      "Every workspace: the folders it was given, the Claude Code project folders those resolve "
+        + "to right now, and the profiles scoped to it. A profile in any workspace is written "
+        + "only into those folders and is left out of every client's global list."),
+
+    Declaration(
       "list_clients", title: "List clients",
       "The MCP clients on this Mac that Bastion can configure, and whether each one's config "
         + "currently points at Bastion. Clients Bastion knows but this Mac does not have are "
@@ -381,6 +387,32 @@ enum BuiltinTools {
       required: ["name", "server"], mutates: true),
 
     Declaration(
+      "upsert_workspace", title: "Create or update a workspace",
+      "Create a workspace or replace one by name, then rewire every configured client. A folder "
+        + "inside a git repository means the whole repository. Any other folder means itself "
+        + "plus every repository up to three levels below it. Profiles listed here leave every "
+        + "client's global list, and only Claude Code gets them, in those folders.",
+      properties: [
+        "name": schema("string", "Kebab-case, e.g. 'rgis'."),
+        "folders": [
+          "type": "array", "items": ["type": "string"],
+          "description": "Absolute folder paths. Replaces the current list.",
+        ],
+        "profiles": [
+          "type": "array", "items": ["type": "string"],
+          "description":
+            "'<profile>/<server>' ids, as list_profiles shows them. Replaces the current list.",
+        ],
+      ],
+      required: ["name", "folders", "profiles"], mutates: true),
+
+    Declaration(
+      "remove_workspace", title: "Remove a workspace",
+      "Delete a workspace and rewire. Its profiles become global again.",
+      properties: ["name": schema("string", "The workspace name.")],
+      required: ["name"], mutates: true),
+
+    Declaration(
       "set_credential", title: "Set a credential",
       "Put a secret into the Keychain for one profile. Write-only: no tool returns a credential, "
         + "and this one cannot read back what it wrote.",
@@ -458,6 +490,7 @@ enum BuiltinTools {
     case "get_server": return try getServer(arguments)
     case "list_catalog": return listCatalog()
     case "list_profiles": return listProfiles(arguments)
+    case "list_workspaces": return listWorkspaces()
     case "list_clients": return listClients(arguments)
     case "status": return status()
     case "recent_activity": return recentActivity(arguments, caller: caller)
@@ -472,6 +505,8 @@ enum BuiltinTools {
     case "remove_server": return try removeServer(arguments)
     case "upsert_profile": return try upsertProfile(arguments)
     case "remove_profile": return try removeProfile(arguments)
+    case "upsert_workspace": return try upsertWorkspace(arguments)
+    case "remove_workspace": return try removeWorkspace(arguments)
     case "set_credential": return try setCredential(arguments)
     case "wire_client": return try wireClient(arguments)
     case "unwire_client": return try unwireClient(arguments)
@@ -800,6 +835,59 @@ enum BuiltinTools {
         if !missing.isEmpty { row["missing"] = missing }
         return row
       }
+  }
+
+  private static func listWorkspaces() -> Any {
+    let store = WorkspaceStore.shared
+    return store.workspaces.map { workspace -> [String: Any] in
+      [
+        "name": workspace.name,
+        "folders": workspace.folders,
+        "resolves_to": store.resolvedKeys(workspace).sorted(),
+        "profiles": workspace.profiles,
+      ]
+    }
+  }
+
+  private static func upsertWorkspace(_ arguments: [String: Any]) throws -> Any {
+    let name = try string(arguments, "name")
+    guard let folders = arguments["folders"] as? [String] else {
+      throw ToolError.badArgument(name: "folders", expected: "an array of absolute paths")
+    }
+    guard folders.allSatisfy({ $0.hasPrefix("/") || $0.hasPrefix("~") }) else {
+      throw ToolError.badArgument(name: "folders", expected: "absolute paths, or paths under ~")
+    }
+    guard let profiles = arguments["profiles"] as? [String] else {
+      throw ToolError.badArgument(
+        name: "profiles", expected: "an array of '<profile>/<server>' ids")
+    }
+    let known = Set(ProfileStore.shared.profiles.map(\.id))
+    let unknown = profiles.filter { !known.contains($0) }
+    guard unknown.isEmpty else {
+      throw ToolError.badArgument(
+        name: "profiles",
+        expected: "ids list_profiles shows; not found: \(unknown.joined(separator: ", "))")
+    }
+    let expanded = folders.map { ($0 as NSString).expandingTildeInPath }
+    try WorkspaceStore.shared.upsert(Workspace(name: name, folders: expanded, profiles: profiles))
+    let saved = WorkspaceStore.shared.workspaces.first { $0.name == name }
+    return [
+      "name": name,
+      "resolves_to": saved.map { WorkspaceStore.shared.resolvedKeys($0).sorted() } ?? [],
+      "profiles": profiles,
+      "note":
+        "Clients Bastion already configures were rewired. Start a new Claude Code session to "
+        + "pick it up.",
+    ]
+  }
+
+  private static func removeWorkspace(_ arguments: [String: Any]) throws -> Any {
+    let name = try string(arguments, "name")
+    guard WorkspaceStore.shared.workspaces.contains(where: { $0.name == name }) else {
+      throw ToolError.badArgument(name: "name", expected: "a workspace list_workspaces shows")
+    }
+    try WorkspaceStore.shared.remove(named: name)
+    return ["removed": name]
   }
 
   private static func listClients(_ arguments: [String: Any]) -> Any {
