@@ -40,10 +40,15 @@ struct ClientDetail: View {
   /// writes. A profile whose server is switched off keeps its key, because the
   /// file may still hold an entry under it and this pane's job is to say what is
   /// in the file.
-  private var profiles: [Profile] { ProfileStore.shared.profiles }
+  /// Scoped profiles are not among them: they belong in project blocks, and the
+  /// Workspaces card reports those.
+  private var profiles: [Profile] { WorkspaceStore.shared.globalOnly(ProfileStore.shared.profiles) }
 
-  /// The profiles Configure writes, and the only ones the audit is taken over.
-  private var writable: [Profile] { ProfileStore.shared.onEnabledServers }
+  /// The profiles Configure writes to the global block, and the only ones the
+  /// audit is taken over.
+  private var writable: [Profile] {
+    WorkspaceStore.shared.globalOnly(ProfileStore.shared.onEnabledServers)
+  }
 
   /// One entry Bastion would write — or one it wrote and no longer would — and
   /// what is under its key right now.
@@ -81,6 +86,9 @@ struct ClientDetail: View {
     var stale: [ClientWiringMerge.StaleEntry]
     var projects: [(folder: String, entries: [ClientWiringMerge.ForeignEntry])]
     var hasOurEntries: Bool
+    /// Each project folder Bastion writes for this client, and the state of
+    /// each entry there. Empty for clients without project scope.
+    var scoped: [(folder: String, rows: [(key: String, state: ClientWiringMerge.EntryState)])] = []
   }
 
   /// Rebuilt on every redraw rather than cached. The file belongs to another
@@ -191,7 +199,30 @@ struct ClientDetail: View {
       projects: config.root.map { ClientWiringMerge.foreignProjectEntries(in: $0) } ?? [],
       // Including entries for a profile that no longer exists, which is exactly
       // the case worth being able to clean up.
-      hasOurEntries: servers.values.contains { ClientWiringMerge.isOurs($0) })
+      hasOurEntries: servers.values.contains { ClientWiringMerge.isOurs($0) }
+        || (client.supportsProjectScope
+          && config.root.map(ClientWiringMerge.hasOurProjectEntries) == true),
+      scoped: scopedFolders(config.root ?? [:]))
+  }
+
+  /// What `ClientWiring.projectEntries` would write, against what each project
+  /// block holds now.
+  private func scopedFolders(
+    _ root: [String: Any]
+  ) -> [(folder: String, rows: [(key: String, state: ClientWiringMerge.EntryState)])] {
+    let plan = ClientWiring.projectEntries(for: client)
+    return plan.keys.sorted().map { folder in
+      let servers = ClientWiringMerge.projectScopeServers(in: root, folder: folder) ?? [:]
+      let rows = (plan[folder] ?? [:]).sorted { $0.value < $1.value }.map { profile, key in
+        (
+          key: key,
+          state: ClientWiringMerge.state(
+            of: servers, key: key,
+            reach: ClientWiring.reach(for: profile, transport: client.transport))
+        )
+      }
+      return (folder, rows)
+    }
   }
 
   var body: some View {
@@ -210,6 +241,7 @@ struct ClientDetail: View {
         // sit here grew tall enough to push it out of the frame entirely.
         if !snapshot.stale.isEmpty { staleCard(snapshot) }
         if !snapshot.others.isEmpty { othersCard(snapshot) }
+        if !snapshot.scoped.isEmpty { workspacesCard(snapshot) }
         if !snapshot.projects.isEmpty { projectsCard(snapshot) }
         contextCard(snapshot)
         callsCard
@@ -886,6 +918,44 @@ struct ClientDetail: View {
   /// different scope with a different remedy: a project server is wired for one
   /// folder and invisible everywhere else, which is exactly why they accumulate.
   /// Scrolling, and filterable, because there can be a hundred folders.
+  private func workspacesCard(_ snapshot: Snapshot) -> some View {
+    let written = snapshot.scoped.reduce(0) { $0 + $1.rows.filter { $0.state == .matches }.count }
+    let total = snapshot.scoped.reduce(0) { $0 + $1.rows.count }
+    return Card(title: "Workspaces (\(written) of \(total) written)") {
+      VStack(alignment: .leading, spacing: 10) {
+        Text(
+          "Profiles in a workspace are written only into these folders, and apply in every "
+            + "subfolder and worktree of a repository. They are left out of the list above."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+        ScrollView {
+          VStack(alignment: .leading, spacing: 12) {
+            ForEach(snapshot.scoped, id: \.folder) { group in
+              VStack(alignment: .leading, spacing: 4) {
+                Text(abbreviate(group.folder))
+                  .font(.caption).bold().foregroundStyle(.secondary)
+                  .lineLimit(1).truncationMode(.head)
+                  .textSelection(.enabled)
+                ForEach(group.rows, id: \.key) { row in
+                  HStack {
+                    Text(row.key).font(.callout.monospaced())
+                    Spacer()
+                    Text(row.state == .matches ? "written" : "not written")
+                      .font(.caption)
+                      .foregroundStyle(row.state == .matches ? Color.secondary : Color.orange)
+                  }
+                }
+              }
+            }
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxHeight: 240)
+      }
+    }
+  }
+
   private func projectsCard(_ snapshot: Snapshot) -> some View {
     let folders = snapshot.projects.count
     let servers = snapshot.projects.reduce(0) { $0 + $1.entries.count }
