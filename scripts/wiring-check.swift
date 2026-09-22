@@ -2095,6 +2095,12 @@ struct WiringCheck {
     check(
       "a folder with no repositories is an exact key",
       WorkspaceScope.projectKeys(for: ["/w/plain"], fs: fs) == ["/w/plain"])
+    // The real disk, for the one thing a fixture cannot say: which spelling a
+    // symlinked path comes back in. `URL.resolvingSymlinksInPath()` turns
+    // `/private/tmp` into `/tmp`, and Claude Code keys by the `/private` form.
+    check(
+      "the local filesystem keeps /private, as Claude Code does",
+      LocalWorkspaceFileSystem().canonical("/tmp") == "/private/tmp")
   }
 
   static func workspaceAssignments() {

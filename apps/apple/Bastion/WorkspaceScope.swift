@@ -47,9 +47,16 @@ nonisolated struct LocalWorkspaceFileSystem: WorkspaceFileSystem {
     (try? FileManager.default.contentsOfDirectory(atPath: path)) ?? []
   }
 
+  /// `realpath(3)`, and deliberately not `URL.resolvingSymlinksInPath()`: that
+  /// one strips a leading `/private`, turning `/private/tmp/x` into `/tmp/x`,
+  /// while Claude Code keys a project by the physical path its process sees
+  /// (`getcwd`), which keeps it. A block filed under the `/tmp` spelling is one
+  /// Claude Code never reads.
   func canonical(_ path: String) -> String {
-    URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
-      .resolvingSymlinksInPath().standardizedFileURL.path
+    let expanded = ((path as NSString).expandingTildeInPath as NSString).standardizingPath
+    guard let resolved = realpath(expanded, nil) else { return expanded }
+    defer { free(resolved) }
+    return String(cString: resolved)
   }
 }
 
