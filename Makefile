@@ -572,6 +572,7 @@ wiring-check: ## Assert the config merge leaves other people's files alone
 	@swiftc -O -o apps/apple/.build/wiring-check \
 		apps/apple/Bastion/ClientWiringMerge.swift \
 		apps/apple/Bastion/ClientWiringTOML.swift \
+		apps/apple/Bastion/WorkspaceScope.swift \
 		scripts/wiring-check.swift
 	@apps/apple/.build/wiring-check
 

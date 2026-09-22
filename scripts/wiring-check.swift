@@ -140,6 +140,9 @@ struct WiringCheck {
     tomlBackupAtomicityAndMode()
     tomlStaleWriteIsRefused()
 
+    workspaceResolution()
+    workspaceAssignments()
+
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 { exit(1) }
   }
@@ -1954,5 +1957,150 @@ struct WiringCheck {
       names(try? ClientWiringTOML.read(config)) == [
         "computer-use", "node_repl", "something_new",
       ])
+  }
+
+  // MARK: - Workspaces: folder resolution
+
+  /// A filesystem made of a set of directories and a map of files, so
+  /// resolution can be driven through every shape without touching the disk.
+  struct FakeFS: WorkspaceFileSystem {
+    var directories: Set<String>
+    var files: [String: String] = [:]
+
+    func isDirectory(_ path: String) -> Bool { directories.contains(path) }
+    func isFile(_ path: String) -> Bool { files[path] != nil }
+    func contents(_ path: String) -> String? { files[path] }
+    func children(_ path: String) -> [String] {
+      let prefix = path == "/" ? "/" : path + "/"
+      let names = directories.union(files.keys).compactMap { candidate -> String? in
+        guard candidate.hasPrefix(prefix) else { return nil }
+        let rest = candidate.dropFirst(prefix.count)
+        guard !rest.isEmpty, !rest.contains("/") else { return nil }
+        return String(rest)
+      }
+      return names.sorted()
+    }
+    func canonical(_ path: String) -> String {
+      path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
+    }
+  }
+
+  /// Every ancestor of every path, so a fixture only has to name the leaves.
+  static func tree(_ leaves: [String], files: [String: String] = [:]) -> FakeFS {
+    var directories: Set<String> = ["/"]
+    for leaf in leaves + files.keys.map({ ($0 as NSString).deletingLastPathComponent }) {
+      var path = leaf
+      while path != "/" && !path.isEmpty {
+        directories.insert(path)
+        path = (path as NSString).deletingLastPathComponent
+      }
+    }
+    return FakeFS(directories: directories, files: files)
+  }
+
+  static func workspaceResolution() {
+    print("\nWorkspaces: folder resolution")
+    let fs = tree(
+      [
+        "/w/rgis/api/.git", "/w/rgis/api/src/deep",
+        "/w/rgis/infra/.git",
+        "/w/rgis/clients/acme/web/.git",
+        "/w/rgis/a/b/c/d/too-deep/.git",
+        "/w/rgis/.hidden/secret/.git",
+        "/w/rgis/node_modules/pkg/.git",
+        "/w/rgis/api/vendor/nested/.git",
+        "/w/rgis/api/.claude/worktrees/feat",
+        "/w/rgis/api/.git/worktrees/feat",
+        "/w/rgis/api/.git/modules/lib",
+        "/w/rgis/api/lib",
+        "/w/wt/feature",
+        "/w/plain/notes",
+      ],
+      files: [
+        "/w/rgis/api/.claude/worktrees/feat/.git": "gitdir: /w/rgis/api/.git/worktrees/feat\n",
+        "/w/wt/feature/.git": "gitdir: /w/rgis/infra/.git/worktrees/feature\n",
+        "/w/rgis/api/lib/.git": "gitdir: ../.git/modules/lib\n",
+      ])
+
+    check(
+      "a repository root is its own key",
+      WorkspaceScope.projectKey(containing: "/w/rgis/api", fs: fs) == "/w/rgis/api")
+    check(
+      "a subfolder resolves to the repository root",
+      WorkspaceScope.projectKey(containing: "/w/rgis/api/src/deep", fs: fs) == "/w/rgis/api")
+    check(
+      "a worktree under .claude/worktrees resolves to the main repository",
+      WorkspaceScope.projectKey(containing: "/w/rgis/api/.claude/worktrees/feat", fs: fs)
+        == "/w/rgis/api")
+    check(
+      "a worktree elsewhere resolves to its main repository",
+      WorkspaceScope.projectKey(containing: "/w/wt/feature", fs: fs) == "/w/rgis/infra")
+    check(
+      "a submodule is keyed by its own folder",
+      WorkspaceScope.projectKey(containing: "/w/rgis/api/lib", fs: fs) == "/w/rgis/api/lib")
+    check(
+      "a folder in no repository has no containing key",
+      WorkspaceScope.projectKey(containing: "/w/plain/notes", fs: fs) == nil)
+    check(
+      "a trailing slash is ignored",
+      WorkspaceScope.projectKey(containing: "/w/rgis/api/", fs: fs) == "/w/rgis/api")
+
+    let parent = WorkspaceScope.projectKeys(for: ["/w/rgis"], fs: fs)
+    check("a parent folder is itself a key", parent.contains("/w/rgis"))
+    check(
+      "and every repository under it within three levels",
+      parent.isSuperset(of: ["/w/rgis/api", "/w/rgis/infra", "/w/rgis/clients/acme/web"]))
+    check("but nothing deeper than three levels", !parent.contains("/w/rgis/a/b/c/d/too-deep"))
+    check(
+      "hidden folders and node_modules are skipped",
+      !parent.contains("/w/rgis/.hidden/secret") && !parent.contains("/w/rgis/node_modules/pkg"))
+    check("the scan does not descend into a repository", !parent.contains("/w/rgis/api/vendor/nested"))
+    check("exactly those keys", parent.count == 4)
+
+    check(
+      "a folder inside a repository yields only that repository",
+      WorkspaceScope.projectKeys(for: ["/w/rgis/api/src"], fs: fs) == ["/w/rgis/api"])
+    check(
+      "a folder that does not exist yields nothing",
+      WorkspaceScope.projectKeys(for: ["/w/gone"], fs: fs).isEmpty)
+    check(
+      "a folder with no repositories is an exact key",
+      WorkspaceScope.projectKeys(for: ["/w/plain"], fs: fs) == ["/w/plain"])
+  }
+
+  static func workspaceAssignments() {
+    print("\nWorkspaces: assignments")
+    let workspaces = [
+      Workspace(name: "rgis", folders: ["A"], profiles: ["rgis/ovh", "prod/npm"]),
+      Workspace(name: "mgcrea", folders: ["B"], profiles: ["mgcrea/x", "prod/npm", "gone/x"]),
+      Workspace(name: "empty", folders: ["C"], profiles: []),
+    ]
+    let resolve: (Workspace) -> Set<String> = { workspace in
+      Set(
+        workspace.folders.flatMap { folder -> [String] in
+          switch folder {
+          case "A": ["/r/api", "/r/infra"]
+          case "B": ["/m/site", "/r/api"]
+          default: ["/c"]
+          }
+        })
+    }
+    let existing: Set<String> = ["rgis/ovh", "prod/npm", "mgcrea/x", "home/unifi"]
+    let map = WorkspaceScope.assignments(
+      workspaces: workspaces, existing: existing, resolve: resolve)
+
+    check(
+      "a key only in one workspace gets that workspace's profiles",
+      map["/r/infra"] == ["rgis/ovh", "prod/npm"])
+    check(
+      "a key in two workspaces gets the union",
+      map["/r/api"] == ["rgis/ovh", "prod/npm", "mgcrea/x"])
+    check(
+      "a profile id that no longer exists is ignored",
+      map.values.allSatisfy { !$0.contains("gone/x") })
+    check("a workspace with no live profiles writes no key", map["/c"] == nil)
+    check(
+      "scoped ids are every id listed, live or not",
+      WorkspaceScope.scopedIDs(workspaces) == ["rgis/ovh", "prod/npm", "mgcrea/x", "gone/x"])
   }
 }
