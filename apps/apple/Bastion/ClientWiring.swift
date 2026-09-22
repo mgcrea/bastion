@@ -100,6 +100,12 @@ enum ClientWiring {
     /// gateway's thread, where no `Client` exists to ask.
     var family: String { ClientIdentity.family(of: id) }
 
+    /// Whether Bastion writes this client's per-folder project blocks. Claude
+    /// Code's alone: the other clients keep project scope in files inside each
+    /// repository, which v1 does not write — they would carry a token into a
+    /// file that is routinely committed.
+    var supportsProjectScope: Bool { family == "claude-code" && format == .json }
+
     /// Spelled out rather than memberwise, so that adding a format did not put
     /// a line on every client that does not have one.
     init(
@@ -386,6 +392,24 @@ enum ClientWiring {
     return out
   }
 
+  /// Project key → the scoped profiles written there and the key each one
+  /// gets. Empty for a client whose project blocks Bastion does not write.
+  ///
+  /// Always computed from every profile on a switched-on server, whatever
+  /// subset a caller of `wire` passed: the reconcile that consumes this removes
+  /// what is not in it, so a partial answer would unwire the rest.
+  static func projectEntries(for client: Client) -> [String: [Profile: String]] {
+    guard client.supportsProjectScope else { return [:] }
+    let assigned = WorkspaceStore.shared.projectAssignments(
+      for: ProfileStore.shared.onEnabledServers)
+    let keys = keys(for: Array(Set(assigned.values.flatMap { $0 })))
+    return assigned.mapValues { profiles in
+      Dictionary(
+        profiles.compactMap { profile in keys[profile].map { (profile, $0) } },
+        uniquingKeysWith: { first, _ in first })
+    }
+  }
+
   /// The two reasons Bastion declines to write a config.
   ///
   /// Both are about a file it does not own. Neither is recoverable by trying
@@ -554,6 +578,9 @@ enum ClientWiring {
   }
 
   static func status(of client: Client, profiles: [Profile]) -> Status {
+    // Scoped profiles are not expected in the global block, so they must not be
+    // counted missing there. Their folders are reported by the client pane.
+    let profiles = WorkspaceStore.shared.globalOnly(profiles)
     guard client.isInstalled else { return .notInstalled }
     guard hasConfig(client) else { return .audited(.notConfigured) }
     let config: Config
@@ -618,6 +645,13 @@ enum ClientWiring {
     retiring: Set<String>,
     force: Bool
   ) throws -> URL? {
+    // Scoped profiles leave the global block of EVERY client. Retiring every
+    // scoped id, not only the ones passed in, is what removes an entry written
+    // before its profile was scoped.
+    let scoped = WorkspaceStore.shared.scopedProfileIDs
+    let profiles = profiles.filter { !scoped.contains($0.id) }
+    let retiring = retiring.union(scoped)
+    let planned = projectEntries(for: client)
     let keys = keys(for: profiles)
     // Unreachable while the prefix was a constant; reachable the moment it is
     // typed by hand. Refusing beats writing one of the two entries and leaving
@@ -652,6 +686,13 @@ enum ClientWiring {
       guard taken.isEmpty else {
         throw WireError.collision(client: client.displayName, keys: taken)
       }
+      if client.supportsProjectScope {
+        let projectTaken = ClientWiringMerge.projectCollisions(
+          in: root, keys: planned.mapValues { Array($0.values) })
+        guard projectTaken.isEmpty else {
+          throw WireError.collision(client: client.displayName, keys: projectTaken)
+        }
+      }
     }
 
     let token = try token(for: client)
@@ -662,8 +703,23 @@ enum ClientWiring {
         for: profile, transport: client.transport, token: token, format: client.format)
     }
 
-    let merged = ClientWiringMerge.merged(
+    var merged = ClientWiringMerge.merged(
       into: root, rootKey: client.rootKey, entries: entries, retiring: retiring)
+    var projectCount = 0
+    if client.supportsProjectScope {
+      let desired = planned.mapValues { byProfile in
+        Dictionary(
+          byProfile.map { profile, key in
+            (
+              key,
+              entry(
+                for: profile, transport: client.transport, token: token, format: client.format)
+            )
+          }, uniquingKeysWith: { first, _ in first })
+      }
+      projectCount = desired.values.reduce(0) { $0 + $1.count }
+      merged = ClientWiringMerge.reconciledProjects(merged, desired: desired)
+    }
     let backup: URL?
     switch client.format {
     case .toml:
@@ -681,6 +737,9 @@ enum ClientWiring {
     hostLog(
       "wiring", .info,
       "\(client.displayName): wrote \(entries.count) entr\(entries.count == 1 ? "y" : "ies")"
+        + (projectCount > 0
+          ? " and \(projectCount) across \(planned.count) project folder"
+            + (planned.count == 1 ? "" : "s") : "")
         + (backup.map { " (backup at \($0.lastPathComponent))" } ?? ""))
     return backup
   }
@@ -732,6 +791,8 @@ enum ClientWiring {
   /// one is somebody asking, and this one is not.
   static func rewire(retiring: Set<String> = []) {
     guard autoWires else { return }
+    // New clones under a workspace's parent folder are found here.
+    WorkspaceStore.shared.rescan()
     let profiles = ProfileStore.shared.onEnabledServers
     let adopted = ClaudeProfiles.adopted()
     for client in all where client.isInstalled {
@@ -821,7 +882,11 @@ enum ClientWiring {
   /// somebody's decision, and this is not a way to make it for them.
   static func isWired(_ client: Client) -> Bool {
     guard hasConfig(client), let config = try? read(client) else { return false }
-    return config.servers.values.contains { ClientWiringMerge.isOurs($0) }
+    if config.servers.values.contains(where: { ClientWiringMerge.isOurs($0) }) { return true }
+    // A config whose every profile is scoped holds nothing of ours globally,
+    // and still has to be kept current.
+    return client.supportsProjectScope
+      && config.root.map(ClientWiringMerge.hasOurProjectEntries) == true
   }
 
   @discardableResult
@@ -842,7 +907,10 @@ enum ClientWiring {
         client, document, into: servers(stripped, client.rootKey), expecting: stamp)
     case .json:
       let root = try ClientWiringMerge.readJSON(client.configURL)
-      let stripped = ClientWiringMerge.unmerged(from: root, rootKey: client.rootKey)
+      var stripped = ClientWiringMerge.unmerged(from: root, rootKey: client.rootKey)
+      if client.supportsProjectScope {
+        stripped = ClientWiringMerge.reconciledProjects(stripped, desired: [:])
+      }
       backup = try ClientWiringMerge.write(
         stripped, to: client.configURL, backupSuffix: "bastion-backup", expecting: stamp)
     }
