@@ -175,6 +175,20 @@ struct ProfileEditor: View {
           Text("Activity")
         }
 
+        // Only an existing profile: one being created has no id to be in a
+        // workspace under yet.
+        if let profile = subject.profile {
+          Section {
+            let names = WorkspaceStore.shared.workspaces(containing: profile).map(\.name)
+            LabeledContent(
+              "Scope", value: names.isEmpty ? "Everywhere" : names.joined(separator: ", "))
+            Button("Edit Workspaces…") { SettingsWindowController.show(.workspaces) }
+              .controlSize(.small)
+          } header: {
+            Text("Workspaces")
+          }
+        }
+
         writesSection
       }
       .formStyle(.grouped)

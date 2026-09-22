@@ -267,6 +267,14 @@ final class ProfileStore {
       // cannot change a key — `ClientWiring.keys(for:)` reads the profile's own
       // name and server and nothing else — so the ordinary Save does not touch
       // anybody's config.
+      //
+      // A profile named after a workspace joins it, so `rgis/ovh` lands where
+      // the other `rgis` profiles already are. Only on creation: taking it out
+      // of the workspace afterwards sticks. The workspace save rewires itself.
+      if var workspace = WorkspaceStore.shared.workspaces.first(where: { $0.name == profile.name }) {
+        workspace.profiles.append(profile.id)
+        if (try? WorkspaceStore.shared.upsert(workspace)) != nil { return }
+      }
       ClientWiring.rewire()
     }
   }

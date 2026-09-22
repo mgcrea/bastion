@@ -952,6 +952,8 @@ struct ClientDetail: View {
           .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxHeight: 240)
+        Button("Edit Workspaces…") { SettingsWindowController.show(.workspaces) }
+          .controlSize(.small)
       }
     }
   }

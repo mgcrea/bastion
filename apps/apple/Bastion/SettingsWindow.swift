@@ -34,6 +34,7 @@ import SwiftUI
 enum SettingsPane: String, SupportKitSettings.SettingsPane {
   case general
   case audit
+  case workspaces
   case whatsNew
   case updates
   case about
@@ -44,6 +45,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
     switch self {
     case .general: "General"
     case .audit: "Activity"
+    case .workspaces: "Workspaces"
     case .about: "About"
     case .whatsNew: "What's New"
     case .updates: "Updates"
@@ -56,6 +58,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
     switch self {
     case .general: "gearshape"
     case .audit: "list.bullet.rectangle"
+    case .workspaces: "folder.badge.gearshape"
     case .about: "info.circle"
     case .whatsNew: "sparkles"
     case .updates: "arrow.down.circle"
@@ -66,7 +69,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
 
   var group: SettingsPaneGroup {
     switch self {
-    case .general, .audit: .configuration
+    case .general, .audit, .workspaces: .configuration
     case .whatsNew, .updates, .about, .help: .information
     case .licence: .entitlement
     }
@@ -141,6 +144,7 @@ struct SettingsView: View {
       switch pane {
       case .general: GeneralPane()
       case .audit: AuditPane()
+      case .workspaces: WorkspacesPane()
       case .about: AboutPane()
       case .whatsNew: WhatsNewPane()
       case .updates: UpdatesPane()
