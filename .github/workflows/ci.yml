@@ -119,8 +119,10 @@ jobs:
           cache: "pnpm"
       - name: Install 🪄
         run: pnpm install --frozen-lockfile
-      - name: Types 🔍
-        run: pnpm --filter @mgcrea/bastion-website typecheck
+      # The root `check`, the command every sibling's website job calls. Here it is
+      # `astro check`, first because Vite strips types without checking them.
+      - name: Check 🔍
+        run: pnpm check
       # APP_VERSION is typed by hand in config.ts, so this is what stops the footer
       # and the JSON-LD claiming a version the binary does not carry: both build
       # configurations of the app target must be at the same MARKETING_VERSION.
