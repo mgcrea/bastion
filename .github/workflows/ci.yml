@@ -121,6 +121,17 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Types 🔍
         run: pnpm --filter @mgcrea/bastion-website typecheck
+      # APP_VERSION is typed by hand in config.ts, so this is what stops the footer
+      # and the JSON-LD claiming a version the binary does not carry: both build
+      # configurations of the app target must be at the same MARKETING_VERSION.
+      - name: Site version matches the app 🔍
+        run: |
+          site=$(sed -n 's/^export const APP_VERSION = "\(.*\)";$/\1/p' apps/website/src/config.ts)
+          marketing=$(grep -c "MARKETING_VERSION = $site;" apps/apple/Bastion.xcodeproj/project.pbxproj || true)
+          if [ -z "$site" ] || [ "$marketing" != "2" ]; then
+            echo "::error::config.ts says APP_VERSION $site; project.pbxproj has $marketing of 2 configurations at it"
+            exit 1
+          fi
       # `feedback:check` runs `astro build` first, then reads dist/ — so this is
       # the build step, plus the assertions a build cannot make. The one worth a
       # CI step is the CSP: drop the feedback Worker from `connect-src` and the

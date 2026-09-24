@@ -20,11 +20,11 @@ import Logo from "./Logo.astro";
  * wraps is worse than a nav that leaves something out.
  */
 const LINKS = [
-  { href: "#how", label: "How it works" },
-  { href: "#rules", label: "Security" },
-  { href: "#servers", label: "Servers" },
-  { href: "#screens", label: "The app" },
-  { href: "#pricing", label: "Price" },
+  { href: "/#how", label: "How it works" },
+  { href: "/#rules", label: "Security" },
+  { href: "/#servers", label: "Servers" },
+  { href: "/#screens", label: "The app" },
+  { href: "/#pricing", label: "Price" },
 ] as const;
 ---
 
@@ -33,7 +33,7 @@ const LINKS = [
 >
   <div class="wrap flex h-[58px] items-center justify-between gap-6">
     <div class="flex flex-none items-center gap-2.5">
-      <a href="#top" class="flex items-center gap-[10px] text-fg">
+      <a href="/" class="flex items-center gap-[10px] text-fg">
         <Logo size={23} />
         <span class="font-display text-[14.5px] leading-none font-[590] tracking-[-0.02em]"
           >Bastion</span

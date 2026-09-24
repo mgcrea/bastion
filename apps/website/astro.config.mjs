@@ -6,6 +6,9 @@ import { defineConfig } from "astro/config";
 export default defineConfig({
   site: "https://bastion.mgcrea.io",
   integrations: [sitemap()],
+  // Astro 7 defaults to 'jsx', which drops whitespace between inline elements:
+  // "contact us at <a>support@…</a>" renders welded together.
+  compressHTML: true,
   // Every page here is `.astro` — there is no markdown to highlight. Left at its
   // `shiki` default, Astro warns on every start that the highlighter's inline
   // styles fight the CSP below; it warns on the config alone, without checking
