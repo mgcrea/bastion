@@ -33,10 +33,14 @@ whole app, not a crippled version.
 http://127.0.0.1:8720/s/<profile>/<server>
 ```
 
-Loopback only. Claude Code, Cursor, VS Code and ChatGPT/Codex reach that URL directly. Claude
-Desktop cannot — its config has no HTTP entry among its commands — so it gets `bastion-bridge`, a
-stdio shim that starts Bastion on demand. Bastion writes those entries itself, one click per client,
-and carries a revocable bearer token in each one rather than a credential.
+Loopback only. Claude Code, VS Code, Cursor and ChatGPT & Codex reach that URL directly. Claude
+Desktop, LM Studio and Windsurf are wired through `bastion-bridge`, a stdio shim that starts Bastion
+on demand. Bastion writes those entries itself, one click per client, carries a revocable bearer
+token in each one rather than a credential, and rewrites every wired client when a profile is added
+or removed. Each extra Claude Code config directory (`~/.claude-<name>`) gets a row and a token of
+its own. A workspace scopes profiles to folders: its profiles are written into Claude Code's
+per-folder project blocks instead of the global list, so a session in one account's repository sees
+only that account's servers. Workspaces are Claude Code only for now.
 
 ## What the record holds, and what it does not
 
@@ -97,6 +101,27 @@ directory and run with the embedded Node runtime.
 `servers.json` at the repository root is the single source of truth for the catalog; the website's
 table and the app's Swift catalog are both generated from it and CI fails on drift.
 
+## Loading tools on demand
+
+Off by default, per server or app-wide. Instead of the full listing, a client is served three
+Bastion tools that search, describe and call the real ones, plus `bastion_call_write_tool` when the
+server's writes are classified, so an editor's allowlist on the ordinary dispatcher cannot run a
+write. Measured on `prod/appstore-connect`: 85 tools at 26.2k tokens become 0.4k, a 67× cut.
+Clients that already load schemas on demand, Claude Code and Claude Desktop, are never fronted.
+
+## Also in the app
+
+- A Chat pane for trying a server's tools by hand.
+- Bastion's own MCP server, so an agent can install servers, set credentials, manage profiles and
+  workspaces and wire clients. Secrets are write-only there too.
+- A provenance badge on the seventeen npm packages whose build attestation traces to the repository
+  the catalog entry links.
+- One press checks every npm-installed server for an update. Nothing checks on a timer.
+- A server running on this Mac can be added by its literal `127.0.0.1` or `[::1]` URL over plain
+  http.
+- Launch at login, and a Stale entries card that removes client entries pointing at profiles that no
+  longer exist.
+
 ## Protocol
 
 Bastion serves the 2026-07-28 stateless revision to clients and speaks 2025-11-25 to its children,
@@ -106,8 +131,9 @@ conformance checks cover the translation.
 
 ## Privacy
 
-The app makes exactly one network request of its own: an update check, only after you turn updates
-on. No analytics, no telemetry, no crash reporter, no activation call. A licence key is an Ed25519
+The app opens exactly one network connection on its own: an update check, only after you turn
+updates on. Installing a server, or pressing Check for Updates on one, reaches the npm registry, and
+only on that press. No analytics, no telemetry, no crash reporter, no activation call. A licence key is an Ed25519
 signature verified offline, so an installed copy does not know who bought it. Full inventory:
 https://bastion.mgcrea.io/privacy
 

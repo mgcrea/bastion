@@ -4,7 +4,7 @@
  *
  * Written as an inventory rather than a policy, because for this product the
  * honest version is very short and a page of boilerplate would obscure it: the
- * app makes exactly one network request of its own, and the only personal data
+ * app opens exactly one network connection on its own, and the only personal data
  * anything here stores is a purchase email — plus whatever someone chooses to
  * type into the feedback form, which the website sends and the app never does.
  *
@@ -32,7 +32,11 @@ const schema = {
   publisher: { "@id": `${SITE_URL}/#organization` },
 };
 
-/** What the app sends, in full. There is one entry, and that is the point. */
+/**
+ * What the app sends on its own, in full. There is one entry, and that is the point.
+ * Installing a server or checking one for an update reaches npm too, but only on a
+ * press; the paragraph under the list says so, matching the Updates pane's caption.
+ */
 const LEAVES = [
   {
     what: "An update check",
@@ -103,13 +107,18 @@ const STAYS = [
         }
       </dl>
       <p class="mt-6 mb-0 max-w-[62ch] text-[14px] leading-[1.6] text-fg-muted text-pretty">
-        That is the whole list. The app sends no analytics, no telemetry, no crash reporter and
+        That is the only connection the app opens on its own. The app sends no analytics, no telemetry, no crash reporter and
         no first-run ping. (The website is a separate matter, and counts page views — see
         <a href="#this-site" class="underline underline-offset-2">This site</a> below.)
         <a href={DOCS.audit} rel="noopener" class="underline underline-offset-2">
           scripts/audit-listener.sh
-        </a> asserts the gateway binds loopback and nothing else; the update check is the single
-        documented exception to that, and it is off until you switch it on.
+        </a> asserts the gateway binds loopback and nothing else; the update check is off until
+        you switch it on.
+      </p>
+      <p class="mt-4 mb-0 max-w-[62ch] text-[14px] leading-[1.6] text-fg-muted text-pretty">
+        Installing a server, or pressing Check for Updates on one, reaches the npm registry for
+        that package. That happens when you press the button and never on a timer, at launch or
+        on a schedule.
       </p>
       <p class="mt-4 mb-0 max-w-[62ch] text-[14px] leading-[1.6] text-fg-muted text-pretty">
         Help ▸ Send Feedback is not a second entry. It opens the
