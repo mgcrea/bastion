@@ -391,9 +391,14 @@ final class ServerStore {
     case cannotRemoveBuiltin
     case reservedID(String)
     case notInList(String)
+    case catalogOnlyCommand
 
     var errorDescription: String? {
       switch self {
+      case .catalogOnlyCommand:
+        return
+          "A server that runs a command can only come from the catalog. Add a custom server "
+          + "by npm package or by URL."
       case .duplicateID(let id):
         return "'\(id)' is already in your list"
       case .unusableID(let id):
@@ -493,6 +498,12 @@ final class ServerStore {
       }
     case .inProcess:
       throw StoreError.reservedID(id)
+    case .system:
+      // Unreachable from disk — a stored definition has a package or a URL
+      // and no field for a command — and refused here anyway, because this is
+      // the line that keeps it so. A custom command line is exactly
+      // `spawn(whatever_you_typed)`.
+      throw StoreError.catalogOnlyCommand
     }
     guard !definition.env.isEmpty else { throw StoreError.noVariables }
     for variable in definition.env where !Self.isValidVariable(variable.name) {

@@ -82,11 +82,46 @@ const validate = (servers) => {
     // Checked before anything reads them, because every rule below this point
     // asks a different question of a child than of a remote endpoint: a child
     // has a package to install and an environment to set, and a remote server
-    // has neither.
+    // has neither. A system command sits between them: a process Bastion starts
+    // and supervises, but nothing to install and nothing to configure.
     const t = s.transport ?? {};
     const isChild = t.kind === "child";
     const isRemote = t.kind === "remote";
-    if (!isChild && !isRemote) p('transport.kind must be "child" or "remote"');
+    const isSystem = t.kind === "system";
+    if (!isChild && !isRemote && !isSystem) {
+      p('transport.kind must be "child", "remote" or "system"');
+    }
+
+    if (isSystem) {
+      // The one shape in this file that names a command line, which is exactly
+      // what the KEPT rule exists to keep out of reach. It stays out of reach
+      // because of WHERE it can be written, not what it says: only this
+      // manifest has a system kind - `ServerStore` refuses one from a custom
+      // definition - so nothing a user types and nothing arriving over the
+      // wire can name one. What is checked here is that the name cannot be
+      // swapped underneath: /usr/bin is on the sealed system volume.
+      if (!/^\/usr\/bin\/[a-z][a-z0-9-]*$/.test(t.executable ?? "")) {
+        p("transport.executable must be a program directly under /usr/bin");
+      }
+      if (!Array.isArray(t.arguments) || t.arguments.some((a) => !/^[a-z][a-z0-9-]*$/.test(a))) {
+        p("transport.arguments must be a list of plain words — no paths, no flags");
+      }
+      if (typeof t.requires !== "string" || !t.requires) p("transport.requires is required");
+      // A system command is somebody else's binary with no configuration
+      // surface Bastion can reach: no credential to hold, no environment
+      // variable of ours it reads, nothing to redirect. Every one of these
+      // fields would be a promise the entry cannot keep.
+      if ((s.env ?? []).length) p("a system command takes no variables: env must be empty");
+      if (s.writeGate !== null) p("a system command has no gate variable: writeGate must be null");
+      if (s.writeGateSense !== undefined) p("writeGateSense has no meaning on a system command");
+      for (const key of ["gateBypass", "authModes", "stateEnv", "callbackEnv"]) {
+        if ((s[key] ?? []).length)
+          p(`a system command has nothing to configure: ${key} must be empty`);
+      }
+      if (t.vendor !== undefined || t.provenance !== undefined) {
+        p("transport.vendor and transport.provenance are child-only — nothing is installed");
+      }
+    }
 
     if (isChild) {
       for (const key of ["npmName", "binName", "localPath"]) {
@@ -164,7 +199,7 @@ const validate = (servers) => {
     for (const key of ["gateBypass", "authModes", "stateEnv", "callbackEnv", "env", "notes"]) {
       if (!Array.isArray(s[key])) p(`${key} must be an array`);
     }
-    if (Array.isArray(s.env) && s.env.length === 0) p("env must not be empty");
+    if (!isSystem && Array.isArray(s.env) && s.env.length === 0) p("env must not be empty");
 
     // ── the naming rule
     //
@@ -528,10 +563,11 @@ const swiftEnvVar = (e) => {
   ].join("\n");
 };
 
-/** The transport, as the enum payload that makes the other shape unrepresentable. */
-const swiftTransport = (t) =>
-  t.kind === "child"
-    ? [
+/** The transport, as the enum payload that makes the other shapes unrepresentable. */
+const swiftTransport = (t) => {
+  switch (t.kind) {
+    case "child":
+      return [
         `      transport: .child(`,
         `        .init(`,
         `          npmName: ${swiftString(t.npmName)},`,
@@ -540,8 +576,22 @@ const swiftTransport = (t) =>
         `          localPath: ${swiftString(t.localPath)},`,
         `          vendor: .${t.vendor === "third-party" ? "thirdParty" : "mgcrea"},`,
         `          provenance: ${t.provenance === true})),`,
-      ].join("\n")
-    : `      transport: .remote(endpoint: URL(string: ${swiftString(t.url)})!),`;
+      ].join("\n");
+    case "system":
+      return [
+        `      transport: .system(`,
+        `        .init(`,
+        `          executable: URL(fileURLWithPath: ${swiftString(t.executable)}),`,
+        `          arguments: ${swiftStringList(t.arguments)},`,
+        `          requires: ${swiftString(t.requires)})),`,
+      ].join("\n");
+    default:
+      return `      transport: .remote(endpoint: URL(string: ${swiftString(t.url)})!),`;
+  }
+};
+
+/** `/usr/bin/xcrun` + `["mcpbridge"]` → `/usr/bin/xcrun mcpbridge`, for the docs. */
+const commandLine = (t) => [t.executable, ...t.arguments].join(" ");
 
 /** `2025-11-25` → `.v2025_11_25`. Derived, so a new revision needs no edit here. */
 const swiftDialect = (dialect) => `.v${dialect.replaceAll("-", "_")}`;
@@ -600,9 +650,11 @@ const mdRow = (s) =>
     s.transport.kind === "child" ? mdCode(s.transport.binName) : "—",
     s.transport.kind === "remote"
       ? `${mdCode(s.transport.url)} (remote)`
-      : s.transport.distribution === "npm"
-        ? `${mdCode(s.transport.npmName)} (npm${s.transport.provenance ? ", provenance" : ""})`
-        : `${mdCode(s.transport.localPath)} (local)`,
+      : s.transport.kind === "system"
+        ? `${mdCode(commandLine(s.transport))} (system)`
+        : s.transport.distribution === "npm"
+          ? `${mdCode(s.transport.npmName)} (npm${s.transport.provenance ? ", provenance" : ""})`
+          : `${mdCode(s.transport.localPath)} (local)`,
     s.writeGate !== null
       ? s.writeGateSense === "disables"
         ? `${mdCode(s.writeGate)} (inverted)`
@@ -617,12 +669,24 @@ const mdDetail = (s) => {
   const out = [`### ${s.displayName}`, "", s.summary, ""];
   if (s.notes.length) out.push(s.notes.join("\n"), "");
   const remote = s.transport.kind === "remote";
-  out.push(
-    remote
-      ? "| Variable | Required | Secret | Sent as | Meaning |"
-      : "| Variable | Required | Secret | Meaning |",
-    remote ? "| --- | --- | --- | --- | --- |" : "| --- | --- | --- | --- |",
-  );
+  if (s.transport.kind === "system") {
+    // No variable table: a system command takes none, and an empty table reads
+    // as a rendering bug. What stands in its place is what the command needs to
+    // find on the Mac, which is the question a variable table answers for the
+    // other two kinds.
+    out.push(
+      `Runs ${mdCode(commandLine(s.transport))}. Nothing to install and no variables. ` +
+        `Requires ${mdEscape(s.transport.requires)}`,
+      "",
+    );
+  } else {
+    out.push(
+      remote
+        ? "| Variable | Required | Secret | Sent as | Meaning |"
+        : "| Variable | Required | Secret | Meaning |",
+      remote ? "| --- | --- | --- | --- | --- |" : "| --- | --- | --- | --- |",
+    );
+  }
   for (const e of s.env) {
     // Appended rather than given a column: only three servers have any, and a
     // column that is a dash on seventy-five rows earns nothing. The sentence
@@ -723,6 +787,10 @@ const tsServer = (s) =>
     `    displayName: ${tsString(s.displayName)},`,
     `    summary: ${tsString(s.summary)},`,
     `    writeGate: ${tsOptionalString(s.writeGate)},`,
+    // A flag, not the list. The page needs to know that a server gated by tool
+    // name has a write path — without it, every such child read as read-only —
+    // and it has no use for the names themselves.
+    `    gatesByName: ${(s.writeTools ?? []).length > 0},`,
     `    transport: ${tsString(s.transport.kind)},`,
     `    vendor: ${tsString(s.transport.vendor ?? null)},`,
     `    provenance: ${s.transport.provenance === true},`,
@@ -793,6 +861,7 @@ const counts = {
   own: children.filter((s) => s.transport.vendor === "mgcrea").length,
   third: children.filter((s) => s.transport.vendor !== "mgcrea").length,
   remote: servers.filter((s) => s.transport.kind === "remote").length,
+  system: servers.filter((s) => s.transport.kind === "system").length,
 };
 
 // Each claim names the file, the sentence to look for, and which count the word
@@ -802,7 +871,8 @@ const CLAIMS = [
   ["docs/servers.md", /The catalog seeds ([a-z-]+) entries/, "total"],
   ["docs/servers.md", /entries — ([a-z-]+) servers written here/, "own"],
   ["docs/servers.md", /written here, ([a-z-]+) somebody else publishes/, "third"],
-  ["docs/servers.md", /publishes, and ([a-z-]+) endpoints/, "remote"],
+  ["docs/servers.md", /publishes, ([a-z-]+) endpoints/, "remote"],
+  ["docs/servers.md", /operate, and ([a-z-]+) (?:command|commands) that/, "system"],
   ["docs/servers.md", /The ([a-z-]+) children written here/, "own"],
   ["docs/servers.md", /The ([a-z-]+) third-party children/, "third"],
   ["docs/servers.md", /The ([a-z-]+) remote entries/, "remote"],
@@ -810,7 +880,12 @@ const CLAIMS = [
   ["apps/website/public/llms.txt", /([A-Za-z-]+) entries are in the catalog/, "total"],
   ["apps/website/public/llms.txt", /([A-Za-z-]+) are servers written here/, "own"],
   ["apps/website/public/llms.txt", /([A-Za-z-]+) more are child processes/, "third"],
-  ["apps/website/public/llms.txt", /The last ([a-z-]+) are https endpoints/, "remote"],
+  ["apps/website/public/llms.txt", /([A-Za-z-]+) are https endpoints/, "remote"],
+  [
+    "apps/website/public/llms.txt",
+    /endpoints, and ([a-z-]+) (?:is a command|are commands) that/,
+    "system",
+  ],
 ];
 
 let miscounted = 0;

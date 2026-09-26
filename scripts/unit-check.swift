@@ -1173,6 +1173,51 @@ struct UnitCheck {
     let reddit = catalog.first { $0.id == "reddit" }
     check("reddit offers a sign-in", reddit?.authModes.contains { $0.isInteractive } == true)
 
+    print("\nThe catalog: system commands")
+    // The one transport that names a command line. The generator holds these
+    // rules too; asserting them on the compiled catalog is what catches a
+    // hand edit to the generated region, which the generator never sees.
+    let systems = catalog.filter { $0.command != nil }
+    check("the catalog carries at least one system command", !systems.isEmpty)
+    for server in systems {
+      let command = server.command!
+      check(
+        "\(server.id): the executable sits directly under /usr/bin",
+        command.executable.deletingLastPathComponent().path == "/usr/bin")
+      check(
+        "\(server.id): the arguments are plain words",
+        command.arguments.allSatisfy {
+          $0.range(of: #"^[a-z][a-z0-9-]*$"#, options: .regularExpression) != nil
+        })
+      check("\(server.id): installs nothing", server.package == nil)
+      check("\(server.id): takes no variables", server.env.isEmpty)
+      check("\(server.id): sets no gate variable", server.gateValue(allowWrites: true) == nil)
+      check(
+        "\(server.id): has a write path exactly when it names write tools",
+        server.hasWritePath == !server.writeTools.isEmpty)
+    }
+
+    let xcode = catalog.first { $0.id == "xcode" }
+    check("xcode runs xcrun mcpbridge", xcode?.command?.commandLine == "/usr/bin/xcrun mcpbridge")
+    // Measured names, from a live tools/list. Writes off hides edits and code
+    // execution; building, running and testing stay, or a read-only profile
+    // could do nothing but read.
+    let xcodeTools = [
+      "XcodeRead", "XcodeWrite", "XcodeRM", "BuildProject", "RunAllTests", "RunCodeSnippet",
+      "InvokeDebuggerCommand", "DeviceInteractionSynthesize",
+    ].map { ["name": $0] as [String: Any] }
+    let visible = Set(
+      WriteGate.visibleTools(
+        in: xcodeTools, declared: xcode?.writeTools ?? [], annotated: [], allowWrites: false
+      ).compactMap { $0["name"] as? String })
+    check(
+      "xcode with writes off hides edits and code execution",
+      visible.isDisjoint(with: ["XcodeWrite", "XcodeRM", "RunCodeSnippet", "InvokeDebuggerCommand"])
+    )
+    check(
+      "xcode with writes off keeps reads, builds, tests and device input",
+      visible == ["XcodeRead", "BuildProject", "RunAllTests", "DeviceInteractionSynthesize"])
+
     print("\nThe catalog: per-profile callbacks")
     for server in catalog {
       let named = Set(server.env.map(\.name))

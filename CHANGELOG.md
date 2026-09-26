@@ -7,6 +7,28 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.23.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Added
+
+- **Xcode is in the catalog.** Xcode 26.3 and later ship their own MCP server, `xcrun mcpbridge`:
+  read and edit a project, build, run and test it, render previews, and drive a simulator or device.
+  Bastion runs and supervises it like any other server, with nothing to download. Xcode asks you to
+  approve the agent the first time it opens a project, and behind Bastion that agent is Bastion
+  itself, so one approval covers every client. With a profile's writes off, the tools that change
+  a project on disk or run arbitrary code (`RunCodeSnippet`, `InvokeDebuggerCommand`) are hidden;
+  building, running and testing stay available.
+- **A third kind of server: a command that ships with the Mac.** Catalog entries can now name a
+  program directly under `/usr/bin`, with fixed plain-word arguments. Only the catalog can: a custom
+  server is still an npm package or a URL, so nothing a person types and nothing a client sends can
+  name a command line.
+
+### Fixed
+
+- **The website no longer lists Playwright, Supabase, Netlify and Apify as read-only.** They gate
+  writes by tool name, which the site's copy of the rule did not count. The server detail pane now
+  describes that gate for them too, where it used to only for remote servers.
+
 ## [1.23.0] - 2026-09-22
 
 ### Added

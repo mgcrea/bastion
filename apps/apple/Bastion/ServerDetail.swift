@@ -203,6 +203,81 @@ struct ServerDetail: View {
     case .inProcess: builtinCard
     case .remote(let endpoint): remoteCard(endpoint)
     case .child: npmCard
+    case .system(let command): systemCard(command)
+    }
+  }
+
+  /// What stands in for the package card on a server that ships with the Mac.
+  ///
+  /// Closest to `remoteCard` in what it leaves out — no install, no version, no
+  /// update — and to `npmCard` in what it keeps: this one does run here, as a
+  /// process Bastion supervises. What it adds is the one thing neither has: the
+  /// tool it runs keeps its own consent, which Bastion neither holds nor can
+  /// grant.
+  private func systemCard(_ command: BastionServer.Command) -> some View {
+    Card(title: "System command") {
+      VStack(alignment: .leading, spacing: 10) {
+        HStack(spacing: 8) {
+          Circle().fill(Color.green).frame(width: 7, height: 7)
+          Text(command.commandLine)
+            .font(.system(.callout, design: .monospaced))
+            .textSelection(.enabled)
+          Spacer()
+        }
+
+        Text(
+          "Ships with this Mac's developer tools, so there is nothing to download and nothing "
+            + "to keep up to date here. Bastion runs it and supervises it like any other server. "
+            + "Requires \(command.requires)"
+        )
+        .font(.callout)
+        .fixedSize(horizontal: false, vertical: true)
+
+        Text(
+          "The tool keeps its own approval, and it is given to Bastion: every client of every "
+            + "profile reaches it as one agent. Bastion's activity log still says which one "
+            + "made each call."
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+        if !server.writeTools.isEmpty {
+          Text(
+            "With writes off, Bastion will not forward: "
+              + server.writeTools.joined(separator: ", ")
+              + ". That filters what Bastion sends; anything else on this Mac that runs the "
+              + "same command reaches every tool."
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+        }
+
+        HStack(spacing: 8) {
+          Spacer()
+          Button("Remove server") { confirmingServerRemoval = true }
+            .font(.caption)
+            .buttonStyle(.borderless)
+            .foregroundStyle(.red)
+        }
+      }
+    }
+    .confirmationDialog(
+      "Remove \(server.displayName)?",
+      isPresented: $confirmingServerRemoval, titleVisibility: .visible
+    ) {
+      Button("Remove", role: .destructive) { removeServer() }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      // Nothing was downloaded, so nothing is deleted from disk; the command
+      // stays where it shipped.
+      Text(
+        profiles.isEmpty
+          ? "Bastion forgets it. The command itself stays where it shipped."
+          : "Its \(profiles.count) profile\(profiles.count == 1 ? "" : "s") are deleted, and "
+            + "any client pointing at them will stop working. The command itself stays where "
+            + "it shipped.")
     }
   }
 
@@ -1062,7 +1137,10 @@ struct ServerDetail: View {
           Text("Write gate: \(gate), set from each profile's own toggle.")
             .font(.caption).foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
-        } else if server.transport.isRemote {
+        } else if server.transport.isRemote || !server.writeTools.isEmpty {
+          // Any server gated by name, not only a remote one: a child whose
+          // read-only switch is a CLI flag, and a system command, have no
+          // variable to name here either.
           Divider()
           Text(
             server.writeTools.isEmpty

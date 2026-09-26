@@ -285,9 +285,11 @@ final class ServerInstaller {
   nonisolated static func isInstalled(_ server: BastionServer) -> Bool {
     if DemoSeed.isEnabled { return DemoSeed.isInstalled(server) }
     // Nothing to install means nothing missing. Bastion's own server is the
-    // running app, and a remote one is somebody else's process on somebody
-    // else's machine — neither has a directory, and reporting either as "not
-    // installed" would put a permanent red badge next to a server that works.
+    // running app, a remote one is somebody else's process on somebody else's
+    // machine, and a system command ships with macOS or its tools — none has a
+    // directory, and reporting any as "not installed" would put a permanent red
+    // badge next to a server that works. Whether a system command's tool is on
+    // this Mac is `Command.requires`, said where the badge would be.
     guard server.package != nil else { return true }
     return entryScript(of: server) != nil
   }

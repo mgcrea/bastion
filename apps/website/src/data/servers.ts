@@ -25,14 +25,21 @@ export interface Server {
   id: string;
   displayName: string;
   summary: string;
-  /** The env var that turns writes on, or null when the server has no write path. */
+  /** The env var that turns writes on, or null when the server has none to set. */
   writeGate: string | null;
   /**
-   * How Bastion reaches it: a package it runs, or an endpoint somebody else
-   * operates. The site says "one process per server", and for a remote entry
-   * there is no process — so the page has to be able to tell them apart.
+   * Whether the server's write gate is a filter over tool names instead. Such a
+   * server has a write path with `writeGate` null, and before this flag the
+   * page listed every one of them as read-only.
    */
-  transport: "child" | "remote";
+  gatesByName: boolean;
+  /**
+   * How Bastion reaches it: a package it runs, an endpoint somebody else
+   * operates, or a command that ships on the Mac. The site says "one process
+   * per server", and for a remote entry there is no process — so the page has
+   * to be able to tell them apart.
+   */
+  transport: "child" | "remote" | "system";
   /**
    * Who publishes a child's package, and `null` for a remote entry, which has
    * none. The page used to be able to say "the children" and mean "the ones
@@ -63,6 +70,7 @@ export const SERVERS: Server[] = [
     displayName: "App Store Connect",
     summary: "App Store Connect API: apps, versions, builds, TestFlight, listings, analytics, sales.",
     writeGate: "APP_STORE_CONNECT_ALLOW_WRITES",
+    gatesByName: false,
     transport: "child",
     vendor: "mgcrea",
     provenance: true,
@@ -73,6 +81,7 @@ export const SERVERS: Server[] = [
     displayName: "CloudKit",
     summary: "CloudKit management API: container schema — record types, fields, Development/Production diff and deploy.",
     writeGate: "CLOUDKIT_ALLOW_WRITES",
+    gatesByName: false,
     transport: "child",
     vendor: "mgcrea",
     provenance: true,
@@ -83,6 +92,7 @@ export const SERVERS: Server[] = [
     displayName: "Reddit",
     summary: "Reddit API: subreddits, posts, comments, search, and the user's own history.",
     writeGate: "REDDIT_ALLOW_WRITES",
+    gatesByName: false,
     transport: "child",
     vendor: "mgcrea",
     provenance: true,
@@ -93,6 +103,7 @@ export const SERVERS: Server[] = [
     displayName: "X",
     summary: "X (Twitter) API v2: posts, threads, timelines, search, bookmarks, and the Ads API.",
     writeGate: "X_ALLOW_WRITES",
+    gatesByName: false,
     transport: "child",
     vendor: "mgcrea",
     provenance: true,
@@ -103,6 +114,7 @@ export const SERVERS: Server[] = [
     displayName: "UniFi Protect",
     summary: "UniFi Protect: cameras, event history, recordings, snapshots and NVR status.",
     writeGate: "UNIFI_PROTECT_ALLOW_WRITES",
+    gatesByName: false,
     transport: "child",
     vendor: "mgcrea",
     provenance: true,
@@ -113,6 +125,7 @@ export const SERVERS: Server[] = [
     displayName: "UniFi Network",
     summary: "UniFi Network API: sites, devices, clients, WLANs, port and firewall configuration.",
     writeGate: "UNIFI_ALLOW_WRITES",
+    gatesByName: false,
     transport: "child",
     vendor: "mgcrea",
     provenance: true,
@@ -123,6 +136,7 @@ export const SERVERS: Server[] = [
     displayName: "Stripe",
     summary: "Stripe's own remote MCP server: the API surface, plus documentation and knowledge-base search.",
     writeGate: null,
+    gatesByName: true,
     transport: "remote",
     vendor: null,
     provenance: false,
@@ -133,6 +147,7 @@ export const SERVERS: Server[] = [
     displayName: "Shopify",
     summary: "Shopify Admin GraphQL API: products, variants, collections, metafields, locations.",
     writeGate: null,
+    gatesByName: false,
     transport: "child",
     vendor: "mgcrea",
     provenance: true,
@@ -143,6 +158,7 @@ export const SERVERS: Server[] = [
     displayName: "OVHcloud",
     summary: "OVHcloud API, focused on Object Storage: containers, objects, policies, regions.",
     writeGate: "OVH_ALLOW_WRITES",
+    gatesByName: false,
     transport: "child",
     vendor: "mgcrea",
     provenance: false,
@@ -153,6 +169,7 @@ export const SERVERS: Server[] = [
     displayName: "Keycloak",
     summary: "Keycloak Admin REST API: realms, clients, users, roles, sessions.",
     writeGate: "KEYCLOAK_ALLOW_WRITES",
+    gatesByName: false,
     transport: "child",
     vendor: "mgcrea",
     provenance: true,
@@ -163,6 +180,7 @@ export const SERVERS: Server[] = [
     displayName: "npm",
     summary: "npm registry: packages, versions, downloads, advisories, dist-tags, orgs, tokens and trusted publishing.",
     writeGate: "NPM_ALLOW_WRITES",
+    gatesByName: false,
     transport: "child",
     vendor: "mgcrea",
     provenance: true,
@@ -173,6 +191,7 @@ export const SERVERS: Server[] = [
     displayName: "GitHub",
     summary: "GitHub's own remote MCP server: repositories, issues, pull requests, Actions, code scanning and Dependabot alerts.",
     writeGate: null,
+    gatesByName: true,
     transport: "remote",
     vendor: null,
     provenance: false,
@@ -183,6 +202,7 @@ export const SERVERS: Server[] = [
     displayName: "Notion",
     summary: "Notion's own remote MCP server: search, read and update pages, databases and comments.",
     writeGate: null,
+    gatesByName: false,
     transport: "remote",
     vendor: null,
     provenance: false,
@@ -193,6 +213,7 @@ export const SERVERS: Server[] = [
     displayName: "Linear",
     summary: "Linear's own remote MCP server: issues, projects, cycles, comments and documents.",
     writeGate: null,
+    gatesByName: false,
     transport: "remote",
     vendor: null,
     provenance: false,
@@ -203,6 +224,7 @@ export const SERVERS: Server[] = [
     displayName: "Sentry",
     summary: "Sentry's own remote MCP server: issues, events, releases and Seer analysis across your organisations.",
     writeGate: null,
+    gatesByName: false,
     transport: "remote",
     vendor: null,
     provenance: false,
@@ -213,6 +235,7 @@ export const SERVERS: Server[] = [
     displayName: "Atlassian",
     summary: "Atlassian's own Rovo MCP server: Jira, Confluence, Jira Service Management, Bitbucket and Compass.",
     writeGate: null,
+    gatesByName: false,
     transport: "remote",
     vendor: null,
     provenance: false,
@@ -223,6 +246,7 @@ export const SERVERS: Server[] = [
     displayName: "Figma",
     summary: "Figma's own remote MCP server: design file context, components and variables for coding agents.",
     writeGate: null,
+    gatesByName: false,
     transport: "remote",
     vendor: null,
     provenance: false,
@@ -233,6 +257,7 @@ export const SERVERS: Server[] = [
     displayName: "Vercel",
     summary: "Vercel's own remote MCP server: projects, deployments, runtime logs, Web Analytics and documentation search.",
     writeGate: null,
+    gatesByName: true,
     transport: "remote",
     vendor: null,
     provenance: false,
@@ -243,6 +268,7 @@ export const SERVERS: Server[] = [
     displayName: "Cloudflare",
     summary: "Cloudflare's own remote MCP server: the API surface across zones, DNS, Workers, R2 and the rest of the account.",
     writeGate: null,
+    gatesByName: false,
     transport: "remote",
     vendor: null,
     provenance: false,
@@ -253,6 +279,7 @@ export const SERVERS: Server[] = [
     displayName: "Cloudflare Docs",
     summary: "Cloudflare's documentation search, as a remote MCP server. Needs no credential.",
     writeGate: null,
+    gatesByName: false,
     transport: "remote",
     vendor: null,
     provenance: false,
@@ -263,6 +290,7 @@ export const SERVERS: Server[] = [
     displayName: "Cloudflare Observability",
     summary: "Cloudflare Workers logs and analytics, as a remote MCP server: query invocations, errors and traces.",
     writeGate: null,
+    gatesByName: false,
     transport: "remote",
     vendor: null,
     provenance: false,
@@ -273,6 +301,7 @@ export const SERVERS: Server[] = [
     displayName: "iOS Device",
     summary: "Drive a physical iPhone or iPad: screenshot, accessibility tree, tap, swipe, type, and app lifecycle.",
     writeGate: "IOS_DEVICE_ALLOW_WRITES",
+    gatesByName: false,
     transport: "child",
     vendor: "mgcrea",
     provenance: true,
@@ -283,6 +312,7 @@ export const SERVERS: Server[] = [
     displayName: "MongoDB",
     summary: "MongoDB and Atlas: collections, documents, indexes, aggregations, and cluster administration.",
     writeGate: "MDB_MCP_READ_ONLY",
+    gatesByName: false,
     transport: "child",
     vendor: "third-party",
     provenance: true,
@@ -293,6 +323,7 @@ export const SERVERS: Server[] = [
     displayName: "DBHub",
     summary: "SQL databases behind one server: PostgreSQL, MySQL, MariaDB, SQL Server and SQLite, over a single DSN.",
     writeGate: "READONLY",
+    gatesByName: false,
     transport: "child",
     vendor: "third-party",
     provenance: true,
@@ -303,6 +334,7 @@ export const SERVERS: Server[] = [
     displayName: "Kubernetes",
     summary: "A Kubernetes cluster through kubectl and Helm: pods, deployments, services, logs, events and manifests.",
     writeGate: "ALLOW_ONLY_READONLY_TOOLS",
+    gatesByName: false,
     transport: "child",
     vendor: "third-party",
     provenance: true,
@@ -313,6 +345,7 @@ export const SERVERS: Server[] = [
     displayName: "Context7",
     summary: "Up-to-date documentation and code examples for public libraries, fetched per version.",
     writeGate: null,
+    gatesByName: false,
     transport: "child",
     vendor: "third-party",
     provenance: false,
@@ -323,6 +356,7 @@ export const SERVERS: Server[] = [
     displayName: "Firecrawl",
     summary: "Web scraping and crawling as structured content: scrape a page, crawl a site, extract fields, search.",
     writeGate: null,
+    gatesByName: false,
     transport: "child",
     vendor: "third-party",
     provenance: false,
@@ -333,6 +367,7 @@ export const SERVERS: Server[] = [
     displayName: "Exa",
     summary: "Exa neural search: web search, company and people research, and full page contents.",
     writeGate: null,
+    gatesByName: false,
     transport: "child",
     vendor: "third-party",
     provenance: true,
@@ -343,6 +378,7 @@ export const SERVERS: Server[] = [
     displayName: "Tavily",
     summary: "Tavily search: web search built for agents, plus page extraction, site mapping and crawling.",
     writeGate: null,
+    gatesByName: false,
     transport: "child",
     vendor: "third-party",
     provenance: false,
@@ -353,6 +389,7 @@ export const SERVERS: Server[] = [
     displayName: "Playwright",
     summary: "Drive a real browser: navigate, snapshot the accessibility tree, click, type, fill forms and read network traffic.",
     writeGate: null,
+    gatesByName: true,
     transport: "child",
     vendor: "third-party",
     provenance: false,
@@ -363,6 +400,7 @@ export const SERVERS: Server[] = [
     displayName: "Supabase",
     summary: "Supabase projects: tables, migrations, SQL, edge functions, branches, logs and advisors.",
     writeGate: null,
+    gatesByName: true,
     transport: "child",
     vendor: "third-party",
     provenance: true,
@@ -373,6 +411,7 @@ export const SERVERS: Server[] = [
     displayName: "Netlify",
     summary: "Netlify projects and deploys: read teams, projects and deploy state, and update them.",
     writeGate: null,
+    gatesByName: true,
     transport: "child",
     vendor: "third-party",
     provenance: false,
@@ -383,6 +422,7 @@ export const SERVERS: Server[] = [
     displayName: "Apify",
     summary: "Apify Actors: search the store, inspect an Actor, run one, and read its dataset and key-value store.",
     writeGate: null,
+    gatesByName: true,
     transport: "child",
     vendor: "third-party",
     provenance: true,
@@ -393,10 +433,22 @@ export const SERVERS: Server[] = [
     displayName: "iOS Simulator",
     summary: "Drive an iOS Simulator: screenshot, accessibility tree, tap, swipe, type, app lifecycle and device staging.",
     writeGate: "IOS_SIMULATOR_ALLOW_WRITES",
+    gatesByName: false,
     transport: "child",
     vendor: "mgcrea",
     provenance: true,
     dialect: "2025-11-25",
+  },
+  {
+    id: "xcode",
+    displayName: "Xcode",
+    summary: "Xcode's own MCP server: read and edit a project, build, run and test it, render previews, and drive a simulator or device.",
+    writeGate: null,
+    gatesByName: true,
+    transport: "system",
+    vendor: null,
+    provenance: false,
+    dialect: "2025-06-18",
   },
 ];
 // </generated:servers>
@@ -410,21 +462,28 @@ export const SERVERS: Server[] = [
  * handshake. "Read-only" is therefore not a claim that can be made about a
  * remote server in advance, and this page was making it about Stripe.
  *
+ * A child or a system command gated by tool name counts too. This copy missed
+ * that clause, which the app's copy had, and listed Playwright, Supabase,
+ * Netlify and Apify as read-only.
+ *
  * Mirrors `BastionServer.hasWritePath` in the app. Two copies of one rule, in
  * two languages, which is the price of the site reading a generated list rather
  * than asking the app.
  */
-const hasWritePath = (s: Server) => s.writeGate !== null || s.transport === "remote";
+const hasWritePath = (s: Server) =>
+  s.writeGate !== null || s.transport === "remote" || s.gatesByName;
 
 /** Servers with no mutating tool registered at all. */
 export const readOnly = SERVERS.filter((s) => !hasWritePath(s));
 
 /** Servers whose writes are off until a profile turns them on. */
 export const gated = SERVERS.filter(hasWritePath);
-/** Packages Bastion runs, and endpoints somebody else operates. The page says
- *  different things about each, so it needs to count them apart. */
+/** Packages Bastion runs, endpoints somebody else operates, and commands that
+ *  ship on the Mac. The page says different things about each, so it needs to
+ *  count them apart. */
 export const children = SERVERS.filter((s) => s.transport === "child");
 export const remote = SERVERS.filter((s) => s.transport === "remote");
+export const system = SERVERS.filter((s) => s.transport === "system");
 
 /**
  * The children split by who wrote them.

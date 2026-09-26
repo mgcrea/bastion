@@ -181,6 +181,11 @@ nonisolated struct BastionServer: Identifiable, Hashable {
   /// Where a remote server lives, or `nil` for a child.
   var endpoint: URL? { transport.endpoint }
 
+  /// The command a system server runs, or `nil` for every other kind.
+  var command: Command? {
+    if case .system(let command) = transport { command } else { nil }
+  }
+
   /// Whether a profile's write toggle means anything for this server.
   ///
   /// **Not `writeGate != nil`.** That was the whole answer while every server
@@ -283,6 +288,17 @@ nonisolated struct BastionServer: Identifiable, Hashable {
     /// to branch on `origin == .builtin`, which asked where a definition came
     /// from in order to work out how to reach it. It branches here now.
     case inProcess
+    /// A stdio server that ships with macOS or with a developer tool on it —
+    /// Xcode's `xcrun mcpbridge`. Supervised exactly like a child, because it
+    /// is one once started; what it lacks is a package, so nothing is
+    /// installed, versioned or updated.
+    ///
+    /// The one transport that names a command line, which the KEPT rule exists
+    /// to keep out of reach — and it stays out of reach because of where it can
+    /// be written. Only the generated catalog carries this case: `ServerStore`
+    /// refuses it from a custom definition, and the generator holds the
+    /// executable to `/usr/bin`, on the sealed system volume.
+    case system(Command)
 
     var isRemote: Bool { if case .remote = self { true } else { false } }
 
@@ -300,10 +316,11 @@ nonisolated struct BastionServer: Identifiable, Hashable {
       case .child: "shippingbox"
       case .remote: "cloud"
       case .inProcess: "gearshape.2"
+      case .system: "apple.terminal"
       }
     }
 
-    /// What that glyph means, spelled out. A three-way icon nobody has seen
+    /// What that glyph means, spelled out. A four-way icon nobody has seen
     /// before is a quiz until something answers it, and the badges beside it
     /// already take this shape.
     var summaryLabel: String {
@@ -311,12 +328,29 @@ nonisolated struct BastionServer: Identifiable, Hashable {
       case .child: "Local package"
       case .remote: "Remote endpoint"
       case .inProcess: "Built in"
+      case .system: "System command"
       }
     }
 
     /// The endpoint, or nil for a child. Named rather than pattern-matched at
     /// every call site that only wants to show a host.
     var endpoint: URL? { if case .remote(let url) = self { url } else { nil } }
+  }
+
+  /// A system server's command line, fixed in the catalog.
+  struct Command: Hashable {
+    /// Directly under `/usr/bin`, which the generator enforces.
+    let executable: URL
+    /// Plain words, never a path or a flag with a value.
+    let arguments: [String]
+    /// What has to be on this Mac for the command to answer, in words a person
+    /// can act on. Shown where a child shows its install state, because
+    /// `/usr/bin/xcrun` exists on every Mac whether or not the tool it finds
+    /// does.
+    let requires: String
+
+    /// `/usr/bin/xcrun mcpbridge`, for display.
+    var commandLine: String { ([executable.path] + arguments).joined(separator: " ") }
   }
 
   /// Everything needed to install and run a child, and nothing a remote server
@@ -2775,6 +2809,61 @@ nonisolated enum ServerCatalog {
           isRequired: false,
           isSecret: false,
           summary: "Enables the fourteen tools that drive the simulator: tap, tap_element, swipe, type, press_button, power, erase, install, launch, terminate, open_url, push, set_environment, restart_wda."),
+      ]),
+    // The first system command in the catalog, and the reason the kind exists.
+    // `xcrun mcpbridge` ships inside Xcode rather than on npm, so there is
+    // nothing to install and no package to pin: /usr/bin/xcrun is on the
+    // sealed system volume, and it resolves mcpbridge in whichever Xcode
+    // xcode-select points at. The children's minimal environment carries no
+    // DEVELOPER_DIR, so that is the one it finds.
+    //
+    // XCODE HOLDS ITS OWN CONSENT, and it is not a profile's to give. Measured
+    // 2026-09-26 on Xcode 27.0 (27A266a): initialize and tools/list answer
+    // for anyone, but every tool call is refused until the agent calls
+    // XcodeOpenWorkspace or XcodeNewProject, which asks the user to approve
+    // the agent and that project's folder together. The agent Xcode approves
+    // is the BINARY that spawned mcpbridge - its path, signature and hash -
+    // and never the clientInfo name, which only labels its log. Behind
+    // Bastion that binary is Bastion itself, so one approval covers every
+    // client of every profile; the audit line is what still tells them apart.
+    //
+    // An approval given in Xcode's prompt lasts 24 hours. `sudo xcrun
+    // mcp-server approve <id> --always` and `allow-folder <dir> --always`
+    // make it permanent, and `xcrun mcp-server status` lists what is
+    // approved and until when. Bastion runs none of these: they need sudo,
+    // and consent Xcode asks for is consent Xcode should collect.
+    //
+    // GATED BY TOOL NAME, because mcpbridge has no read-only switch and
+    // annotates none of its 53 tools. Writes off hides what changes a
+    // project on disk - files, targets, entitlements, build settings, string
+    // catalogs - and the two tools that execute arbitrary code,
+    // RunCodeSnippet and InvokeDebuggerCommand. Building, running, testing,
+    // previews and simulator or device input stay on: they run the user's
+    // own project, which is what this server is for, and hiding them would
+    // leave a read-only profile able to do nothing but read.
+    //
+    // DIALECT MEASURED, not seeded: offered 2026-07-28, mcpbridge answers
+    // 2025-06-18, and it advertises tools.listChanged - the list grew from
+    // 53 to 54 during one session once a workspace was open.
+    BastionServer(
+      id: "xcode",
+      displayName: "Xcode",
+      summary: "Xcode's own MCP server: read and edit a project, build, run and test it, render previews, and drive a simulator or device.",
+      transport: .system(
+        .init(
+          executable: URL(fileURLWithPath: "/usr/bin/xcrun"),
+          arguments: ["mcpbridge"],
+          requires: "Xcode 26.3 or later, with Model Context Protocol turned on in Xcode › Settings › Intelligence.")),
+      docsURL: URL(string: "https://developer.apple.com/documentation/xcode/giving-agentic-coding-tools-access-to-xcode"),
+      dialect: .v2025_06_18,
+      writeGate: nil,
+      writeTools: ["AddEntitlement", "AddInfoPlist", "InvokeDebuggerCommand", "LocalizationPlanner", "RunCodeSnippet", "StringCatalogEdit", "UpdateFileCompilerFlags", "UpdateTargetBuildSetting", "XcodeMV", "XcodeMakeDir", "XcodeNewProject", "XcodeNewTarget", "XcodeRM", "XcodeUpdate", "XcodeWrite"],
+      gateBypass: [],
+      authModes: [],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+
       ]),
   ]
   // </generated:servers>

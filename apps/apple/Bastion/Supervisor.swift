@@ -174,7 +174,10 @@ nonisolated final class Supervisor: @unchecked Sendable {
       let instance = try remoteInstanceFor(profile: profile, server: server)
       return try instance.handle(frame, era: era, client: client)
 
-    case .child:
+    case .child, .system:
+      // A system command is a child once started: one process, N clients, the
+      // same backoff, breaker, idle stop and tool filter. Only `ServerLocator`
+      // tells them apart, by what it hands back to launch.
       let instance = try instanceFor(profile: profile, server: server)
       return try instance.handle(frame, era: era, client: client, progress: progress)
     }
@@ -470,8 +473,8 @@ nonisolated extension Supervisor {
       }
 
       let process = Process()
-      process.executableURL = binaries.node
-      process.arguments = [binaries.script.path]
+      process.executableURL = binaries.executable
+      process.arguments = binaries.arguments
       process.environment = environment
       // Not the app's working directory, which is `/` under LaunchServices.
       // At least one server (`mcp-boursobank`) resolves a default output

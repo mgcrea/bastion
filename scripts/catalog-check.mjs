@@ -322,10 +322,18 @@ const unverified = [];
 const byNameEntries = [];
 let checked = 0;
 let skippedRemote = 0;
+let skippedSystem = 0;
 
 for (const server of manifest.servers ?? manifest) {
   if (typeof server !== "object" || !server.id) continue;
   const { transport } = server;
+  if (transport?.kind === "system") {
+    // Neither is a system command: its source ships inside somebody else's
+    // app. The names in its writeTools were read off a live tools/list, and
+    // `make unit` asserts the filter over them.
+    skippedSystem += 1;
+    continue;
+  }
   if (transport?.kind !== "child") {
     // A remote server has no source here to check against. Its claims are
     // checked at runtime instead, by the tool filter in `RemoteInstance`.
@@ -497,6 +505,7 @@ for (const server of manifest.servers ?? manifest) {
 console.log(
   `\nChecked ${checked} server${checked === 1 ? "" : "s"}` +
     (skippedRemote ? `, skipped ${skippedRemote} remote` : "") +
+    (skippedSystem ? `, skipped ${skippedSystem} system` : "") +
     (unverified.length ? `, ${unverified.length} UNVERIFIED` : ""),
 );
 

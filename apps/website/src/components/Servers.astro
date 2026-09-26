@@ -30,7 +30,9 @@ const provenanceIds = new Set(provenanced.map((s) => s.id));
         packages are fetched on demand into Bastion's own directory and run with the Node runtime
         in the app. The {COUNTS.remoteWord} endpoints are servers their own vendors operate:
         nothing is installed and no process is started, and what Bastion adds is the credential in
-        the Keychain, one identity per profile, and the audit line.
+        the Keychain, one identity per profile, and the audit line. Xcode's own server is the
+        exception to both: a command that ships inside Xcode, which Bastion runs and supervises
+        without installing anything, and which Xcode will not answer until you approve Bastion.
       </p>
       <p class="m-0 text-[14px] leading-[1.6] text-fg-muted text-pretty">
         What stays closed is how a request picks one. A client names a profile and a server id —

@@ -272,6 +272,8 @@ struct ServerEditor: View {
             // is finding it out one step too late.
             if entry.transport.isRemote {
               Badge("remote", tint: .blue)
+            } else if entry.command != nil {
+              Badge("system", tint: .gray)
             } else if entry.package?.distribution == .local {
               Badge("not published", tint: .orange)
             }
@@ -287,10 +289,13 @@ struct ServerEditor: View {
           Text(entry.summary)
             .font(.caption).foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
-          // The package, or the endpoint — whichever this entry actually has.
-          Text(entry.package?.npmName ?? entry.endpoint?.absoluteString ?? "")
-            .font(.system(.caption2, design: .monospaced))
-            .foregroundStyle(.tertiary)
+          // The package, the endpoint or the command — whichever this entry has.
+          Text(
+            entry.package?.npmName ?? entry.endpoint?.absoluteString
+              ?? entry.command?.commandLine ?? ""
+          )
+          .font(.system(.caption2, design: .monospaced))
+          .foregroundStyle(.tertiary)
         }
         Spacer(minLength: 8)
         Button("Add") { add() }

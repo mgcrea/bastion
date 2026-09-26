@@ -15,6 +15,7 @@ import {
   readOnly,
   remote,
   SERVERS,
+  system,
   thirdPartyChildren,
 } from "./data/servers.ts";
 
@@ -148,6 +149,7 @@ export const COUNTS = {
   ownChildren: ownChildren.length,
   thirdPartyChildren: thirdPartyChildren.length,
   remote: remote.length,
+  system: system.length,
   gated: gated.length,
   readOnly: readOnly.length,
   provenanced: provenanced.length,
@@ -157,6 +159,7 @@ export const COUNTS = {
   ownChildrenWord: spell(ownChildren.length),
   thirdPartyChildrenWord: spell(thirdPartyChildren.length),
   remoteWord: spell(remote.length),
+  systemWord: spell(system.length),
   gatedWord: spell(gated.length),
   readOnlyWord: spell(readOnly.length),
   provenancedWord: spell(provenanced.length),

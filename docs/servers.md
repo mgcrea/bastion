@@ -59,9 +59,24 @@ machine, typed as the literal `127.0.0.1` or `[::1]`, on any port but the
 gateway's; `docs/remote-servers.md` says why it is safe and how narrow it is.
 `make remote-check` asserts all of it.
 
+A **system** entry is the one place a command line appears, and it can only
+appear in the catalog. Some servers ship with macOS or with a developer tool
+installed on it — Xcode's is `xcrun mcpbridge` — and there is no package to
+install and no URL to reach. So `servers.json` has a third transport naming an
+executable and its arguments, held to three rules: the executable sits directly
+under `/usr/bin`, on the sealed system volume, so nothing running as the user
+can swap what it names; the arguments are plain words, never a path or a flag
+with a value; and `ServerStore` refuses the kind from a custom definition, so
+neither a person adding a server nor anything arriving over the wire can write
+one. The KEPT rule holds because of where the command is written, not what it
+says. Bastion supervises the process like any child, but installs nothing and
+sets no variable in it: a system command takes no credentials, and its write
+gate is a filter over tool names.
+
 Bastion curates lightly, and only to fill the first screen. The catalog seeds
-thirty-four entries — twelve servers written here, eleven somebody else
-publishes, and eleven endpoints their own vendors operate — because a catalog
+thirty-five entries — twelve servers written here, eleven somebody else
+publishes, eleven endpoints their own vendors operate, and one command that
+ships with a developer tool on the Mac — because a catalog
 that opens with nothing recognisable in it teaches nobody what the app is for.
 The middle group is named rather than folded into the first: those are installed
 from npm and run on the user's own machine with a profile's credentials in their
@@ -233,6 +248,7 @@ asserts both eras against a running build.
 | [Netlify](https://github.com/netlify/netlify-mcp) | `netlify` | `netlify-mcp` | `@netlify/mcp` (npm) | `netlify-deploy-services-updater`, `netlify-extension-services-updater`, `netlify-project-services-updater` (by name) | 1 |
 | [Apify](https://github.com/apify/apify-mcp-server) | `apify` | `actors-mcp-server` | `@apify/actors-mcp-server` (npm, provenance) | `abort-actor-run`, `call-actor`, `report-problem` (by name) | 1 |
 | [iOS Simulator](https://github.com/mgcrea/mcp-ios-simulator) | `ios-simulator` | `ios-simulator-mcp` | `@mgcrea/mcp-ios-simulator` (npm, provenance) | `IOS_SIMULATOR_ALLOW_WRITES` | — |
+| [Xcode](https://developer.apple.com/documentation/xcode/giving-agentic-coding-tools-access-to-xcode) | `xcode` | — | `/usr/bin/xcrun mcpbridge` (system) | `AddEntitlement`, `AddInfoPlist`, `InvokeDebuggerCommand`, `LocalizationPlanner`, `RunCodeSnippet`, `StringCatalogEdit`, `UpdateFileCompilerFlags`, `UpdateTargetBuildSetting`, `XcodeMV`, `XcodeMakeDir`, `XcodeNewProject`, `XcodeNewTarget`, `XcodeRM`, `XcodeUpdate`, `XcodeWrite` (by name) | — |
 
 ### App Store Connect
 
@@ -1184,4 +1200,49 @@ ui_tree works before it has ever run.
 | `IOS_SIMULATOR_ALLOW_WRITES` | — | — | Enables the fourteen tools that drive the simulator: tap, tap_element, swipe, type, press_button, power, erase, install, launch, terminate, open_url, push, set_environment, restart_wda. |
 
 Per-profile state: `IOS_SIMULATOR_OUTPUT_DIR`
+
+### Xcode
+
+Xcode's own MCP server: read and edit a project, build, run and test it, render previews, and drive a simulator or device.
+
+The first system command in the catalog, and the reason the kind exists.
+`xcrun mcpbridge` ships inside Xcode rather than on npm, so there is
+nothing to install and no package to pin: /usr/bin/xcrun is on the
+sealed system volume, and it resolves mcpbridge in whichever Xcode
+xcode-select points at. The children's minimal environment carries no
+DEVELOPER_DIR, so that is the one it finds.
+
+XCODE HOLDS ITS OWN CONSENT, and it is not a profile's to give. Measured
+2026-09-26 on Xcode 27.0 (27A266a): initialize and tools/list answer
+for anyone, but every tool call is refused until the agent calls
+XcodeOpenWorkspace or XcodeNewProject, which asks the user to approve
+the agent and that project's folder together. The agent Xcode approves
+is the BINARY that spawned mcpbridge - its path, signature and hash -
+and never the clientInfo name, which only labels its log. Behind
+Bastion that binary is Bastion itself, so one approval covers every
+client of every profile; the audit line is what still tells them apart.
+
+An approval given in Xcode's prompt lasts 24 hours. `sudo xcrun
+mcp-server approve <id> --always` and `allow-folder <dir> --always`
+make it permanent, and `xcrun mcp-server status` lists what is
+approved and until when. Bastion runs none of these: they need sudo,
+and consent Xcode asks for is consent Xcode should collect.
+
+GATED BY TOOL NAME, because mcpbridge has no read-only switch and
+annotates none of its 53 tools. Writes off hides what changes a
+project on disk - files, targets, entitlements, build settings, string
+catalogs - and the two tools that execute arbitrary code,
+RunCodeSnippet and InvokeDebuggerCommand. Building, running, testing,
+previews and simulator or device input stay on: they run the user's
+own project, which is what this server is for, and hiding them would
+leave a read-only profile able to do nothing but read.
+
+DIALECT MEASURED, not seeded: offered 2026-07-28, mcpbridge answers
+2025-06-18, and it advertises tools.listChanged - the list grew from
+53 to 54 during one session once a workspace was open.
+
+Runs `/usr/bin/xcrun mcpbridge`. Nothing to install and no variables. Requires Xcode 26.3 or later, with Model Context Protocol turned on in Xcode › Settings › Intelligence.
+
+
+Hidden with writes off: `AddEntitlement`, `AddInfoPlist`, `InvokeDebuggerCommand`, `LocalizationPlanner`, `RunCodeSnippet`, `StringCatalogEdit`, `UpdateFileCompilerFlags`, `UpdateTargetBuildSetting`, `XcodeMV`, `XcodeMakeDir`, `XcodeNewProject`, `XcodeNewTarget`, `XcodeRM`, `XcodeUpdate`, `XcodeWrite` — and any tool the server annotates as not read-only. This filters what Bastion forwards; it does not bind the server, so the credential's own scopes remain the real boundary.
 <!-- </generated:servers> -->

@@ -593,6 +593,19 @@ enum BuiltinTools {
           + "Bastion forwards; it does not bind the server, so the credential's own scopes "
           + "remain the real boundary."
       }
+    case .system(let command):
+      out["transport"] = "system"
+      out["command"] = command.commandLine
+      out["requires"] = command.requires
+      out["note"] =
+        "Ships with this Mac's developer tools. Bastion runs and supervises it but installs "
+        + "nothing, and the tool keeps its own approval, which it gives to Bastion as one agent."
+      if !server.writeTools.isEmpty {
+        out["write_tools"] = server.writeTools
+        out["write_tools_note"] =
+          "Hidden from tools/list while the profile's write gate is off. This filters what "
+          + "Bastion forwards; anything else that runs the same command reaches every tool."
+      }
     case .child(let package):
       out["transport"] = "child"
       out["npm_name"] = package.npmName
@@ -779,6 +792,10 @@ enum BuiltinTools {
       case .remote(let endpoint):
         row["transport"] = "remote"
         row["url"] = endpoint.absoluteString
+      case .system(let command):
+        row["transport"] = "system"
+        row["command"] = command.commandLine
+        row["requires"] = command.requires
       case .inProcess:
         row["transport"] = "in-process"
       }
@@ -1256,6 +1273,16 @@ enum BuiltinTools {
     // A remote catalog entry has nothing to download, so telling an agent to
     // poll for "installed" would be telling it to wait for an event that never
     // comes. `install_server` still names the step it performed: adding it.
+    // A system entry is the same case for the same reason: its code shipped with
+    // the Mac, so there is nothing to wait for either.
+    if let command = server.command {
+      return [
+        "id": id, "added": true,
+        "note": "'\(id)' is in your list. It runs `\(command.commandLine)`, which ships with "
+          + "this Mac's developer tools — nothing is downloaded. It requires \(command.requires) "
+          + "It needs a profile before any client can reach it.",
+      ]
+    }
     guard server.package != nil else {
       return [
         "id": id, "added": true,

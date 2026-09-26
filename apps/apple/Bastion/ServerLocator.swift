@@ -1,11 +1,21 @@
 import Foundation
 
-/// Where a server's code actually lives.
+/// Where a server's code actually lives, as the process to start.
+///
+/// An executable and its arguments rather than a runtime and a script, since a
+/// system command has no script: a child is `node <entry>`, and Xcode's server
+/// is `/usr/bin/xcrun mcpbridge`. Both come out of an installed definition,
+/// never out of a request.
 nonisolated struct ServerBinaries {
-  let node: URL
-  let script: URL
+  let executable: URL
+  let arguments: [String]
   /// True when these came from the dev override rather than from an install.
   let isDevelopment: Bool
+
+  /// A child: the embedded runtime running the package's entry point.
+  static func node(_ node: URL, script: URL, isDevelopment: Bool) -> ServerBinaries {
+    ServerBinaries(executable: node, arguments: [script.path], isDevelopment: isDevelopment)
+  }
 }
 
 enum LocateError: LocalizedError {
@@ -14,11 +24,14 @@ enum LocateError: LocalizedError {
   case devConfigInvalid(String)
   case builtin
   case remote(server: String)
+  case systemMissing(server: String, requires: String)
 
   var errorDescription: String? {
     switch self {
     case .notInstalled(let server):
       return "the \(server) server is not installed — install it in Bastion"
+    case .systemMissing(let server, let requires):
+      return "\(server) runs a command this Mac does not have — it requires \(requires)"
     case .builtin:
       return "Bastion's own server runs in-process and has no code to locate"
     case .remote(let server):
@@ -125,6 +138,17 @@ nonisolated enum ServerLocator {
     switch server.transport {
     case .inProcess: throw LocateError.builtin
     case .remote: throw LocateError.remote(server: server.id)
+    case .system(let command):
+      // Nothing to resolve but the command itself, which the catalog fixed.
+      // Only the executable is checked: `/usr/bin/xcrun` is on every Mac,
+      // and whether the tool it finds is installed is something only running
+      // it can say — its stderr reaches the log, and `requires` says what to
+      // install.
+      guard FileManager.default.isExecutableFile(atPath: command.executable.path) else {
+        throw LocateError.systemMissing(server: server.id, requires: command.requires)
+      }
+      return ServerBinaries(
+        executable: command.executable, arguments: command.arguments, isDevelopment: false)
     case .child: break
     }
     guard let package = server.package else { throw LocateError.builtin }
@@ -141,7 +165,7 @@ nonisolated enum ServerLocator {
     guard let script = ServerInstaller.entryScript(of: server) else {
       throw LocateError.notInstalled(server: server.id)
     }
-    return ServerBinaries(node: node, script: script, isDevelopment: false)
+    return .node(node, script: script, isDevelopment: false)
   }
 
   #if DEBUG
@@ -184,7 +208,7 @@ nonisolated enum ServerLocator {
       // "no build here" is a miss, and only a `dev.json` that cannot be read at
       // all is an error.
       guard FileManager.default.fileExists(atPath: script.path) else { return nil }
-      return ServerBinaries(node: node, script: script, isDevelopment: true)
+      return .node(node, script: script, isDevelopment: true)
     }
   #endif
 }

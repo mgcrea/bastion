@@ -58,7 +58,7 @@
           "minLength": 1
         },
         "transport": {
-          "description": "How Bastion reaches the server. `child` is an npm package run as a stdio subprocess; `remote` is an https endpoint somebody else operates, which Bastion installs nothing for and starts no process for.",
+          "description": "How Bastion reaches the server. `child` is an npm package run as a stdio subprocess; `remote` is an https endpoint somebody else operates, which Bastion installs nothing for and starts no process for; `system` is a stdio server that ships with macOS or with a developer tool installed on it, which Bastion installs nothing for but does start and supervise.",
           "oneOf": [
             {
               "type": "object",
@@ -109,6 +109,34 @@
                   "type": "string",
                   "pattern": "^https://",
                   "description": "The MCP endpoint. https only, and refused at runtime if it resolves to a loopback, private, link-local or metadata address — a URL here is the analogue of a command line, and the rule that nothing arriving over the wire can name one has to hold for URLs too."
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "executable", "arguments", "requires"],
+              "properties": {
+                "kind": {
+                  "const": "system"
+                },
+                "executable": {
+                  "type": "string",
+                  "pattern": "^/usr/bin/[a-z][a-z0-9-]*$",
+                  "description": "An absolute path under /usr/bin, which is on the sealed system volume: nothing running as the user can replace what it names. This is the one place the catalog names a command line, and it can only do so here — a custom entry has no system kind, so nothing a user types and nothing arriving over the wire can reach it."
+                },
+                "arguments": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9-]*$"
+                  },
+                  "description": "Fixed arguments. Words only, never a path or a flag with a value, so an entry cannot smuggle a second command line in through the first."
+                },
+                "requires": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "What has to be on this Mac for the command to answer, in words a person can act on. Shown where a package entry would show its install state, because /usr/bin/xcrun exists on every Mac whether or not the tool it finds does."
                 }
               }
             }
@@ -214,7 +242,7 @@
         },
         "env": {
           "type": "array",
-          "minItems": 1,
+          "description": "Non-empty for a child or a remote server, where a variable is how a credential reaches it; empty for a system command, which takes none. The generator enforces which.",
           "items": {
             "type": "object",
             "additionalProperties": false,
