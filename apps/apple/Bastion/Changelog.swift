@@ -194,7 +194,42 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_23_0, v1_22_0, v1_21_0, v1_20_0, v1_19_0]
+  static let releases: [Release] = [v1_24_0, v1_23_0, v1_22_0, v1_21_0, v1_20_0]
+
+  // swift-format-ignore
+  private static let v1_24_0: Release = Release(
+    version: "1.24.0",
+    date: "2026-09-26",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Xcode is in the catalog.",
+            body: [
+              "Xcode 26.3 and later ship their own MCP server, `xcrun mcpbridge`: read and edit a project, build, run and test it, render previews, and drive a simulator or device. Bastion runs and supervises it like any other server, with nothing to download. Xcode asks you to approve the agent the first time it opens a project, and behind Bastion that agent is Bastion itself, so one approval covers every client. With a profile's writes off, the tools that change a project on disk or run arbitrary code (`RunCodeSnippet`, `InvokeDebuggerCommand`) are hidden; building, running and testing stay available.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "A third kind of server: a command that ships with the Mac.",
+            body: [
+              "Catalog entries can now name a program directly under `/usr/bin`, with fixed plain-word arguments. Only the catalog can: a custom server is still an npm package or a URL, so nothing a person types and nothing a client sends can name a command line.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 2,
+            headline: "The website no longer lists Playwright, Supabase, Netlify and Apify as read-only.",
+            body: [
+              "They gate writes by tool name, which the site's copy of the rule did not count. The server detail pane now describes that gate for them too, where it used to only for remote servers.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_23_0: Release = Release(
@@ -292,58 +327,6 @@ nonisolated enum Changelog {
             headline: "A server running on this Mac can be added as a remote server.",
             body: [
               "A remote URL had to be https to a public host, which shut out an MCP server you run yourself on this Mac over plain http. A URL typed with the literal `127.0.0.1` or `[::1]` is now accepted over http or https, on any port but Bastion's own gateway. The credential never leaves the machine, so the reason for https does not apply. It stays narrow on purpose: `localhost`, the rest of `127/8` and any name that resolves to loopback are still refused, because a name can be rebound and a literal cannot. Typing `localhost` gets a message pointing at `127.0.0.1` instead. The same rule applies to `add_custom_server`, whose description now says so.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_19_0: Release = Release(
-    version: "1.19.0",
-    date: "2026-09-16",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Launch at login",
-            body: [
-              ", at the top of Settings ▸ General. Until now nothing started Bastion when you logged in, so a client configured with a URL found nothing listening until somebody opened the app; one that launches its own bridge still starts Bastion on demand either way. The choice is kept apart from what macOS reports, so an update that drops the registration has it put back on the next launch. A copy running from outside Applications says why it cannot be added instead of registering a path that will vanish, and one waiting on your approval in System Settings says so.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 1,
-            headline: "An npm install could hang with nothing left to wait for.",
-            body: [
-              "The installer read npm's output until the pipe closed, and the pipe stays open for as long as anything holds its write end — so a lifecycle script or a git dependency fetch that outlived npm kept the install spinning after npm itself had exited, where the timeout could not reach it. Reading now stops once npm is gone and its output has gone quiet, and an install that times out escalates to killing npm if it ignores the request to stop.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "A custom server at an `http://` URL was refused as a bad npm package name.",
-            body: [
-              "Only `https` URLs were recognised as remote, so anything else fell through to the npm branch with an empty package name, and the error was about the wrong transport entirely. Any URL is a remote server now, and a non-https one is refused for what it is. A URL field that is not a URL at all gets its own message.",
-            ]),
-          Entry(
-            ordinal: 3,
-            headline: "A stdio client could wait forever for Bastion to start.",
-            body: [
-              "When the app is not running, the bridge a client launches opens it and waits; nothing bounded how long `open` itself could take, so a wedged LaunchServices or a first-launch prompt nobody could see left the client showing a server that never starts. `open` gets ten seconds now, after which the bridge goes on waiting for the gateway the way it always did.",
-            ]),
-        ]),
-      Section(
-        name: "Changed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 4,
-            headline: "Settings groups its sidebar into three sections",
-            body: [
-              ", as Cupertino and Armada do: General and Activity; What's New, Updates, About and Help; then Licence on its own.",
             ]),
         ]),
     ])

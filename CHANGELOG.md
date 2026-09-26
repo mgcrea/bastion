@@ -4,10 +4,10 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.23.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.24.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.24.0] - 2026-09-26
 
 ### Added
 
@@ -28,6 +28,17 @@ are taken from this file, which is the curated summary.
 - **The website no longer lists Playwright, Supabase, Netlify and Apify as read-only.** They gate
   writes by tool name, which the site's copy of the rule did not count. The server detail pane now
   describes that gate for them too, where it used to only for remote servers.
+
+### Internal
+
+- The website spells the catalog's size out again: the list of number words stopped at thirty, so
+  the heading had been showing digits since the catalog passed it.
+- The website's `llms.txt` describes Workspaces, the bridge clients and load-on-demand, and the
+  privacy page now says that installing a server or checking one for an update reaches npm, on a
+  press and never on a timer.
+- The website's OG image is rendered at the 1200×630 its head declares, its nav and footer links
+  work from any page, and it takes Astro 7.3.4, TypeScript 6.0.3 and Wrangler 4.136.3. CI now fails
+  when the site's `APP_VERSION` and the app's `MARKETING_VERSION` disagree.
 
 ## [1.23.0] - 2026-09-22
 
