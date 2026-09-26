@@ -7,7 +7,8 @@
 # not to. Ignored rather than merely untracked because the release path runs
 # `git add` over a dirty tree, and an untracked-but-visible directory is one
 # `git add -A` away from riding along into a release commit.
-.claude
+.claude/
+.remember/
 
 # Xcode
 build/
