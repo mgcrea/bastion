@@ -796,7 +796,9 @@ enum ClientWiring {
     WorkspaceStore.shared.rescan()
     // Before the gate, deliberately: `autoWires` is about MCP config files,
     // and skills are symlinks the user asked for in the Skills pane. With no
-    // source configured this does nothing.
+    // source configured this does nothing, and `SkillStore.reconciles` is its
+    // own gate that keeps a Debug build from touching the real skills
+    // folders it shares with the installed Release app.
     SkillStore.shared.reconcile()
     guard autoWires else { return }
     let profiles = ProfileStore.shared.onEnabledServers

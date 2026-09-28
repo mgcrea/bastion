@@ -152,9 +152,18 @@ final class SkillStore {
 
   // MARK: - Editing
 
+  /// Toggles one target, tolerating every OTHER stored id that no longer
+  /// resolves — a Claude profile's config folder removed since the choice was
+  /// saved, say. Dropping those here rather than leaving them for
+  /// `setTargets` to refuse is what keeps a vanished target from blocking
+  /// every future toggle on the skill; `targetID` itself is not filtered, so
+  /// toggling ON an id that does not resolve still reaches `setTargets` and
+  /// throws `unknownTarget`, which `update_skill` relies on.
   func set(_ skillID: String, target targetID: String, on: Bool) throws {
     var next = choices[skillID] ?? []
     if on { next.insert(targetID) } else { next.remove(targetID) }
+    let primary = primaryTargetIDs()
+    next = next.filter { $0 == targetID || primary[$0] != nil }
     try setTargets(skillID, next)
   }
 
@@ -162,11 +171,7 @@ final class SkillStore {
     guard catalog.contains(where: { $0.id == skillID }) else {
       throw StoreError.unknownSkill(skillID)
     }
-    var primary: [String: String] = [:]
-    for target in targets {
-      primary[target.id] = target.id
-      for alias in target.aliases { primary[alias] = target.id }
-    }
+    let primary = primaryTargetIDs()
     if let unknown = ids.first(where: { primary[$0] == nil }) {
       throw StoreError.unknownTarget(unknown)
     }
@@ -198,8 +203,15 @@ final class SkillStore {
       name: SkillCatalog.defaultSourceName(for: expanded, taken: Set(sources.map(\.name))),
       path: expanded, kind: SkillCatalog.kind(of: expanded, fs: fs))
     let skills = SkillCatalog.skills(in: source, fs: fs) ?? []
+    // Global targets only, deliberately, and not `allExistingTargets`: `seed`
+    // records a choice for every target in its list that already holds a
+    // link. Passing repository targets here would turn a link found only in
+    // a repository into a stored `project:…` choice instead of a workspace
+    // scope, which is never a target `setTargets` accepts — the skill would
+    // stay unscoped, its repository would never leave `linkedProjects`, and
+    // every toggle on it would throw `unknownTarget`.
     let seeded = SkillLinks.seed(
-      skills: skills, targets: allExistingTargets, workspaces: workspaces.workspaces.map(\.name),
+      skills: skills, targets: targets, workspaces: workspaces.workspaces.map(\.name),
       resolved: { name in
         workspaces.workspaces.first { $0.name == name }.map(workspaces.resolvedKeys) ?? []
       }, fs: fs)
@@ -275,12 +287,50 @@ final class SkillStore {
 
   // MARK: - Reconcile
 
+  /// Whether this instance may create, relink or remove symlinks in the real
+  /// skills folders.
+  ///
+  /// Shaped exactly like `ClientWiring.autoWires`, and for the same reason: a
+  /// Debug build shares every real skills folder — `~/.claude/skills`,
+  /// `~/.agents/skills`, and every repository's `.claude/skills` and
+  /// `.agents/skills` — with the installed Release app. Two instances
+  /// reconciling the same folders from different selections would unlink and
+  /// relink each other's links, and removing a source in one would delete
+  /// links the other made and still wants.
+  ///
+  /// Release on, Debug off, `-reconcileSkills YES` to turn it back on for a
+  /// developer exercising the path deliberately.
+  nonisolated static var reconciles: Bool {
+    if let override = UserDefaults.standard.object(forKey: "reconcileSkills") as? Bool {
+      return override
+    }
+    #if DEBUG
+      return false
+    #else
+      return true
+    #endif
+  }
+
   func reconcile() {
-    guard !DemoSeed.isEnabled, !sources.isEmpty else { return }
+    guard !DemoSeed.isEnabled, !sources.isEmpty else {
+      failures = []
+      return
+    }
+    guard Self.reconciles else {
+      // Refreshed so the pane still shows the plan; nothing below this line
+      // runs, so nothing is written to a real skills folder or exclude file
+      // from this instance. See `reconciles`.
+      refresh()
+      failures = []
+      return
+    }
     refresh()
     let all = allTargets()
     failures = SkillLinker.apply(plan.actions, targets: all)
-    for action in plan.actions { hostLog("skills", .info, action.summary) }
+    for action in plan.actions
+    where !failures.contains(where: { $0.target == action.target && $0.name == action.name }) {
+      hostLog("skills", .info, action.summary)
+    }
     for failure in failures {
       hostLog("skills", .error, "\(failure.target) \(failure.name): \(failure.message)")
     }
@@ -303,6 +353,18 @@ final class SkillStore {
   }
 
   // MARK: - Private
+
+  /// Every id a stored choice can resolve through: a target's own id, plus
+  /// every alias that lands on the same folder — the shape `setTargets` and
+  /// `set` both need to tell a live target from a vanished one.
+  private func primaryTargetIDs() -> [String: String] {
+    var primary: [String: String] = [:]
+    for target in targets {
+      primary[target.id] = target.id
+      for alias in target.aliases { primary[alias] = target.id }
+    }
+    return primary
+  }
 
   private var claudeDirectories: [SkillLinks.ClaudeDirectory] {
     [.init(id: ClaudeProfiles.family, label: "Claude Code", directory: home + "/.claude")]
