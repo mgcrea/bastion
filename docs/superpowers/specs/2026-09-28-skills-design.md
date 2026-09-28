@@ -54,18 +54,29 @@ Consequences:
 
 ```json
 [
-  { "path": "/Users/me/Projects/claude-skills/global", "kind": "collection" },
-  { "path": "/Users/me/Projects/appshot/skills/appshot-app-icon", "kind": "skill" }
+  { "name": "global", "path": "/Users/me/Projects/claude-skills/global", "kind": "collection" },
+  {
+    "name": "appshot-app-icon",
+    "path": "/Users/me/Projects/appshot/skills/appshot-app-icon",
+    "kind": "skill"
+  }
 ]
 ```
 
-- A `collection` is a folder whose subfolders are skills; a `skill` is one
-  skill folder (this replaces `external.links`).
+- A `collection` is a folder whose immediate subfolders holding a `SKILL.md`
+  are skills (other subfolders are ignored); a `skill` is one skill folder
+  (this replaces `external.links`).
+- `name` follows `Profile.isValidName`, is unique, and defaults to the folder's
+  name made valid (`global`, `bastion`), with `-2`, `-3` appended on a clash.
+  A skill's **id** is `<source>:<skill>` (`global:reply-as-olivier`,
+  `bastion:cut-a-release`): the name alone does not identify a skill, because
+  three sources hold a `cut-a-release`.
 - Bastion never writes into a source.
 - A source may not lie inside a target folder (`~/.agents/skills` cannot be a
   source), checked after resolving symlinks.
-- Order is precedence: when two sources hold a skill of the same name, the
-  first wins and the others are listed as **shadowed**.
+- Order is precedence, applied per target folder: when two skills of the same
+  name are wanted in one folder, the one from the earlier source is linked and
+  the other is reported as **shadowed** there.
 - A removed source is kept as `"retired": true` until every link into it has
   been removed, then dropped from the file (see [Ownership](#ownership)).
 
@@ -89,14 +100,23 @@ target, shown with both names.
 
 ### Selection
 
-`skills.json` in `AppSupport.directory`, keyed by skill name:
+`skills.json` in `AppSupport.directory`, keyed by skill id:
 
 ```json
-{ "reply-as-olivier": { "targets": ["shared", "claude-code", "claude-code@skitrust"] } }
+{
+  "choices": { "global:reply-as-olivier": { "targets": ["shared", "claude-code"] } },
+  "linkedProjects": ["/Users/me/Projects/apps/bastion"]
+}
 ```
 
 - Target ids reuse client ids (`claude-code`, `claude-code@<suffix>`) plus
-  `shared`.
+  `shared`. Of two ids naming one deduplicated target, the first in
+  `ClientWiring.all` order is stored.
+- `linkedProjects` is the one ledger this feature keeps: the project keys
+  Bastion has linked into. Without it, a folder taken out of a workspace, or a
+  deleted workspace, would leave its links behind, because nothing would look
+  there again. A key is visited on every reconcile and dropped once it holds
+  nothing of Bastion's.
 - A skill absent from the file is **off**. A skill found in a source for the
   first time is shown as **New** and stays off until switched on.
 - An entry whose skill no longer exists is kept and ignored, as
@@ -104,7 +124,8 @@ target, shown with both names.
 
 ### Workspace scope
 
-`Workspace` gains `skills: [String]`, beside `profiles`. Semantics mirror
+`Workspace` gains `skills: [String]` of skill ids, beside `profiles`; a
+`workspaces.json` written before this change decodes with `skills` empty. Semantics mirror
 scoped profiles:
 
 - A skill listed in **any** workspace is **scoped**: it is removed from every
@@ -116,10 +137,9 @@ scoped profiles:
   workspace restores it where it was.
 
 `cut-a-release` in armada, bastion and cupertino is the case this covers: three
-skills of the same name from three `skill` sources, each scoped to a one-repo
-workspace. Same-name skills in different workspaces do not shadow each other
-unless their workspaces resolve to a common project key; there, source order
-decides, as globally.
+skills of the same name from three collection sources
+(`~/Projects/claude-skills/projects/<repo>`), each scoped to a one-repo
+workspace. They never meet in one folder, so none shadows another.
 
 ### Ownership
 
@@ -142,7 +162,7 @@ same reason Workspaces has none: `isOurs` is the ledger.
 ### Plan
 
 A pure function over a small filesystem protocol, as `WorkspaceScope` is, so
-`wiring-check` drives it with fixtures:
+`make skills-check` drives it with fixtures:
 
 ```swift
 SkillLinks.plan(sources:, selection:, workspaces:, targets:, fs:) -> [SkillAction]
@@ -154,7 +174,11 @@ SkillLinks.plan(sources:, selection:, workspaces:, targets:, fs:) -> [SkillActio
 | `relink`    | Bastion's link exists but points at another folder (a source moved, precedence changed) |
 | `unlink`    | Bastion's link not desired there, or pointing at a skill that no longer exists          |
 | `collision` | desired where a foreign entry has the name                                              |
-| `invalid`   | skill fails validation; reported, nothing written                                       |
+
+Alongside the actions the plan reports, per target, what it leaves alone:
+foreign entries, links into an unavailable source, and shadowed skills. Invalid
+skills are never desired anywhere, so they produce no action; the catalog
+reports them.
 
 **A source that is unavailable** (folder missing: repo not cloned, volume not
 mounted) is not a source whose skills were deleted. Its links are left alone and
@@ -174,20 +198,26 @@ the source folder itself is present.
   resolve to the main repository, whose `info/exclude` they share.
 - Failures are per target: a target that cannot be written shows its error on
   its card and the rest still apply.
-- Every applied action is written to the Activity log.
+- Every applied action is written to the host log (`hostLog("skills", …)`).
+  The Activity window is about tool calls and does not show link changes.
 
 ### When it runs
 
-Wherever `ClientWiring.rewire` runs (launch; a source, selection or workspace
-edit; Configure) and on Rescan. No file watching, as for Workspaces: edits to a
+At the start of `ClientWiring.rewire`, before its `autoWires` gate (launch
+through `migrateKeyScheme`, every profile, server and workspace edit), after
+every skill or source edit, and on Rescan. With no source configured the plan is
+empty, so the feature is dormant until somebody adds one. A demo or capture run
+never reconciles. No file watching, as for Workspaces: edits to a
 skill need no reconcile because the link is live, and a new skill starts off
 anyway.
 
-**The first reconcile is a preview.** On first launch with the feature, the
-selection is seeded from the links Bastion already owns, so an already-wired
-machine plans no changes except real faults. The plan is shown and applied only
-on confirmation. On the reference machine it holds one `unlink`
-(`astro-bootstrap`, dangling) and the four `~/.agents/skills` collisions.
+**Adding a source is a preview.** The new source's skills are seeded from the
+links that already point into it (the targets they are in, and the workspaces
+whose repositories hold them), so an already-wired machine plans no changes
+except real faults. The plan is shown and applied only on confirmation. On the
+reference machine, adding `claude-skills/global` plans one `unlink`
+(`astro-bootstrap`, dangling). The four `~/.agents/skills` collisions appear
+when those skills are switched on for Shared.
 
 Repository links are seen only through workspaces: the plan looks in a
 repository only when a workspace resolves to it. A link that `projects.links`
@@ -224,7 +254,10 @@ Beside the workspace tools, same conventions, each ending in a reconcile:
 - `list_skill_sources`, `upsert_skill_source`, `remove_skill_source`.
 
 Workspace skill scope goes through the existing `upsert_workspace`, whose input
-gains `skills`.
+gains an optional `skills`; absent keeps the workspace's current skills, so a
+caller written before this change cannot clear them. `list_workspaces` reports
+them. `upsert_skill_source` applies without a preview: its reply lists what it
+did.
 
 ## Out of scope for v1
 
@@ -259,15 +292,16 @@ Each is a probe against the real client, recorded in this file as "measured
 
 ## Testing
 
-- `make wiring-check`: validation (each frontmatter rule, reserved names);
+- `make skills-check`: validation (each frontmatter rule, reserved names);
   `plan` over fixtures (link, relink after a source move, unlink of a dangling
   link, unavailable source left alone, collision, shadowing by order, scoped
   skill removed from global targets and added per project key, same-name skills
   in disjoint workspaces, deduplicated targets through a symlinked folder,
   retired source cleaned then dropped); `info/exclude` block add, remove, and
   every other line byte-identical.
-- `make wiring-check-real`: plan against the real sources and targets in memory
-  and assert the seeded first run plans only the faults listed above.
+- `make skills-check-real`: plan against the real targets in memory, with
+  `~/Projects/claude-skills/global` as the one source, and assert the seeded
+  plan changes nothing but dangling links.
 - Manual: link one skill globally and one scoped to a workspace, then list
   skills in Claude Code (both config folders), Codex, VS Code and Cursor, in the
   workspace repo and outside it; `git status` in the repo stays clean.
