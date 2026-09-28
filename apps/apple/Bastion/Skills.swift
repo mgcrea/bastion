@@ -48,6 +48,7 @@ final class SkillStore {
     case unknownSkill(String)
     case unknownTarget(String)
     case notACollision(String)
+    case linkingOff
 
     var errorDescription: String? {
       switch self {
@@ -59,6 +60,8 @@ final class SkillStore {
       case .unknownSkill(let id): "There is no skill '\(id)'."
       case .unknownTarget(let id): "There is no skills folder '\(id)'."
       case .notACollision(let name): "'\(name)' is not in the way of a skill Bastion wants to link."
+      case .linkingOff:
+        "Linking is off in this build. Launch with -reconcileSkills YES to turn it on."
       }
     }
   }
@@ -264,6 +267,10 @@ final class SkillStore {
   /// "Overwrite anyway": the foreign entry goes to the Trash and the skill is
   /// linked in its place.
   func overwrite(target targetID: String, name: String) throws {
+    // First, and unconditionally: a Debug build with linking off must never
+    // reach `SkillLinker.trash` below, even though `plan` (refreshed by
+    // `reconcile`'s early-return path) can still show a real collision.
+    guard Self.reconciles else { throw StoreError.linkingOff }
     guard plan.reports[targetID]?.collisions.contains(name) == true,
       let target = allTargets().first(where: { $0.id == targetID })
     else { throw StoreError.notACollision(name) }
