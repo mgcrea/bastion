@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// One MCP client, and the file Bastion is about to write into.
 ///
@@ -243,6 +244,7 @@ struct ClientDetail: View {
         if !snapshot.others.isEmpty { othersCard(snapshot) }
         if !snapshot.scoped.isEmpty { workspacesCard(snapshot) }
         if !snapshot.projects.isEmpty { projectsCard(snapshot) }
+        if client.id == "claude-desktop" { accountSkillsCard }
         contextCard(snapshot)
         callsCard
         if let result {
@@ -955,6 +957,56 @@ struct ClientDetail: View {
         Button("Edit Workspaces…") { SettingsWindowController.show(.workspaces) }
           .controlSize(.small)
       }
+    }
+  }
+
+  /// Claude Desktop's chat and claude.ai read skills from the account, not from
+  /// any folder on this Mac, and claude.ai has no upload API Bastion could
+  /// call. So the card is read-only: it lists what the account has synced down
+  /// into Claude Code's folder, and hands over a ZIP for anything missing.
+  private var accountSkillsCard: some View {
+    let store = SkillStore.shared
+    let synced = store.accountSkillNames
+    let missing = store.catalog.filter { $0.isValid && !synced.contains($0.name) }
+    return Card(title: "Account skills (\(synced.count))") {
+      VStack(alignment: .leading, spacing: 10) {
+        Text(
+          "Claude Desktop's chat uses the skills on your Claude account, which you upload at "
+            + "claude.ai under Customize, Skills. Bastion cannot link into it. These are the "
+            + "account skills Claude Code has synced to this Mac."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+        if synced.isEmpty {
+          Text("None synced yet.").font(.caption).foregroundStyle(.secondary)
+        } else {
+          Text(synced.sorted().joined(separator: ", ")).font(.callout.monospaced())
+            .textSelection(.enabled)
+        }
+        if !missing.isEmpty {
+          Text("Not on your account yet:").font(.caption).bold()
+          ForEach(missing) { skill in
+            HStack {
+              Text(skill.id).font(.callout.monospaced())
+              Spacer()
+              Button("Export ZIP…") { export(skill) }.controlSize(.small)
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private func export(_ skill: Skill) {
+    let panel = NSSavePanel()
+    panel.nameFieldStringValue = "\(skill.name).zip"
+    panel.allowedContentTypes = [.zip]
+    guard panel.runModal() == .OK, let url = panel.url else { return }
+    do {
+      try SkillStore.shared.exportZIP(skill, to: url)
+      result = "Exported \(skill.name) to \(url.path). Upload it at claude.ai, Customize, Skills."
+    } catch {
+      result = "Could not export \(skill.name): \(error.localizedDescription)"
     }
   }
 
