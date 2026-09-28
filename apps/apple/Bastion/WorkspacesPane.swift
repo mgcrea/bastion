@@ -93,6 +93,19 @@ struct WorkspacesPane: View {
                   }
                 }))
           }
+          // An id saved on the workspace whose skill is gone or invalid still
+          // scopes nothing, but is listed so it can be cleared.
+          let valid = Set(SkillStore.shared.catalog.filter(\.isValid).map(\.id))
+          ForEach(workspace.skills.filter { !valid.contains($0) }, id: \.self) { id in
+            Toggle(
+              "Skill \(id) (unavailable)",
+              isOn: Binding(
+                get: { true },
+                set: { on in
+                  guard !on else { return }
+                  update(workspace) { $0.skills.removeAll { $0 == id } }
+                }))
+          }
 
           Button("Delete Workspace", role: .destructive) {
             perform { try store.remove(named: workspace.name) }

@@ -845,8 +845,10 @@ enum ClientWiring {
   /// developer exercising the path. Pressing _Configure_ is unaffected in
   /// either build: that one is somebody asking.
   nonisolated static var autoWires: Bool {
-    if let override = UserDefaults.standard.object(forKey: "autoWireClients") as? Bool {
-      return override
+    // Not `as? Bool`: a launch argument arrives as the string "YES", which
+    // that cast turns into nil. `bool(forKey:)` reads YES/NO/true/false/1/0.
+    if UserDefaults.standard.object(forKey: "autoWireClients") != nil {
+      return UserDefaults.standard.bool(forKey: "autoWireClients")
     }
     #if DEBUG
       return false

@@ -43,10 +43,20 @@ struct SkillsPane: View {
         }
         HStack {
           Button("Add Source…", action: pickSource)
-          Button("Rescan") { store.reconcile() }
+          Button("Rescan") {
+            // New clones under a workspace's parent folder first, as the
+            // Workspaces pane's Rescan finds them, so the reconcile sees them.
+            WorkspaceStore.shared.rescan()
+            store.reconcile()
+          }
         }
         if let error {
           Text(error).font(.caption).foregroundStyle(.red)
+        }
+        // A failure filed under a folder that has no section any more.
+        ForEach(orphanedFailures, id: \.self) { failure in
+          Text("\(failure.target) \(failure.name): \(failure.message)")
+            .font(.caption).foregroundStyle(.red)
         }
       } header: {
         Text("Sources")
@@ -61,6 +71,10 @@ struct SkillsPane: View {
       }
 
       ForEach(store.targets) { target in targetSection(target) }
+
+      // A repository folder only when it has something to say: a clean one
+      // is most of them, and twenty quiet sections would bury the rest.
+      ForEach(store.repositoryTargets.filter(hasNews)) { target in repositorySection(target) }
     }
     .formStyle(.grouped)
     .sheet(item: $preview) { preview in
@@ -184,39 +198,7 @@ struct SkillsPane: View {
           + "loaded into every session that reads this folder."
       )
       .font(.caption).foregroundStyle(.secondary)
-      if let refused = report.refused {
-        Text(refused).font(.caption).foregroundStyle(.orange)
-      }
-      ForEach(report.collisions, id: \.self) { name in
-        HStack {
-          Text("'\(name)' is taken by something Bastion did not create.")
-            .font(.caption).foregroundStyle(.orange)
-          Spacer()
-          // Shown in demo mode the same as in Release, even though linking is
-          // off there too: `overwrite` throws before it would touch anything,
-          // so the button is harmless, and a capture wants it to look real.
-          if SkillStore.reconciles || DemoSeed.isEnabled {
-            Button("Overwrite Anyway…") {
-              pendingOverwrite = PendingOverwrite(target: target.id, name: name)
-            }
-            .controlSize(.small)
-          }
-        }
-      }
-      if !report.unavailable.isEmpty {
-        Text(
-          "Left alone while their source is unavailable: "
-            + report.unavailable.joined(separator: ", ")
-        )
-        .font(.caption).foregroundStyle(.secondary)
-      }
-      if !report.shadowed.isEmpty {
-        Text("Lost this folder to an earlier source: " + report.shadowed.joined(separator: ", "))
-          .font(.caption).foregroundStyle(.secondary)
-      }
-      ForEach(store.failures.filter { $0.target == target.id }, id: \.self) { failure in
-        Text("\(failure.name): \(failure.message)").font(.caption).foregroundStyle(.red)
-      }
+      reportRows(target, report)
       if !others.isEmpty {
         DisclosureGroup("Not managed by Bastion (\(others.count))") {
           ForEach(others, id: \.self) { name in
@@ -226,6 +208,73 @@ struct SkillsPane: View {
       }
     } header: {
       Text(target.label)
+    }
+  }
+
+  private func repositorySection(_ target: SkillTarget) -> some View {
+    let report = store.plan.reports[target.id] ?? SkillLinks.TargetReport()
+    return Section {
+      Text((target.path as NSString).abbreviatingWithTildeInPath)
+        .font(.caption.monospaced()).textSelection(.enabled)
+      reportRows(target, report)
+      if !report.unadopted.isEmpty {
+        Text("Links Bastion did not make; left alone.")
+          .font(.caption).foregroundStyle(.secondary)
+        Text(report.unadopted.sorted().joined(separator: ", ")).font(.caption.monospaced())
+          .textSelection(.enabled)
+      }
+    } header: {
+      Text(target.label)
+    }
+  }
+
+  private func hasNews(_ target: SkillTarget) -> Bool {
+    let quiet = store.plan.reports[target.id]?.isQuiet ?? true
+    return !quiet || store.failures.contains { $0.target == target.id }
+  }
+
+  private var orphanedFailures: [SkillLinker.Failure] {
+    let shown = Set((store.targets + store.repositoryTargets).map(\.id))
+    return store.failures.filter { !shown.contains($0.target) }
+  }
+
+  /// What a global and a repository folder both report: a refusal,
+  /// collisions with their Overwrite Anyway, what is left alone, and what
+  /// failed.
+  @ViewBuilder
+  private func reportRows(_ target: SkillTarget, _ report: SkillLinks.TargetReport) -> some View {
+    if let refused = report.refused {
+      Text(refused).font(.caption).foregroundStyle(.orange)
+    }
+    ForEach(report.collisions, id: \.self) { name in
+      HStack {
+        Text("'\(name)' is taken by something Bastion did not create.")
+          .font(.caption).foregroundStyle(.orange)
+        Spacer()
+        // Shown in demo mode the same as in Release, even though linking is
+        // off there too: `overwrite` throws before it would touch anything,
+        // so the button is harmless, and a capture wants it to look real.
+        if SkillStore.reconciles || DemoSeed.isEnabled {
+          Button("Overwrite Anyway…") {
+            pendingOverwrite = PendingOverwrite(target: target.id, name: name)
+          }
+          .controlSize(.small)
+        }
+      }
+    }
+    if !report.unavailable.isEmpty {
+      Text(
+        "Left alone while their source is unavailable: "
+          + report.unavailable.joined(separator: ", ")
+      )
+      .font(.caption).foregroundStyle(.secondary)
+    }
+    if !report.shadowed.isEmpty {
+      Text("Lost this folder to an earlier source: " + report.shadowed.joined(separator: ", "))
+        .font(.caption).foregroundStyle(.secondary)
+    }
+    ForEach(store.failures.filter { $0.target == target.id }, id: \.self) { failure in
+      Text("\(failure.name): \(failure.message)").font(.caption).foregroundStyle(.red)
     }
   }
 
@@ -271,9 +320,17 @@ private struct SkillPreviewSheet: View {
           + "\(preview.choices.count) already linked somewhere keep their places"
           + (preview.scopes.isEmpty
             ? "."
-            : ", and \(preview.scopes.values.reduce(0) { $0 + $1.count }) join the workspace whose repository holds them.")
+            : ", and \(preview.scopes.values.reduce(0) { $0 + $1.count }) join a workspace whose repositories all link them already.")
       )
       .font(.callout).fixedSize(horizontal: false, vertical: true)
+      let unadopted = preview.plan.reports.values.reduce(0) { $0 + $1.unadopted.count }
+      if unadopted > 0 {
+        Text(
+          "\(unadopted) link\(unadopted == 1 ? "" : "s") in repositories Bastion did not make \(unadopted == 1 ? "is" : "are") left alone, and listed under the repository's folder."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      }
       if preview.plan.actions.isEmpty {
         Text("Nothing on disk changes.").font(.callout).foregroundStyle(.secondary)
       } else {

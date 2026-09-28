@@ -190,7 +190,9 @@ enum BuiltinTools {
         + "why not, the skills folders it is linked into, and the workspaces it is scoped to. "
         + "Also lists the folders skills can be linked into, with their ids. 'linking' says "
         + "whether this build actually links skills into real folders: when false, edits are "
-        + "saved but nothing on disk changes."),
+        + "saved but nothing on disk changes. 'repositories' lists each repository skills "
+        + "folder in view, with what it leaves alone: collisions, links Bastion did not make "
+        + "('unadopted'), links into an unavailable source, shadowed skills, and failures."),
 
     Declaration(
       "list_skill_sources", title: "List skill sources",
@@ -446,9 +448,14 @@ enum BuiltinTools {
 
     Declaration(
       "upsert_skill_source", title: "Add a skill source",
-      "Add a folder of skills, or one skill folder, as a source. Skills already linked from it "
-        + "keep their places; nothing new is linked until update_skill says so. Adding a folder "
-        + "that is already a source changes nothing.",
+      "Add a folder of skills, or one skill folder, as a source. A skill already linked from it "
+        + "into a global skills folder keeps that place. One linked only in repositories is "
+        + "scoped to a workspace only when every repository that workspace reaches already "
+        + "links it (the smallest such workspace), and then gets its missing .agents/skills "
+        + "half. Links in repositories Bastion did not make are left alone and reported, never "
+        + "removed. Nothing else is linked until update_skill or upsert_workspace says so. "
+        + "Adding a folder that is already a source changes nothing; one inside a source, or "
+        + "containing one, is refused.",
       properties: ["path": schema("string", "Absolute path, or a path under ~.")],
       required: ["path"], mutates: true),
 
@@ -942,11 +949,14 @@ enum BuiltinTools {
     // not clear them by omission.
     let saved = WorkspaceStore.shared.workspaces.first { $0.name == name }
     var skills = saved?.skills ?? []
-    if let given = arguments["skills"] {
+    // null is absent, as omitting it is.
+    if let given = arguments["skills"], !(given is NSNull) {
       guard let list = given as? [String] else {
         throw ToolError.badArgument(name: "skills", expected: "an array of skill ids")
       }
-      let known = Set(SkillStore.shared.catalog.map(\.id))
+      // An id already saved here is accepted even when its skill is gone, so
+      // a caller can send back the list it read without failing on it.
+      let known = Set(SkillStore.shared.catalog.map(\.id)).union(saved?.skills ?? [])
       let unknown = list.filter { !known.contains($0) }
       guard unknown.isEmpty else {
         throw ToolError.badArgument(
@@ -1008,7 +1018,26 @@ enum BuiltinTools {
       if let refused = report.refused { row["refused"] = refused }
       return row
     }
-    return ["skills": skills, "targets": targets, "linking": SkillStore.reconciles]
+    let repositories = store.repositoryTargets.map { target -> [String: Any] in
+      let report = store.plan.reports[target.id] ?? SkillLinks.TargetReport()
+      var row: [String: Any] = ["id": target.id, "label": target.label, "path": target.path]
+      if !report.collisions.isEmpty { row["collisions"] = report.collisions }
+      if !report.unadopted.isEmpty { row["unadopted"] = report.unadopted.sorted() }
+      if !report.unavailable.isEmpty { row["unavailable"] = report.unavailable }
+      if !report.shadowed.isEmpty { row["shadowed"] = report.shadowed }
+      if let refused = report.refused { row["refused"] = refused }
+      let failures = store.failures.filter { $0.target == target.id }
+      if !failures.isEmpty { row["failures"] = failures.map(Self.failureRow) }
+      return row
+    }
+    return [
+      "skills": skills, "targets": targets, "repositories": repositories,
+      "linking": SkillStore.reconciles,
+    ]
+  }
+
+  private static func failureRow(_ failure: SkillLinker.Failure) -> [String: Any] {
+    ["target": failure.target, "name": failure.name, "message": failure.message]
   }
 
   private static func listSkillSources() -> Any {
@@ -1053,10 +1082,11 @@ enum BuiltinTools {
       "name": preview.source.name,
       "kind": preview.source.kind.rawValue,
       "skills": preview.skills.map(\.id),
-      "applied": preview.plan.actions.map(\.summary),
+      "planned": preview.plan.actions.map(\.summary),
       "collisions": preview.plan.reports.filter { !$0.value.collisions.isEmpty }
         .mapValues(\.collisions),
     ]
+    if !store.failures.isEmpty { result["failures"] = store.failures.map(Self.failureRow) }
     if !SkillStore.reconciles {
       result["note"] =
         "Linking is off in this build; the change is saved but nothing on disk changed."

@@ -15,11 +15,16 @@ are taken from this file, which is the curated summary.
   (Codex, Cursor, VS Code Copilot, Gemini CLI and others) and every Claude Code config folder, or,
   per workspace, into each repository's `.claude/skills` and `.agents/skills`. Bastion only ever
   creates symlinks and never writes into a source; anything it did not create is left alone and
-  shown, and broken links into a source are removed. Repository links are kept out of git through
-  `.git/info/exclude`. A description over the Agent Skills standard's 1,024 characters but within
-  Claude Code's 1,536 is still linked, with a warning that clients reading `~/.agents/skills` may
-  skip it. Claude Desktop's pane lists the account skills synced to this Mac and exports a ZIP for
-  any that are missing. Five new tools on Bastion's own server manage the same.
+  shown, a repository link another tool made into a source included, and broken links it owns are
+  removed. Repository links are kept out of git through `.git/info/exclude`. A description over the
+  Agent Skills standard's 1,024 characters but within Claude Code's 1,536 is still linked, with a
+  warning that clients reading `~/.agents/skills` may skip it. Claude Desktop's pane lists the
+  account skills synced to this Mac and exports a ZIP for any that are missing. Five new tools on
+  Bastion's own server manage the same.
+
+### Fixed
+
+- `-autoWireClients YES` now turns automatic wiring back on in a Debug build; it was ignored.
 
 ## [1.24.0] - 2026-09-26
 

@@ -336,6 +336,36 @@ nonisolated enum Changelog {
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  static let unreleased: Release? = nil
+  // swift-format-ignore
+  private static let unreleasedRelease: Release = Release(
+    version: "Unreleased",
+    date: "",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Skills.",
+            body: [
+              "Settings → Skills links Agent Skills from folders you choose into `~/.agents/skills` (Codex, Cursor, VS Code Copilot, Gemini CLI and others) and every Claude Code config folder, or, per workspace, into each repository's `.claude/skills` and `.agents/skills`. Bastion only ever creates symlinks and never writes into a source; anything it did not create is left alone and shown, a repository link another tool made into a source included, and broken links it owns are removed. Repository links are kept out of git through `.git/info/exclude`. A description over the Agent Skills standard's 1,024 characters but within Claude Code's 1,536 is still linked, with a warning that clients reading `~/.agents/skills` may skip it. Claude Desktop's pane lists the account skills synced to this Mac and exports a ZIP for any that are missing. Five new tools on Bastion's own server manage the same.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 1,
+            headline: nil,
+            body: [
+              "`-autoWireClients YES` now turns automatic wiring back on in a Debug build; it was ignored.",
+            ]),
+        ]),
+    ])
+
+  // swift-format-ignore
+  static let unreleased: Release? = unreleasedRelease
   // </generated:changelog>
 }
