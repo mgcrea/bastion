@@ -108,11 +108,11 @@ nonisolated enum SkillLinker {
       throw LinkError.rename(path, reason)
     }
 
-    // Check what we swapped out. RENAME_SWAP requires both paths to exist, so lstat succeeds.
+    // Check what we swapped out. If lstat fails (very rare), the previous entry is at temporary
+    // and our new link is at path. Report where the previous entry went without trying to move it.
     var info = stat()
     guard lstat(temporary, &info) == 0 else {
-      let reason = String(cString: strerror(errno))
-      throw LinkError.rename(path, reason)
+      throw LinkError.leftAside(original: path, now: temporary)
     }
 
     if (info.st_mode & S_IFMT) == S_IFLNK {
@@ -129,6 +129,9 @@ nonisolated enum SkillLinker {
     guard renamex_np(temporary, path, UInt32(RENAME_SWAP)) == 0 else {
       // The swap-back failed. Leave the foreign entry exactly where it is (at temporary)
       // and report where it went. Do NOT touch temporary; we never delete what isn't ours.
+      // This branch has no deterministic test: nothing can force renamex_np to fail after
+      // it succeeded before, except catastrophic file system issues. It is safe because it
+      // touches nothing and reports where the foreign entry is for recovery.
       throw LinkError.leftAside(original: path, now: temporary)
     }
     // Swap-back succeeded: path is restored to foreign, temporary holds our new link.
