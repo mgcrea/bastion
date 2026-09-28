@@ -1,6 +1,6 @@
 # Skills: one set of Agent Skills, linked into every client
 
-Status: design, 2026-09-28, awaiting review.
+Status: approved design, 2026-09-28. Implementation plan: docs/superpowers/plans/2026-09-28-skills.md.
 
 ## Problem
 
@@ -82,9 +82,13 @@ Consequences:
 
 A skill is **valid** when its `SKILL.md` frontmatter passes the agentskills.io
 rules: `name` of 1–64 `[a-z0-9-]` with no leading, trailing or doubled hyphen,
-equal to the folder name; `description` of 1–1024 characters. `synced` and
-`anthropic-skills` are reserved by Claude Code and invalid. Invalid skills are
-listed with their errors and never linked.
+equal to the folder name; `description` of 1–1536 characters, Claude Code's own
+ceiling rather than the Agent Skills standard's 1024. Between 1025 and 1536
+characters the skill is valid and linked, but listed with a warning that
+clients reading `~/.agents/skills` may skip it; seven working skills on the
+reference machine fall in that range. `synced` and `anthropic-skills` are
+reserved by Claude Code and invalid. Invalid skills are listed with their
+errors and never linked.
 
 ### Targets
 
@@ -92,11 +96,14 @@ Discovered, never entered:
 
 - **Shared**: `~/.agents/skills`.
 - **One per Claude Code config folder**: `<dir>/skills` for every Claude Code
-  row `ClientProfiles` already discovers (`~/.claude`, `~/.claude-skitrust`, …).
+  row `ClientProfiles` already discovers (`~/.claude`, `~/.claude-skitrust`, …),
+  each contributing a target only if `<dir>` exists.
 
-Targets are deduplicated by resolved path. On the reference machine
-`~/.claude-skitrust/skills` resolves to `~/.claude/skills` and they are one
-target, shown with both names.
+Targets are deduplicated by resolved path, global and repository targets
+together. On the reference machine `~/.claude-skitrust/skills` resolves to
+`~/.claude/skills` and they are one target, shown with both names; a
+repository whose `.claude/skills` resolves to a global Claude Code folder
+shares that target too.
 
 ### Selection
 
@@ -143,9 +150,12 @@ workspace. They never meet in one folder, so none shadows another.
 
 ### Ownership
 
-**A symlink is Bastion's when it points into a source** (current or retired),
-compared after resolving the source path. There is no ledger of links, for the
-same reason Workspaces has none: `isOurs` is the ledger.
+**A symlink is Bastion's when it points into one of a source's skill slots**
+(current or retired) — a direct child of a `collection` source, or the root of
+a `skill` source — and lands on a skill folder or on nothing, compared after
+resolving the source path. A link to a non-skill folder inside a source, or
+one deeper than a slot, is foreign. There is no ledger of links, for the same
+reason Workspaces has none: `isOurs` is the ledger.
 
 - Everything else in a target is **foreign** and never touched: real
   directories, links pointing elsewhere, `.trash`, `synced`, `*-workspace`
@@ -187,8 +197,14 @@ the source folder itself is present.
 
 ### Apply
 
-- Links are absolute. Each is created under a temporary name in the target and
-  renamed over the final name, so no reader sees a half-made entry.
+- Links are absolute.
+- A new link is created with `symlink(2)` directly at its name, which fails
+  rather than replaces if something appeared there since the plan.
+- A relink swaps a temporary link in with `renamex_np(RENAME_SWAP)`, and an
+  unlink moves the entry aside with `RENAME_EXCL`.
+- Both remove only what they verified is a symlink.
+- Anything else is put back, or, if that fails, left under a hidden name that
+  the error names.
 - `~/.agents/skills` is created if missing. A Claude Code target is created only
   if its config folder exists. Repository targets are created on demand.
 - **Repository targets are excluded from git.** For every link written in a
@@ -205,8 +221,11 @@ the source folder itself is present.
 
 At the start of `ClientWiring.rewire`, before its `autoWires` gate (launch
 through `migrateKeyScheme`, every profile, server and workspace edit), after
-every skill or source edit, and on Rescan. With no source configured the plan is
-empty, so the feature is dormant until somebody adds one. A demo or capture run
+every skill or source edit, and on Rescan. A Debug build does not apply links
+unless launched with `-reconcileSkills YES`, the way `-autoWireClients` gates
+MCP config writes, because it would otherwise share the real skills folders
+with the installed Release app. With no source configured the plan is empty,
+so the feature is dormant until somebody adds one. A demo or capture run
 never reconciles. No file watching, as for Workspaces: edits to a
 skill need no reconcile because the link is live, and a new skill starts off
 anyway.

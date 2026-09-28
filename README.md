@@ -295,6 +295,7 @@ Built and verified:
 | **OAuth 2.1**           | discovery, dynamic registration, PKCE and refresh — one consent, every client         |
 | **Bastion's server**    | Bastion as one of its own servers, so an agent can manage it — off by default         |
 | **Keychain**            | per-profile credentials, per-client tokens                                            |
+| **Skills**              | one set of Agent Skills linked into every client's folder, globally or per workspace  |
 | **Activity window**     | what is running, who is attached, and every tool call with its arguments, live        |
 | **`bastion-bridge`**    | stdio hosts reach the gateway over HTTP; starts Bastion if it is not up               |
 | **Migration**           | four `.mcp.json` credential sets moved into the Keychain, configs repointed           |
@@ -305,6 +306,7 @@ Built and verified:
 | **`make unit`**         | dialect, HTTP parser, streamed replies, call capture and the audit chain — 513 checks |
 | **`make audit-check`**  | an export signature through a round trip, key loss included — 18 checks               |
 | **`make remote-check`** | where a remote server may live, the SSE reader, and the OAuth client — 100 checks     |
+| **`make skills-check`** | skill validation, the link plan, the exclude block and the applier — 126 checks       |
 
 Bastion is what the 2026-07-28 spec calls a **dual-era server**. A modern client declares its
 protocol version, identity and capabilities in each request's `_meta` and needs no handshake at
