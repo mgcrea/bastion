@@ -13,22 +13,46 @@ final class SkillStore {
 
   private(set) var sources: [SkillSource] = []
   private(set) var choices: [String: Set<String>] = [:]
-  private(set) var linkedProjects: Set<String> = []
+  /// Repository target id → the link names Bastion made or adopted there.
+  /// Only these are Bastion's to relink or remove in a repository, and its
+  /// keys are also the repositories to look in again after a folder leaves a
+  /// workspace. See `SkillLinks.plan`.
+  private(set) var repositoryLinks: [String: Set<String>] = [:]
 
   private(set) var catalog: [Skill] = []
   private(set) var available: Set<String> = []
   /// Global targets only. Repository targets are built per reconcile from the
-  /// workspaces and `linkedProjects`.
+  /// workspaces and `repositoryLinks`.
   private(set) var targets: [SkillTarget] = []
+  /// The repository targets of the current plan, for the pane's sections.
+  private(set) var repositoryTargets: [SkillTarget] = []
   private(set) var desired = SkillLinks.Desired()
   private(set) var plan = SkillLinks.Plan()
   private(set) var failures: [SkillLinker.Failure] = []
+  /// What claude.ai has synced down into Claude Code's default folder. The
+  /// only local view of the skills Claude Desktop's chat uses. Cached so a
+  /// view body never reads the disk.
+  private(set) var accountSkills: Set<String> = []
 
   /// What `skills.json` holds.
   struct Selection: Codable, Equatable {
     struct Choice: Codable, Equatable { var targets: [String] }
     var choices: [String: Choice] = [:]
-    var linkedProjects: [String] = []
+    var repositoryLinks: [String: [String]] = [:]
+
+    init(choices: [String: Choice] = [:], repositoryLinks: [String: [String]] = [:]) {
+      self.choices = choices
+      self.repositoryLinks = repositoryLinks
+    }
+
+    private enum CodingKeys: String, CodingKey { case choices, repositoryLinks }
+
+    init(from decoder: Decoder) throws {
+      let container = try decoder.container(keyedBy: CodingKeys.self)
+      choices = try container.decodeIfPresent([String: Choice].self, forKey: .choices) ?? [:]
+      repositoryLinks =
+        try container.decodeIfPresent([String: [String]].self, forKey: .repositoryLinks) ?? [:]
+    }
   }
 
   struct Preview: Identifiable {
@@ -44,6 +68,7 @@ final class SkillStore {
     case notAFolder(String)
     case overlapsTarget(String, String)
     case alreadyASource(String)
+    case overlapsSource(String, String)
     case unknownSource(String)
     case unknownSkill(String)
     case unknownTarget(String)
@@ -56,6 +81,8 @@ final class SkillStore {
       case .overlapsTarget(let path, let target):
         "\(path) overlaps \(target), where skills are linked. A source has to live elsewhere."
       case .alreadyASource(let name): "That folder is already the source '\(name)'."
+      case .overlapsSource(let path, let name):
+        "\(path) is inside the source '\(name)', or contains it. Add one or the other."
       case .unknownSource(let name): "There is no source named '\(name)'."
       case .unknownSkill(let id): "There is no skill '\(id)'."
       case .unknownTarget(let id): "There is no skills folder '\(id)'."
@@ -84,6 +111,7 @@ final class SkillStore {
       available = Set(sources.map(\.name))
       targets = DemoSeed.skillTargets
       choices = DemoSeed.skillChoices
+      accountSkills = DemoSeed.accountSkills
       desired = SkillLinks.desired(
         skills: catalog, choices: choices, scopes: [:], resolved: { _ in [] }, targets: targets)
       return
@@ -97,7 +125,7 @@ final class SkillStore {
         try? JSONDecoder().decode(Selection.self, from: $0)
       } ?? Selection()
     choices = selection.choices.mapValues { Set($0.targets) }
-    linkedProjects = Set(selection.linkedProjects)
+    repositoryLinks = selection.repositoryLinks.mapValues(Set.init).filter { !$0.value.isEmpty }
     refresh()
   }
 
@@ -108,7 +136,7 @@ final class SkillStore {
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     let selection = Selection(
       choices: choices.mapValues { .init(targets: $0.sorted()) },
-      linkedProjects: linkedProjects.sorted())
+      repositoryLinks: repositoryLinks.mapValues { $0.sorted() })
     for (data, url) in [
       (try encoder.encode(sources), sourcesURL), (try encoder.encode(selection), skillsURL),
     ] {
@@ -127,9 +155,14 @@ final class SkillStore {
     catalog = found.skills
     available = found.available
     targets = SkillLinks.globalTargets(home: home, claude: claudeDirectories, fs: fs)
-    (desired, plan) = planned(
+    let all: [SkillTarget]
+    (all, desired, plan) = planned(
       sources: sources, catalog: catalog, available: available, choices: choices,
       scopes: WorkspaceStore.shared.skillScopes)
+    repositoryTargets = all.filter { $0.projectKey != nil }
+    let synced = home + "/.claude/skills/synced"
+    accountSkills = Set(
+      fs.children(synced).filter { !$0.hasPrefix(".") && fs.isDirectory(synced + "/" + $0) })
   }
 
   func isOn(_ skillID: String, _ targetID: String) -> Bool {
@@ -142,15 +175,6 @@ final class SkillStore {
   /// into every session that reads the folder.
   func descriptionCharacters(in targetID: String) -> Int {
     (desired.links[targetID] ?? [:]).values.reduce(0) { $0 + $1.description.count }
-  }
-
-  /// What claude.ai has synced down into Claude Code's default folder. The only
-  /// local view of the skills Claude Desktop's chat uses.
-  var accountSkillNames: Set<String> {
-    if DemoSeed.isEnabled { return DemoSeed.accountSkills }
-    let synced = home + "/.claude/skills/synced"
-    return Set(
-      fs.children(synced).filter { !$0.hasPrefix(".") && fs.isDirectory(synced + "/" + $0) })
   }
 
   // MARK: - Editing
@@ -197,10 +221,18 @@ final class SkillStore {
     if let target = SkillLinks.overlap(path: expanded, targets: allExistingTargets, fs: fs) {
       throw StoreError.overlapsTarget(expanded, target.path)
     }
-    if let existing = sources.first(where: {
-      !$0.retired && fs.canonical($0.path) == fs.canonical(expanded)
-    }) {
+    let candidate = fs.canonical(expanded)
+    if let existing = sources.first(where: { !$0.retired && fs.canonical($0.path) == candidate }) {
       throw StoreError.alreadyASource(existing.name)
+    }
+    // One inside another would claim the same links twice over, and a link
+    // into the inner one is a skill slot of only one of them.
+    if let existing = sources.first(where: { source in
+      let root = fs.canonical(source.path)
+      return !source.retired
+        && (SkillLinks.inside(candidate, root) || SkillLinks.inside(root, candidate))
+    }) {
+      throw StoreError.overlapsSource(expanded, existing.name)
     }
     let source = SkillSource(
       name: SkillCatalog.defaultSourceName(for: expanded, taken: Set(sources.map(\.name))),
@@ -211,8 +243,7 @@ final class SkillStore {
     // link. Passing repository targets here would turn a link found only in
     // a repository into a stored `project:…` choice instead of a workspace
     // scope, which is never a target `setTargets` accepts — the skill would
-    // stay unscoped, its repository would never leave `linkedProjects`, and
-    // every toggle on it would throw `unknownTarget`.
+    // stay unscoped, and every toggle on it would throw `unknownTarget`.
     let seeded = SkillLinks.seed(
       skills: skills, targets: targets, workspaces: workspaces.workspaces.map(\.name),
       resolved: { name in
@@ -225,7 +256,7 @@ final class SkillStore {
     }
     let nextSources = sources + [source]
     let found = SkillCatalog.catalog(nextSources, fs: fs)
-    let (_, plan) = planned(
+    let (_, _, plan) = planned(
       sources: nextSources, catalog: found.skills, available: found.available,
       choices: choices.merging(seeded.choices) { $1 }, scopes: nextScopes)
     return Preview(
@@ -271,6 +302,8 @@ final class SkillStore {
     // reach `SkillLinker.trash` below, even though `plan` (refreshed by
     // `reconcile`'s early-return path) can still show a real collision.
     guard Self.reconciles else { throw StoreError.linkingOff }
+    // `allTargets` holds the repository targets as well as the global ones,
+    // so a collision in a repository's `.claude/skills` is found here too.
     guard plan.reports[targetID]?.collisions.contains(name) == true,
       let target = allTargets().first(where: { $0.id == targetID })
     else { throw StoreError.notACollision(name) }
@@ -308,8 +341,10 @@ final class SkillStore {
   /// Release on, Debug off, `-reconcileSkills YES` to turn it back on for a
   /// developer exercising the path deliberately.
   nonisolated static var reconciles: Bool {
-    if let override = UserDefaults.standard.object(forKey: "reconcileSkills") as? Bool {
-      return override
+    // Not `as? Bool`: a launch argument arrives as the string "YES", which
+    // that cast turns into nil. `bool(forKey:)` reads YES/NO/true/false/1/0.
+    if UserDefaults.standard.object(forKey: "reconcileSkills") != nil {
+      return UserDefaults.standard.bool(forKey: "reconcileSkills")
     }
     #if DEBUG
       return false
@@ -342,17 +377,20 @@ final class SkillStore {
       hostLog("skills", .error, "\(failure.target) \(failure.name): \(failure.message)")
     }
 
-    var stillLinked: Set<String> = []
+    repositoryLinks = SkillLinks.nextLedger(
+      targets: all, desired: desired, ledger: repositoryLinks, sources: sources, fs: fs)
     for key in Set(all.compactMap(\.projectKey)) {
-      let entries = SkillLinks.projectExcludeEntries(key: key, sources: sources, fs: fs)
-      if !entries.isEmpty { stillLinked.insert(key) }
+      let entries = SkillLinks.projectExcludeEntries(key: key, ledger: repositoryLinks)
       if let failure = SkillLinker.writeExclude(key: key, entries: entries, fs: fs) {
-        failures.append(failure)
+        // Filed under the repository's first target, so its section in the
+        // pane shows it; the bare key matches no section.
+        let target = all.first { $0.projectKey == key }?.id ?? failure.target
+        failures.append(.init(target: target, name: failure.name, message: failure.message))
         hostLog("skills", .error, "\(key): \(failure.message)")
       }
     }
-    linkedProjects = stillLinked
-    let retiredInUse = SkillLinks.retiredStillLinked(targets: all, sources: sources, fs: fs)
+    let retiredInUse = SkillLinks.retiredStillLinked(
+      targets: all, sources: sources, ledger: repositoryLinks, fs: fs)
     sources.removeAll { $0.retired && !retiredInUse.contains($0.name) }
     do { try save() } catch { hostLog("skills", .error, "could not save: \(error)") }
     // What is left after applying: collisions, foreign entries, refusals.
@@ -381,11 +419,11 @@ final class SkillStore {
   }
 
   /// Every repository this reconcile looks in: those a workspace with skills
-  /// resolves to now, and those Bastion linked into before. The second half is
-  /// what cleans up after a folder leaves a workspace.
+  /// resolves to now, and those holding a link in the ledger. The second half
+  /// is what cleans up after a folder leaves a workspace.
   private func projectKeys(scopes: [String: [String]]) -> Set<String> {
     let store = WorkspaceStore.shared
-    var keys = linkedProjects
+    var keys = Set(repositoryLinks.keys.compactMap(SkillLinks.projectKey(fromTargetID:)))
     for workspace in store.workspaces where scopes[workspace.name]?.isEmpty == false {
       keys.formUnion(store.resolvedKeys(workspace))
     }
@@ -403,7 +441,7 @@ final class SkillStore {
   private func planned(
     sources: [SkillSource], catalog: [Skill], available: Set<String>,
     choices: [String: Set<String>], scopes: [String: [String]]
-  ) -> (SkillLinks.Desired, SkillLinks.Plan) {
+  ) -> ([SkillTarget], SkillLinks.Desired, SkillLinks.Plan) {
     let store = WorkspaceStore.shared
     let all = SkillLinks.combined(
       global: targets,
@@ -415,7 +453,8 @@ final class SkillStore {
       },
       targets: all)
     let plan = SkillLinks.plan(
-      targets: all, desired: desired, sources: sources, available: available, fs: fs)
-    return (desired, plan)
+      targets: all, desired: desired, sources: sources, available: available,
+      ledger: repositoryLinks, fs: fs)
+    return (all, desired, plan)
   }
 }

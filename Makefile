@@ -600,12 +600,16 @@ skills-check: ## Assert skill discovery, the link plan and the git exclude block
 		scripts/skills-check.swift
 	@apps/apple/.build/skills-check
 
-# Read-only. Plans against this Mac's real skills folders with one real source,
-# seeded the way adding it in the app seeds it, and asserts the plan would
-# change nothing but links that are already broken.
+# Read-only. Plans against this Mac's real skills folders and real workspaces,
+# with SKILL_SOURCE and every folder under SKILL_PROJECTS as sources, seeded the
+# way adding them in the app seeds them, and asserts the plan would change
+# nothing but links that are already broken and the missing .agents/skills half
+# of a repository link. A missing workspaces file is skipped with a message.
 SKILL_SOURCE ?= $(HOME)/Projects/claude-skills/global
-skills-check-real: skills-check ## Plan against the real skills folders with one source (read-only)
-	@apps/apple/.build/skills-check --real "$(HOME)" "$(SKILL_SOURCE)"
+SKILL_PROJECTS ?= $(HOME)/Projects/claude-skills/projects
+SKILL_WORKSPACES ?= $(HOME)/Library/Application Support/io.mgcrea.bastion/workspaces.json
+skills-check-real: skills-check ## Plan against the real skills folders and workspaces (read-only)
+	@apps/apple/.build/skills-check --real "$(HOME)" "$(SKILL_SOURCE)" "$(SKILL_WORKSPACES)" "$(SKILL_PROJECTS)"
 
 audit: app remote-check ## Assert the listener is loopback-only and refuses foreign Origin/Host
 	@scripts/audit-listener.sh

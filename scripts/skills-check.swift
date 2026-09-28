@@ -25,8 +25,11 @@ struct SkillsCheck {
 
   static func main() {
     let arguments = Array(CommandLine.arguments.dropFirst())
-    if arguments.first == "--real", arguments.count == 3 {
-      realPlanChangesOnlyBrokenLinks(home: arguments[1], source: arguments[2])
+    if arguments.first == "--real", (3...5).contains(arguments.count) {
+      realPlanChangesOnlyBrokenLinks(
+        home: arguments[1], source: arguments[2],
+        workspacesFile: arguments.count > 3 ? arguments[3] : nil,
+        projects: arguments.count > 4 ? arguments[4] : nil)
       print("\n\(checks - failures)/\(checks) passed")
       exit(failures > 0 ? 1 : 0)
     }
@@ -47,6 +50,9 @@ struct SkillsCheck {
     overlappingTargetIsRefused()
     seedingAdoptsExistingLinks()
     ledgerHelpers()
+    exactCoverSeeding()
+    repositoryLedger()
+    nestedSourcesClaimBySlot()
     parentSourceClaimsNothingBelowItsSlots()
     globalAndProjectTargetsMergeAcrossTheHomeRepository()
     canonicalOfAMissingPath()
@@ -354,10 +360,12 @@ struct SkillsCheck {
   /// Catalog, targets, desired links and plan in one call, as the store does.
   static func planned(
     _ fs: FakeFS, sources: [SkillSource] = [global], choices: [String: Set<String>],
-    scopes: [String: [String]] = [:], resolved: [String: Set<String>] = [:]
+    scopes: [String: [String]] = [:], resolved: [String: Set<String>] = [:],
+    ledger: [String: Set<String>] = [:]
   ) -> (targets: [SkillTarget], plan: SkillLinks.Plan) {
     let catalog = SkillCatalog.catalog(sources, fs: fs)
     let keys = scopes.keys.reduce(into: Set<String>()) { $0.formUnion(resolved[$1] ?? []) }
+      .union(ledger.keys.compactMap(SkillLinks.projectKey(fromTargetID:)))
     let targets = SkillLinks.combined(
       global: SkillLinks.globalTargets(home: home, claude: claudeRows, fs: fs),
       project: SkillLinks.projectTargets(keys: keys, fs: fs), fs: fs)
@@ -367,7 +375,8 @@ struct SkillsCheck {
     return (
       targets,
       SkillLinks.plan(
-        targets: targets, desired: desired, sources: sources, available: catalog.available, fs: fs)
+        targets: targets, desired: desired, sources: sources, available: catalog.available,
+        ledger: ledger, fs: fs)
     )
   }
 
@@ -416,10 +425,18 @@ struct SkillsCheck {
     moved.link(home + "/.claude/skills/alpha", to: "/Users/me/Projects/claude-skills/global/beta")
     let (_, relinked) = planned(moved, choices: ["global:alpha": ["claude-code"]])
     check(
-      "a link of ours pointing at the wrong skill is relinked",
-      relinked.actions == [
-        .relink(target: "claude-code", name: "alpha", destination: globalPath + "/alpha")
-      ])
+      "a link named alpha pointing at the skill beta is not ours: no action",
+      relinked.actions.isEmpty)
+    check(
+      "and alpha is reported as a collision",
+      relinked.reports["claude-code"]?.collisions == ["alpha"])
+
+    var alias = machine()
+    alias.link(home + "/.claude/skills/my-alias", to: globalPath + "/alpha")
+    let (_, aliased) = planned(alias, choices: [:])
+    check("a link under another name than its folder is never unlinked", aliased.actions.isEmpty)
+    check(
+      "and is foreign", aliased.reports["claude-code"]?.foreign == ["my-alias"])
 
     var stale = machine()
     stale.link(home + "/.claude/skills/alpha", to: globalPath + "/alpha")
@@ -531,6 +548,18 @@ struct SkillsCheck {
       "and is linked where it has no rival",
       plan.actions.contains(
         .link(target: "shared", name: "alpha", destination: "/Users/me/second/alpha")))
+
+    var reordered = machine()
+    reordered.skill("/Users/me/second/alpha")
+    reordered.link(home + "/.claude/skills/alpha", to: "/Users/me/second/alpha")
+    let (_, precedence) = planned(
+      reordered, sources: [global, second],
+      choices: ["global:alpha": ["claude-code"], "second:alpha": ["claude-code"]])
+    check(
+      "a link of ours to a skill that lost precedence is relinked to the winner",
+      precedence.actions == [
+        .relink(target: "claude-code", name: "alpha", destination: globalPath + "/alpha")
+      ])
   }
 
   static func scopedSkillsLeaveGlobalTargets() {
@@ -576,7 +605,8 @@ struct SkillsCheck {
       skills: catalog.skills, choices: ["global:alpha": ["claude-code@work"]], scopes: [:],
       resolved: { _ in [] }, targets: targets)
     let plan = SkillLinks.plan(
-      targets: targets, desired: desired, sources: [global], available: catalog.available, fs: fs)
+      targets: targets, desired: desired, sources: [global], available: catalog.available,
+      ledger: [:], fs: fs)
     check("nothing is ever written inside a source", plan.actions.isEmpty)
     check("and the target says why", plan.reports["claude-code@work"]?.refused != nil)
 
@@ -603,8 +633,10 @@ struct SkillsCheck {
       "a skill linked both ways stays global, so seeding never unlinks it",
       seeded.scopes["app"]?.contains("global:alpha") != true)
 
+    // Bastion made the repository's alpha link earlier, so it is in the ledger.
     let (_, plan) = planned(
-      fs, choices: seeded.choices, scopes: ["app": ["global:beta"]], resolved: ["app": ["/r/app"]])
+      fs, choices: seeded.choices, scopes: ["app": ["global:beta"]], resolved: ["app": ["/r/app"]],
+      ledger: [SkillLinks.projectTargetID("/r/app", .claude): ["alpha"]])
     check(
       "the seeded plan only adds the missing .agents half and drops the doubled global link",
       Set(plan.actions) == [
@@ -613,6 +645,17 @@ struct SkillsCheck {
           destination: globalPath + "/beta"),
         .unlink(target: SkillLinks.projectTargetID("/r/app", .claude), name: "alpha"),
       ])
+
+    let (_, fresh) = planned(
+      fs, choices: seeded.choices, scopes: ["app": ["global:beta"]], resolved: ["app": ["/r/app"]])
+    check(
+      "with nothing in the ledger, the doubled repository link is left alone and reported",
+      Set(fresh.actions) == [
+        .link(
+          target: SkillLinks.projectTargetID("/r/app", .agents), name: "beta",
+          destination: globalPath + "/beta")
+      ]
+        && fresh.reports[SkillLinks.projectTargetID("/r/app", .claude)]?.unadopted == ["alpha"])
   }
 
   static func ledgerHelpers() {
@@ -625,12 +668,18 @@ struct SkillsCheck {
     fs.link(home + "/.claude/skills/legacy", to: "/Users/me/old/legacy")
     check(
       "exclude entries are the links of ours, anchored at the root",
-      SkillLinks.projectExcludeEntries(key: "/r/app", sources: [global], fs: fs)
+      SkillLinks.projectExcludeEntries(
+        key: "/r/app",
+        ledger: [
+          SkillLinks.projectTargetID("/r/app", .claude): ["alpha"],
+          SkillLinks.projectTargetID("/r/app", .agents): ["alpha"],
+        ])
         == ["/.claude/skills/alpha", "/.agents/skills/alpha"])
     let targets = SkillLinks.globalTargets(home: home, claude: claudeRows, fs: fs)
     check(
       "a retired source with a link left is still linked",
-      SkillLinks.retiredStillLinked(targets: targets, sources: [global, old], fs: fs) == ["old"])
+      SkillLinks.retiredStillLinked(targets: targets, sources: [global, old], ledger: [:], fs: fs)
+        == ["old"])
     check(
       "a retired source re-added under a new name loses to the active one",
       SkillLinks.owner(
@@ -639,6 +688,192 @@ struct SkillsCheck {
           SkillSource(name: "was", path: globalPath, kind: .collection, retired: true), global,
         ],
         fs: fs)?.name == "global")
+  }
+
+  /// The final review's scenario: a parent workspace over three
+  /// repositories, a one-repository workspace for each, and three sources
+  /// each holding a `cut-a-release` linked into its own repository.
+  static func exactCoverSeeding() {
+    print("exact-cover seeding")
+    var fs = machine()
+    let sources = ["a", "b", "c"].map {
+      SkillSource(name: "p\($0)", path: "/s/p\($0)", kind: .collection)
+    }
+    for letter in ["a", "b", "c"] {
+      fs.skill("/s/p\(letter)/cut-a-release")
+      fs.dir("/r/\(letter)/.git")
+      fs.link("/r/\(letter)/.claude/skills/cut-a-release", to: "/s/p\(letter)/cut-a-release")
+    }
+    let resolved: [String: Set<String>] = [
+      "apps": ["/r/a", "/r/b", "/r/c"], "a": ["/r/a"], "b": ["/r/b"], "c": ["/r/c"],
+    ]
+    let skills = SkillCatalog.catalog(sources, fs: fs).skills
+    let targets = SkillLinks.globalTargets(home: home, claude: claudeRows, fs: fs)
+    let seeded = SkillLinks.seed(
+      skills: skills, targets: targets, workspaces: ["apps", "a", "b", "c"],
+      resolved: { resolved[$0] ?? [] }, fs: fs)
+    check(
+      "each skill is scoped to its own repository's workspace, not the parent",
+      seeded.scopes == [
+        "a": ["pa:cut-a-release"], "b": ["pb:cut-a-release"], "c": ["pc:cut-a-release"],
+      ] && seeded.choices.isEmpty)
+
+    let (_, plan) = planned(
+      fs, sources: sources, choices: [:], scopes: seeded.scopes.mapValues { $0.sorted() },
+      resolved: resolved)
+    check(
+      "the seeded plan has no relink and no unlink",
+      plan.actions.allSatisfy { if case .link = $0 { return true } else { return false } })
+    check(
+      "and links only the missing .agents half, into a repository already holding that skill",
+      Set(plan.actions)
+        == Set(
+          ["a", "b", "c"].map {
+            SkillAction.link(
+              target: SkillLinks.projectTargetID("/r/\($0)", .agents), name: "cut-a-release",
+              destination: "/s/p\($0)/cut-a-release")
+          }))
+
+    var partial = fs
+    partial.link("/r/b/.claude/skills/cut-a-release", to: "/s/pa/cut-a-release")
+    let unscoped = SkillLinks.seed(
+      skills: skills, targets: targets, workspaces: ["apps"],
+      resolved: { resolved[$0] ?? [] }, fs: partial)
+    check(
+      "a workspace only some of whose repositories hold the skill does not qualify",
+      unscoped.scopes.isEmpty && unscoped.choices.isEmpty)
+
+    let tie = SkillLinks.seed(
+      skills: skills.filter { $0.source == "pa" }, targets: targets, workspaces: ["z", "a", "y"],
+      resolved: { ["z": ["/r/a"], "a": ["/r/a"], "y": ["/r/a", "/r/b"]][$0] ?? [] }, fs: fs)
+    check("fewest repositories, then name, breaks a tie", tie.scopes == ["a": ["pa:cut-a-release"]])
+
+    let empty = SkillLinks.seed(
+      skills: skills, targets: targets, workspaces: ["none"], resolved: { _ in [] }, fs: fs)
+    check("a workspace resolving to nothing never qualifies", empty.scopes.isEmpty)
+  }
+
+  static func repositoryLedger() {
+    print("repository ledger")
+    let claude = SkillLinks.projectTargetID("/r/app", .claude)
+    let agents = SkillLinks.projectTargetID("/r/app", .agents)
+    check(
+      "a project target id gives back its key",
+      SkillLinks.projectKey(fromTargetID: claude) == "/r/app"
+        && SkillLinks.projectKey(fromTargetID: agents) == "/r/app"
+        && SkillLinks.projectKey(fromTargetID: "claude-code") == nil)
+
+    // A repository newly in view, holding a Makefile link Bastion never made.
+    var fs = machine()
+    fs.dir("/r/app/.git")
+    fs.link("/r/app/.claude/skills/beta", to: globalPath + "/beta")
+    let (_, newcomer) = planned(
+      fs, choices: [:], scopes: ["app": ["global:alpha"]], resolved: ["app": ["/r/app"]])
+    check(
+      "an owned link to an unwanted skill, not in the ledger, gets no action",
+      !newcomer.actions.contains { $0.name == "beta" })
+    check("and is reported as unadopted", newcomer.reports[claude]?.unadopted == ["beta"])
+
+    // In the ledger and no longer wanted: unlinked.
+    let (_, recorded) = planned(
+      fs, choices: [:], scopes: ["app": ["global:alpha"]], resolved: ["app": ["/r/app"]],
+      ledger: [claude: ["beta"]])
+    check(
+      "a ledger name no longer wanted is unlinked",
+      recorded.actions.contains(.unlink(target: claude, name: "beta")))
+
+    // A non-ledger link of ours at a wanted name, pointing at another skill:
+    // the same name from another source, as `cut-a-release` is.
+    var wrong = machine()
+    let second = SkillSource(name: "second", path: "/Users/me/second", kind: .collection)
+    wrong.skill("/Users/me/second/alpha")
+    wrong.link("/r/app/.claude/skills/alpha", to: "/Users/me/second/alpha")
+    let (_, collided) = planned(
+      wrong, sources: [global, second], choices: [:], scopes: ["app": ["global:alpha"]],
+      resolved: ["app": ["/r/app"]])
+    check(
+      "a non-ledger link of ours at a wanted name is a collision, not a relink",
+      !collided.actions.contains { $0.target == claude }
+        && collided.reports[claude]?.collisions == ["alpha"])
+    let (_, owned) = planned(
+      wrong, sources: [global, second], choices: [:], scopes: ["app": ["global:alpha"]],
+      resolved: ["app": ["/r/app"]], ledger: [claude: ["alpha"]])
+    check(
+      "the same link in the ledger is relinked",
+      owned.actions.contains(
+        .relink(target: claude, name: "alpha", destination: globalPath + "/alpha")))
+
+    // The helper, after an apply simulated on the fake tree.
+    var after = machine()
+    after.dir("/r/app/.git")
+    after.skill(globalPath + "/gamma")
+    after.link("/r/app/.claude/skills/alpha", to: globalPath + "/alpha")  // wanted, adopted
+    after.link("/r/app/.agents/skills/alpha", to: globalPath + "/alpha")  // linked this pass
+    after.link("/r/app/.claude/skills/beta", to: globalPath + "/beta")  // Makefile's, unwanted
+    after.link("/r/app/.claude/skills/gamma", to: globalPath + "/gamma")  // recorded, kept
+    let catalog = SkillCatalog.catalog([global], fs: after)
+    let targets = SkillLinks.projectTargets(keys: ["/r/app"], fs: after)
+    let desired = SkillLinks.desired(
+      skills: catalog.skills, choices: [:], scopes: ["app": ["global:alpha"]],
+      resolved: { _ in ["/r/app"] }, targets: targets)
+    let next = SkillLinks.nextLedger(
+      targets: targets, desired: desired, ledger: [claude: ["gamma", "vanished"]],
+      sources: [global], fs: after)
+    check(
+      "the next ledger keeps recorded names still linked, adopts wanted ones, and adds new links",
+      next == [claude: ["alpha", "gamma"], agents: ["alpha"]])
+    check(
+      "a name in no ledger and not wanted stays out", next[claude]?.contains("beta") == false)
+    check(
+      "a folder left with nothing has no entry",
+      SkillLinks.nextLedger(
+        targets: SkillLinks.projectTargets(keys: ["/r/empty"], fs: after), desired: desired,
+        ledger: [SkillLinks.projectTargetID("/r/empty", .claude): ["x"]], sources: [global],
+        fs: after
+      ).isEmpty)
+
+    check(
+      "exclude entries list only ledger names",
+      SkillLinks.projectExcludeEntries(key: "/r/app", ledger: [claude: ["gamma"]])
+        == ["/.claude/skills/gamma"])
+
+    var retired = machine()
+    let old = SkillSource(name: "old", path: "/Users/me/old", kind: .collection, retired: true)
+    retired.link("/r/app/.claude/skills/legacy", to: "/Users/me/old/legacy")
+    let repository = SkillLinks.projectTargets(keys: ["/r/app"], fs: retired)
+    check(
+      "a repository link into a retired source outside the ledger keeps nothing alive",
+      SkillLinks.retiredStillLinked(
+        targets: repository, sources: [global, old], ledger: [:], fs: retired
+      ).isEmpty)
+    check(
+      "the same link in the ledger does",
+      SkillLinks.retiredStillLinked(
+        targets: repository, sources: [global, old], ledger: [claude: ["legacy"]], fs: retired)
+        == ["old"])
+    let (_, leftAlone) = planned(
+      retired, sources: [global, old], choices: [:], scopes: ["app": ["global:alpha"]],
+      resolved: ["app": ["/r/app"]])
+    check(
+      "and it is left alone, not unlinked",
+      !leftAlone.actions.contains(.unlink(target: claude, name: "legacy"))
+        && leftAlone.reports[claude]?.unadopted == ["legacy"])
+  }
+
+  static func nestedSourcesClaimBySlot() {
+    print("nested sources")
+    var fs = machine()
+    fs.link(home + "/.claude/skills/alpha", to: globalPath + "/alpha")
+    let parent = SkillSource(
+      name: "claude-skills", path: "/Users/me/Projects/claude-skills", kind: .collection)
+    check(
+      "a link into the inner source is owned by it, even with the outer one listed first",
+      SkillLinks.owner(of: globalPath + "/alpha", sources: [parent, global], fs: fs)?.name
+        == "global")
+    let (_, plan) = planned(fs, sources: [parent, global], choices: [:])
+    check(
+      "so an unwanted link there is unlinked, not left as foreign",
+      plan.actions == [.unlink(target: "claude-code", name: "alpha")])
   }
 
   static func parentSourceClaimsNothingBelowItsSlots() {
@@ -716,8 +951,13 @@ struct SkillsCheck {
   // MARK: - Real
 
   /// Read-only: builds the targets the app would build on this Mac, seeds a
-  /// plan for one real source, and asserts it changes nothing but broken links.
-  static func realPlanChangesOnlyBrokenLinks(home: String, source path: String) {
+  /// plan for the real sources against the real workspaces with an empty
+  /// ledger — adding them to a fresh Bastion — and asserts the plan changes
+  /// nothing but broken links and the missing `.agents/skills` half of a
+  /// repository link that already exists.
+  static func realPlanChangesOnlyBrokenLinks(
+    home: String, source path: String, workspacesFile: String?, projects: String?
+  ) {
     print("real: \(path)")
     let fs = LocalSkillFileSystem()
     guard fs.isDirectory(path) else {
@@ -735,27 +975,92 @@ struct SkillsCheck {
           .init(id: "claude-code@" + name.dropFirst(8), label: name, directory: directory))
       }
     }
-    let targets = SkillLinks.globalTargets(home: home, claude: rows, fs: fs)
-    let source = SkillSource(
-      name: SkillCatalog.defaultSourceName(for: path, taken: []), path: path,
-      kind: SkillCatalog.kind(of: path, fs: fs))
-    let catalog = SkillCatalog.catalog([source], fs: fs)
-    let seeded = SkillLinks.seed(
-      skills: catalog.skills, targets: targets, workspaces: [], resolved: { _ in [] }, fs: fs)
-    let desired = SkillLinks.desired(
-      skills: catalog.skills, choices: seeded.choices, scopes: [:], resolved: { _ in [] },
-      targets: targets)
-    let plan = SkillLinks.plan(
-      targets: targets, desired: desired, sources: [source], available: catalog.available, fs: fs)
-    for action in plan.actions { print("  plan \(action.summary)") }
-    let byID = Dictionary(uniqueKeysWithValues: targets.map { ($0.id, $0) })
-    let brokenOnly = plan.actions.allSatisfy { action in
-      guard case .unlink(let target, let name) = action, let folder = byID[target]?.path,
-        let raw = fs.symlinkDestination((folder as NSString).appendingPathComponent(name))
-      else { return false }
-      return !fs.entryExists(SkillLinks.absolute(raw, in: fs.canonical(folder)))
+    let global = SkillLinks.globalTargets(home: home, claude: rows, fs: fs)
+
+    var paths = [path]
+    if let projects, fs.isDirectory(projects) {
+      paths += fs.children(projects).sorted().filter { !$0.hasPrefix(".") }
+        .map { (projects as NSString).appendingPathComponent($0) }.filter(fs.isDirectory)
     }
-    check("the seeded plan changes nothing but broken links", brokenOnly)
+    var sources: [SkillSource] = []
+    for folder in paths {
+      sources.append(
+        SkillSource(
+          name: SkillCatalog.defaultSourceName(for: folder, taken: Set(sources.map(\.name))),
+          path: folder, kind: SkillCatalog.kind(of: folder, fs: fs)))
+      print("  source \(sources.last!.name): \(folder)")
+    }
+
+    var workspaces: [Workspace] = []
+    if let workspacesFile {
+      if let data = FileManager.default.contents(atPath: workspacesFile),
+        let rows = try? JSONDecoder().decode([Workspace].self, from: data)
+      {
+        workspaces = rows.sorted { $0.name < $1.name }
+      } else {
+        print("  skip workspaces: \(workspacesFile) is absent or unreadable")
+      }
+    }
+    var resolved: [String: Set<String>] = [:]
+    for workspace in workspaces {
+      resolved[workspace.name] = WorkspaceScope.projectKeys(for: workspace.folders, fs: fs)
+      print("  workspace \(workspace.name): \(resolved[workspace.name]!.count) repositories")
+    }
+    // Every repository a workspace reaches, not only those of workspaces
+    // with skills: each is a repository that can come into view, and none
+    // may be changed by a link Bastion did not make.
+    let keys = resolved.values.reduce(into: Set<String>()) { $0.formUnion($1) }
+    let targets = SkillLinks.combined(
+      global: global, project: SkillLinks.projectTargets(keys: keys, fs: fs), fs: fs)
+
+    let catalog = SkillCatalog.catalog(sources, fs: fs)
+    let seeded = SkillLinks.seed(
+      skills: catalog.skills, targets: global, workspaces: workspaces.map(\.name),
+      resolved: { resolved[$0] ?? [] }, fs: fs)
+    for (workspace, ids) in seeded.scopes.sorted(by: { $0.key < $1.key }) {
+      print("  seed \(workspace): \(ids.sorted().joined(separator: ", "))")
+    }
+    let scopes = seeded.scopes.mapValues { $0.sorted() }
+    let desired = SkillLinks.desired(
+      skills: catalog.skills, choices: seeded.choices, scopes: scopes,
+      resolved: { resolved[$0] ?? [] }, targets: targets)
+    let plan = SkillLinks.plan(
+      targets: targets, desired: desired, sources: sources, available: catalog.available,
+      ledger: [:], fs: fs)
+    for action in plan.actions { print("  plan \(action.summary)") }
+    for target in targets {
+      let report = plan.reports[target.id] ?? SkillLinks.TargetReport()
+      if !report.unadopted.isEmpty {
+        print("  left alone in \(target.id): \(report.unadopted.joined(separator: ", "))")
+      }
+      if !report.collisions.isEmpty {
+        print("  collision in \(target.id): \(report.collisions.joined(separator: ", "))")
+      }
+    }
+
+    let byID = Dictionary(uniqueKeysWithValues: targets.map { ($0.id, $0) })
+    let allowed = plan.actions.allSatisfy { action in
+      switch action {
+      case .unlink(let target, let name):
+        guard let folder = byID[target]?.path,
+          let raw = fs.symlinkDestination((folder as NSString).appendingPathComponent(name))
+        else { return false }
+        return !fs.entryExists(SkillLinks.absolute(raw, in: fs.canonical(folder)))
+      case .link(let target, let name, let destination):
+        guard let key = byID[target]?.projectKey,
+          target == SkillLinks.projectTargetID(key, .agents)
+        else { return false }
+        let claude = (key as NSString).appendingPathComponent(".claude/skills")
+        guard let raw = fs.symlinkDestination((claude as NSString).appendingPathComponent(name))
+        else { return false }
+        return fs.canonical(SkillLinks.absolute(raw, in: fs.canonical(claude)))
+          == fs.canonical(destination)
+      case .relink:
+        return false
+      }
+    }
+    check(
+      "the seeded plan changes nothing but broken links and missing .agents halves", allowed)
   }
 
   static func excludeBlock() {
@@ -787,6 +1092,21 @@ struct SkillsCheck {
       "an empty file gets only the block",
       SkillExclude.updated("", entries: ["/x"]) == SkillExclude.begin + "\n/x\n" + SkillExclude.end
         + "\n")
+
+    let orphan = "*.local\n" + SkillExclude.begin + "\nmine\n"
+    let once = SkillExclude.updated(orphan, entries: ["/x"])
+    let twice = SkillExclude.updated(once, entries: ["/y"])
+    check("a user line after an orphaned begin survives an update", once.contains("\nmine\n"))
+    check(
+      "and a second one, with exactly one block left",
+      twice.contains("\nmine\n") && twice.components(separatedBy: SkillExclude.begin).count == 2
+        && twice.components(separatedBy: SkillExclude.end).count == 2
+        && twice.contains("\n/y\n") && !twice.contains("\n/x\n"))
+    let orphanThenBlock = SkillExclude.updated(
+      SkillExclude.begin + "\nmine\n" + SkillExclude.begin + "\n/x\n" + SkillExclude.end + "\n",
+      entries: [])
+    check(
+      "an end is matched only up to the next begin", orphanThenBlock == "mine\n")
 
     var fs = FakeFS()
     fs.dir("/r/app/.git/info")
@@ -919,6 +1239,17 @@ struct SkillsCheck {
       "clearing it restores the file",
       (try? String(contentsOfFile: root + "/repo/.git/info/exclude", encoding: .utf8))
         == "*.local\n")
+
+    try? manager.createDirectory(
+      atPath: root + "/latin/.git/info", withIntermediateDirectories: true)
+    let latin = Data([0x23, 0x20, 0xE9, 0x74, 0xE9, 0x0A])  // "# été" in Latin-1
+    try? latin.write(to: URL(fileURLWithPath: root + "/latin/.git/info/exclude"))
+    check(
+      "an exclude file that is not UTF-8 is a failure",
+      SkillLinker.writeExclude(key: root + "/latin", entries: ["/x"], fs: fs) != nil)
+    check(
+      "and is left byte for byte",
+      (try? Data(contentsOf: URL(fileURLWithPath: root + "/latin/.git/info/exclude"))) == latin)
 
     try? manager.createDirectory(atPath: root + "/fresh/.git", withIntermediateDirectories: true)
     check(

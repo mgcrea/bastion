@@ -74,6 +74,13 @@ nonisolated enum SkillLinker {
   /// was nothing to do or the write succeeded.
   static func writeExclude(key: String, entries: [String], fs: SkillFileSystem) -> Failure? {
     guard let path = SkillExclude.path(forKey: key, fs: fs) else { return nil }
+    // Present but unreadable, or not UTF-8: rewriting it from "" would
+    // replace every line the user has there with Bastion's block alone.
+    if fs.entryExists(path) && fs.contents(path) == nil {
+      return Failure(
+        target: key, name: ".git/info/exclude",
+        message: "\(path) could not be read as UTF-8 text, so Bastion left it unchanged")
+    }
     let existing = fs.contents(path) ?? ""
     let next = SkillExclude.updated(existing, entries: entries)
     guard next != existing else { return nil }

@@ -966,7 +966,7 @@ struct ClientDetail: View {
   /// into Claude Code's folder, and hands over a ZIP for anything missing.
   private var accountSkillsCard: some View {
     let store = SkillStore.shared
-    let synced = store.accountSkillNames
+    let synced = store.accountSkills
     let missing = store.catalog.filter { $0.isValid && !synced.contains($0.name) }
     return Card(title: "Account skills (\(synced.count))") {
       VStack(alignment: .leading, spacing: 10) {

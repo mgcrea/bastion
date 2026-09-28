@@ -44,10 +44,15 @@ nonisolated enum SkillAction: Equatable, Hashable {
 /// Which links should exist, which do, and what to do about the difference.
 ///
 /// Pure over `SkillFileSystem`, as `WorkspaceScope` is over its protocol, so
-/// `make skills-check` drives every case from a fake tree. Ownership is "a
-/// symlink that points into a source", with no ledger of links, for the reason
-/// `isOurs` is the ledger in `ClientWiringMerge`: a record of what was written
-/// is one more thing that can disagree with the disk.
+/// `make skills-check` drives every case from a fake tree. In a global folder,
+/// ownership is "a symlink that points into a source under its own name", with
+/// no ledger, for the reason `isOurs` is the ledger in `ClientWiringMerge`: a
+/// record of what was written is one more thing that can disagree with the
+/// disk. A repository is different: its links were often made by something
+/// else (a Makefile, a teammate's script), and it comes into view whenever a
+/// workspace changes, so there a link is Bastion's to change only once its
+/// name is in the per-folder ledger — Bastion made it, or found it already
+/// pointing at the skill it wanted there.
 nonisolated enum SkillLinks {
   static let sharedID = "shared"
 
@@ -74,7 +79,16 @@ nonisolated enum SkillLinks {
     var collisions: [String] = []
     var unavailable: [String] = []
     var shadowed: [String] = []
+    /// Links into a source in a repository folder that Bastion did not make
+    /// and does not want there. Left alone.
+    var unadopted: [String] = []
     var refused: String?
+
+    /// Whether the folder has anything to say beyond "all as wanted".
+    var isQuiet: Bool {
+      collisions.isEmpty && unavailable.isEmpty && shadowed.isEmpty && unadopted.isEmpty
+        && refused == nil
+    }
   }
 
   struct Plan: Equatable {
@@ -113,6 +127,17 @@ nonisolated enum SkillLinks {
 
   static func projectTargetID(_ key: String, _ flavor: Flavor) -> String {
     "project:\(key)/\(flavor.rawValue)"
+  }
+
+  /// The repository a `projectTargetID` names, or nil for any other id.
+  static func projectKey(fromTargetID id: String) -> String? {
+    guard id.hasPrefix("project:") else { return nil }
+    let body = id.dropFirst("project:".count)
+    for flavor in Flavor.allCases where body.hasSuffix("/" + flavor.rawValue) {
+      let key = String(body.dropLast(flavor.rawValue.count + 1))
+      return key.isEmpty ? nil : key
+    }
+    return nil
   }
 
   /// `globalTargets` and `projectTargets` each deduplicate only within
@@ -184,12 +209,18 @@ nonisolated enum SkillLinks {
 
   // MARK: - Plan
 
+  /// `ledger` is project target id → the names Bastion made there (or
+  /// adopted); global targets ignore it. In a repository folder a claimed
+  /// link whose name is not in the ledger is never changed: kept when it
+  /// already points at the wanted skill, a collision when it points at
+  /// another, and `unadopted` when nothing is wanted under its name.
   static func plan(
     targets: [SkillTarget], desired: Desired, sources: [SkillSource], available: Set<String>,
-    fs: SkillFileSystem
+    ledger: [String: Set<String>], fs: SkillFileSystem
   ) -> Plan {
     var plan = Plan()
     for target in targets {
+      let recorded = ledgerNames(target, ledger)
       var report = TargetReport()
       report.shadowed = desired.shadowed[target.id] ?? []
       if let source = sources.first(where: { overlaps(target, $0, fs: fs) }) {
@@ -203,7 +234,7 @@ nonisolated enum SkillLinks {
       let entries = fs.children(target.path).filter { !$0.hasPrefix(".") }
       for name in entries {
         guard let raw = fs.symlinkDestination(join(target.path, name)),
-          let owner = claimed(absolute(raw, in: folder), sources: sources, fs: fs)
+          let owner = claimed(name, absolute(raw, in: folder), sources: sources, fs: fs)
         else {
           report.foreign.append(name)
           if want[name] != nil { report.collisions.append(name) }
@@ -211,6 +242,18 @@ nonisolated enum SkillLinks {
         }
         if !owner.retired && !available.contains(owner.name) {
           report.unavailable.append(name)
+          continue
+        }
+        if let recorded, !recorded.contains(name) {
+          if let skill = want[name] {
+            // Right already: adopted, and `nextLedger` records it. Wrong: the
+            // link is somebody else's choice, so only Overwrite Anyway moves it.
+            if !same(absolute(raw, in: folder), skill.path, fs: fs) {
+              report.collisions.append(name)
+            }
+          } else {
+            report.unadopted.append(name)
+          }
           continue
         }
         if let skill = want[name] {
@@ -233,9 +276,17 @@ nonisolated enum SkillLinks {
   // MARK: - Seeding
 
   /// What a newly added source's skills should start as: a choice for every
-  /// global target already holding a link to them, and a workspace scope where
-  /// only a repository does. A skill linked both globally and in a repository
-  /// stays global, because scoping it would unlink the global copy.
+  /// global target already holding a link to them, and otherwise a workspace
+  /// scope, but only where EVERY repository that workspace resolves to
+  /// already links that skill, in either folder. Anything looser plans new
+  /// links into repositories that never had the skill — a parent workspace
+  /// such as `apps` reaches twenty repositories, and scoping a skill found in
+  /// one of them to it would link it into all twenty, and relink a same-name
+  /// skill from another source in the others. Of several workspaces that
+  /// qualify, the one with the fewest repositories wins, then the first by
+  /// name. A skill linked both globally and in a repository stays global,
+  /// because scoping it would unlink the global copy. A skill that fits no
+  /// workspace is left unscoped, and its repository links are not adopted.
   static func seed(
     skills: [Skill], targets: [SkillTarget], workspaces: [String],
     resolved: (String) -> Set<String>, fs: SkillFileSystem
@@ -248,22 +299,30 @@ nonisolated enum SkillLinks {
         choices[skill.id] = Set(global)
         continue
       }
+      var best: (name: String, keys: Int)?
       for workspace in workspaces {
-        for key in resolved(workspace) {
-          if Flavor.allCases.contains(where: { linked(skill, in: join(key, $0.rawValue), fs: fs) })
-          {
-            scopes[workspace, default: []].insert(skill.id)
-          }
-        }
+        let keys = resolved(workspace)
+        guard !keys.isEmpty,
+          keys.allSatisfy({ key in
+            Flavor.allCases.contains { linked(skill, in: join(key, $0.rawValue), fs: fs) }
+          })
+        else { continue }
+        if let current = best, (current.keys, current.name) <= (keys.count, workspace) { continue }
+        best = (workspace, keys.count)
       }
+      if let best { scopes[best.name, default: []].insert(skill.id) }
     }
     return (choices, scopes)
   }
 
   // MARK: - Ownership
 
-  /// The source a link destination lands in. Active sources are asked first,
+  /// The source a link destination lands in: of the sources containing it,
+  /// the first for which it is a skill slot. Active sources are asked first,
   /// so a folder removed and added back is owned by the row that is live.
+  /// Asking only "inside" would let a source that is a PARENT of another
+  /// (`claude-skills` above `claude-skills/global`) win every link into the
+  /// child, and then disown them all as not being its slots.
   static func owner(
     of destination: String, sources: [SkillSource], fs: SkillFileSystem
   ) -> SkillSource? {
@@ -273,6 +332,7 @@ nonisolated enum SkillLinks {
     return ordered.first { source in
       let spellings = [(source.path as NSString).standardizingPath, fs.canonical(source.path)]
       return spellings.contains { inside(spelled, $0) || inside(resolved, $0) }
+        && isSlot(destination, of: source, fs: fs)
     }
   }
 
@@ -287,11 +347,15 @@ nonisolated enum SkillLinks {
   /// Makefile this feature replaces links every folder in a collection,
   /// `*-workspace` eval folders included, and those links are left alone
   /// rather than removed.
+  ///
+  /// `name` is the entry's own name, and it must be the destination's last
+  /// component: Bastion always names a link after its folder, so
+  /// `my-review -> src/code-review` is somebody's alias, not Bastion's link.
   static func claimed(
-    _ destination: String, sources: [SkillSource], fs: SkillFileSystem
+    _ name: String, _ destination: String, sources: [SkillSource], fs: SkillFileSystem
   ) -> SkillSource? {
-    guard let source = owner(of: destination, sources: sources, fs: fs),
-      isSlot(destination, of: source, fs: fs)
+    guard name == ((destination as NSString).standardizingPath as NSString).lastPathComponent,
+      let source = owner(of: destination, sources: sources, fs: fs)
     else { return nil }
     let isSkill = fs.isFile(join(destination, "SKILL.md"))
     return isSkill || !fs.entryExists(destination) ? source : nil
@@ -328,22 +392,27 @@ nonisolated enum SkillLinks {
       guard !name.hasPrefix("."), let raw = fs.symlinkDestination(join(folder, name)) else {
         return false
       }
-      return claimed(absolute(raw, in: physical), sources: sources, fs: fs) != nil
+      return claimed(name, absolute(raw, in: physical), sources: sources, fs: fs) != nil
     }.sorted()
   }
 
   /// Names of retired sources some target still links into. The rest can be
-  /// dropped from `skill-sources.json`.
+  /// dropped from `skill-sources.json`. In a repository folder only ledger
+  /// names count: a Makefile's link into a retired source is never removed,
+  /// so counting it would keep that source alive forever.
   static func retiredStillLinked(
-    targets: [SkillTarget], sources: [SkillSource], fs: SkillFileSystem
+    targets: [SkillTarget], sources: [SkillSource], ledger: [String: Set<String>],
+    fs: SkillFileSystem
   ) -> Set<String> {
     guard sources.contains(where: \.retired) else { return [] }
     var out: Set<String> = []
     for target in targets {
+      let recorded = ledgerNames(target, ledger)
       let physical = fs.canonical(target.path)
       for name in fs.children(target.path) where !name.hasPrefix(".") {
+        if let recorded, !recorded.contains(name) { continue }
         guard let raw = fs.symlinkDestination(join(target.path, name)),
-          let owner = claimed(absolute(raw, in: physical), sources: sources, fs: fs),
+          let owner = claimed(name, absolute(raw, in: physical), sources: sources, fs: fs),
           owner.retired
         else { continue }
         out.insert(owner.name)
@@ -352,14 +421,49 @@ nonisolated enum SkillLinks {
     return out
   }
 
-  /// The lines `SkillExclude` keeps in a repository's `info/exclude`: every
-  /// link of ours in either folder, anchored at the repository root.
-  static func projectExcludeEntries(
-    key: String, sources: [SkillSource], fs: SkillFileSystem
-  ) -> [String] {
+  /// The ledger after a reconcile, read from the disk after the apply: per
+  /// repository target, the recorded names still present as claimed links,
+  /// plus every wanted name now pointing at the wanted skill — which covers
+  /// both what this pass linked or relinked and what it adopted. Global
+  /// targets have no entry, and neither does a folder left with nothing.
+  static func nextLedger(
+    targets: [SkillTarget], desired: Desired, ledger: [String: Set<String>],
+    sources: [SkillSource], fs: SkillFileSystem
+  ) -> [String: Set<String>] {
+    var out: [String: Set<String>] = [:]
+    for target in targets {
+      guard let recorded = ledgerNames(target, ledger) else { continue }
+      let want = desired.links[target.id] ?? [:]
+      let folder = fs.canonical(target.path)
+      let names = ownedNames(in: target.path, sources: sources, fs: fs).filter { name in
+        if recorded.contains(name) { return true }
+        guard let skill = want[name], let raw = fs.symlinkDestination(join(target.path, name))
+        else { return false }
+        return same(absolute(raw, in: folder), skill.path, fs: fs)
+      }
+      if !names.isEmpty { out[target.id] = Set(names) }
+    }
+    return out
+  }
+
+  /// The lines `SkillExclude` keeps in a repository's `info/exclude`: the
+  /// ledger's names in either folder, anchored at the repository root.
+  /// Bastion's lines for Bastion's links only; a link somebody else made is
+  /// theirs to ignore or commit.
+  static func projectExcludeEntries(key: String, ledger: [String: Set<String>]) -> [String] {
     Flavor.allCases.flatMap { flavor in
-      ownedNames(in: join(key, flavor.rawValue), sources: sources, fs: fs)
-        .map { "/\(flavor.rawValue)/\($0)" }
+      (ledger[projectTargetID(key, flavor)] ?? []).sorted().map { "/\(flavor.rawValue)/\($0)" }
+    }
+  }
+
+  /// The ledger's names for a repository target, under its own id or any
+  /// alias, or nil for a global target, which keeps no ledger.
+  private static func ledgerNames(_ target: SkillTarget, _ ledger: [String: Set<String>])
+    -> Set<String>?
+  {
+    guard target.projectKey != nil else { return nil }
+    return ([target.id] + target.aliases).reduce(into: Set<String>()) {
+      $0.formUnion(ledger[$1] ?? [])
     }
   }
 
@@ -429,12 +533,19 @@ nonisolated enum SkillExclude {
   static let begin = "# >>> bastion skills: managed by Bastion, edits here are overwritten"
   static let end = "# <<< bastion skills"
 
+  /// A block runs from a `begin` to the first `end` before the next `begin`.
+  /// A `begin` with no such `end` (a hand edit, a truncated write) loses only
+  /// its own line: taking everything up to some later `end`, or to the end
+  /// of the file, would take the user's lines with it.
   static func updated(_ existing: String, entries: [String]) -> String {
     var lines = existing.components(separatedBy: "\n")
-    if let start = lines.firstIndex(of: begin),
-      let stop = lines[start...].firstIndex(of: end)
-    {
-      lines.removeSubrange(start...stop)
+    while let start = lines.firstIndex(of: begin) {
+      let limit = lines[(start + 1)...].firstIndex(of: begin) ?? lines.endIndex
+      if let stop = lines[(start + 1)..<limit].firstIndex(of: end) {
+        lines.removeSubrange(start...stop)
+      } else {
+        lines.remove(at: start)
+      }
     }
     var text = lines.joined(separator: "\n")
     guard !entries.isEmpty else { return text }
