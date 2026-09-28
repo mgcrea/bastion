@@ -587,6 +587,17 @@ wiring-check-real: wiring-check ## Prove the merge against the real client confi
 		"$(HOME)/.codex/config.toml" \
 		"$(HOME)/.claude-skitrust/.claude.json"
 
+# The skills half of the same trade `wiring-check` makes: the rules are pure
+# functions of a folder tree, so a fake tree drives them, and the applier runs
+# against a throwaway folder under $TMPDIR.
+skills-check: ## Assert skill discovery, the link plan and the git exclude block, with no app
+	@mkdir -p apps/apple/.build
+	@swiftc -O -o apps/apple/.build/skills-check \
+		apps/apple/Bastion/WorkspaceScope.swift \
+		apps/apple/Bastion/SkillCatalog.swift \
+		scripts/skills-check.swift
+	@apps/apple/.build/skills-check
+
 audit: app remote-check ## Assert the listener is loopback-only and refuses foreign Origin/Host
 	@scripts/audit-listener.sh
 
@@ -1019,7 +1030,7 @@ typecheck: ## tsc the Worker and astro check the website
 .PHONY: help app run stop dev-config clean \
 	sparkle sparkle-keys appcast node bundle sign notarize build-release \
 	install install-release install-from uninstall \
-	smoke dialect builtin facade wiring-check wiring-check-real remote-check remote-live-check unit license-check revocations audit audit-check migrate servers servers-check changelog changelog-check catalog-check provenance provenance-check discover icon \
+	smoke dialect builtin facade wiring-check wiring-check-real skills-check skills-check-real remote-check remote-live-check unit license-check revocations audit audit-check migrate servers servers-check changelog changelog-check catalog-check provenance provenance-check discover icon \
 	screenshots screenshots-capture screenshots-check screenshots-update \
 	screenshots-seal screenshots-selftest screenshots-appstore \
 	screenshots-website screenshots-compose screenshots-doctor screenshots-clean \
