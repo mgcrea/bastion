@@ -185,6 +185,18 @@ enum BuiltinTools {
         + "only into those folders and is left out of every client's global list."),
 
     Declaration(
+      "list_skills", title: "List skills",
+      "Every skill in every skill source: its id ('<source>:<skill>'), whether it is valid and "
+        + "why not, the skills folders it is linked into, and the workspaces it is scoped to. "
+        + "Also lists the folders skills can be linked into, with their ids. 'linking' says "
+        + "whether this build actually links skills into real folders: when false, edits are "
+        + "saved but nothing on disk changes."),
+
+    Declaration(
+      "list_skill_sources", title: "List skill sources",
+      "The folders Bastion reads skills from, in precedence order, and whether each is present."),
+
+    Declaration(
       "list_clients", title: "List clients",
       "The MCP clients on this Mac that Bastion can configure, and whether each one's config "
         + "currently points at Bastion. Clients Bastion knows but this Mac does not have are "
@@ -403,6 +415,12 @@ enum BuiltinTools {
           "description":
             "'<profile>/<server>' ids, as list_profiles shows them. Replaces the current list.",
         ],
+        "skills": [
+          "type": "array", "items": ["type": "string"],
+          "description":
+            "Optional. Skill ids, as list_skills shows them, linked only into these folders' "
+            + "repositories. Replaces the current list when given; left as is when omitted.",
+        ],
       ],
       required: ["name", "folders", "profiles"], mutates: true),
 
@@ -410,6 +428,34 @@ enum BuiltinTools {
       "remove_workspace", title: "Remove a workspace",
       "Delete a workspace and rewire. Its profiles become global again.",
       properties: ["name": schema("string", "The workspace name.")],
+      required: ["name"], mutates: true),
+
+    Declaration(
+      "update_skill", title: "Link a skill into folders",
+      "Set the skills folders one skill is linked into, by target id as list_skills shows them "
+        + "('shared', 'claude-code', ...). Replaces the current set; an empty list unlinks it "
+        + "everywhere. A skill scoped to a workspace is linked only there, whatever this says.",
+      properties: [
+        "id": schema("string", "The skill id, e.g. 'global:reply-as-olivier'."),
+        "targets": [
+          "type": "array", "items": ["type": "string"],
+          "description": "Target ids. Replaces the current list.",
+        ],
+      ],
+      required: ["id", "targets"], mutates: true),
+
+    Declaration(
+      "upsert_skill_source", title: "Add a skill source",
+      "Add a folder of skills, or one skill folder, as a source. Skills already linked from it "
+        + "keep their places; nothing new is linked until update_skill says so. Adding a folder "
+        + "that is already a source changes nothing.",
+      properties: ["path": schema("string", "Absolute path, or a path under ~.")],
+      required: ["path"], mutates: true),
+
+    Declaration(
+      "remove_skill_source", title: "Remove a skill source",
+      "Remove a source and every link Bastion made into it. The folder itself is not touched.",
+      properties: ["name": schema("string", "The source name, as list_skill_sources shows it.")],
       required: ["name"], mutates: true),
 
     Declaration(
@@ -491,6 +537,8 @@ enum BuiltinTools {
     case "list_catalog": return listCatalog()
     case "list_profiles": return listProfiles(arguments)
     case "list_workspaces": return listWorkspaces()
+    case "list_skills": return listSkills()
+    case "list_skill_sources": return listSkillSources()
     case "list_clients": return listClients(arguments)
     case "status": return status()
     case "recent_activity": return recentActivity(arguments, caller: caller)
@@ -507,6 +555,9 @@ enum BuiltinTools {
     case "remove_profile": return try removeProfile(arguments)
     case "upsert_workspace": return try upsertWorkspace(arguments)
     case "remove_workspace": return try removeWorkspace(arguments)
+    case "update_skill": return try updateSkill(arguments)
+    case "upsert_skill_source": return try upsertSkillSource(arguments)
+    case "remove_skill_source": return try removeSkillSource(arguments)
     case "set_credential": return try setCredential(arguments)
     case "wire_client": return try wireClient(arguments)
     case "unwire_client": return try unwireClient(arguments)
@@ -862,6 +913,7 @@ enum BuiltinTools {
         "folders": workspace.folders,
         "resolves_to": store.resolvedKeys(workspace).sorted(),
         "profiles": workspace.profiles,
+        "skills": workspace.skills,
       ]
     }
   }
@@ -886,12 +938,31 @@ enum BuiltinTools {
         expected: "ids list_profiles shows; not found: \(unknown.joined(separator: ", "))")
     }
     let expanded = folders.map { ($0 as NSString).expandingTildeInPath }
-    try WorkspaceStore.shared.upsert(Workspace(name: name, folders: expanded, profiles: profiles))
+    // Absent keeps what is saved: a caller written before skills existed must
+    // not clear them by omission.
     let saved = WorkspaceStore.shared.workspaces.first { $0.name == name }
+    var skills = saved?.skills ?? []
+    if let given = arguments["skills"] {
+      guard let list = given as? [String] else {
+        throw ToolError.badArgument(name: "skills", expected: "an array of skill ids")
+      }
+      let known = Set(SkillStore.shared.catalog.map(\.id))
+      let unknown = list.filter { !known.contains($0) }
+      guard unknown.isEmpty else {
+        throw ToolError.badArgument(
+          name: "skills",
+          expected: "ids list_skills shows; not found: \(unknown.joined(separator: ", "))")
+      }
+      skills = list
+    }
+    try WorkspaceStore.shared.upsert(
+      Workspace(name: name, folders: expanded, profiles: profiles, skills: skills))
+    let written = WorkspaceStore.shared.workspaces.first { $0.name == name }
     return [
       "name": name,
-      "resolves_to": saved.map { WorkspaceStore.shared.resolvedKeys($0).sorted() } ?? [],
+      "resolves_to": written.map { WorkspaceStore.shared.resolvedKeys($0).sorted() } ?? [],
       "profiles": profiles,
+      "skills": skills,
       "note":
         "Clients Bastion already configures were rewired. Start a new Claude Code session to "
         + "pick it up.",
@@ -905,6 +976,103 @@ enum BuiltinTools {
     }
     try WorkspaceStore.shared.remove(named: name)
     return ["removed": name]
+  }
+
+  private static func listSkills() -> Any {
+    let store = SkillStore.shared
+    let workspaces = WorkspaceStore.shared.workspaces
+    let skills = store.catalog.map { skill -> [String: Any] in
+      var row: [String: Any] = [
+        "id": skill.id,
+        "name": skill.name,
+        "source": skill.source,
+        "path": skill.path,
+        "description_characters": skill.description.count,
+        "targets": store.targets(of: skill.id),
+        "workspaces": workspaces.filter { $0.skills.contains(skill.id) }.map(\.name),
+      ]
+      if !skill.problems.isEmpty { row["problems"] = skill.problems }
+      if !skill.warnings.isEmpty { row["warnings"] = skill.warnings }
+      return row
+    }
+    let targets = store.targets.map { target -> [String: Any] in
+      let report = store.plan.reports[target.id] ?? SkillLinks.TargetReport()
+      var row: [String: Any] = [
+        "id": target.id, "label": target.label, "path": target.path,
+        "description_characters": store.descriptionCharacters(in: target.id),
+      ]
+      if !target.aliases.isEmpty { row["aliases"] = target.aliases }
+      if !report.collisions.isEmpty { row["collisions"] = report.collisions }
+      if !report.unavailable.isEmpty { row["unavailable"] = report.unavailable }
+      if !report.shadowed.isEmpty { row["shadowed"] = report.shadowed }
+      if let refused = report.refused { row["refused"] = refused }
+      return row
+    }
+    return ["skills": skills, "targets": targets, "linking": SkillStore.reconciles]
+  }
+
+  private static func listSkillSources() -> Any {
+    let store = SkillStore.shared
+    return store.sources.map { source -> [String: Any] in
+      [
+        "name": source.name, "path": source.path, "kind": source.kind.rawValue,
+        "available": store.available.contains(source.name), "retired": source.retired,
+        "skills": store.catalog.filter { $0.source == source.name }.count,
+      ]
+    }
+  }
+
+  private static func updateSkill(_ arguments: [String: Any]) throws -> Any {
+    let id = try string(arguments, "id")
+    guard let targets = arguments["targets"] as? [String] else {
+      throw ToolError.badArgument(name: "targets", expected: "an array of target ids")
+    }
+    try SkillStore.shared.setTargets(id, Set(targets))
+    var result: [String: Any] = ["id": id, "targets": SkillStore.shared.targets(of: id)]
+    if !SkillStore.reconciles {
+      result["note"] =
+        "Linking is off in this build; the change is saved but nothing on disk changed."
+    }
+    return result
+  }
+
+  private static func upsertSkillSource(_ arguments: [String: Any]) throws -> Any {
+    let path = (try string(arguments, "path") as NSString).expandingTildeInPath
+    guard path.hasPrefix("/") else {
+      throw ToolError.badArgument(name: "path", expected: "an absolute path, or a path under ~")
+    }
+    let store = SkillStore.shared
+    let preview: SkillStore.Preview
+    do {
+      preview = try store.preview(adding: path)
+    } catch SkillStore.StoreError.alreadyASource(let name) {
+      return ["name": name, "note": "Already a source; nothing changed."]
+    }
+    try store.commit(preview)
+    var result: [String: Any] = [
+      "name": preview.source.name,
+      "kind": preview.source.kind.rawValue,
+      "skills": preview.skills.map(\.id),
+      "applied": preview.plan.actions.map(\.summary),
+      "collisions": preview.plan.reports.filter { !$0.value.collisions.isEmpty }
+        .mapValues(\.collisions),
+    ]
+    if !SkillStore.reconciles {
+      result["note"] =
+        "Linking is off in this build; the change is saved but nothing on disk changed."
+    }
+    return result
+  }
+
+  private static func removeSkillSource(_ arguments: [String: Any]) throws -> Any {
+    let name = try string(arguments, "name")
+    try SkillStore.shared.removeSource(named: name)
+    var result: [String: Any] = ["removed": name]
+    if !SkillStore.reconciles {
+      result["note"] =
+        "Linking is off in this build; the change is saved but nothing on disk changed."
+    }
+    return result
   }
 
   private static func listClients(_ arguments: [String: Any]) -> Any {
