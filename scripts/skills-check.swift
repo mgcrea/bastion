@@ -858,10 +858,48 @@ struct SkillsCheck {
     check("and never what it pointed at", manager.fileExists(atPath: skillB))
 
     try? manager.createDirectory(atPath: target.path + "/real", withIntermediateDirectories: true)
+    try? "content".write(
+      toFile: target.path + "/real/file", atomically: true, encoding: .utf8)
     failures = SkillLinker.apply([.unlink(target: "t", name: "real")], targets: [target])
     check(
       "unlink refuses a real folder",
       failures.count == 1 && manager.fileExists(atPath: target.path + "/real"))
+    check(
+      "and its contents survive",
+      (try? String(contentsOfFile: target.path + "/real/file", encoding: .utf8)) == "content")
+    let contentsAfter = (try? manager.contentsOfDirectory(atPath: target.path)) ?? []
+    check("and no .bastion-* entry is left", !contentsAfter.contains { $0.hasPrefix(".bastion-") })
+
+    try? manager.createDirectory(
+      atPath: target.path + "/folder2", withIntermediateDirectories: true)
+    try? "data".write(
+      toFile: target.path + "/folder2/data", atomically: true, encoding: .utf8)
+    failures = SkillLinker.apply(
+      [.relink(target: "t", name: "folder2", destination: skillB)], targets: [target])
+    check(
+      "relink refuses a real folder",
+      failures.count == 1 && manager.fileExists(atPath: target.path + "/folder2"))
+    check(
+      "and its contents survive",
+      (try? String(contentsOfFile: target.path + "/folder2/data", encoding: .utf8)) == "data")
+    let contentsAfter2 = (try? manager.contentsOfDirectory(atPath: target.path)) ?? []
+    check("and no .bastion-* entry is left", !contentsAfter2.contains { $0.hasPrefix(".bastion-") })
+
+    try? "regular".write(
+      toFile: target.path + "/file", atomically: true, encoding: .utf8)
+    failures = SkillLinker.apply([.unlink(target: "t", name: "file")], targets: [target])
+    check(
+      "unlink refuses a regular file",
+      failures.count == 1 && manager.fileExists(atPath: target.path + "/file"))
+    check(
+      "and it is untouched",
+      (try? String(contentsOfFile: target.path + "/file", encoding: .utf8)) == "regular")
+    let contentsAfter3 = (try? manager.contentsOfDirectory(atPath: target.path)) ?? []
+    check("and no .bastion-* entry is left", !contentsAfter3.contains { $0.hasPrefix(".bastion-") })
+
+    failures = SkillLinker.apply(
+      [.link(target: "unknown", name: "b", destination: skillA)], targets: [target])
+    check("an action for an unknown target fails", failures.count == 1)
 
     let fs = LocalSkillFileSystem()
     try? manager.createDirectory(
