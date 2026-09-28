@@ -204,8 +204,24 @@ struct SkillsCheck {
       problems("do-x", ["name": "do-x", "description": String(repeating: "d", count: 1024)]).isEmpty
     )
     check(
-      "1025 characters is refused",
-      !problems("do-x", ["name": "do-x", "description": String(repeating: "d", count: 1025)])
+      "1024 characters has no warning",
+      SkillCatalog.warnings(fields: [
+        "name": "do-x", "description": String(repeating: "d", count: 1024),
+      ])
+      .isEmpty)
+    check(
+      "1025 characters is allowed, with a warning",
+      problems("do-x", ["name": "do-x", "description": String(repeating: "d", count: 1025)]).isEmpty
+        && SkillCatalog.warnings(
+          fields: ["name": "do-x", "description": String(repeating: "d", count: 1025)]
+        ).count == 1)
+    check(
+      "1536 characters is allowed",
+      problems("do-x", ["name": "do-x", "description": String(repeating: "d", count: 1536)]).isEmpty
+    )
+    check(
+      "1537 characters is refused",
+      !problems("do-x", ["name": "do-x", "description": String(repeating: "d", count: 1537)])
         .isEmpty)
     check(
       "synced is reserved", !problems("synced", ["name": "synced", "description": "d"]).isEmpty)
@@ -220,6 +236,7 @@ struct SkillsCheck {
     let global = "/Users/me/Projects/claude-skills/global"
     fs.skill(global + "/alpha")
     fs.skill(global + "/beta", name: "not-beta")
+    fs.skill(global + "/gamma", description: String(repeating: "d", count: 1100))
     fs.dir(global + "/push-testflight-build-workspace/evals")
     fs.skill(global + "/.hidden")
     fs.file(global + "/README.md", "x")
@@ -233,9 +250,16 @@ struct SkillsCheck {
 
     let found = SkillCatalog.skills(in: collection, fs: fs) ?? []
     check(
-      "a collection lists folders holding SKILL.md, sorted", found.map(\.name) == ["alpha", "beta"])
+      "a collection lists folders holding SKILL.md, sorted",
+      found.map(\.name) == ["alpha", "beta", "gamma"])
     check("ids are source-qualified", found.first?.id == "global:alpha")
-    check("an invalid skill is listed with its problems", found.last?.isValid == false)
+    check(
+      "an invalid skill is listed with its problems",
+      found.first(where: { $0.name == "beta" })?.isValid == false)
+    check(
+      "a description over 1024 but within Claude Code's 1536 is valid, with one warning",
+      found.first(where: { $0.name == "gamma" })?.isValid == true
+        && found.first(where: { $0.name == "gamma" })?.warnings.count == 1)
     check(
       "a skill source is one skill",
       SkillCatalog.skills(in: single, fs: fs)?.map(\.id) == ["app-icon:app-icon"])
@@ -244,7 +268,9 @@ struct SkillsCheck {
     let whole = SkillCatalog.catalog([collection, single, missing, retired], fs: fs)
     check(
       "the catalog keeps source order",
-      whole.skills.map(\.id) == ["global:alpha", "global:beta", "app-icon:app-icon"])
+      whole.skills.map(\.id) == [
+        "global:alpha", "global:beta", "global:gamma", "app-icon:app-icon",
+      ])
     check("a retired source contributes no skills", !whole.skills.contains { $0.source == "old" })
     check(
       "available names the sources whose folder exists",

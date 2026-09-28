@@ -51,6 +51,11 @@ nonisolated struct Skill: Equatable, Identifiable {
   let path: String
   let description: String
   let problems: [String]
+  /// Fit to link, but worth knowing: a description over the Agent Skills
+  /// standard's 1024 characters but within Claude Code's own 1536, for
+  /// instance, still loads there but may be skipped by a client that reads
+  /// `~/.agents/skills` and holds to the stricter number.
+  var warnings: [String] = []
 
   var id: String { "\(source):\(name)" }
   var isValid: Bool { problems.isEmpty }
@@ -150,11 +155,17 @@ nonisolated enum SkillFrontmatter {
 /// The rules are agentskills.io's, which are stricter than Claude Code's own:
 /// Claude Code makes `name` optional and allows a 1,536-character description.
 /// A skill that passes the strict rules loads in every client, which is the
-/// point of linking it into a shared folder.
+/// point of linking it into a shared folder — except for description length,
+/// where the two limits diverge enough to matter in practice: the machine
+/// this ships to has working skills between 1024 and 1536 characters, so a
+/// description in that range is a warning, not a refusal, and only past 1536
+/// does Claude Code itself refuse to load it.
 nonisolated enum SkillCatalog {
   static let reservedNames: Set<String> = ["synced", "anthropic-skills"]
   static let nameLimit = 64
   static let descriptionLimit = 1024
+  /// Claude Code's own limit, looser than the Agent Skills standard above.
+  static let claudeDescriptionLimit = 1536
 
   static func isValidSkillName(_ name: String) -> Bool {
     !name.isEmpty && name.count <= nameLimit
@@ -187,11 +198,24 @@ nonisolated enum SkillCatalog {
     let description = fields["description"] ?? ""
     if description.isEmpty {
       out.append("the frontmatter has no description")
-    } else if description.count > descriptionLimit {
+    } else if description.count > claudeDescriptionLimit {
       out.append(
-        "the description is \(description.count) characters; the limit is \(descriptionLimit)")
+        "the description is \(description.count) characters; Claude Code's limit is \(claudeDescriptionLimit)"
+      )
     }
     return out
+  }
+
+  /// Fit-to-link problems are none of these: a description over the Agent
+  /// Skills standard's 1024 characters but within Claude Code's own 1536
+  /// still loads there, so it is a warning rather than a refusal.
+  static func warnings(fields: [String: String]?) -> [String] {
+    guard let description = fields?["description"], description.count > descriptionLimit,
+      description.count <= claudeDescriptionLimit
+    else { return [] }
+    return [
+      "the description is \(description.count) characters, over the Agent Skills standard's \(descriptionLimit); clients that read ~/.agents/skills may skip it"
+    ]
   }
 
   static func skill(at path: String, source: String, fs: SkillFileSystem) -> Skill {
@@ -200,7 +224,7 @@ nonisolated enum SkillCatalog {
       .flatMap(SkillFrontmatter.fields)
     return Skill(
       source: source, name: folder, path: path, description: fields?["description"] ?? "",
-      problems: problems(folderName: folder, fields: fields))
+      problems: problems(folderName: folder, fields: fields), warnings: warnings(fields: fields))
   }
 
   /// The skills in one source, or nil when its folder is missing. The two are
