@@ -27,7 +27,10 @@ struct SkillsPane: View {
         )
         .font(.callout).foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
-        if !SkillStore.reconciles {
+        // Not shown in demo mode: a demo or capture run is a Debug build, so
+        // without this exception the banner would appear in every store
+        // screenshot, which is not the story that screenshot is telling.
+        if !SkillStore.reconciles && !DemoSeed.isEnabled {
           Text(
             "Linking is off in this build: Bastion shows what it would change but writes "
               + "nothing. Launch with -reconcileSkills YES to turn it on."
@@ -189,7 +192,10 @@ struct SkillsPane: View {
           Text("'\(name)' is taken by something Bastion did not create.")
             .font(.caption).foregroundStyle(.orange)
           Spacer()
-          if SkillStore.reconciles {
+          // Shown in demo mode the same as in Release, even though linking is
+          // off there too: `overwrite` throws before it would touch anything,
+          // so the button is harmless, and a capture wants it to look real.
+          if SkillStore.reconciles || DemoSeed.isEnabled {
             Button("Overwrite Anyway…") {
               pendingOverwrite = PendingOverwrite(target: target.id, name: name)
             }
