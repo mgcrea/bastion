@@ -377,14 +377,18 @@ final class SkillStore {
       hostLog("skills", .error, "\(failure.target) \(failure.name): \(failure.message)")
     }
 
+    // In memory first, and never reloaded from disk: if `save` below fails,
+    // the names made this pass stay here and the next successful save of
+    // either file writes them.
     repositoryLinks = SkillLinks.nextLedger(
       targets: all, desired: desired, ledger: repositoryLinks, sources: sources, fs: fs)
-    for key in Set(all.compactMap(\.projectKey)) {
-      let entries = SkillLinks.projectExcludeEntries(key: key, ledger: repositoryLinks)
+    for key in SkillLinks.repositoryKeys(all) {
+      let entries = SkillLinks.projectExcludeEntries(
+        key: key, targets: all, ledger: repositoryLinks, sources: sources, fs: fs)
       if let failure = SkillLinker.writeExclude(key: key, entries: entries, fs: fs) {
-        // Filed under the repository's first target, so its section in the
+        // Filed under a target covering the repository, so a section in the
         // pane shows it; the bare key matches no section.
-        let target = all.first { $0.projectKey == key }?.id ?? failure.target
+        let target = all.first { SkillLinks.covers($0, key: key) }?.id ?? failure.target
         failures.append(.init(target: target, name: failure.name, message: failure.message))
         hostLog("skills", .error, "\(key): \(failure.message)")
       }

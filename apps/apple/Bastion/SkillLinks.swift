@@ -131,13 +131,34 @@ nonisolated enum SkillLinks {
 
   /// The repository a `projectTargetID` names, or nil for any other id.
   static func projectKey(fromTargetID id: String) -> String? {
+    projectFolder(fromTargetID: id)?.key
+  }
+
+  /// The repository and folder a `projectTargetID` names.
+  static func projectFolder(fromTargetID id: String) -> (key: String, flavor: Flavor)? {
     guard id.hasPrefix("project:") else { return nil }
     let body = id.dropFirst("project:".count)
     for flavor in Flavor.allCases where body.hasSuffix("/" + flavor.rawValue) {
       let key = String(body.dropLast(flavor.rawValue.count + 1))
-      return key.isEmpty ? nil : key
+      return key.isEmpty ? nil : (key, flavor)
     }
     return nil
+  }
+
+  /// Every repository some target covers, by its own id or an alias: a
+  /// repository folder merged into a global target (a home-folder
+  /// repository) keeps no `projectKey`, but still needs its exclude lines.
+  static func repositoryKeys(_ targets: [SkillTarget]) -> Set<String> {
+    Set(
+      targets.flatMap { target in
+        [target.projectKey].compactMap { $0 }
+          + ([target.id] + target.aliases).compactMap(projectKey(fromTargetID:))
+      })
+  }
+
+  /// Whether `target` is, or stands in for, one of `key`'s folders.
+  static func covers(_ target: SkillTarget, key: String) -> Bool {
+    ([target.id] + target.aliases).contains { projectKey(fromTargetID: $0) == key }
   }
 
   /// `globalTargets` and `projectTargets` each deduplicate only within
@@ -426,6 +447,9 @@ nonisolated enum SkillLinks {
   /// plus every wanted name now pointing at the wanted skill — which covers
   /// both what this pass linked or relinked and what it adopted. Global
   /// targets have no entry, and neither does a folder left with nothing.
+  /// A folder that cannot be listed (missing, unmounted, unreadable) keeps
+  /// its recorded names unchanged: `children` would answer `[]` for it, and
+  /// forgetting them would leave Bastion's own links unadopted for good.
   static func nextLedger(
     targets: [SkillTarget], desired: Desired, ledger: [String: Set<String>],
     sources: [SkillSource], fs: SkillFileSystem
@@ -433,6 +457,10 @@ nonisolated enum SkillLinks {
     var out: [String: Set<String>] = [:]
     for target in targets {
       guard let recorded = ledgerNames(target, ledger) else { continue }
+      guard fs.canList(target.path) else {
+        if !recorded.isEmpty { out[target.id] = recorded }
+        continue
+      }
       let want = desired.links[target.id] ?? [:]
       let folder = fs.canonical(target.path)
       let names = ownedNames(in: target.path, sources: sources, fs: fs).filter { name in
@@ -446,13 +474,34 @@ nonisolated enum SkillLinks {
     return out
   }
 
-  /// The lines `SkillExclude` keeps in a repository's `info/exclude`: the
-  /// ledger's names in either folder, anchored at the repository root.
-  /// Bastion's lines for Bastion's links only; a link somebody else made is
-  /// theirs to ignore or commit.
-  static func projectExcludeEntries(key: String, ledger: [String: Set<String>]) -> [String] {
-    Flavor.allCases.flatMap { flavor in
-      (ledger[projectTargetID(key, flavor)] ?? []).sorted().map { "/\(flavor.rawValue)/\($0)" }
+  /// The lines `SkillExclude` keeps in a repository's `info/exclude`:
+  /// Bastion's links, anchored at the repository root, under EVERY folder of
+  /// `key` their target covers. Targets merge by resolved folder, so the
+  /// ledger is keyed by one id while git may see the links through another:
+  /// with `.claude/skills -> ../.agents/skills` the `.claude` row is primary
+  /// but git reports `.agents/skills/alpha`.
+  ///
+  /// A repository target contributes its ledger names only; a link somebody
+  /// else made is theirs to ignore or commit. A repository folder merged
+  /// into a GLOBAL target (a home-folder repository) has no ledger, and
+  /// there every link the global target claims is Bastion's, so those names
+  /// are listed.
+  static func projectExcludeEntries(
+    key: String, targets: [SkillTarget], ledger: [String: Set<String>],
+    sources: [SkillSource], fs: SkillFileSystem
+  ) -> [String] {
+    var byFlavor: [Flavor: Set<String>] = [:]
+    for target in targets {
+      let folders = ([target.id] + target.aliases).compactMap(projectFolder(fromTargetID:))
+        .filter { $0.key == key }
+      guard !folders.isEmpty else { continue }
+      let names =
+        ledgerNames(target, ledger)
+        ?? Set(ownedNames(in: target.path, sources: sources, fs: fs))
+      for folder in folders { byFlavor[folder.flavor, default: []].formUnion(names) }
+    }
+    return Flavor.allCases.flatMap { flavor in
+      (byFlavor[flavor] ?? []).sorted().map { "/\(flavor.rawValue)/\($0)" }
     }
   }
 

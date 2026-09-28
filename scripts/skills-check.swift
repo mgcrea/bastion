@@ -73,6 +73,8 @@ struct SkillsCheck {
     var directories: Set<String> = ["/"]
     var files: [String: String] = [:]
     var links: [String: String] = [:]
+    /// Folders that exist but cannot be listed (chmod 000, a privacy block).
+    var unlistable: Set<String> = []
 
     static func parent(_ path: String) -> String { (path as NSString).deletingLastPathComponent }
 
@@ -148,6 +150,10 @@ struct SkillsCheck {
 
     func entryExists(_ path: String) -> Bool {
       symlinkDestination(path) != nil || isDirectory(path) || isFile(path)
+    }
+
+    func canList(_ path: String) -> Bool {
+      isDirectory(path) && !unlistable.contains(resolve(path))
     }
   }
 
@@ -669,11 +675,11 @@ struct SkillsCheck {
     check(
       "exclude entries are the links of ours, anchored at the root",
       SkillLinks.projectExcludeEntries(
-        key: "/r/app",
+        key: "/r/app", targets: SkillLinks.projectTargets(keys: ["/r/app"], fs: fs),
         ledger: [
           SkillLinks.projectTargetID("/r/app", .claude): ["alpha"],
           SkillLinks.projectTargetID("/r/app", .agents): ["alpha"],
-        ])
+        ], sources: [global], fs: fs)
         == ["/.claude/skills/alpha", "/.agents/skills/alpha"])
     let targets = SkillLinks.globalTargets(home: home, claude: claudeRows, fs: fs)
     check(
@@ -824,18 +830,76 @@ struct SkillsCheck {
       next == [claude: ["alpha", "gamma"], agents: ["alpha"]])
     check(
       "a name in no ledger and not wanted stays out", next[claude]?.contains("beta") == false)
+    var emptied = after
+    emptied.dir("/r/empty/.claude/skills")
     check(
       "a folder left with nothing has no entry",
       SkillLinks.nextLedger(
-        targets: SkillLinks.projectTargets(keys: ["/r/empty"], fs: after), desired: desired,
+        targets: SkillLinks.projectTargets(keys: ["/r/empty"], fs: emptied), desired: desired,
         ledger: [SkillLinks.projectTargetID("/r/empty", .claude): ["x"]], sources: [global],
-        fs: after
+        fs: emptied
       ).isEmpty)
+
+    // A folder that cannot be listed says nothing about what is in it.
+    let gone = SkillLinks.projectTargetID("/Volumes/Work/repo", .claude)
+    check(
+      "a missing folder keeps its recorded names",
+      SkillLinks.nextLedger(
+        targets: SkillLinks.projectTargets(keys: ["/Volumes/Work/repo"], fs: after),
+        desired: desired, ledger: [gone: ["alpha"]], sources: [global], fs: after)
+        == [gone: ["alpha"]])
+    var locked = after
+    locked.unlistable.insert("/r/app/.claude/skills")
+    check(
+      "an unlistable folder keeps its recorded names unchanged, and adopts nothing new",
+      SkillLinks.nextLedger(
+        targets: targets, desired: desired, ledger: [claude: ["gamma", "vanished"]],
+        sources: [global], fs: locked
+      ) == [claude: ["gamma", "vanished"], agents: ["alpha"]])
 
     check(
       "exclude entries list only ledger names",
-      SkillLinks.projectExcludeEntries(key: "/r/app", ledger: [claude: ["gamma"]])
+      SkillLinks.projectExcludeEntries(
+        key: "/r/app", targets: targets, ledger: [claude: ["gamma"]], sources: [global],
+        fs: after)
         == ["/.claude/skills/gamma"])
+
+    // `.claude/skills -> ../.agents/skills`: one target, the `.claude` row
+    // primary, and the ledger keyed by it. git sees the link through
+    // `.agents/skills`, so the line must name that folder too.
+    var merged = machine()
+    merged.dir("/r/app/.git")
+    merged.dir("/r/app/.agents/skills")
+    merged.link("/r/app/.claude/skills", to: "../.agents/skills")
+    merged.link("/r/app/.agents/skills/alpha", to: globalPath + "/alpha")
+    let one = SkillLinks.projectTargets(keys: ["/r/app"], fs: merged)
+    check(
+      "a .claude folder linked to .agents is one target, .claude primary",
+      one.map(\.id) == [claude] && one.first?.aliases == [agents])
+    check(
+      "and the exclude block names the link under both folders",
+      SkillLinks.projectExcludeEntries(
+        key: "/r/app", targets: one, ledger: [claude: ["alpha"]], sources: [global], fs: merged)
+        == ["/.claude/skills/alpha", "/.agents/skills/alpha"])
+
+    // A home-folder repository: both of its folders are global targets, so
+    // it has no ledger, and every link those targets claim is Bastion's.
+    var homeRepo = machine()
+    homeRepo.dir(home + "/.git")
+    homeRepo.link(home + "/.claude/skills/alpha", to: globalPath + "/alpha")
+    homeRepo.link(home + "/.claude/skills/theirs", to: "/elsewhere/theirs")
+    let homeTargets = SkillLinks.combined(
+      global: SkillLinks.globalTargets(home: home, claude: claudeRows, fs: homeRepo),
+      project: SkillLinks.projectTargets(keys: [home], fs: homeRepo), fs: homeRepo)
+    check(
+      "a repository merged into global targets is still a repository to exclude in",
+      SkillLinks.repositoryKeys(homeTargets) == [home]
+        && homeTargets.allSatisfy { $0.projectKey == nil })
+    check(
+      "and its exclude lines are the links the global targets claim",
+      SkillLinks.projectExcludeEntries(
+        key: home, targets: homeTargets, ledger: [:], sources: [global], fs: homeRepo)
+        == ["/.claude/skills/alpha"])
 
     var retired = machine()
     let old = SkillSource(name: "old", path: "/Users/me/old", kind: .collection, retired: true)

@@ -68,6 +68,10 @@ nonisolated protocol SkillFileSystem: WorkspaceFileSystem {
   func symlinkDestination(_ path: String) -> String?
   /// Whether anything is at `path`, a dangling symlink included.
   func entryExists(_ path: String) -> Bool
+  /// Whether `path` is a folder whose entries can actually be read.
+  /// `children` answers `[]` for a folder that is missing, unmounted or
+  /// unreadable, which is not the same claim as "empty".
+  func canList(_ path: String) -> Bool
 }
 
 nonisolated struct LocalSkillFileSystem: SkillFileSystem {
@@ -106,6 +110,10 @@ nonisolated struct LocalSkillFileSystem: SkillFileSystem {
   func entryExists(_ path: String) -> Bool {
     var info = stat()
     return lstat(path, &info) == 0
+  }
+
+  func canList(_ path: String) -> Bool {
+    (try? FileManager.default.contentsOfDirectory(atPath: path)) != nil
   }
 }
 
