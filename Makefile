@@ -595,8 +595,16 @@ skills-check: ## Assert skill discovery, the link plan and the git exclude block
 	@swiftc -O -o apps/apple/.build/skills-check \
 		apps/apple/Bastion/WorkspaceScope.swift \
 		apps/apple/Bastion/SkillCatalog.swift \
+		apps/apple/Bastion/SkillLinks.swift \
 		scripts/skills-check.swift
 	@apps/apple/.build/skills-check
+
+# Read-only. Plans against this Mac's real skills folders with one real source,
+# seeded the way adding it in the app seeds it, and asserts the plan would
+# change nothing but links that are already broken.
+SKILL_SOURCE ?= $(HOME)/Projects/claude-skills/global
+skills-check-real: skills-check ## Plan against the real skills folders with one source (read-only)
+	@apps/apple/.build/skills-check --real "$(HOME)" "$(SKILL_SOURCE)"
 
 audit: app remote-check ## Assert the listener is loopback-only and refuses foreign Origin/Host
 	@scripts/audit-listener.sh

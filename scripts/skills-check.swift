@@ -24,10 +24,29 @@ struct SkillsCheck {
   }
 
   static func main() {
+    let arguments = Array(CommandLine.arguments.dropFirst())
+    if arguments.first == "--real", arguments.count == 3 {
+      realPlanChangesOnlyBrokenLinks(home: arguments[1], source: arguments[2])
+      print("\n\(checks - failures)/\(checks) passed")
+      exit(failures > 0 ? 1 : 0)
+    }
+
     frontmatterShapes()
     validationRules()
     catalogScan()
     sourceNames()
+
+    targetsDeduplicateThroughSymlinks()
+    planLinksWhatIsMissingAndNothingElse()
+    relativeLinksAreJudgedByWhereTheyLand()
+    sourceSpelledThroughASymlink()
+    foreignEntriesAreNeverTouched()
+    unavailableAndRetiredSources()
+    shadowingIsPerFolder()
+    scopedSkillsLeaveGlobalTargets()
+    overlappingTargetIsRefused()
+    seedingAdoptsExistingLinks()
+    ledgerHelpers()
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 { exit(1) }
@@ -261,5 +280,366 @@ struct SkillsCheck {
     check(
       "every default is valid",
       SkillCatalog.isValidSourceName(SkillCatalog.defaultSourceName(for: "/a/--x--", taken: [])))
+  }
+
+  // MARK: - Plan
+
+  static let home = "/Users/me"
+  static let globalPath = "/Users/me/Projects/claude-skills/global"
+  static let global = SkillSource(name: "global", path: globalPath, kind: .collection)
+
+  /// Shared, the default Claude folder, and a second config folder whose
+  /// `skills` is a symlink to the first, as on the reference machine.
+  static func machine() -> FakeFS {
+    var fs = FakeFS()
+    fs.skill(globalPath + "/alpha")
+    fs.skill(globalPath + "/beta")
+    fs.dir(home + "/.agents/skills")
+    fs.dir(home + "/.claude/skills")
+    fs.link(home + "/.claude-skitrust/skills", to: home + "/.claude/skills")
+    return fs
+  }
+
+  static let claudeRows = [
+    SkillLinks.ClaudeDirectory(
+      id: "claude-code", label: "Claude Code", directory: home + "/.claude"),
+    SkillLinks.ClaudeDirectory(
+      id: "claude-code@skitrust", label: "Claude Code (skitrust)",
+      directory: home + "/.claude-skitrust"),
+  ]
+
+  /// Catalog, targets, desired links and plan in one call, as the store does.
+  static func planned(
+    _ fs: FakeFS, sources: [SkillSource] = [global], choices: [String: Set<String>],
+    scopes: [String: [String]] = [:], resolved: [String: Set<String>] = [:]
+  ) -> (targets: [SkillTarget], plan: SkillLinks.Plan) {
+    let catalog = SkillCatalog.catalog(sources, fs: fs)
+    let keys = scopes.keys.reduce(into: Set<String>()) { $0.formUnion(resolved[$1] ?? []) }
+    let targets =
+      SkillLinks.globalTargets(home: home, claude: claudeRows, fs: fs)
+      + SkillLinks.projectTargets(keys: keys, fs: fs)
+    let desired = SkillLinks.desired(
+      skills: catalog.skills, choices: choices, scopes: scopes,
+      resolved: { resolved[$0] ?? [] }, targets: targets)
+    return (
+      targets,
+      SkillLinks.plan(
+        targets: targets, desired: desired, sources: sources, available: catalog.available, fs: fs)
+    )
+  }
+
+  static func targetsDeduplicateThroughSymlinks() {
+    print("targets")
+    let targets = SkillLinks.globalTargets(home: home, claude: claudeRows, fs: machine())
+    check("shared plus one Claude target", targets.map(\.id) == ["shared", "claude-code"])
+    check("the symlinked folder is an alias", targets.last?.aliases == ["claude-code@skitrust"])
+    check("and its label names both", targets.last?.label == "Claude Code, Claude Code (skitrust)")
+
+    var fs = machine()
+    fs.link("/r/app/.agents/skills", to: "../.claude/skills")
+    fs.dir("/r/app/.claude/skills")
+    let project = SkillLinks.projectTargets(keys: ["/r/app"], fs: fs)
+    check("a repository whose two folders are one gets one target", project.count == 1)
+
+    let absent =
+      claudeRows + [
+        SkillLinks.ClaudeDirectory(
+          id: "claude-code@gone", label: "Gone", directory: home + "/.claude-gone")
+      ]
+    check(
+      "a Claude Code folder that does not exist contributes no target",
+      SkillLinks.globalTargets(home: home, claude: absent, fs: machine()).map(\.id) == [
+        "shared", "claude-code",
+      ])
+  }
+
+  static func planLinksWhatIsMissingAndNothingElse() {
+    print("plan")
+    var fs = machine()
+    fs.link(home + "/.claude/skills/beta", to: globalPath + "/beta")
+    let (_, plan) = planned(
+      fs,
+      choices: [
+        "global:alpha": ["claude-code@skitrust", "shared"], "global:beta": ["claude-code"],
+      ])
+    check(
+      "a missing link is planned in each chosen target, an alias counting as its folder",
+      Set(plan.actions) == [
+        .link(target: "claude-code", name: "alpha", destination: globalPath + "/alpha"),
+        .link(target: "shared", name: "alpha", destination: globalPath + "/alpha"),
+      ])
+
+    var moved = machine()
+    moved.link(home + "/.claude/skills/alpha", to: "/Users/me/Projects/claude-skills/global/beta")
+    let (_, relinked) = planned(moved, choices: ["global:alpha": ["claude-code"]])
+    check(
+      "a link of ours pointing at the wrong skill is relinked",
+      relinked.actions == [
+        .relink(target: "claude-code", name: "alpha", destination: globalPath + "/alpha")
+      ])
+
+    var stale = machine()
+    stale.link(home + "/.claude/skills/alpha", to: globalPath + "/alpha")
+    stale.link(home + "/.claude/skills/astro-bootstrap", to: globalPath + "/astro-bootstrap")
+    let (_, unlinked) = planned(stale, choices: [:])
+    check(
+      "a link of ours not chosen, and a dangling one, are unlinked",
+      Set(unlinked.actions) == [
+        .unlink(target: "claude-code", name: "alpha"),
+        .unlink(target: "claude-code", name: "astro-bootstrap"),
+      ])
+
+    var workspace = machine()
+    workspace.dir(globalPath + "/push-testflight-build-workspace/iteration-1")
+    workspace.link(
+      home + "/.claude/skills/push-testflight-build-workspace",
+      to: globalPath + "/push-testflight-build-workspace")
+    let (_, kept) = planned(workspace, choices: [:])
+    check(
+      "a link into a source that lands on a folder with no SKILL.md is left alone",
+      kept.actions.isEmpty)
+    check(
+      "and listed as foreign",
+      kept.reports["claude-code"]?.foreign == ["push-testflight-build-workspace"])
+
+    var invalid = machine()
+    invalid.skill(globalPath + "/gamma", name: "Gamma")
+    let (_, skipped) = planned(invalid, choices: ["global:gamma": ["claude-code"]])
+    check("an invalid skill is never linked", skipped.actions.isEmpty)
+  }
+
+  static func relativeLinksAreJudgedByWhereTheyLand() {
+    print("relative links")
+    var fs = machine()
+    fs.link(home + "/.claude/skills/alpha", to: "../../Projects/claude-skills/global/alpha")
+    fs.link(home + "/.claude/skills/theirs", to: "../../elsewhere/theirs")
+    let (_, plan) = planned(fs, choices: ["global:alpha": ["claude-code"]])
+    check("a relative link to the right skill needs nothing", plan.actions.isEmpty)
+    check(
+      "a relative link elsewhere is foreign",
+      plan.reports["claude-code"]?.foreign == ["theirs"])
+  }
+
+  static func sourceSpelledThroughASymlink() {
+    print("symlinked source")
+    var fs = machine()
+    fs.link("/Users/me/code", to: "/Users/me/Projects")
+    let spelled = SkillSource(
+      name: "global", path: "/Users/me/code/claude-skills/global", kind: .collection)
+    fs.link(home + "/.claude/skills/alpha", to: globalPath + "/alpha")
+    let (_, plan) = planned(fs, sources: [spelled], choices: ["global:alpha": ["claude-code"]])
+    check(
+      "a link by the physical spelling belongs to a source named by the other", plan.actions.isEmpty
+    )
+  }
+
+  static func foreignEntriesAreNeverTouched() {
+    print("foreign")
+    var fs = machine()
+    fs.skill(home + "/.agents/skills/alpha")
+    fs.dir(home + "/.claude/skills/.trash")
+    fs.dir(home + "/.claude/skills/synced/some")
+    fs.link(home + "/.claude/skills/find-skills", to: home + "/.agents/skills/find-skills")
+    let (_, plan) = planned(fs, choices: ["global:alpha": ["shared", "claude-code"]])
+    check(
+      "a real folder in the way is a collision, not an action",
+      plan.actions == [
+        .link(target: "claude-code", name: "alpha", destination: globalPath + "/alpha")
+      ])
+    check("the collision is reported", plan.reports["shared"]?.collisions == ["alpha"])
+    check(
+      "hidden entries are not even listed, other foreign ones are",
+      plan.reports["claude-code"]?.foreign == ["find-skills", "synced"])
+  }
+
+  static func unavailableAndRetiredSources() {
+    print("unavailable and retired")
+    var fs = machine()
+    let away = SkillSource(name: "away", path: "/Volumes/Work/skills", kind: .collection)
+    let old = SkillSource(
+      name: "old", path: "/Users/me/old-skills", kind: .collection, retired: true)
+    fs.link(home + "/.claude/skills/offline", to: "/Volumes/Work/skills/offline")
+    fs.link(home + "/.claude/skills/legacy", to: "/Users/me/old-skills/legacy")
+    let (_, plan) = planned(fs, sources: [global, away, old], choices: [:])
+    check(
+      "a link into a missing source is left alone and reported",
+      plan.reports["claude-code"]?.unavailable == ["offline"])
+    check(
+      "a link into a retired source is removed even though its folder is gone",
+      plan.actions == [.unlink(target: "claude-code", name: "legacy")])
+  }
+
+  static func shadowingIsPerFolder() {
+    print("shadowing")
+    var fs = machine()
+    let second = SkillSource(name: "second", path: "/Users/me/second", kind: .collection)
+    fs.skill("/Users/me/second/alpha")
+    let (_, plan) = planned(
+      fs, sources: [global, second],
+      choices: ["global:alpha": ["claude-code"], "second:alpha": ["claude-code", "shared"]])
+    check(
+      "the earlier source wins a folder both want",
+      plan.actions.contains(
+        .link(target: "claude-code", name: "alpha", destination: globalPath + "/alpha")))
+    check(
+      "the later one is reported as shadowed there",
+      plan.reports["claude-code"]?.shadowed == ["second:alpha"])
+    check(
+      "and is linked where it has no rival",
+      plan.actions.contains(
+        .link(target: "shared", name: "alpha", destination: "/Users/me/second/alpha")))
+  }
+
+  static func scopedSkillsLeaveGlobalTargets() {
+    print("scoped")
+    var fs = machine()
+    fs.link(home + "/.claude/skills/alpha", to: globalPath + "/alpha")
+    fs.dir("/r/app/.git")
+    let (_, plan) = planned(
+      fs, choices: ["global:alpha": ["claude-code"]], scopes: ["app": ["global:alpha"]],
+      resolved: ["app": ["/r/app"]])
+    check(
+      "a scoped skill is unlinked from global targets and linked into both repository folders",
+      Set(plan.actions) == [
+        .unlink(target: "claude-code", name: "alpha"),
+        .link(
+          target: SkillLinks.projectTargetID("/r/app", .claude), name: "alpha",
+          destination: globalPath + "/alpha"),
+        .link(
+          target: SkillLinks.projectTargetID("/r/app", .agents), name: "alpha",
+          destination: globalPath + "/alpha"),
+      ])
+
+    let (_, twice) = planned(
+      machine(), choices: [:], scopes: ["a": ["global:alpha"], "b": ["global:alpha"]],
+      resolved: ["a": ["/r/app"], "b": ["/r/app"]])
+    check("two workspaces reaching one repository link it once", twice.actions.count == 2)
+    check("and shadow nothing", twice.reports.values.allSatisfy { $0.shadowed.isEmpty })
+  }
+
+  static func overlappingTargetIsRefused() {
+    print("overlap")
+    var fs = machine()
+    fs.link(home + "/.claude-work", to: globalPath)
+    let rows =
+      claudeRows + [
+        SkillLinks.ClaudeDirectory(
+          id: "claude-code@work", label: "Work", directory: home + "/.claude-work")
+      ]
+    fs.dir(globalPath + "/skills")
+    let targets = SkillLinks.globalTargets(home: home, claude: rows, fs: fs)
+    let catalog = SkillCatalog.catalog([global], fs: fs)
+    let desired = SkillLinks.desired(
+      skills: catalog.skills, choices: ["global:alpha": ["claude-code@work"]], scopes: [:],
+      resolved: { _ in [] }, targets: targets)
+    let plan = SkillLinks.plan(
+      targets: targets, desired: desired, sources: [global], available: catalog.available, fs: fs)
+    check("nothing is ever written inside a source", plan.actions.isEmpty)
+    check("and the target says why", plan.reports["claude-code@work"]?.refused != nil)
+
+    check(
+      "a new source inside a target is caught before it is added",
+      SkillLinks.overlap(path: home + "/.agents/skills/find-skills", targets: targets, fs: fs)?.id
+        == "shared")
+  }
+
+  static func seedingAdoptsExistingLinks() {
+    print("seed")
+    var fs = machine()
+    fs.link(home + "/.claude/skills/alpha", to: globalPath + "/alpha")
+    fs.link("/r/app/.claude/skills/beta", to: globalPath + "/beta")
+    fs.link("/r/app/.claude/skills/alpha", to: globalPath + "/alpha")
+    let skills = SkillCatalog.catalog([global], fs: fs).skills
+    let targets = SkillLinks.globalTargets(home: home, claude: claudeRows, fs: fs)
+    let seeded = SkillLinks.seed(
+      skills: skills, targets: targets, workspaces: ["app"], resolved: { _ in ["/r/app"] }, fs: fs)
+    check("a global link becomes a choice", seeded.choices == ["global:alpha": ["claude-code"]])
+    check(
+      "a repository-only link becomes a workspace scope", seeded.scopes == ["app": ["global:beta"]])
+    check(
+      "a skill linked both ways stays global, so seeding never unlinks it",
+      seeded.scopes["app"]?.contains("global:alpha") != true)
+
+    let (_, plan) = planned(
+      fs, choices: seeded.choices, scopes: ["app": ["global:beta"]], resolved: ["app": ["/r/app"]])
+    check(
+      "the seeded plan only adds the missing .agents half and drops the doubled global link",
+      Set(plan.actions) == [
+        .link(
+          target: SkillLinks.projectTargetID("/r/app", .agents), name: "beta",
+          destination: globalPath + "/beta"),
+        .unlink(target: SkillLinks.projectTargetID("/r/app", .claude), name: "alpha"),
+      ])
+  }
+
+  static func ledgerHelpers() {
+    print("ledger")
+    var fs = machine()
+    let old = SkillSource(name: "old", path: "/Users/me/old", kind: .collection, retired: true)
+    fs.link("/r/app/.claude/skills/alpha", to: globalPath + "/alpha")
+    fs.link("/r/app/.agents/skills/alpha", to: globalPath + "/alpha")
+    fs.link("/r/app/.agents/skills/theirs", to: "/elsewhere")
+    fs.link(home + "/.claude/skills/legacy", to: "/Users/me/old/legacy")
+    check(
+      "exclude entries are the links of ours, anchored at the root",
+      SkillLinks.projectExcludeEntries(key: "/r/app", sources: [global], fs: fs)
+        == ["/.claude/skills/alpha", "/.agents/skills/alpha"])
+    let targets = SkillLinks.globalTargets(home: home, claude: claudeRows, fs: fs)
+    check(
+      "a retired source with a link left is still linked",
+      SkillLinks.retiredStillLinked(targets: targets, sources: [global, old], fs: fs) == ["old"])
+    check(
+      "a retired source re-added under a new name loses to the active one",
+      SkillLinks.owner(
+        of: globalPath + "/alpha",
+        sources: [
+          SkillSource(name: "was", path: globalPath, kind: .collection, retired: true), global,
+        ],
+        fs: fs)?.name == "global")
+  }
+
+  // MARK: - Real
+
+  /// Read-only: builds the targets the app would build on this Mac, seeds a
+  /// plan for one real source, and asserts it changes nothing but broken links.
+  static func realPlanChangesOnlyBrokenLinks(home: String, source path: String) {
+    print("real: \(path)")
+    let fs = LocalSkillFileSystem()
+    guard fs.isDirectory(path) else {
+      print("  skip: \(path) is not a folder")
+      return
+    }
+    var rows = [
+      SkillLinks.ClaudeDirectory(
+        id: "claude-code", label: "Claude Code", directory: home + "/.claude")
+    ]
+    for name in fs.children(home).sorted() where name.hasPrefix(".claude-") {
+      let directory = (home as NSString).appendingPathComponent(name)
+      if fs.isDirectory(directory) {
+        rows.append(
+          .init(id: "claude-code@" + name.dropFirst(8), label: name, directory: directory))
+      }
+    }
+    let targets = SkillLinks.globalTargets(home: home, claude: rows, fs: fs)
+    let source = SkillSource(
+      name: SkillCatalog.defaultSourceName(for: path, taken: []), path: path,
+      kind: SkillCatalog.kind(of: path, fs: fs))
+    let catalog = SkillCatalog.catalog([source], fs: fs)
+    let seeded = SkillLinks.seed(
+      skills: catalog.skills, targets: targets, workspaces: [], resolved: { _ in [] }, fs: fs)
+    let desired = SkillLinks.desired(
+      skills: catalog.skills, choices: seeded.choices, scopes: [:], resolved: { _ in [] },
+      targets: targets)
+    let plan = SkillLinks.plan(
+      targets: targets, desired: desired, sources: [source], available: catalog.available, fs: fs)
+    for action in plan.actions { print("  plan \(action.summary)") }
+    let byID = Dictionary(uniqueKeysWithValues: targets.map { ($0.id, $0) })
+    let brokenOnly = plan.actions.allSatisfy { action in
+      guard case .unlink(let target, let name) = action, let folder = byID[target]?.path,
+        let raw = fs.symlinkDestination((folder as NSString).appendingPathComponent(name))
+      else { return false }
+      return !fs.entryExists(SkillLinks.absolute(raw, in: fs.canonical(folder)))
+    }
+    check("the seeded plan changes nothing but broken links", brokenOnly)
   }
 }
