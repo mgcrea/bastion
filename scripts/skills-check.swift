@@ -50,6 +50,7 @@ struct SkillsCheck {
     parentSourceClaimsNothingBelowItsSlots()
     globalAndProjectTargetsMergeAcrossTheHomeRepository()
     canonicalOfAMissingPath()
+    excludeBlock()
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 { exit(1) }
@@ -752,5 +753,46 @@ struct SkillsCheck {
       return !fs.entryExists(SkillLinks.absolute(raw, in: fs.canonical(folder)))
     }
     check("the seeded plan changes nothing but broken links", brokenOnly)
+  }
+
+  static func excludeBlock() {
+    print("info/exclude")
+    let user = "# git ls-files --others --exclude-from=.git/info/exclude\n*.local\n"
+    let added = SkillExclude.updated(user, entries: ["/.claude/skills/a", "/.agents/skills/a"])
+    check("the user's lines come first, byte for byte", added.hasPrefix(user))
+    check(
+      "the block holds exactly the entries",
+      added == user + SkillExclude.begin + "\n/.claude/skills/a\n/.agents/skills/a\n"
+        + SkillExclude.end + "\n")
+    check(
+      "updating is idempotent",
+      SkillExclude.updated(added, entries: ["/.claude/skills/a", "/.agents/skills/a"]) == added)
+
+    let replaced = SkillExclude.updated(added + "after\n", entries: ["/.claude/skills/b"])
+    check(
+      "a changed set replaces the block and keeps lines after it",
+      replaced.contains("/.claude/skills/b\n") && !replaced.contains("/skills/a\n")
+        && replaced.contains("after\n"))
+
+    check("no entries removes the block", SkillExclude.updated(added, entries: []) == user)
+    check(
+      "no entries and no block changes nothing", SkillExclude.updated(user, entries: []) == user)
+    check(
+      "a file without a final newline gets one before the block",
+      SkillExclude.updated("*.local", entries: ["/x"]).hasPrefix("*.local\n" + SkillExclude.begin))
+    check(
+      "an empty file gets only the block",
+      SkillExclude.updated("", entries: ["/x"]) == SkillExclude.begin + "\n/x\n" + SkillExclude.end
+        + "\n")
+
+    var fs = FakeFS()
+    fs.dir("/r/app/.git/info")
+    fs.file("/r/sub/.git", "gitdir: ../app/.git/modules/sub")
+    fs.dir("/r/plain")
+    check(
+      "a repository's exclude file",
+      SkillExclude.path(forKey: "/r/app", fs: fs) == "/r/app/.git/info/exclude")
+    check("none for a .git file", SkillExclude.path(forKey: "/r/sub", fs: fs) == nil)
+    check("none outside git", SkillExclude.path(forKey: "/r/plain", fs: fs) == nil)
   }
 }

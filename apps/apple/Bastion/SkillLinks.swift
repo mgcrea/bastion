@@ -418,3 +418,33 @@ nonisolated enum SkillLinks {
     return out
   }
 }
+
+/// Bastion's block in a repository's `.git/info/exclude`.
+///
+/// `info/exclude` rather than `.gitignore`: it is local to the clone and never
+/// committed, and it is shared by every worktree of the repository. Without it
+/// `git add .` commits a symlink to `/Users/<me>/…`. Only the block is
+/// Bastion's; every other line comes back byte for byte.
+nonisolated enum SkillExclude {
+  static let begin = "# >>> bastion skills: managed by Bastion, edits here are overwritten"
+  static let end = "# <<< bastion skills"
+
+  static func updated(_ existing: String, entries: [String]) -> String {
+    var lines = existing.components(separatedBy: "\n")
+    if let start = lines.firstIndex(of: begin),
+      let stop = lines[start...].firstIndex(of: end)
+    {
+      lines.removeSubrange(start...stop)
+    }
+    var text = lines.joined(separator: "\n")
+    guard !entries.isEmpty else { return text }
+    if !text.isEmpty && !text.hasSuffix("\n") { text += "\n" }
+    return text + ([begin] + entries + [end]).joined(separator: "\n") + "\n"
+  }
+
+  static func path(forKey key: String, fs: SkillFileSystem) -> String? {
+    let git = (key as NSString).appendingPathComponent(".git")
+    guard fs.isDirectory(git) else { return nil }
+    return (git as NSString).appendingPathComponent("info/exclude")
+  }
+}
