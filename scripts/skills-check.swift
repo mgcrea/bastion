@@ -52,6 +52,8 @@ struct SkillsCheck {
     canonicalOfAMissingPath()
     excludeBlock()
     workspaceDecodesWithoutSkills()
+    applyOnDisk()
+    linkNeverReplaces()
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 { exit(1) }
@@ -812,5 +814,95 @@ struct SkillsCheck {
     check(
       "the three-argument init still exists",
       Workspace(name: "a", folders: [], profiles: []).skills.isEmpty)
+  }
+
+  static func scratch() -> String {
+    let path = (NSTemporaryDirectory() as NSString).appendingPathComponent(
+      "skills-check-" + UUID().uuidString)
+    try? FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+    return path
+  }
+
+  static func applyOnDisk() {
+    print("apply")
+    let root = scratch()
+    defer { try? FileManager.default.removeItem(atPath: root) }
+    let manager = FileManager.default
+    let skillA = root + "/source/a"
+    let skillB = root + "/source/b"
+    try? manager.createDirectory(atPath: skillA, withIntermediateDirectories: true)
+    try? manager.createDirectory(atPath: skillB, withIntermediateDirectories: true)
+    let target = SkillTarget(
+      id: "t", aliases: [], label: "T", path: root + "/target/skills", projectKey: nil)
+
+    var failures = SkillLinker.apply(
+      [.link(target: "t", name: "a", destination: skillA)], targets: [target])
+    check(
+      "link creates the folder and the link",
+      failures.isEmpty
+        && (try? manager.destinationOfSymbolicLink(atPath: target.path + "/a")) == skillA)
+
+    failures = SkillLinker.apply(
+      [.relink(target: "t", name: "a", destination: skillB)], targets: [target])
+    check(
+      "relink repoints it",
+      failures.isEmpty
+        && (try? manager.destinationOfSymbolicLink(atPath: target.path + "/a")) == skillB)
+    let leftovers = (try? manager.contentsOfDirectory(atPath: target.path)) ?? []
+    check("and leaves no temporary entry behind", leftovers == ["a"])
+
+    failures = SkillLinker.apply([.unlink(target: "t", name: "a")], targets: [target])
+    check(
+      "unlink removes the link",
+      failures.isEmpty && !LocalSkillFileSystem().entryExists(target.path + "/a"))
+    check("and never what it pointed at", manager.fileExists(atPath: skillB))
+
+    try? manager.createDirectory(atPath: target.path + "/real", withIntermediateDirectories: true)
+    failures = SkillLinker.apply([.unlink(target: "t", name: "real")], targets: [target])
+    check(
+      "unlink refuses a real folder",
+      failures.count == 1 && manager.fileExists(atPath: target.path + "/real"))
+
+    let fs = LocalSkillFileSystem()
+    try? manager.createDirectory(
+      atPath: root + "/repo/.git/info", withIntermediateDirectories: true)
+    try? "*.local\n".write(
+      toFile: root + "/repo/.git/info/exclude", atomically: true, encoding: .utf8)
+    check(
+      "writing the exclude block succeeds",
+      SkillLinker.writeExclude(key: root + "/repo", entries: ["/.claude/skills/a"], fs: fs) == nil)
+    let written =
+      (try? String(contentsOfFile: root + "/repo/.git/info/exclude", encoding: .utf8)) ?? ""
+    check(
+      "and keeps the user's line",
+      written.hasPrefix("*.local\n") && written.contains("/.claude/skills/a"))
+    _ = SkillLinker.writeExclude(key: root + "/repo", entries: [], fs: fs)
+    check(
+      "clearing it restores the file",
+      (try? String(contentsOfFile: root + "/repo/.git/info/exclude", encoding: .utf8))
+        == "*.local\n")
+
+    try? manager.createDirectory(atPath: root + "/fresh/.git", withIntermediateDirectories: true)
+    check(
+      "a repository with no info folder gets one",
+      SkillLinker.writeExclude(key: root + "/fresh", entries: ["/x"], fs: fs) == nil
+        && manager.fileExists(atPath: root + "/fresh/.git/info/exclude"))
+  }
+
+  static func linkNeverReplaces() {
+    print("race")
+    let root = scratch()
+    defer { try? FileManager.default.removeItem(atPath: root) }
+    let target = SkillTarget(
+      id: "t", aliases: [], label: "T", path: root + "/skills", projectKey: nil)
+    try? FileManager.default.createDirectory(
+      atPath: target.path + "/a", withIntermediateDirectories: true)
+    try? "mine".write(toFile: target.path + "/a/SKILL.md", atomically: true, encoding: .utf8)
+    let failures = SkillLinker.apply(
+      [.link(target: "t", name: "a", destination: "/nowhere")], targets: [target])
+    check("a link onto something that appeared since the plan fails", failures.count == 1)
+    check(
+      "and the thing is untouched",
+      (try? String(contentsOfFile: target.path + "/a/SKILL.md", encoding: .utf8)) == "mine")
   }
 }

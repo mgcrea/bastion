@@ -596,6 +596,7 @@ skills-check: ## Assert skill discovery, the link plan and the git exclude block
 		apps/apple/Bastion/WorkspaceScope.swift \
 		apps/apple/Bastion/SkillCatalog.swift \
 		apps/apple/Bastion/SkillLinks.swift \
+		apps/apple/Bastion/SkillLinker.swift \
 		scripts/skills-check.swift
 	@apps/apple/.build/skills-check
 
