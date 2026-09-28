@@ -112,18 +112,27 @@ shares that target too.
 ```json
 {
   "choices": { "global:reply-as-olivier": { "targets": ["shared", "claude-code"] } },
-  "linkedProjects": ["/Users/me/Projects/apps/bastion"]
+  "repositoryLinks": {
+    "project:/Users/me/Projects/apps/bastion/.claude/skills": ["cut-a-release"],
+    "project:/Users/me/Projects/apps/bastion/.agents/skills": ["cut-a-release"]
+  }
 }
 ```
 
 - Target ids reuse client ids (`claude-code`, `claude-code@<suffix>`) plus
   `shared`. Of two ids naming one deduplicated target, the first in
   `ClientWiring.all` order is stored.
-- `linkedProjects` is the one ledger this feature keeps: the project keys
-  Bastion has linked into. Without it, a folder taken out of a workspace, or a
-  deleted workspace, would leave its links behind, because nothing would look
-  there again. A key is visited on every reconcile and dropped once it holds
-  nothing of Bastion's.
+- `repositoryLinks` is the one ledger this feature keeps: per repository
+  skills folder, the link names Bastion made there or adopted (found already
+  pointing at the skill it wanted). It answers two questions. Which
+  repositories to look in: every repository in the ledger is visited on every
+  reconcile, beside those a workspace with skills resolves to, so a folder
+  taken out of a workspace, or a deleted workspace, does not leave its links
+  behind. And which links in a repository are Bastion's to change (see
+  [Ownership](#ownership)). After each reconcile a folder's names are the old
+  ones still present as Bastion's links, plus every wanted name now pointing
+  at the wanted skill; a folder with none is dropped. A missing key reads as
+  empty.
 - A skill in no choice and no workspace is **not linked** anywhere, and is
   listed that way; switching it on is always a deliberate act.
 - An entry whose skill no longer exists is kept and ignored, as
@@ -153,9 +162,13 @@ workspace. They never meet in one folder, so none shadows another.
 **A symlink is Bastion's when it points into one of a source's skill slots**
 (current or retired) — a direct child of a `collection` source, or the root of
 a `skill` source — and lands on a skill folder or on nothing, compared after
-resolving the source path. A link to a non-skill folder inside a source, or
-one deeper than a slot, is foreign. There is no ledger of links, for the same
-reason Workspaces has none: `isOurs` is the ledger.
+resolving the source path, **under its own name**: the entry's name must be the
+destination's last component, because Bastion always names a link after its
+folder, so `my-review -> <source>/code-review` is somebody's alias and foreign.
+A link to a non-skill folder inside a source, or one deeper than a slot, is
+foreign. When sources nest, the link belongs to the first source it is a slot
+of, so `claude-skills` listed above `claude-skills/global` does not disown
+`global`'s links; adding a source inside or around an active one is refused.
 
 - Everything else in a target is **foreign** and never touched: real
   directories, links pointing elsewhere, `.trash`, `synced`, `*-workspace`
@@ -164,8 +177,21 @@ reason Workspaces has none: `isOurs` is the ledger.
   **collision**. Resolving it ("Overwrite anyway") moves the entry to the Trash
   with `FileManager.trashItem`, never deletes it.
 - Consequence, accepted: once `~/Projects/claude-skills/global` is a source,
-  every link the Makefile made into it is Bastion's, and adoption needs no
-  import step.
+  every link the Makefile made into it in a global folder is Bastion's, and
+  adoption needs no import step. In a repository, adoption is per link, as
+  below.
+
+In a global folder there is no ledger, for the same reason Workspaces has none:
+`isOurs` is the ledger. **In a repository folder a link is Bastion's to change
+only through the ledger**: its name is in `repositoryLinks`, or it is adopted
+because it already points at the skill wanted under that name. A repository
+comes into view whenever a workspace changes or a clone appears under one, and
+its links were often made by something else (a Makefile, a script), so a link
+into a source there that is not in the ledger is never relinked or removed:
+
+- wanted and already right: adopted, and recorded after the reconcile;
+- wanted but pointing at another skill: a **collision**;
+- not wanted: **not adopted**, left alone and shown under that folder.
 
 ## Reconciling
 
@@ -231,20 +257,30 @@ skill need no reconcile because the link is live, and a new skill starts off
 anyway.
 
 **Adding a source is a preview.** The new source's skills are seeded from the
-links that already point into it (the targets they are in, and the workspaces
-whose repositories hold them), so an already-wired machine plans no changes
+links that already point into it, so an already-wired machine plans no changes
 except real faults, and the `.agents/skills` half of a repository link that
-only had its `.claude/skills` half. The plan is shown and applied only on confirmation. On the
-reference machine, adding `claude-skills/global` plans one `unlink`
-(`astro-bootstrap`, dangling). The four `~/.agents/skills` collisions appear
-when those skills are switched on for Shared.
+only had its `.claude/skills` half. A skill linked in a global target keeps
+those targets. A skill linked only in repositories is scoped to a workspace
+only by **exact cover**: every repository that workspace resolves to already
+links that skill, in either folder. Of several that qualify, the one with the
+fewest repositories wins, then the first by name; a workspace resolving to
+nothing never qualifies. Anything looser plans links into repositories that
+never had the skill: the reference machine's `apps` workspace resolves to 22
+repositories, and scoping `claude-skills/projects/*` to it planned 299 links
+and relinked bastion's and cupertino's `cut-a-release` to armada's. A skill
+that fits no workspace is not scoped, and its repository links are not
+adopted: left alone, and shown. The plan is shown and applied only on
+confirmation. On the reference machine, adding `claude-skills/global` plans
+one `unlink` (`astro-bootstrap`, dangling). The four `~/.agents/skills`
+collisions appear when those skills are switched on for Shared.
 
-Repository links are seen only through workspaces: the plan looks in a
-repository only when a workspace resolves to it. A link that `projects.links`
-made in a repository no workspace covers is neither adopted nor removed. So the
-migration creates the workspaces first (`armada`, `bastion`, `cupertino`, `apps`),
-then adds the sources, and the seeded selection scopes each existing repository
-link to the workspace that reaches it.
+Repository links are seen only through workspaces and the ledger: the plan
+looks in a repository only when a workspace with skills resolves to it, or the
+ledger holds a link there. A link that `projects.links` made is never removed
+unless Bastion adopted it first. So the migration creates one-repository
+workspaces (`armada`, `bastion`, `cupertino`) before adding the sources, and
+the seeded selection scopes each existing repository link to the workspace
+that covers exactly its repository.
 
 ## UI
 
@@ -257,6 +293,9 @@ link to the workspace that reaches it.
   - **Per-target card**: foreign entries, collisions with "Overwrite anyway",
     unavailable sources, and the summed description length of what is linked
     there, because every description is in context in every session there.
+  - **Per-repository card**, shown only for a repository folder with something
+    to report: collisions with "Overwrite anyway", links not adopted,
+    unavailable sources, shadowed skills and failures.
   - **Rescan**.
 - **Workspaces pane**: skill checkboxes beside the profile checkboxes.
 - **Claude Desktop client pane**: an **Account skills** card listing
@@ -277,7 +316,7 @@ Workspace skill scope goes through the existing `upsert_workspace`, whose input
 gains an optional `skills`; absent keeps the workspace's current skills, so a
 caller written before this change cannot clear them. `list_workspaces` reports
 them. `upsert_skill_source` applies without a preview: its reply lists what it
-did.
+planned, and any failures.
 
 ## Out of scope for v1
 
@@ -323,11 +362,21 @@ Each is a probe against the real client, recorded in this file as "measured
   link, unavailable source left alone, collision, shadowing by order, scoped
   skill removed from global targets and added per project key, same-name skills
   in disjoint workspaces, deduplicated targets through a symlinked folder,
-  retired source cleaned then dropped); `info/exclude` block add, remove, and
-  every other line byte-identical.
-- `make skills-check-real`: plan against the real targets in memory, with
-  `~/Projects/claude-skills/global` as the one source, and assert the seeded
-  plan changes nothing but dangling links.
+  retired source cleaned then dropped, the name guard, nested sources); the
+  repository ledger (a link Bastion did not make is left alone as not adopted,
+  or is a collision; a ledger name no longer wanted is unlinked; the next
+  ledger; exclude lines for ledger names only); exact-cover seeding over a
+  parent workspace and one-repository workspaces; `info/exclude` block add,
+  remove, an orphaned `begin`, an unreadable file, and every other line
+  byte-identical.
+- `make skills-check-real`: read-only. Plan against the real targets in
+  memory, with `~/Projects/claude-skills/global` and every folder under
+  `~/Projects/claude-skills/projects/` as sources, the real workspaces from
+  `workspaces.json` (skipped with a message when absent) resolved with
+  `WorkspaceScope.projectKeys`, and an empty ledger, and assert the seeded plan
+  holds only unlinks of dangling links and links into `<key>/.agents/skills`
+  where `<key>/.claude/skills/<name>` already links that same skill. The plan,
+  and what it leaves alone in each repository, is printed.
 - Manual: link one skill globally and one scoped to a workspace, then list
   skills in Claude Code (both config folders), Codex, VS Code and Cursor, in the
   workspace repo and outside it; `git status` in the repo stays clean.
