@@ -172,7 +172,8 @@ enum ClientWiring {
     ClientConfigRevision.shared.bump()
   }
 
-  private static var discoveredProfiles: [ClaudeProfiles.Row] {
+  /// Also read by `SkillStore`, whose Claude Code targets are these folders.
+  static var discoveredProfiles: [ClaudeProfiles.Row] {
     if let cached = profileCache, Date().timeIntervalSince(cached.at) < profileCacheTTL {
       return cached.rows
     }
@@ -790,9 +791,14 @@ enum ClientWiring {
   /// Gated on `autoWires`, which is the difference between this and Configure:
   /// one is somebody asking, and this one is not.
   static func rewire(retiring: Set<String> = []) {
-    guard autoWires else { return }
-    // New clones under a workspace's parent folder are found here.
+    // New clones under a workspace's parent folder are found here, and the
+    // skills reconcile below needs the same answer.
     WorkspaceStore.shared.rescan()
+    // Before the gate, deliberately: `autoWires` is about MCP config files,
+    // and skills are symlinks the user asked for in the Skills pane. With no
+    // source configured this does nothing.
+    SkillStore.shared.reconcile()
+    guard autoWires else { return }
     let profiles = ProfileStore.shared.onEnabledServers
     let adopted = ClaudeProfiles.adopted()
     for client in all where client.isInstalled {

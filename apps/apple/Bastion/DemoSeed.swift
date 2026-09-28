@@ -442,6 +442,48 @@ enum DemoSeed {
     [Workspace(name: "acme", folders: ["/Users/demo/Projects/acme"], profiles: ["acme/keycloak"])]
   }
 
+  /// Skills for the Skills pane and the Claude Desktop card. Invented paths
+  /// that do not exist, as with `workspaces`: nothing under a capture reads or
+  /// links a real skills folder.
+  nonisolated static var skillSources: [SkillSource] {
+    [SkillSource(name: "team", path: "/Users/demo/Projects/team-skills", kind: .collection)]
+  }
+
+  nonisolated static var skills: [Skill] {
+    [
+      Skill(
+        source: "team", name: "release-notes",
+        path: "/Users/demo/Projects/team-skills/release-notes",
+        description: "Draft release notes from the commits since the last tag.", problems: []),
+      Skill(
+        source: "team", name: "triage-issue", path: "/Users/demo/Projects/team-skills/triage-issue",
+        description: "Label and route a new issue, and ask for what is missing.", problems: []),
+      Skill(
+        source: "team", name: "Old-Helper", path: "/Users/demo/Projects/team-skills/Old-Helper",
+        description: "", problems: ["the frontmatter has no description"]),
+    ]
+  }
+
+  nonisolated static var skillTargets: [SkillTarget] {
+    [
+      SkillTarget(
+        id: SkillLinks.sharedID, aliases: [], label: "Shared", path: "/Users/demo/.agents/skills",
+        projectKey: nil),
+      SkillTarget(
+        id: "claude-code", aliases: [], label: "Claude Code", path: "/Users/demo/.claude/skills",
+        projectKey: nil),
+    ]
+  }
+
+  nonisolated static var skillChoices: [String: Set<String>] {
+    [
+      "team:release-notes": [SkillLinks.sharedID, "claude-code"],
+      "team:triage-issue": ["claude-code"],
+    ]
+  }
+
+  nonisolated static var accountSkills: Set<String> { ["release-notes"] }
+
   /// Which secrets each profile holds, standing in for the Keychain.
   ///
   /// One deliberate omission — `staging/shopify` has no `SHOPIFY_CLIENT_SECRET`
