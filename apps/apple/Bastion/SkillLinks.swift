@@ -115,6 +115,24 @@ nonisolated enum SkillLinks {
     "project:\(key)/\(flavor.rawValue)"
   }
 
+  /// `globalTargets` and `projectTargets` each deduplicate only within
+  /// themselves, so a repository whose key IS the home folder — `~` itself,
+  /// picked as a workspace — produces `project:~/.claude/skills`, a second
+  /// target over the exact folder `claude-code` already covers, and the two
+  /// fight: each sees the other's links as foreign and unwanted. This runs
+  /// the same folder-based dedup over both lists joined, so a project row
+  /// landing on a global target's folder becomes an alias of it instead,
+  /// keeping that target's `projectKey` nil.
+  static func combined(
+    global: [SkillTarget], project: [SkillTarget], fs: SkillFileSystem
+  ) -> [SkillTarget] {
+    let rows = (global + project).flatMap { target in
+      [(target.id, target.label, target.path, target.projectKey)]
+        + target.aliases.map { (($0, "", target.path, target.projectKey)) }
+    }
+    return deduplicated(rows, fs: fs)
+  }
+
   /// The target a new source path would lie inside, or that would lie inside
   /// it. Checked when a source is added; `plan` checks again, as `refused`.
   static func overlap(path: String, targets: [SkillTarget], fs: SkillFileSystem) -> SkillTarget? {
@@ -258,17 +276,48 @@ nonisolated enum SkillLinks {
     }
   }
 
-  /// The source a link is Bastion's through: it lands inside a source, and on
-  /// a skill folder or on nothing. A link into a source that lands on some
-  /// other folder is not a skill Bastion put there. The Makefile this feature
-  /// replaces links every folder in a collection, `*-workspace` eval folders
-  /// included, and those links are left alone rather than removed.
+  /// The source a link is Bastion's through: it lands inside a source, ON ONE
+  /// OF ITS SKILL SLOTS, and on a skill folder or on nothing. A link into a
+  /// source that lands on some other folder is not a skill Bastion put there
+  /// — including a folder further down: `owner` answers "inside", which is
+  /// true of everything beneath a source, but a collection only ever gets
+  /// links at its direct children, so a source added one level too high (a
+  /// parent of the real collection) must claim nothing beneath it, or it
+  /// would unlink every real skill under the folder it was meant to name. The
+  /// Makefile this feature replaces links every folder in a collection,
+  /// `*-workspace` eval folders included, and those links are left alone
+  /// rather than removed.
   static func claimed(
     _ destination: String, sources: [SkillSource], fs: SkillFileSystem
   ) -> SkillSource? {
-    guard let source = owner(of: destination, sources: sources, fs: fs) else { return nil }
+    guard let source = owner(of: destination, sources: sources, fs: fs),
+      isSlot(destination, of: source, fs: fs)
+    else { return nil }
     let isSkill = fs.isFile(join(destination, "SKILL.md"))
     return isSkill || !fs.entryExists(destination) ? source : nil
+  }
+
+  /// Whether `destination` is where `source` would actually place a skill:
+  /// the root itself for a `.skill` source, or a direct child of the root for
+  /// a `.collection` one — by either spelling, since `owner` already answers
+  /// "inside" by either spelling too. Holds regardless of whether anything
+  /// is there, so a dangling link still claims correctly.
+  private static func isSlot(_ destination: String, of source: SkillSource, fs: SkillFileSystem)
+    -> Bool
+  {
+    let spelled = (destination as NSString).standardizingPath
+    let resolved = fs.canonical(spelled)
+    let sourceSpellings = [(source.path as NSString).standardizingPath, fs.canonical(source.path)]
+    switch source.kind {
+    case .skill:
+      return sourceSpellings.contains(spelled) || sourceSpellings.contains(resolved)
+    case .collection:
+      let parents = [
+        (spelled as NSString).deletingLastPathComponent,
+        (resolved as NSString).deletingLastPathComponent,
+      ]
+      return sourceSpellings.contains { parents.contains($0) }
+    }
   }
 
   static func ownedNames(
@@ -357,7 +406,9 @@ nonisolated enum SkillLinks {
       let folder = fs.canonical(row.path)
       if let index = byFolder[folder] {
         out[index].aliases.append(row.id)
-        out[index].label += ", \(row.label)"
+        // An empty label marks a row `combined` added only to carry forward
+        // an alias a merge already has words for; nothing to add to the text.
+        if !row.label.isEmpty { out[index].label += ", \(row.label)" }
         continue
       }
       byFolder[folder] = out.count

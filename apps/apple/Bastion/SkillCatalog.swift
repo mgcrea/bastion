@@ -77,7 +77,27 @@ nonisolated struct LocalSkillFileSystem: SkillFileSystem {
   func isFile(_ path: String) -> Bool { base.isFile(path) }
   func contents(_ path: String) -> String? { base.contents(path) }
   func children(_ path: String) -> [String] { base.children(path) }
-  func canonical(_ path: String) -> String { base.canonical(path) }
+
+  /// `realpath(3)` fails outright on a path that does not exist, and
+  /// `LocalWorkspaceFileSystem.canonical` then falls back to returning it
+  /// unresolved — which hides a symlink anywhere in a MISSING path's
+  /// ancestry: a dangling link, or a retired source reached through a
+  /// symlinked parent, is never recognised as landing where it really does.
+  /// This resolves the longest existing ancestor instead and appends
+  /// whatever past it does not exist, so a missing path canonicalises as far
+  /// as the disk actually lets it.
+  func canonical(_ path: String) -> String {
+    let expanded = ((path as NSString).expandingTildeInPath as NSString).standardizingPath
+    if entryExists(expanded) { return base.canonical(expanded) }
+    var existing = expanded
+    var tail: [String] = []
+    while existing != "/" && !existing.isEmpty && !entryExists(existing) {
+      tail.append((existing as NSString).lastPathComponent)
+      existing = (existing as NSString).deletingLastPathComponent
+    }
+    let resolved = entryExists(existing) ? base.canonical(existing) : existing
+    return tail.reversed().reduce(resolved) { ($0 as NSString).appendingPathComponent($1) }
+  }
 
   func symlinkDestination(_ path: String) -> String? {
     try? FileManager.default.destinationOfSymbolicLink(atPath: path)
@@ -156,10 +176,10 @@ nonisolated enum SkillFrontmatter {
 /// Claude Code makes `name` optional and allows a 1,536-character description.
 /// A skill that passes the strict rules loads in every client, which is the
 /// point of linking it into a shared folder — except for description length,
-/// where the two limits diverge enough to matter in practice: the machine
-/// this ships to has working skills between 1024 and 1536 characters, so a
-/// description in that range is a warning, not a refusal, and only past 1536
-/// does Claude Code itself refuse to load it.
+/// where refusing anything past the strict 1024 would break skills that
+/// Claude Code itself loads without complaint. So a description past 1024 is
+/// only a warning, and only past Claude Code's own 1536-character limit does
+/// it become a refusal.
 nonisolated enum SkillCatalog {
   static let reservedNames: Set<String> = ["synced", "anthropic-skills"]
   static let nameLimit = 64
@@ -206,9 +226,10 @@ nonisolated enum SkillCatalog {
     return out
   }
 
-  /// Fit-to-link problems are none of these: a description over the Agent
-  /// Skills standard's 1024 characters but within Claude Code's own 1536
-  /// still loads there, so it is a warning rather than a refusal.
+  /// What is worth knowing but not worth refusing: a description over the
+  /// Agent Skills standard's 1024 characters, but still within Claude Code's
+  /// own 1536, loads fine in Claude Code and only risks being skipped by a
+  /// stricter client — so it is reported here, not added to `problems`.
   static func warnings(fields: [String: String]?) -> [String] {
     guard let description = fields?["description"], description.count > descriptionLimit,
       description.count <= claudeDescriptionLimit

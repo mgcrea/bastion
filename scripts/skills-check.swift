@@ -47,6 +47,9 @@ struct SkillsCheck {
     overlappingTargetIsRefused()
     seedingAdoptsExistingLinks()
     ledgerHelpers()
+    parentSourceClaimsNothingBelowItsSlots()
+    globalAndProjectTargetsMergeAcrossTheHomeRepository()
+    canonicalOfAMissingPath()
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 { exit(1) }
@@ -220,9 +223,19 @@ struct SkillsCheck {
       problems("do-x", ["name": "do-x", "description": String(repeating: "d", count: 1536)]).isEmpty
     )
     check(
+      "1536 characters carries exactly one warning",
+      SkillCatalog.warnings(
+        fields: ["name": "do-x", "description": String(repeating: "d", count: 1536)]
+      ).count == 1)
+    check(
       "1537 characters is refused",
       !problems("do-x", ["name": "do-x", "description": String(repeating: "d", count: 1537)])
         .isEmpty)
+    check(
+      "1537 characters is a problem, and (my call) not also a warning — it is already refused, so a warning on top would be redundant",
+      SkillCatalog.warnings(
+        fields: ["name": "do-x", "description": String(repeating: "d", count: 1537)]
+      ).isEmpty)
     check(
       "synced is reserved", !problems("synced", ["name": "synced", "description": "d"]).isEmpty)
     check(
@@ -341,9 +354,9 @@ struct SkillsCheck {
   ) -> (targets: [SkillTarget], plan: SkillLinks.Plan) {
     let catalog = SkillCatalog.catalog(sources, fs: fs)
     let keys = scopes.keys.reduce(into: Set<String>()) { $0.formUnion(resolved[$1] ?? []) }
-    let targets =
-      SkillLinks.globalTargets(home: home, claude: claudeRows, fs: fs)
-      + SkillLinks.projectTargets(keys: keys, fs: fs)
+    let targets = SkillLinks.combined(
+      global: SkillLinks.globalTargets(home: home, claude: claudeRows, fs: fs),
+      project: SkillLinks.projectTargets(keys: keys, fs: fs), fs: fs)
     let desired = SkillLinks.desired(
       skills: catalog.skills, choices: choices, scopes: scopes,
       resolved: { resolved[$0] ?? [] }, targets: targets)
@@ -622,6 +635,78 @@ struct SkillsCheck {
           SkillSource(name: "was", path: globalPath, kind: .collection, retired: true), global,
         ],
         fs: fs)?.name == "global")
+  }
+
+  static func parentSourceClaimsNothingBelowItsSlots() {
+    print("parent source")
+    var fs = machine()
+    fs.link(home + "/.claude/skills/alpha", to: globalPath + "/alpha")
+    let oneLevelUp = SkillSource(
+      name: "claude-skills", path: "/Users/me/Projects/claude-skills", kind: .collection)
+    let (_, plan) = planned(fs, sources: [oneLevelUp], choices: [:])
+    check(
+      "a collection one level above the real one plans nothing",
+      plan.actions.isEmpty)
+    check(
+      "and the working link beneath it is foreign, not claimed",
+      plan.reports["claude-code"]?.foreign == ["alpha"])
+
+    var single = machine()
+    single.link(home + "/.claude/skills/alpha", to: globalPath + "/alpha")
+    let skillAboveIt = SkillSource(name: "global-as-skill", path: globalPath, kind: .skill)
+    let (_, singlePlan) = planned(single, sources: [skillAboveIt], choices: [:])
+    check(
+      "a .skill source whose path is a parent of the linked skill plans nothing",
+      singlePlan.actions.isEmpty)
+    check(
+      "and the link beneath it is foreign there too",
+      singlePlan.reports["claude-code"]?.foreign == ["alpha"])
+  }
+
+  static func globalAndProjectTargetsMergeAcrossTheHomeRepository() {
+    print("combined targets")
+    var fs = machine()
+    fs.dir(home + "/.git")
+    fs.link(home + "/.claude/skills/alpha", to: globalPath + "/alpha")
+    let (targets, plan) = planned(
+      fs, choices: ["global:alpha": ["claude-code"]], scopes: ["home": ["global:beta"]],
+      resolved: ["home": [home]])
+    check(
+      "the project rows for the home repository are not targets of their own",
+      !targets.map(\.id).contains(SkillLinks.projectTargetID(home, .claude))
+        && !targets.map(\.id).contains(SkillLinks.projectTargetID(home, .agents)))
+    check(
+      "alpha, already linked and still chosen, is not unlinked",
+      !plan.actions.contains(.unlink(target: "claude-code", name: "alpha")))
+    check(
+      "beta reaches claude-code and shared once each, not twice for either folder",
+      Set(plan.actions) == [
+        .link(target: "claude-code", name: "beta", destination: globalPath + "/beta"),
+        .link(target: "shared", name: "beta", destination: globalPath + "/beta"),
+      ] && plan.actions.count == 2)
+  }
+
+  // MARK: - Local filesystem
+
+  /// On disk, under a scratch folder — never a real skills folder. Proves
+  /// `LocalSkillFileSystem.canonical` resolves a symlinked ancestor even when
+  /// the path past it does not exist, which the fake filesystem's `resolve`
+  /// already does for free and so could never have caught missing on the
+  /// real one.
+  static func canonicalOfAMissingPath() {
+    print("canonical of a missing path")
+    let root = (NSTemporaryDirectory() as NSString).appendingPathComponent(
+      "skills-check-\(UUID().uuidString)")
+    let real = (root as NSString).appendingPathComponent("real")
+    let alias = (root as NSString).appendingPathComponent("alias")
+    try? FileManager.default.createDirectory(atPath: real, withIntermediateDirectories: true)
+    try? FileManager.default.createSymbolicLink(atPath: alias, withDestinationPath: "real")
+    defer { try? FileManager.default.removeItem(atPath: root) }
+
+    let fs = LocalSkillFileSystem()
+    check(
+      "a missing path spelled through a symlinked ancestor canonicalises through it",
+      fs.canonical(alias + "/missing/x") == fs.canonical(real) + "/missing/x")
   }
 
   // MARK: - Real
