@@ -117,8 +117,8 @@ target, shown with both names.
   deleted workspace, would leave its links behind, because nothing would look
   there again. A key is visited on every reconcile and dropped once it holds
   nothing of Bastion's.
-- A skill absent from the file is **off**. A skill found in a source for the
-  first time is shown as **New** and stays off until switched on.
+- A skill in no choice and no workspace is **not linked** anywhere, and is
+  listed that way; switching it on is always a deliberate act.
 - An entry whose skill no longer exists is kept and ignored, as
   `ProfileStore.orphaned` does.
 
@@ -214,7 +214,8 @@ anyway.
 **Adding a source is a preview.** The new source's skills are seeded from the
 links that already point into it (the targets they are in, and the workspaces
 whose repositories hold them), so an already-wired machine plans no changes
-except real faults. The plan is shown and applied only on confirmation. On the
+except real faults, and the `.agents/skills` half of a repository link that
+only had its `.claude/skills` half. The plan is shown and applied only on confirmation. On the
 reference machine, adding `claude-skills/global` plans one `unlink`
 (`astro-bootstrap`, dangling). The four `~/.agents/skills` collisions appear
 when those skills are switched on for Shared.
@@ -289,6 +290,12 @@ Each is a probe against the real client, recorded in this file as "measured
    seen after a restart.
 4. **Claude Code**: a link added to an existing skills folder is picked up
    without `/reload-skills`; a newly created repository `.claude/skills` is not.
+5. **Worktrees.** Claude Code finds skills by walking up from the working
+   directory, while Bastion links into the main repository. Is a skill linked
+   into `<repo>/.claude/skills` seen in a worktree under
+   `<repo>/.claude/worktrees/<name>`, and in one outside the repository? If
+   not, v1 says so in the Workspaces pane; linking into worktrees is a later
+   change.
 
 ## Testing
 
