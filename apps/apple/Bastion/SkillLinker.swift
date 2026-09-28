@@ -19,12 +19,14 @@ nonisolated enum SkillLinker {
   enum LinkError: LocalizedError {
     case notALink(String)
     case rename(String, String)
+    case moveAside(String, String)
     case leftAside(original: String, now: String)
 
     var errorDescription: String? {
       switch self {
       case .notALink(let path): "\(path) is not a symlink, so Bastion leaves it alone."
       case .rename(let path, let reason): "Could not put the new link at \(path): \(reason)."
+      case .moveAside(let path, let reason): "Could not move \(path) aside to remove it: \(reason)."
       case .leftAside(let original, let now):
         "\(original) is not a symlink; Bastion moved the foreign entry to \(now) for you to recover."
       }
@@ -99,38 +101,42 @@ nonisolated enum SkillLinker {
     try manager.createSymbolicLink(atPath: temporary, withDestinationPath: destination)
 
     // Atomically swap the new link with whatever is at path.
+    // After this: path holds OUR new link, temporary holds what was at path (if anything).
     guard renamex_np(temporary, path, UInt32(RENAME_SWAP)) == 0 else {
       let reason = String(cString: strerror(errno))
-      try? manager.removeItem(atPath: temporary)  // best-effort cleanup
+      try? manager.removeItem(atPath: temporary)  // best-effort cleanup of our temporary
       throw LinkError.rename(path, reason)
     }
 
-    // Now temporary holds what was at path (or nothing if path didn't exist).
-    // Check if it's a symlink. If it is, remove it and we're done.
+    // Check what we swapped out. RENAME_SWAP requires both paths to exist, so lstat succeeds.
     var info = stat()
     guard lstat(temporary, &info) == 0 else {
-      // Nothing was there to begin with, so the swap succeeded on an empty slot.
-      return
+      let reason = String(cString: strerror(errno))
+      throw LinkError.rename(path, reason)
     }
 
     if (info.st_mode & S_IFMT) == S_IFLNK {
-      // It was our old link. Remove it.
+      // It was our old link. Remove it (Bastion owns all symlinks in the target).
       guard unlink(temporary) == 0 else {
-        let reason = String(cString: strerror(errno))
         // Swallow this error. The new link is in place; the old one is just orphaned.
         return
       }
       return
     }
 
-    // It's not a symlink, so it's foreign. Swap it back to preserve it.
+    // It's not a symlink, so it's foreign. Swap it back to path to preserve it.
+    // After this: path holds the foreign entry, temporary holds OUR new link (which failed).
     guard renamex_np(temporary, path, UInt32(RENAME_SWAP)) == 0 else {
-      let reason = String(cString: strerror(errno))
-      // This should not happen, but if it does, leave the temporary with our link.
-      try? unlink(temporary)
-      throw LinkError.rename(path, reason)
+      // The swap-back failed. Leave the foreign entry exactly where it is (at temporary)
+      // and report where it went. Do NOT touch temporary; we never delete what isn't ours.
+      throw LinkError.leftAside(original: path, now: temporary)
     }
-    try unlink(temporary)  // Remove the temporary (now holding our failed link).
+    // Swap-back succeeded: path is restored to foreign, temporary holds our new link.
+    // Remove our link (now at temporary, which is Bastion's own temporary name).
+    guard unlink(temporary) == 0 else {
+      // Swallow the error; our link stayed at temporary under a hidden name but we're going to fail anyway.
+      return
+    }
     throw LinkError.notALink(path)
   }
 
@@ -141,32 +147,32 @@ nonisolated enum SkillLinker {
     let hidden = (folder as NSString).appendingPathComponent(
       ".bastion-unlink-" + UUID().uuidString)
 
-    // Move atomically aside with RENAME_EXCL (fails if hidden somehow already exists).
+    // Move atomically aside with RENAME_EXCL. After this: path is empty, hidden holds the entry.
     guard renamex_np(path, hidden, UInt32(RENAME_EXCL)) == 0 else {
       let reason = String(cString: strerror(errno))
-      throw LinkError.rename(path, reason)
+      throw LinkError.moveAside(path, reason)
     }
 
     // Check what we moved aside.
     var info = stat()
     guard lstat(hidden, &info) == 0 else {
       let reason = String(cString: strerror(errno))
-      throw LinkError.rename(path, reason)
+      throw LinkError.moveAside(path, reason)
     }
 
     if (info.st_mode & S_IFMT) == S_IFLNK {
-      // It's a symlink. Remove it.
+      // It's a symlink (Bastion owns all symlinks in the target). Remove it.
       guard unlink(hidden) == 0 else {
-        let reason = String(cString: strerror(errno))
-        throw LinkError.rename(path, reason)
+        // Swallow the error; the symlink is orphaned but we're reporting unlink failed anyway.
+        return
       }
       return
     }
 
-    // It's not a symlink, so it's foreign. Move it back.
+    // It's not a symlink, so it's foreign. Move it back to path to restore it.
     guard renamex_np(hidden, path, UInt32(RENAME_EXCL)) == 0 else {
-      let reason = String(cString: strerror(errno))
-      // We could not move it back. It is now at hidden.
+      // The move-back failed. Leave the foreign entry where it is (at hidden) and report it.
+      // Do NOT touch hidden; we never delete what isn't ours.
       throw LinkError.leftAside(original: path, now: hidden)
     }
     throw LinkError.notALink(path)
