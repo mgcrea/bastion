@@ -35,6 +35,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
   case general
   case audit
   case workspaces
+  case skills
   case whatsNew
   case updates
   case about
@@ -46,6 +47,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
     case .general: "General"
     case .audit: "Activity"
     case .workspaces: "Workspaces"
+    case .skills: "Skills"
     case .about: "About"
     case .whatsNew: "What's New"
     case .updates: "Updates"
@@ -59,6 +61,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
     case .general: "gearshape"
     case .audit: "list.bullet.rectangle"
     case .workspaces: "folder.badge.gearshape"
+    case .skills: "puzzlepiece.extension"
     case .about: "info.circle"
     case .whatsNew: "sparkles"
     case .updates: "arrow.down.circle"
@@ -69,7 +72,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
 
   var group: SettingsPaneGroup {
     switch self {
-    case .general, .audit, .workspaces: .configuration
+    case .general, .audit, .workspaces, .skills: .configuration
     case .whatsNew, .updates, .about, .help: .information
     case .licence: .entitlement
     }
@@ -145,6 +148,7 @@ struct SettingsView: View {
       case .general: GeneralPane()
       case .audit: AuditPane()
       case .workspaces: WorkspacesPane()
+      case .skills: SkillsPane()
       case .about: AboutPane()
       case .whatsNew: WhatsNewPane()
       case .updates: UpdatesPane()

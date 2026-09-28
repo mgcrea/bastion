@@ -76,6 +76,24 @@ struct WorkspacesPane: View {
                 }))
           }
 
+          // Skills beside profiles, by id, because three sources can each
+          // hold a skill of the same name and only the id says which.
+          ForEach(SkillStore.shared.catalog.filter(\.isValid)) { skill in
+            Toggle(
+              "Skill \(skill.id)",
+              isOn: Binding(
+                get: { workspace.skills.contains(skill.id) },
+                set: { on in
+                  update(workspace) { draft in
+                    if on {
+                      draft.skills.append(skill.id)
+                    } else {
+                      draft.skills.removeAll { $0 == skill.id }
+                    }
+                  }
+                }))
+          }
+
           Button("Delete Workspace", role: .destructive) {
             perform { try store.remove(named: workspace.name) }
           }
