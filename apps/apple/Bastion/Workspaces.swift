@@ -89,6 +89,7 @@ final class WorkspaceStore {
     var next = workspace
     next.folders = Array(Set(next.folders)).sorted()
     next.profiles = Array(Set(next.profiles)).sorted()
+    next.skills = Array(Set(next.skills)).sorted()
     workspaces.removeAll { $0.name == original }
     workspaces.append(next)
     workspaces.sort { $0.name < $1.name }
@@ -99,6 +100,25 @@ final class WorkspaceStore {
 
   func remove(named name: String) throws {
     workspaces.removeAll { $0.name == name }
+    try save()
+    rescan()
+    ClientWiring.rewire()
+  }
+
+  /// Workspace name → skill ids, the shape `SkillLinks.desired` takes.
+  var skillScopes: [String: [String]] {
+    Dictionary(
+      uniqueKeysWithValues: workspaces.filter { !$0.skills.isEmpty }.map { ($0.name, $0.skills) })
+  }
+
+  /// Merge skill ids into workspaces by name, once, then rewire. Adding a skill
+  /// source seeds these from links already in each workspace's repositories.
+  func addSkills(_ scopes: [String: Set<String>]) throws {
+    guard !scopes.isEmpty else { return }
+    for index in workspaces.indices {
+      guard let extra = scopes[workspaces[index].name] else { continue }
+      workspaces[index].skills = Array(Set(workspaces[index].skills).union(extra)).sorted()
+    }
     try save()
     rescan()
     ClientWiring.rewire()

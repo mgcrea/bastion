@@ -11,7 +11,27 @@ nonisolated struct Workspace: Codable, Equatable, Identifiable {
   var name: String
   var folders: [String]
   var profiles: [String]
+  /// Skill ids (`<source>:<skill>`) linked only into this workspace's
+  /// repositories. Absent from a file written before skills existed.
+  var skills: [String]
   var id: String { name }
+
+  init(name: String, folders: [String], profiles: [String], skills: [String] = []) {
+    self.name = name
+    self.folders = folders
+    self.profiles = profiles
+    self.skills = skills
+  }
+
+  private enum CodingKeys: String, CodingKey { case name, folders, profiles, skills }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    name = try container.decode(String.self, forKey: .name)
+    folders = try container.decode([String].self, forKey: .folders)
+    profiles = try container.decode([String].self, forKey: .profiles)
+    skills = try container.decodeIfPresent([String].self, forKey: .skills) ?? []
+  }
 }
 
 /// The questions resolution asks of a disk, so `wiring-check` can answer them

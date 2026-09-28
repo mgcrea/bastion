@@ -51,6 +51,7 @@ struct SkillsCheck {
     globalAndProjectTargetsMergeAcrossTheHomeRepository()
     canonicalOfAMissingPath()
     excludeBlock()
+    workspaceDecodesWithoutSkills()
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 { exit(1) }
@@ -794,5 +795,22 @@ struct SkillsCheck {
       SkillExclude.path(forKey: "/r/app", fs: fs) == "/r/app/.git/info/exclude")
     check("none for a .git file", SkillExclude.path(forKey: "/r/sub", fs: fs) == nil)
     check("none outside git", SkillExclude.path(forKey: "/r/plain", fs: fs) == nil)
+  }
+
+  static func workspaceDecodesWithoutSkills() {
+    print("workspace model")
+    let written124 = #"[{"folders":["/r"],"name":"rgis","profiles":["rgis/ovh"]}]"#
+    let rows = try? JSONDecoder().decode([Workspace].self, from: Data(written124.utf8))
+    check("a 1.24 file decodes", rows?.count == 1)
+    check("with its profiles intact", rows?.first?.profiles == ["rgis/ovh"])
+    check("and no skills", rows?.first?.skills == [])
+
+    let encoded = try? JSONEncoder().encode(
+      Workspace(name: "a", folders: [], profiles: [], skills: ["global:x"]))
+    let back = encoded.flatMap { try? JSONDecoder().decode(Workspace.self, from: $0) }
+    check("skills round-trip", back?.skills == ["global:x"])
+    check(
+      "the three-argument init still exists",
+      Workspace(name: "a", folders: [], profiles: []).skills.isEmpty)
   }
 }
