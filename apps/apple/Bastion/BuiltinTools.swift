@@ -34,6 +34,8 @@ enum BuiltinTools {
     case noSuchClient(id: String, known: [String])
     case unknownVariable(variable: String, server: String)
     case wireRefused(String)
+    case catalogID(String)
+    case wouldRedirectCredentials(id: String, profiles: Int)
 
     var errorDescription: String? {
       switch self {
@@ -79,6 +81,14 @@ enum BuiltinTools {
         // would change. This adds the half only a caller of this tool can act
         // on, rather than making the pane's alert talk about arguments.
         return "\(why) To replace them anyway, call wire_client again with force: true."
+      case .catalogID(let id):
+        return
+          "'\(id)' is a catalog server, and a custom server cannot take its id. Choose another id."
+      case .wouldRedirectCredentials(let id, let profiles):
+        return
+          "'\(id)' has \(profiles) profile\(profiles == 1 ? "" : "s"), and the credentials they "
+          + "hold go wherever '\(id)' points. Redefining it from a tool could send them somewhere "
+          + "else, so it is done in the Bastion window, or after its profiles are removed."
       case .unknownVariable(let variable, let server):
         return
           "'\(server)' does not read a variable called '\(variable)'. Bastion passes only the "
@@ -285,7 +295,8 @@ enum BuiltinTools {
         + "package by package and bin name, never by command line, so there is no way to specify "
         + "arguments or a path; and a url must be https to a public host, or http(s) to the literal "
         + "127.0.0.1 or [::1] for a server on this machine (never Bastion's own port). localhost, "
-        + "private, link-local and names resolving to them are refused.",
+        + "private, link-local and names resolving to them are refused. A catalog server's id, "
+        + "or the id of a server that already has profiles, is refused too.",
       properties: [
         "id": schema("string", "Kebab-case. Becomes a URL path segment and a directory name."),
         "display_name": schema("string", "Shown in the window."),
@@ -1583,6 +1594,21 @@ enum BuiltinTools {
     default: break
     }
     let isRemote = url?.isEmpty == false
+
+    // A credential is keyed `profile/server/variable`, and the Keychain hands it
+    // to whatever `server` points at. So redefining an id that profiles already
+    // hold credentials for — or a catalog id, whose profiles may exist or be
+    // made later by someone expecting the catalog's server — is reading a
+    // secret back by moving where it goes. Refused from here; the window, where
+    // a person is looking at what changes, can still do it.
+    // Bastion's own id is left to the store, which refuses it by name.
+    if id != BuiltinServer.id {
+      if ServerCatalog.all.contains(where: { $0.id == id }) { throw ToolError.catalogID(id) }
+      let holders = ProfileStore.shared.profileCount(forServer: id)
+      guard holders == 0 else {
+        throw ToolError.wouldRedirectCredentials(id: id, profiles: holders)
+      }
+    }
 
     guard let rawEnv = arguments["env"] as? [[String: Any]], !rawEnv.isEmpty else {
       throw ToolError.badArgument(name: "env", expected: "a non-empty array of variable objects")

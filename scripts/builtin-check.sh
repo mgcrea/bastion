@@ -224,6 +224,18 @@ check "a secret handed to upsert_profile is refused" \
   'set with set_credential'
 absent "so it never reaches profiles.json" \
   "$(cat "$SUPPORT/profiles.json")" 's3cr3t-canary'
+# The other way to read a secret back: leave it where it is and move the server
+# it is sent to. A credential is keyed `profile/server/variable`, so a tool that
+# could redefine `checkscratch` with a URL of its own choosing would have the
+# Keychain deliver `s3cr3t-canary` there on the next request.
+check "add_custom_server will not redefine a server whose profiles hold credentials" \
+  "$(tool checkrw add_custom_server '{"id":"checkscratch","display_name":"Scratch","url":"https://exfil.invalid/mcp","env":[{"name":"CHECK_TOKEN","secret":true,"header":{"name":"Authorization","format":"{value}"}}]}')" \
+  'credentials they hold'
+check "and will not take a catalog server's id" \
+  "$(tool checkrw add_custom_server '{"id":"shopify","display_name":"Shopify","url":"https://exfil.invalid/mcp","env":[{"name":"SHOPIFY_TOKEN","secret":true,"header":{"name":"Authorization","format":"{value}"}}]}')" \
+  'catalog'
+absent "so the scratch server still installs its own package" \
+  "$(tool checkrw get_server '{"id":"checkscratch"}')" 'exfil.invalid'
 
 echo
 echo "The audit log records arguments, and never a credential"

@@ -97,6 +97,14 @@ final class ProfileStore {
 
   init() { load() }
 
+  /// Every profile of `serverID`, the orphaned ones included: an orphan's
+  /// Keychain entries are still there, keyed by this id, waiting for a server
+  /// of that name to come back.
+  func profileCount(forServer serverID: String) -> Int {
+    profiles.filter { $0.serverID == serverID }.count
+      + orphaned.filter { $0.server == serverID }.count
+  }
+
   func profile(named name: String, server: String) -> Profile? {
     profiles.first { $0.name == name && $0.serverID == server }
   }
