@@ -12,6 +12,11 @@ final class SkillStore {
   static let shared = SkillStore()
 
   private(set) var sources: [SkillSource] = []
+  /// Set when `skill-sources.json` or `skills.json` is there and would not
+  /// decode. Saves refuse and the reconcile stands down while it is: with the
+  /// selection read as empty, a reconcile would unlink every skill Bastion
+  /// made. See `StoreFile`.
+  private(set) var unreadable: StoreFile.Unreadable?
   private(set) var choices: [String: Set<String>] = [:]
   /// Repository target id → the link names Bastion made or adopted there.
   /// Only these are Bastion's to relink or remove in a repository, and its
@@ -116,14 +121,24 @@ final class SkillStore {
         skills: catalog, choices: choices, scopes: [:], resolved: { _ in [] }, targets: targets)
       return
     }
-    sources =
-      (try? Data(contentsOf: sourcesURL)).flatMap {
-        try? JSONDecoder().decode([SkillSource].self, from: $0)
-      } ?? []
-    let selection =
-      (try? Data(contentsOf: skillsURL)).flatMap {
-        try? JSONDecoder().decode(Selection.self, from: $0)
-      } ?? Selection()
+    unreadable = nil
+    switch StoreFile.load([SkillSource].self, from: sourcesURL) {
+    case .decoded(let decoded): sources = decoded
+    case .absent: sources = []
+    case .unreadable(let problem):
+      sources = []
+      unreadable = problem
+      hostLog("skills", .error, problem.localizedDescription)
+    }
+    let selection: Selection
+    switch StoreFile.load(Selection.self, from: skillsURL) {
+    case .decoded(let decoded): selection = decoded
+    case .absent: selection = Selection()
+    case .unreadable(let problem):
+      selection = Selection()
+      unreadable = unreadable ?? problem
+      hostLog("skills", .error, problem.localizedDescription)
+    }
     choices = selection.choices.mapValues { Set($0.targets) }
     repositoryLinks = selection.repositoryLinks.mapValues(Set.init).filter { !$0.value.isEmpty }
     refresh()
@@ -131,6 +146,7 @@ final class SkillStore {
 
   func save() throws {
     if DemoSeed.isEnabled { return }
+    if let unreadable { throw unreadable }
     AppSupport.ensureDirectory()
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -355,6 +371,15 @@ final class SkillStore {
 
   func reconcile() {
     guard !DemoSeed.isEnabled, !sources.isEmpty else {
+      failures = []
+      return
+    }
+    // Workspaces too: they decide which repositories a scoped skill lands in,
+    // and read as empty they would move every scoped link to the global
+    // folders.
+    if let problem = unreadable ?? WorkspaceStore.shared.unreadable {
+      hostLog("skills", .error, "not reconciling: \(problem.localizedDescription)")
+      refresh()
       failures = []
       return
     }

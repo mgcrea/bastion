@@ -54,6 +54,10 @@ final class ProfileStore {
   static let shared = ProfileStore()
 
   private(set) var profiles: [Profile] = []
+  /// Set when the file is there and would not decode. Saves refuse while it
+  /// is, so the original is never written over with what little survived —
+  /// see `StoreFile`.
+  private(set) var unreadable: StoreFile.Unreadable?
 
   /// The same profiles, readable without a hop to the main actor.
   ///
@@ -168,13 +172,18 @@ final class ProfileStore {
       refreshSnapshot()
       return
     }
-    guard let data = try? Data(contentsOf: fileURL),
-      let rows = try? JSONDecoder().decode([Stored].self, from: data)
-    else {
-      profiles = []
-      orphaned = []
-      refreshSnapshot()
-      return
+    let rows: [Stored]
+    switch StoreFile.load([Stored].self, from: fileURL) {
+    case .decoded(let decoded):
+      rows = decoded
+      unreadable = nil
+    case .absent:
+      rows = []
+      unreadable = nil
+    case .unreadable(let problem):
+      rows = []
+      unreadable = problem
+      hostLog("profiles", .error, problem.localizedDescription)
     }
     orphaned = rows.filter { Profile.isValidName($0.name) && ServerStore.lookup($0.server) == nil }
     profiles = rows.compactMap { row in
@@ -216,6 +225,7 @@ final class ProfileStore {
 
   func save() throws {
     if DemoSeed.isEnabled { return }
+    if let unreadable { throw unreadable }
     refreshSnapshot()
     AppSupport.ensureDirectory()
     let rows =

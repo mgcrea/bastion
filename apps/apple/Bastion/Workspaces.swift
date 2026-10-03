@@ -12,6 +12,10 @@ final class WorkspaceStore {
   static let shared = WorkspaceStore()
 
   private(set) var workspaces: [Workspace] = []
+  /// Set when the file is there and would not decode. Saves refuse while it
+  /// is, so the original is never written over with what little survived —
+  /// see `StoreFile`.
+  private(set) var unreadable: StoreFile.Unreadable?
   /// Workspace name → the project keys its folders resolved to at the last scan.
   private(set) var resolved: [String: Set<String>] = [:]
 
@@ -41,9 +45,19 @@ final class WorkspaceStore {
       rescan()
       return
     }
-    guard let data = try? Data(contentsOf: fileURL),
-      let rows = try? JSONDecoder().decode([Workspace].self, from: data)
-    else {
+    let rows: [Workspace]
+    switch StoreFile.load([Workspace].self, from: fileURL) {
+    case .decoded(let decoded):
+      rows = decoded
+      unreadable = nil
+    case .absent:
+      unreadable = nil
+      workspaces = []
+      resolved = [:]
+      return
+    case .unreadable(let problem):
+      unreadable = problem
+      hostLog("workspaces", .error, problem.localizedDescription)
       workspaces = []
       resolved = [:]
       return
@@ -60,6 +74,7 @@ final class WorkspaceStore {
 
   func save() throws {
     if DemoSeed.isEnabled { return }
+    if let unreadable { throw unreadable }
     AppSupport.ensureDirectory()
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

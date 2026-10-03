@@ -2704,6 +2704,59 @@ struct UnitCheck {
         })
     }
 
+    print("\nStoreFile: a file that is there and cannot be read")
+    // Every store used to read "would not decode" as "no file": an empty list,
+    // which the next save then wrote over the original. One hand-edit typo, or
+    // a downgrade meeting a field it does not know, cost every profile — and
+    // for skills.json the launch reconcile unlinked every skill first.
+    do {
+      let folder = FileManager.default.temporaryDirectory
+        .appendingPathComponent("bastion-storefile-\(UUID().uuidString)", isDirectory: true)
+      try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+      defer { try? FileManager.default.removeItem(at: folder) }
+      let file = folder.appendingPathComponent("profiles.json")
+
+      if case .absent = StoreFile.load([String].self, from: file) {
+        check("no file is absent, which is an empty store", true)
+      } else {
+        check("no file is absent, which is an empty store", false)
+      }
+
+      try? Data(#"["a","b"]"#.utf8).write(to: file)
+      if case .decoded(let rows) = StoreFile.load([String].self, from: file) {
+        check("a file that decodes is its rows", rows == ["a", "b"])
+      } else {
+        check("a file that decodes is its rows", false)
+      }
+
+      // A value this build's types do not accept — what a downgrade meeting a
+      // newer enum case looks like. Not a trailing comma: JSONDecoder takes
+      // those.
+      let broken = Data(#"["a", 2]"#.utf8)
+      try? broken.write(to: file)
+      switch StoreFile.load([String].self, from: file) {
+      case .unreadable(let problem):
+        check("a file that does not decode is unreadable, not absent", true)
+        check("and is left exactly as it was", (try? Data(contentsOf: file)) == broken)
+        check(
+          "with a copy kept beside it",
+          problem.copy.flatMap { try? Data(contentsOf: $0) } == broken)
+        check(
+          "and the sentence names the file and the copy",
+          problem.localizedDescription.contains("profiles.json")
+            && problem.localizedDescription.contains(problem.copy?.lastPathComponent ?? "\u{0}"))
+        if case .unreadable(let again) = StoreFile.load([String].self, from: file) {
+          let copies = (try? FileManager.default.contentsOfDirectory(atPath: folder.path))?.count
+          check(
+            "a second launch keeps the same one copy", again.copy == problem.copy && copies == 2)
+        } else {
+          check("a second launch keeps the same one copy", false)
+        }
+      default:
+        check("a file that does not decode is unreadable, not absent", false)
+      }
+    }
+
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 {
       print("\(failures) failed")

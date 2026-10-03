@@ -40,6 +40,10 @@ final class ServerStore {
   static let shared = ServerStore()
 
   private(set) var servers: [BastionServer] = []
+  /// Set when the file is there and would not decode. Saves refuse while it
+  /// is, so the original is never written over with what little survived —
+  /// see `StoreFile`.
+  private(set) var unreadable: StoreFile.Unreadable?
 
   /// The same list, readable without a hop to the main actor.
   ///
@@ -199,9 +203,14 @@ final class ServerStore {
       refreshSnapshot()
       return
     }
-    guard let data = try? Data(contentsOf: fileURL),
-      let rows = try? JSONDecoder().decode([Stored].self, from: data)
-    else {
+    let loaded = StoreFile.load([Stored].self, from: fileURL)
+    if case .unreadable(let problem) = loaded {
+      unreadable = problem
+      hostLog("servers", .error, problem.localizedDescription)
+    } else {
+      unreadable = nil
+    }
+    guard case .decoded(let rows) = loaded else {
       // No file means an EMPTY LIST, and it means that even for an install
       // that already has profiles. "Ships with nothing installed" is the whole
       // ask, and the first version of this seeded the list from whatever the
@@ -328,6 +337,7 @@ final class ServerStore {
   }
 
   private func save() throws {
+    if let unreadable { throw unreadable }
     // Belt and braces. Nothing in a staged capture clicks the Enabled toggle,
     // but `setEnabled` is one stray keystroke away and a capture must not be
     // able to write the fixture over the developer's real list.

@@ -635,9 +635,21 @@ enum ClientWiring {
     retiring: Set<String> = [],
     force: Bool = false
   ) throws -> URL? {
-    try retryingIfChanged(client.configURL) {
+    // A store that is there and would not decode reads as empty, and wiring
+    // from an empty list takes every Bastion entry back out of the client's
+    // file — scoped profiles land in the global block when it is the
+    // workspaces. Refused, for the click and the unattended rewire alike, with
+    // the sentence that says which file and where its copy is.
+    if let problem = unreadableStore { throw problem }
+    return try retryingIfChanged(client.configURL) {
       try wireOnce(client, profiles: profiles, retiring: retiring, force: force)
     }
+  }
+
+  /// The first of the stores wiring reads from that could not be read.
+  static var unreadableStore: StoreFile.Unreadable? {
+    ProfileStore.shared.unreadable ?? ServerStore.shared.unreadable
+      ?? WorkspaceStore.shared.unreadable
   }
 
   private static func wireOnce(
