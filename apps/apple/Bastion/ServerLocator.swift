@@ -171,7 +171,7 @@ nonisolated enum ServerLocator {
   #if DEBUG
     private struct DevConfig {
       let node: String
-      let repo: String
+      let repo: String?
     }
 
     /// `~/Library/Application Support/io.mgcrea.bastion.debug/dev.json`:
@@ -180,14 +180,18 @@ nonisolated enum ServerLocator {
     ///       "repo": "/Users/you/Projects/mgcrea/mgcrea-ai" }
     ///
     /// `repo` is the directory holding the server checkouts, and the manifest's
-    /// `localPath` names the one to use.
+    /// `localPath` names the one to use. It is optional: `make dev-clone`
+    /// writes `node` alone. A Debug build embeds no runtime and this is the
+    /// only place it finds one, and without `repo` every server runs from its
+    /// installed tree, as it does in the Release app.
     private static func developmentConfig() throws -> DevConfig? {
       let url = AppSupport.directory.appendingPathComponent("dev.json")
       guard let data = try? Data(contentsOf: url) else { return nil }
       guard
         let json = try? JSONSerialization.jsonObject(with: data) as? [String: String],
-        let node = json["node"], let repo = json["repo"]
+        let node = json["node"]
       else { throw LocateError.devConfigInvalid("expected {\"node\": …, \"repo\": …}") }
+      let repo = json["repo"]
       guard FileManager.default.fileExists(atPath: node) else {
         throw LocateError.devConfigInvalid("no node at \(node)")
       }
@@ -197,9 +201,9 @@ nonisolated enum ServerLocator {
     private static func developmentBinaries(_ package: BastionServer.Package, node: URL) throws
       -> ServerBinaries?
     {
-      guard let dev = try developmentConfig() else { return nil }
+      guard let repo = try developmentConfig()?.repo else { return nil }
 
-      let script = URL(fileURLWithPath: dev.repo)
+      let script = URL(fileURLWithPath: repo)
         .appendingPathComponent(package.localPath)
         .appendingPathComponent("dist/cli.js")
 
