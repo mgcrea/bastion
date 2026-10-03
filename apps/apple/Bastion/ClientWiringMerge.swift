@@ -52,20 +52,26 @@ enum ClientWiringMerge {
   }
 
   static func readJSON(_ url: URL) throws -> [String: Any] {
-    var data = try Data(contentsOf: url)
-    // Empty is also what a config looks like halfway through another process
-    // rewriting it — truncate, then write — and read as `{}` there, the merge
-    // wrote back a file holding only Bastion's entries. One more look, a
-    // moment later, tells that apart from a file that really is empty.
-    if data.isEmpty {
-      Thread.sleep(forTimeInterval: 0.25)
-      data = try Data(contentsOf: url)
-    }
+    let data = try settledContents(of: url)
     if data.isEmpty { return [:] }
     guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
       throw ReadError.notJSONObject(url)
     }
     return object
+  }
+
+  /// A config's bytes, read a second time when the first read finds none.
+  ///
+  /// Empty is also what a config looks like halfway through another process
+  /// rewriting it — truncate, then write — and read as empty there, the merge
+  /// wrote back a file holding only Bastion's entries. One more look, a moment
+  /// later, tells that apart from a file that really is empty. The TOML reader
+  /// takes the same look, for the same reason.
+  static func settledContents(of url: URL) throws -> Data {
+    let data = try Data(contentsOf: url)
+    guard data.isEmpty else { return data }
+    Thread.sleep(forTimeInterval: 0.25)
+    return try Data(contentsOf: url)
   }
 
   /// Where an existing entry points, whichever shape it is.

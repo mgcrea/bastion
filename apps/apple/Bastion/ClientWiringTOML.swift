@@ -116,7 +116,9 @@ enum ClientWiringTOML {
   // MARK: - Reading
 
   static func read(_ url: URL) throws -> Document {
-    let data = try Data(contentsOf: url)
+    // Looked at twice when empty: spliced and written back, an empty read
+    // replaces the user's whole config.toml. See `settledContents`.
+    let data = try ClientWiringMerge.settledContents(of: url)
     guard let text = String(data: data, encoding: .utf8) else {
       throw ScanError.notUTF8(url)
     }

@@ -433,6 +433,26 @@ struct WiringCheck {
     check(
       "a file that stays empty is still an empty config",
       (try? ClientWiringMerge.readJSON(url))?.isEmpty == true)
+
+    // Codex's config.toml, where the same race is worse: the splice copies
+    // every byte it does not own out of the document it read, so an empty read
+    // writes back a file holding only Bastion's tables.
+    let toml = FileManager.default.temporaryDirectory
+      .appendingPathComponent("bastion-empty-\(UUID().uuidString).toml")
+    defer { try? FileManager.default.removeItem(at: toml) }
+    try? Data().write(to: toml)
+    DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
+      try? Data("model = \"theirs\"\n".utf8).write(to: toml)
+    }
+    let document = try? ClientWiringTOML.read(toml)
+    check(
+      "a config.toml that fills in a moment later is read as what it became",
+      document?.text.contains("theirs") == true)
+
+    try? Data().write(to: toml)
+    check(
+      "a config.toml that stays empty is still an empty document",
+      (try? ClientWiringTOML.read(toml))?.text.isEmpty == true)
   }
 
   /// A config that is a symlink into somebody's dotfiles repository.
