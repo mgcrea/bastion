@@ -296,7 +296,11 @@ bundle: node sparkle ## Build, stage, verify and sign a Release Bastion.app
 # own logical line, never `@#` — `@` applies to the first line of a recipe, so a
 # continued `@#` is handed to sh, which has no such command.
 sign: ## Sign the Release bundle (Developer ID if present, else Apple Development)
-	@id=$$(security find-identity -v -p codesigning | awk '/Developer ID Application/ {print $$2; exit}'); \
+	@# `set -e`: the codesign calls below are one shell line joined by `;`, so
+	@# without it a failed signature on Sparkle, node or the bridge was hidden
+	@# whenever the app's own signature, the last command, succeeded.
+	@set -e; \
+	id=$$(security find-identity -v -p codesigning | awk '/Developer ID Application/ {print $$2; exit}'); \
 	if [ -z "$$id" ]; then \
 		id=$$(security find-identity -v -p codesigning | awk '/Apple Development/ {print $$2; exit}'); \
 		echo "  !! no Developer ID Application certificate — signing with Apple Development."; \
@@ -319,7 +323,10 @@ sign: ## Sign the Release bundle (Developer ID if present, else Apple Developmen
 	codesign --force --options runtime --timestamp --sign "$$id" \
 		"$(RELEASE_APP)/Contents/Helpers/bastion-bridge"; \
 	codesign --force --options runtime --timestamp --sign "$$id" "$(RELEASE_APP)"
-	@codesign --verify --deep --strict --verbose=1 "$(RELEASE_APP)" 2>&1 | sed 's/^/  /'
+	@# Captured rather than piped: through `| sed` the line's status was sed's,
+	@# and a bundle that failed verification passed this target.
+	@out=$$(codesign --verify --deep --strict --verbose=1 "$(RELEASE_APP)" 2>&1); status=$$?; \
+	printf '%s\n' "$$out" | sed 's/^/  /'; exit $$status
 	@codesign -d --entitlements - --xml "$(RELEASE_APP)" 2>/dev/null | grep -q '<key>' \
 		&& { echo "  the app carries entitlements — it should carry none"; exit 1; } \
 		|| echo "  no entitlements on the app"
