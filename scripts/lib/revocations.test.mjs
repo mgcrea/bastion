@@ -15,7 +15,7 @@ import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { renderRevocations } from "./revocations.mjs";
+import { renderRevocations, testDatabaseConfigured } from "./revocations.mjs";
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const source = readFileSync(join(root, "apps/apple/Bastion/Revocations.swift"), "utf8");
@@ -46,5 +46,32 @@ describe("renderRevocations", () => {
 
   it("throws on a file with no declaration rather than appending one", () => {
     assert.throws(() => renderRevocations("import Foundation\n", []), /no `enum Revocations`/);
+  });
+});
+
+// The test environment signs with the production key, so that a test purchase
+// proves the shipped app accepts it. That makes every key it mints a real one,
+// and the generator revokes all of them — but only once the database exists,
+// which is when wrangler.jsonc gains its id. Before that there is nothing to
+// read, and reading anyway would fail every run.
+describe("testDatabaseConfigured", () => {
+  const wrangler = readFileSync(join(root, "apps/api/wrangler.jsonc"), "utf8");
+
+  it("is false for the committed config, whose test database has no id yet", () => {
+    assert.equal(testDatabaseConfigured(wrangler), false);
+  });
+
+  it("is true once the test database's binding carries an id", () => {
+    const configured = wrangler.replace(
+      /("database_name":\s*"bastion-licenses-test",)/,
+      '$1\n          "database_id": "00000000-0000-0000-0000-000000000000",',
+    );
+    assert.notEqual(configured, wrangler);
+    assert.equal(testDatabaseConfigured(configured), true);
+  });
+
+  it("is not fooled by the production database's id", () => {
+    assert.match(wrangler, /"database_id"\s*:\s*"[^"]+"/);
+    assert.equal(testDatabaseConfigured(wrangler), false);
   });
 });

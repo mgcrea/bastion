@@ -34,3 +34,18 @@ export function renderRevocations(source, ids) {
   const declaration = `${match[1]}enum Revocations {\n  static let ids: Set<String> = ${list}\n}\n`;
   return source.slice(0, match.index) + declaration + source.slice(match.index + match[0].length);
 }
+
+/**
+ * Whether apps/api/wrangler.jsonc gives the test environment's database an id,
+ * which is the point at which it exists and has licences to read.
+ *
+ * The test environment signs with the production key, so a test purchase
+ * proves the shipped app accepts it — and every key it mints is a real one.
+ * The generator revokes all of them, so none outlives the next build. Read
+ * from the raw text rather than parsed: the file is JSONC, and the binding is
+ * a flat object with no braces inside it, comments included.
+ */
+export function testDatabaseConfigured(wrangler) {
+  const binding = /\{[^{}]*"database_name"\s*:\s*"bastion-licenses-test"[^{}]*\}/.exec(wrangler);
+  return binding !== null && /"database_id"\s*:\s*"[^"]+"/.test(binding[0]);
+}

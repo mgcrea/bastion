@@ -26,6 +26,13 @@
 # dashboard. The licence signing key is the SAME value as production: a key
 # minted through a test purchase has to verify against the public key compiled
 # into the app, or the end-to-end test proves nothing.
+#
+# Which makes every key a test purchase mints a REAL key — and a test-mode
+# Payment Link is a public URL anybody can complete with card 4242. So
+# `make revocations` reads this environment's database too, once its
+# database_id is in wrangler.jsonc, and revokes every licence in it. A test key
+# works in the build you are testing and in no released build after the next
+# `make revocations`.
 LICENSE_SIGNING_KEY=
 STRIPE_WEBHOOK_SECRET=
 # Optional, as in `.prod.vars`. Uncomment only with a TEST-mode key.
