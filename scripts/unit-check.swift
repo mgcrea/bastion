@@ -329,6 +329,24 @@ struct UnitCheck {
         in: Data(full.components(separatedBy: "\r\n\r\n").dropFirst().joined().utf8)
       ).count == 3)
 
+    // A progress frame the child sends late — after the call has its result —
+    // must not follow the result onto the wire. `finish` wrote outside the
+    // lock and set nothing, so a frame that arrived from the reader thread
+    // went out behind it, and a client reading the result as the end of the
+    // call then read another event.
+    var lateRefused = true
+    let late = streamed { out in
+      out.send(Data("{\"m\":\"p\",\"n\":1}".utf8))
+      out.finish(with: HTTPResponse(json: ["id": 7, "result": [:]]))
+      lateRefused = !out.send(Data("{\"m\":\"p\",\"n\":2}".utf8))
+    }
+    let latePayloads = ServerSentEvents.dataPayloads(
+      in: Data(late.components(separatedBy: "\r\n\r\n").dropFirst().joined().utf8))
+    check("a frame after the result is refused", lateRefused)
+    check(
+      "so the result is the last event",
+      latePayloads.last.map { String(decoding: $0, as: UTF8.self) }?.contains("\"result\"") == true)
+
     // Not armed: nothing is written and the caller falls back to a normal
     // buffered response, which is what keeps today's behaviour today's.
     let inert = HTTPStream(fd: -1, armed: false)

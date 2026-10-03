@@ -60,6 +60,11 @@ nonisolated final class HTTPStream: Sendable {
     /// accepted connection. The benign outcome is `EBADF`; the other one is one
     /// profile's payload appearing in another client's response.
     var closed = false
+    /// Set by `finish` before it writes the result, outside the lock. A
+    /// progress frame the child sends late would otherwise go out behind the
+    /// result, or between its bytes — and a client reads the result as the
+    /// end of the call.
+    var finishing = false
   }
 
   private let fd: Int32
@@ -89,7 +94,7 @@ nonisolated final class HTTPStream: Sendable {
   func send(_ payload: Data) -> Bool {
     guard armed else { return false }
     return state.withLock { current in
-      guard !current.broken, !current.closed else { return false }
+      guard !current.broken, !current.closed, !current.finishing else { return false }
       var out = Data()
       if !current.opened {
         out += Self.head
@@ -132,6 +137,7 @@ nonisolated final class HTTPStream: Sendable {
   func finish(with response: HTTPResponse) {
     let shouldWrite = state.withLock { current -> Bool in
       guard current.opened, !current.broken, !current.closed else { return false }
+      current.finishing = true
       current.sent += 1
       return true
     }
