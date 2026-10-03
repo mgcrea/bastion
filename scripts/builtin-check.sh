@@ -362,6 +362,11 @@ check  "its own window still comes back"         "$STATS" 'days_covered'
 # Naming another profile's server must narrow, never widen.
 absent "naming a server does not widen the scope" \
   "$(tool checknosy server_stats '{"window":"30d","server":"bastion","top":20}')" 'checkrw/bastion'
+# The totals' timings too. They were taken over every profile's calls while
+# the rows were filtered, so a server this profile never used still came back
+# with somebody else's p50, p95 and max.
+absent "a server this profile never used reports no timings" \
+  "$(tool checknosy server_stats '{"window":"30d","server":"never-used-zzz"}')" '_ms'
 # The rollup holds counts. A payload reaching it would make the EULA, the
 # privacy page and the README wrong at once, so the canary planted above is
 # looked for here too.

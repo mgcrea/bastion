@@ -694,15 +694,21 @@ extension CallStats {
   }
 
   /// Every window in one lock take, which is what the pane calls.
-  func snapshot(window: Window, ranking: Ranking = .calls, includeBuiltin: Bool? = nil) -> Snapshot
-  {
+  /// `only` narrows every figure, the totals and their timings included, to
+  /// the rows it accepts. Filtering the returned rows afterwards is not the
+  /// same thing: the overall percentiles are taken over the buckets, and
+  /// cannot be recomputed from rows that were left out.
+  func snapshot(
+    window: Window, ranking: Ranking = .calls, includeBuiltin: Bool? = nil,
+    only: (@Sendable (_ profile: String, _ server: String) -> Bool)? = nil
+  ) -> Snapshot {
     let builtin = includeBuiltin ?? Self.includesBuiltin
     let offset = secondsFromGMT
     return state.withLock { table in
       let today = Self.today(&table)
       let earliest = today - DayNumber(Swift.max(1, window.days)) + 1
       let visible = { (profile: String, server: String) -> Bool in
-        builtin || !Self.separatelyCounted.contains(server)
+        (builtin || !Self.separatelyCounted.contains(server)) && only?(profile, server) ?? true
       }
 
       var servers: [ServerKey: ServerRow] = [:]

@@ -1282,14 +1282,15 @@ enum BuiltinTools {
     let widened = CallCapture.reportsAllProfiles
     let callerProfile = caller?.split(separator: "/").first.map(String.init)
 
-    let snapshot = CallStats.shared.snapshot(window: window)
-    let mine = { (profile: String) in widened || profile == callerProfile }
-    let servers = snapshot.servers.filter {
-      mine($0.profile) && (requested == nil || $0.server == requested)
+    // Narrowed inside the snapshot rather than after it. Filtering the rows
+    // afterwards left the totals' timings taken over every profile's calls,
+    // so a server this profile never used still came back with somebody
+    // else's p50, p95 and max.
+    let snapshot = CallStats.shared.snapshot(window: window) { profile, server in
+      (widened || profile == callerProfile) && (requested == nil || server == requested)
     }
-    let tools = snapshot.tools.filter {
-      mine($0.profile) && (requested == nil || $0.server == requested)
-    }
+    let servers = snapshot.servers
+    let tools = snapshot.tools
 
     func timings(_ latency: CallStats.Latency) -> [String: Any] {
       var row: [String: Any] = [:]
