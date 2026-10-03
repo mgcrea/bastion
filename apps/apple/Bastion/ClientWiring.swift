@@ -962,9 +962,11 @@ enum ClientWiring {
   /// exercising the path deliberately — pointing a Debug build at a config it
   /// really did write.
   nonisolated static var profilesAreAuthoritative: Bool {
-    if let override = UserDefaults.standard.object(forKey: "trustProfilesForStaleEntries") as? Bool
-    {
-      return override
+    // Not `as? Bool`, for the reason `autoWires` gives: the launch argument
+    // `-trustProfilesForStaleEntries YES` arrives as a string, and the cast
+    // turned it into nil and the default.
+    if UserDefaults.standard.object(forKey: "trustProfilesForStaleEntries") != nil {
+      return UserDefaults.standard.bool(forKey: "trustProfilesForStaleEntries")
     }
     #if DEBUG
       return false
