@@ -1308,6 +1308,24 @@ struct WiringCheck {
     refuses("trailing junk after a header", "[mcp_servers.a] oops\n")
     refuses("a key with no value", "[mcp_servers.a]\ncommand\n")
     refuses("an unclosed inline table", "[mcp_servers]\nfoo = { command = \"/bin/foo\"\n")
+    // Legal TOML 1.0: an array inside an inline table may span lines. Each
+    // server under a bare [mcp_servers] was recorded as one line, so a wire
+    // landed inside the array and an unwire left its tail behind.
+    refuses(
+      "a server under [mcp_servers] whose value spans lines",
+      "[mcp_servers]\nfoo = { command = \"npx\", args = [\n  \"-y\",\n  \"pkg\"\n] }\n")
+    // Invisible to the scanner, so nothing named the server and the write
+    // appended a [mcp_servers.<name>] table that reopens a table already
+    // defined: invalid TOML, and Codex then reads none of the file.
+    refuses(
+      "mcp_servers as an inline table at the top of the file",
+      "model = \"o3\"\nmcp_servers = { foo = { command = \"/bin/foo\" } }\n")
+    refuses(
+      "a dotted mcp_servers key at the top of the file",
+      "mcp_servers.foo.command = \"/bin/foo\"\n")
+    check(
+      "while a key called mcp_servers inside some other table is somebody else's",
+      scanned("[profiles.work]\nmcp_servers = 1\n") != nil)
 
     check(
       "non-UTF-8 bytes are refused by name",

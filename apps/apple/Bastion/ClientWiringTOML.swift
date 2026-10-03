@@ -125,7 +125,9 @@ enum ClientWiringTOML {
 
     // Which table the assignments on this line belong to.
     enum Context {
-      /// Nothing we care about, or before the first header.
+      /// Before the first header, where a key belongs to the root table.
+      case root
+      /// A table that is not ours.
       case other
       /// A bare `[mcp_servers]`, under which every key IS a server.
       case parent
@@ -133,7 +135,7 @@ enum ClientWiringTOML {
       /// the name.
       case server(name: String, path: [String])
     }
-    var context = Context.other
+    var context = Context.root
 
     // The span being accumulated, if it belongs to a server.
     var openName: String?
@@ -204,6 +206,16 @@ enum ClientWiringTOML {
       case .assignment(let key, let value):
         lastContent = index
         switch context {
+        case .root:
+          // `mcp_servers = { … }` or `mcp_servers.foo.command = …` up here is
+          // the same table, defined where no header names it. Invisible to
+          // the cases below, so a write would append a [mcp_servers.<name>]
+          // that reopens it — invalid TOML, and Codex then reads none of the
+          // file.
+          if key.first == rootKey {
+            throw ScanError.unsupportedShape(
+              line: index, why: "\(rootKey) defined at the top of the file")
+          }
         case .other:
           continue
         case .parent:
@@ -211,6 +223,13 @@ enum ClientWiringTOML {
           guard key.count == 1 else {
             throw ScanError.unsupportedShape(
               line: index, why: "a dotted key under [\(rootKey)]")
+          }
+          // Which is only true if the value ends on it. An array inside an
+          // inline table may span lines, and a one-line span would put a wire
+          // inside it and leave its tail behind on an unwire.
+          guard state.isClean else {
+            throw ScanError.unsupportedShape(
+              line: index, why: "a server under [\(rootKey)] whose value spans lines")
           }
           let name = key[0]
           var table = tables[name] ?? Table(name: name, ranges: [], value: [:])
