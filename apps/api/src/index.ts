@@ -562,9 +562,12 @@ const dispatch = async (
     // switch lives in the Stripe dashboard, not in this repo.
     case "checkout.session.async_payment_succeeded":
       return fulfil(object, env, livemode);
-    case "checkout.session.async_payment_failed":
-      console.error("webhook: async payment failed for a session");
+    case "checkout.session.async_payment_failed": {
+      // Named, so the line can be traced to a buyer in the Stripe dashboard.
+      const id = (object as { id?: unknown } | null)?.id;
+      console.error(`webhook: async payment failed for session ${String(id ?? "(no id)")}`);
       return new Response("async payment failed", { status: 200 });
+    }
     case "charge.refunded":
       return refunded(object, env);
     case "charge.dispute.created":

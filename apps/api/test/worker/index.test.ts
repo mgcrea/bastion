@@ -418,6 +418,20 @@ describe("configuration", () => {
       { LICENSE_SIGNING_KEY: btoa("truncated") },
       /LICENSE_SIGNING_KEY is not a base64 PKCS#8 Ed25519 private key/,
     ],
+    // `Number(...) || 1` minted these as a fractional or unexpected major, and
+    // the app decodes `major` as an Int: "payload is not a licence".
+    // Cast, because the generated Env types the var as the literal "1" — which
+    // is what wrangler.jsonc says, and exactly the assumption under test.
+    [
+      "a fractional major",
+      { CURRENT_MAJOR: "1.5" } as unknown as Partial<Env>,
+      /CURRENT_MAJOR is not a whole number/,
+    ],
+    [
+      "a major with junk after it",
+      { CURRENT_MAJOR: "2 beta" } as unknown as Partial<Env>,
+      /CURRENT_MAJOR is not a whole number/,
+    ],
   ];
 
   for (const [label, overrides, named] of cases) {

@@ -44,5 +44,14 @@ export const configProblems = async (env: Env): Promise<string[]> => {
     }
   }
 
+  // A var rather than a secret, and checked for the same reason: `fulfil`
+  // reads it with `Number(...) || 1`, which turned "1.5" or "2 beta" into a
+  // major the app — decoding it as an Int — refuses as "payload is not a
+  // licence". Unset is fine; that is the 1 every key so far was minted with.
+  const major: string | undefined = env.CURRENT_MAJOR;
+  if (major && !/^[1-9][0-9]*$/.test(major.trim())) {
+    problems.push("CURRENT_MAJOR is not a whole number of 1 or more");
+  }
+
   return problems;
 };
