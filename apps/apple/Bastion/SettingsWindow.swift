@@ -839,7 +839,9 @@ private struct AuditPane: View {
             summary.report.isIntact
               ? "\(summary.records) records across \(summary.segments) "
                 + "segment\(summary.segments == 1 ? "" : "s"), \(bytes(summary.bytes)). "
-                + "The chain verifies."
+                + (summary.truncatedBefore.map {
+                  "Older segments were removed by retention; the chain verifies from segment \($0)."
+                } ?? "The chain verifies.")
               : "\(summary.records) records, and the chain does NOT verify: "
                 + describe(summary.report.failures)
           )
@@ -908,14 +910,30 @@ private struct AuditPane: View {
       }
     }
     .formStyle(.grouped)
-    .onAppear { summary = AuditLog.verifyAll() }
+    // Off the main actor: at the larger limits the log is gigabytes, and this
+    // used to read, parse and hash all of it on the main thread every time
+    // the pane appeared.
+    .task { await refresh() }
+    // A shorter limit applies now, not at the next rotation.
+    .onChange(of: maxDays) {
+      AuditLog.shared.prune()
+      Task { await refresh() }
+    }
+    .onChange(of: maxMegabytes) {
+      AuditLog.shared.prune()
+      Task { await refresh() }
+    }
   }
 
   private var summaryIsEmpty: Bool { (summary?.records ?? 0) == 0 }
 
+  private func refresh() async {
+    summary = await Task.detached(priority: .userInitiated) { AuditLog.verifyAll() }.value
+  }
+
   private func verify() {
-    summary = AuditLog.verifyAll()
     note = nil
+    Task { await refresh() }
   }
 
   private func export() {
@@ -927,8 +945,8 @@ private struct AuditPane: View {
 
   private func erase() {
     AuditLog.shared.clear()
-    summary = AuditLog.verifyAll()
     note = "The log on disk is gone."
+    Task { await refresh() }
   }
 
   private func bytes(_ count: Int) -> String {

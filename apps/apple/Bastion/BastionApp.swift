@@ -166,6 +166,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // The last minute of counters, which the sixty-second timer has not reached.
     // Synchronous on this thread on purpose: there is no later.
     CallStats.shared.flushNow()
+    // And the audit records still queued, which the process exiting would
+    // otherwise drop: the last calls before a quit are exactly the ones
+    // somebody reviewing the log goes looking for.
+    AuditLog.settle()
   }
 }
 

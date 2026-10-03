@@ -45,7 +45,7 @@ enum AuditChain {
   /// wrong here: these bytes must still verify years after the code that wrote
   /// them changed, and a verifier has to be able to say "I do not know this
   /// format" instead of silently hashing a record it half-understood.
-  static let version = 1
+  nonisolated static let version = 1
 
   /// Names the app that wrote it, so a Cupertino export cannot be verified as a
   /// Bastion one by a tool that reads only the version.
@@ -145,7 +145,7 @@ enum AuditChain {
     return out + "\""
   }
 
-  static func digest(_ text: String) -> String {
+  nonisolated static func digest(_ text: String) -> String {
     SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
   }
 
@@ -190,7 +190,7 @@ enum AuditChain {
   /// visible.
   static func manifest(
     app: String, exportedAt: Date, records: Int, segments: [SegmentEntry], head: String,
-    intact: Bool
+    intact: Bool, startsAtSegment: Int? = nil
   ) -> String {
     let described = segments.map {
       "{\"name\":\(quote($0.name)),\"records\":\($0.records),\"sha256\":\(quote($0.sha256))}"
@@ -200,6 +200,9 @@ enum AuditChain {
       + "\"exportedAt\":\(quote(clock.string(from: exportedAt))),"
       + "\"records\":\(records),"
       + "\"segments\":[\(described.joined(separator: ","))],"
+      // Only when retention removed the oldest segments, so a manifest for an
+      // untruncated log is byte-for-byte what it always was.
+      + (startsAtSegment.map { "\"startsAtSegment\":\($0)," } ?? "")
       + "\"head\":\(quote(head)),\"intact\":\(intact)}"
   }
 
@@ -221,13 +224,59 @@ enum AuditChain {
     var isIntact: Bool { failures.isEmpty }
   }
 
+  /// Every segment still on disk, in order, verified as one chain.
+  ///
+  /// Retention drops whole segments, oldest first, which is the declared
+  /// truncation the segmenting exists for. So when the oldest segment left is
+  /// not segment 1, it is checked from its own first record's `prev` and
+  /// `truncatedBefore` names it — "intact from segment N", not "broken". It
+  /// used to be checked against genesis, and from the first prune on a log
+  /// nobody had touched reported a broken link and every export said
+  /// `intact: false`.
+  ///
+  /// Only the start may be missing. A segment gone from between two that
+  /// remain still breaks the next one's link, and segment 1 is always checked
+  /// from genesis, so cutting its opening record is not passed off as a prune.
+  nonisolated static func verify(segments: [(number: Int, lines: [String])]) -> (
+    report: Report, truncatedBefore: Int?
+  ) {
+    var total = Report()
+    var head = genesis
+    var truncatedBefore: Int?
+    if let first = segments.first, first.number > 1 {
+      truncatedBefore = first.number
+      head = firstPrev(in: first.lines) ?? genesis
+    }
+    for segment in segments {
+      let report = verify(lines: segment.lines, from: head)
+      total.records += report.records
+      total.failures += report.failures
+      head = report.head
+    }
+    total.head = head
+    return (total, truncatedBefore)
+  }
+
+  /// The `prev` of the first record that parses, which is what a pruned log's
+  /// oldest surviving segment has to be checked from.
+  nonisolated private static func firstPrev(in lines: [String]) -> String? {
+    for raw in lines {
+      let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !text.isEmpty else { continue }
+      guard let object = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
+      else { return nil }
+      return object["prev"] as? String
+    }
+    return nil
+  }
+
   /// Recompute a sequence and report where, if anywhere, it stops adding up.
   ///
   /// `from` is what the first record's `prev` must be: `genesis` for the first
   /// segment, the previous segment's head otherwise. Passing the wrong one is
   /// reported as a broken link on the first record rather than silently
   /// accepted, which is the point of carrying the head across segments at all.
-  static func verify(lines: [String], from: String = genesis) -> Report {
+  nonisolated static func verify(lines: [String], from: String = genesis) -> Report {
     var report = Report(head: from)
     var previous = from
     var lastSeq: Int?

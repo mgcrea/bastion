@@ -1337,6 +1337,25 @@ struct UnitCheck {
       "and fails from genesis",
       AuditChain.verify(lines: second).failures.contains(.brokenLink(seq: 1)))
 
+    print("\nAudit chain: what retention leaves on disk")
+    // Retention drops whole segments, oldest first. The verifier and the
+    // export both checked the first surviving one against genesis, so from the
+    // first prune on, a log nobody touched reported a broken link and every
+    // export said intact: false.
+    let third = chain(2, from: chain(3, from: clean[4].hash)[2].hash).map { AuditChain.line($0) }
+    let allThree = AuditChain.verify(segments: [(1, cleanLines), (2, second), (3, third)])
+    check("all three segments verify as one chain", allThree.report.isIntact)
+    check("and nothing is said to be missing", allThree.truncatedBefore == nil)
+    let pruned = AuditChain.verify(segments: [(2, second), (3, third)])
+    check("with the oldest pruned, the rest still verify", pruned.report.isIntact)
+    check("and say where the log now starts", pruned.truncatedBefore == 2)
+    check("counting only what is there", pruned.report.records == 5)
+    let gap = AuditChain.verify(segments: [(1, cleanLines), (3, third)])
+    check("a segment missing from the middle is still a broken link", !gap.report.isIntact)
+    check(
+      "a first segment with its opening record cut is not passed off as a prune",
+      !AuditChain.verify(segments: [(1, Array(cleanLines.dropFirst()))]).report.isIntact)
+
     print("\nAudit chain: the export manifest")
 
     // These bytes are what a signature is taken over, so a change to them is a

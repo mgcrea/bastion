@@ -93,11 +93,23 @@ final class AuditLog {
   private var head = AuditChain.genesis
   private var segment = 1
   private var segmentSize = 0
+  /// When the segment being written got its first record. A segment is
+  /// pruned whole, and never while it is being written, so one that a quiet
+  /// log kept filling for months held months of payloads past "Keep for".
+  /// It is now closed once it is a day old.
+  private var segmentStarted: Date?
   private var opened = false
 
   /// Writes only. Serial, so bytes land in the order the main actor sealed
   /// them; `.utility` because a log line is never what a user is waiting for.
-  private let writer = DispatchQueue(label: "io.mgcrea.bastion.audit", qos: .utility)
+  /// Static, so the readers below can drain it before they look: a verifier
+  /// or an export reading a segment the writer is still appending to sees a
+  /// torn last line, which reads as tampering.
+  nonisolated private static let writer = DispatchQueue(
+    label: "io.mgcrea.bastion.audit", qos: .utility)
+
+  /// Every record already sealed is on disk once this returns.
+  nonisolated static func settle() { writer.sync {} }
 
   /// What is actually on disk, as the writer knows it. See "When a write
   /// fails" above. Seeded by `open`, reset by `clear`, advanced only by a
@@ -172,18 +184,21 @@ final class AuditLog {
 
     let line = AuditChain.line(sealed) + "\n"
     let bytes = Data(line.utf8)
+    if segmentSize == 0 { segmentStarted = sealed.at }
     segmentSize += bytes.count
     let url = Self.url(for: segment)
     let number = seq
     let hash = sealed.hash
-    writer.async { Self.commit(seq: number, prev: prev, hash: hash, bytes: bytes, to: url) }
+    Self.writer.async { Self.commit(seq: number, prev: prev, hash: hash, bytes: bytes, to: url) }
 
     // Rotate AFTER the write is queued, so the record that crossed the line is
     // the last one in the segment it was sealed against rather than the first
     // of the next — which would break the link it already carries.
-    if segmentSize >= Self.segmentBytes {
+    let aged = segmentStarted.map { Date().timeIntervalSince($0) >= 86_400 } ?? false
+    if segmentSize >= Self.segmentBytes || aged {
       segment += 1
       segmentSize = 0
+      segmentStarted = nil
       prune()
     }
     return seq
@@ -336,27 +351,45 @@ final class AuditLog {
     segment = Self.number(of: last)
     segmentSize = text.utf8.count
     let lines = text.split(separator: "\n").map(String.init)
-    guard let tail = lines.last,
-      let object = try? JSONSerialization.jsonObject(with: Data(tail.utf8)) as? [String: Any],
-      let lastSeq = object["seq"] as? Int, let lastHash = object["hash"] as? String
-    else {
+    segmentStarted = lines.first.flatMap { first in
+      (try? JSONSerialization.jsonObject(with: Data(first.utf8)) as? [String: Any])
+        .flatMap { $0["at"] as? String }.flatMap { AuditChain.clock.date(from: $0) }
+    }
+    // The last record that parses, which is what the next one links to.
+    func record(_ line: String) -> (seq: Int, hash: String)? {
+      guard let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+        let seq = object["seq"] as? Int, let hash = object["hash"] as? String
+      else { return nil }
+      return (seq, hash)
+    }
+    if let landed = lines.reversed().lazy.compactMap(record).first {
+      seq = landed.seq
+      head = landed.hash
+      Self.disk.withLock {
+        $0.seq = landed.seq
+        $0.head = landed.hash
+      }
+    }
+    if let tail = lines.last, record(tail) == nil {
       // A truncated final line — a crash mid-write, most likely. Start a new
       // segment rather than appending to a record that is half there: the
-      // damaged segment stays on disk and the verifier will name it.
+      // damaged segment stays on disk and the verifier names its torn line.
+      // The new one carries on from the last record that did land, so that
+      // torn line is the only thing reported — it used to restart from
+      // genesis, which broke the next link too and repeated sequence numbers.
       segment += 1
       segmentSize = 0
-      return
+      segmentStarted = nil
     }
-    seq = lastSeq
-    head = lastHash
-    Self.disk.withLock {
-      $0.seq = lastSeq
-      $0.head = lastHash
-    }
-    if segmentSize >= Self.segmentBytes {
+    let aged = segmentStarted.map { Date().timeIntervalSince($0) >= 86_400 } ?? false
+    if segmentSize >= Self.segmentBytes || aged {
       segment += 1
       segmentSize = 0
+      segmentStarted = nil
     }
+    // Retention applies at launch too, not only when a segment fills: a log
+    // that rotates rarely otherwise kept everything until it did.
+    prune()
   }
 
   nonisolated static func number(of url: URL) -> Int {
@@ -402,33 +435,44 @@ final class AuditLog {
 
   // MARK: - Reading back
 
-  struct Summary {
+  struct Summary: Sendable {
     var segments = 0
     var records = 0
     var bytes = 0
     var report = AuditChain.Report()
+    /// The oldest segment left, when retention has removed the ones before it.
+    /// A declared truncation: the chain is intact from here.
+    var truncatedBefore: Int?
+  }
+
+  /// Every segment on disk, read once: its number, its text and its size.
+  nonisolated private static func readSegments() -> [(url: URL, number: Int, text: String)] {
+    segments().compactMap { url in
+      guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+      return (url, number(of: url), text)
+    }
   }
 
   /// Verify every segment in order, carrying the head across.
   ///
-  /// Off the main actor would be nicer, and it is deliberately not: this runs
-  /// when somebody presses a button, and a verifier racing the writer would
-  /// report a torn last line as tampering.
-  static func verifyAll() -> Summary {
-    var summary = Summary()
-    var head = AuditChain.genesis
-    for url in segments() {
-      guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
-      let report = verify(text: text, from: head)
-      summary.segments += 1
-      summary.records += report.records
-      summary.bytes += size(of: url)
-      summary.report.failures += report.failures
-      head = report.head
-    }
-    summary.report.records = summary.records
-    summary.report.head = head
-    return summary
+  /// Off the main actor: the log runs to gigabytes at the largest limit, and
+  /// the Audit pane used to verify it synchronously every time it appeared.
+  /// The writer is drained first, so a record still in flight is not read as
+  /// a torn line. See `AuditChain.verify(segments:)` for what a pruned log
+  /// reports.
+  nonisolated static func verifyAll() -> Summary {
+    settle()
+    let found = readSegments()
+    let chain = AuditChain.verify(
+      segments: found.map { (number: $0.number, lines: lines(of: $0.text)) })
+    return Summary(
+      segments: found.count, records: chain.report.records,
+      bytes: found.reduce(0) { $0 + size(of: $1.url) }, report: chain.report,
+      truncatedBefore: chain.truncatedBefore)
+  }
+
+  nonisolated private static func lines(of text: String) -> [String] {
+    text.split(separator: "\n").map(String.init)
   }
 
   static func verify(text: String, from: String) -> AuditChain.Report {
@@ -460,32 +504,35 @@ final class AuditLog {
       at: folder, withIntermediateDirectories: true,
       attributes: [.posixPermissions: 0o700])
 
-    var head = AuditChain.genesis
+    // Drained, then read once: the text that is hashed into the manifest is
+    // the text written out. Copying the file afterwards, as this used to,
+    // could pick up a record appended in between and disagree with the digest
+    // beside it.
+    Self.settle()
+    let found = Self.readSegments()
     var described: [AuditChain.SegmentEntry] = []
-    var summary = Summary()
-
-    for url in Self.segments() {
-      guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
-      let report = Self.verify(text: text, from: head)
-      try? FileManager.default.removeItem(at: folder.appendingPathComponent(url.lastPathComponent))
-      try FileManager.default.copyItem(
-        at: url, to: folder.appendingPathComponent(url.lastPathComponent))
+    for segment in found {
+      let destination = folder.appendingPathComponent(segment.url.lastPathComponent)
+      try? FileManager.default.removeItem(at: destination)
+      try Data(segment.text.utf8).write(to: destination)
       described.append(
         AuditChain.SegmentEntry(
-          name: url.lastPathComponent, records: report.records,
-          sha256: AuditChain.digest(text)))
-      head = report.head
-      summary.segments += 1
-      summary.records += report.records
-      summary.bytes += Self.size(of: url)
-      summary.report.failures += report.failures
+          name: segment.url.lastPathComponent,
+          records: AuditChain.verify(lines: Self.lines(of: segment.text)).records,
+          sha256: AuditChain.digest(segment.text)))
     }
-    summary.report.records = summary.records
-    summary.report.head = head
+    let chain = AuditChain.verify(
+      segments: found.map { (number: $0.number, lines: Self.lines(of: $0.text)) })
+    let summary = Summary(
+      segments: found.count, records: chain.report.records,
+      bytes: found.reduce(0) { $0 + Self.size(of: $1.url) }, report: chain.report,
+      truncatedBefore: chain.truncatedBefore)
+    let head = chain.report.head
 
     let manifest = AuditChain.manifest(
       app: "Bastion \(AppInfo.version)", exportedAt: Date(), records: summary.records,
-      segments: described, head: head, intact: summary.report.isIntact)
+      segments: described, head: head, intact: summary.report.isIntact,
+      startsAtSegment: summary.truncatedBefore)
     let bytes = Data(manifest.utf8)
     try bytes.write(to: folder.appendingPathComponent("manifest.json"))
 
@@ -500,6 +547,9 @@ final class AuditLog {
   }
 
   func clear() {
+    // Drained first, or a record still queued lands in a fresh segment 1
+    // after the delete, sealed against the head that was just erased.
+    Self.settle()
     for url in Self.segments() { try? FileManager.default.removeItem(at: url) }
     seq = 0
     head = AuditChain.genesis
