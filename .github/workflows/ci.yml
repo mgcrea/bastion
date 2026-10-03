@@ -76,7 +76,8 @@ jobs:
       # catches it.
       #
       # The script skips itself, passing, when there is no token: a pull request
-      # from a fork must not fail over a check it structurally cannot run.
+      # from a fork must not fail over a check it structurally cannot run. On a
+      # release tag it fails instead, since release-app needs this job.
       - name: Revocations drift 🔍
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

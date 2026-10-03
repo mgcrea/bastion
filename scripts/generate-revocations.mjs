@@ -26,6 +26,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { renderRevocations } from "./lib/revocations.mjs";
+
 // `fileURLToPath`, not `.pathname`: the latter leaves a checkout under a path
 // with a space percent-encoded, and every path built from it then misses.
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -47,7 +49,16 @@ const local = args.includes("--local");
 // change nothing — after a refund, silently leaving the refunded key working
 // while looking like it had been handled. Let wrangler's own auth decide, and
 // let it fail loudly when there is none.
+//
+// A release tag is not a pull request. The release job needs this one, so a
+// skip there — a secret renamed, rotated or dropped — would pass a notarized
+// build carrying whatever list happens to be committed, refunded keys included.
+// On a tag the missing token is the failure.
 if (check && !local && !process.env.CLOUDFLARE_API_TOKEN) {
+  if (process.env.GITHUB_REF?.startsWith("refs/tags/")) {
+    console.error("FATAL: no CLOUDFLARE_API_TOKEN on a release tag, cannot confirm against D1");
+    process.exit(1);
+  }
   console.log("skipped: no CLOUDFLARE_API_TOKEN, cannot confirm against D1");
   process.exit(0);
 }
@@ -79,21 +90,11 @@ try {
   process.exit(2);
 }
 
-const ids = rows
-  .map((row) => row.id)
-  .filter(Boolean)
-  .toSorted();
+const ids = rows.map((row) => row.id).filter(Boolean);
 
-const header = readFileSync(TARGET, "utf8").split("\nenum Revocations")[0];
-// `JSON.stringify`, not string interpolation — the same escaper
-// `generate-servers.mjs` uses for every value it writes into Swift. These ids
-// come from a DATABASE rather than from servers.json, which makes this the one
-// string in the release path nobody in this repo chose, and a quote or a
-// backslash in one would emit Swift that does not compile.
-const swiftString = (value) => JSON.stringify(value);
-const list =
-  ids.length === 0 ? "[]" : `[\n${ids.map((id) => `    ${swiftString(id)},`).join("\n")}\n  ]`;
-const next = `${header}\nenum Revocations {\n  static let ids: Set<String> = ${list}\n}\n`;
+// Rendering, and the escaping it needs, live in scripts/lib/revocations.mjs,
+// where a test runs them against the file the app compiles.
+const next = renderRevocations(readFileSync(TARGET, "utf8"), ids);
 
 if (check) {
   if (readFileSync(TARGET, "utf8") === next) {
