@@ -293,6 +293,15 @@ jobs:
         run: make unit
       - name: Client wiring 🔍
         run: make wiring-check
+      # The skills linker writes symlinks and git exclude blocks into the
+      # user's own folders and repositories, and its rules are pure: discovery,
+      # the link plan, the ledger, the exclude block. No app, no network.
+      - name: Skills linking 🔍
+        run: make skills-check
+      # Where a remote server may live, the rebinding check, the write gate and
+      # OAuth. It binds one loopback listener and reaches nothing else.
+      - name: Remote servers and the write gate 🔍
+        run: make remote-check
       # The cross-language check, and the one whose failure costs money.
       # JavaScript mints the keys and Swift accepts them, so the disagreement
       # that matters lives between the two and neither side's own tests can see
@@ -392,8 +401,12 @@ jobs:
         id: version
         run: |
           version="${GITHUB_REF_NAME#app-v}"
-          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+].+)?$'; then
-            echo "::error::tag ${GITHUB_REF_NAME} does not carry a semver version"
+          # A plain release only. This job publishes with make_latest, and the
+          # site's /appcast.xml points at releases/latest, so an app-v1.3.0-beta.1
+          # tag would offer the beta to every installed copy through Sparkle.
+          # There is no beta channel; refuse here, before anything is signed.
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::tag ${GITHUB_REF_NAME} is not a plain x.y.z release; a pre-release would reach every user through the appcast"
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
