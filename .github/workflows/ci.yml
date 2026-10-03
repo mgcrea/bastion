@@ -478,8 +478,12 @@ jobs:
         env:
           AC_KEY_ID: ${{ secrets.AC_KEY_ID }}
           AC_ISSUER_ID: ${{ secrets.AC_ISSUER_ID }}
+          # Through env rather than pasted into the script text, and the file
+          # gone when this step ends: nothing after notarization needs it.
+          AC_KEY_P8_BASE64: ${{ secrets.AC_KEY_P8_BASE64 }}
         run: |
-          printf '%s' "${{ secrets.AC_KEY_P8_BASE64 }}" | base64 --decode > "$RUNNER_TEMP/ac.p8"
+          trap 'rm -f "$RUNNER_TEMP/ac.p8"' EXIT
+          printf '%s' "$AC_KEY_P8_BASE64" | base64 --decode > "$RUNNER_TEMP/ac.p8"
           export AC_KEY_PATH="$RUNNER_TEMP/ac.p8"
           # Passed explicitly rather than left to the Makefile's own defaults.
           # APP_VERSION there is `git describe`, which resolves to this tag and
@@ -493,6 +497,13 @@ jobs:
           echo "CFBundleVersion=$build (from $(git rev-parse --short HEAD))"
           make build-release \
             XCARGS="MARKETING_VERSION=${{ steps.version.outputs.version }} CURRENT_PROJECT_VERSION=$build"
+      # Signing is done. The step below installs and runs a published npm
+      # package to prove the embedded runtime works, and nothing third-party
+      # should run while the Developer ID identity is one `security` call away.
+      # The appcast is signed from SPARKLE_ED_PRIVATE_KEY, not this keychain.
+      - name: Drop the signing keychain 🔒
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
       # Every claim the download page makes, checked against the artifact that
       # is about to be uploaded rather than against the tree it was built from.
       - name: Verify the artifact 🔍

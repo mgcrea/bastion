@@ -277,7 +277,12 @@ bundle: node sparkle ## Build, stage, verify and sign a Release Bastion.app
 	@# Before signing, not after. A signature over a bundle that cannot install
 	@# or start a server is worth nothing, and this is the first point at which
 	@# the runtime and the package manager it installs with sit side by side.
-	@scripts/verify-servers.sh "$(RELEASE_APP)"
+	@# Except in CI, where the signing keychain is already unlocked by now: the
+	@# probe installs and runs a published npm package, so there it runs in the
+	@# "Verify the artifact" step instead, after the keychain has been deleted
+	@# and before anything is uploaded.
+	@if [ -z "$$CI" ]; then scripts/verify-servers.sh "$(RELEASE_APP)"; \
+	else echo "  install probe deferred to after signing (CI)"; fi
 	@$(MAKE) --no-print-directory sign
 
 # Inside out: node, then the bridge, then the app. A signature over a bundle is
