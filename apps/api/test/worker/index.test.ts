@@ -678,6 +678,32 @@ describe("event idempotency", () => {
     expect(await count(built.env)).toBe(1);
   });
 
+  // A Worker that dies between the claim and its answer cannot give the claim
+  // back. Stripe's retry then read as a duplicate for days, and the payment
+  // could end with no licence at all.
+  it("takes over a claim abandoned long enough ago, and only then", async () => {
+    const built = testEnv();
+    const abandoned = { ...completed(), id: "evt_abandoned" };
+    const longAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    await built.env.DB.prepare("INSERT INTO stripe_events (id, type, received_at) VALUES (?, ?, ?)")
+      .bind(abandoned.id, abandoned.type, longAgo)
+      .run();
+    const retry = await webhook(built.env, abandoned);
+    expect(await retry.text()).toBe("ok");
+    expect(built.sent).toHaveLength(1);
+
+    // One still in flight is not abandoned: a slow first attempt and its retry
+    // must not both handle the event.
+    const inFlight = {
+      ...completed({ id: "cs_test_2", payment_intent: "pi_test_2" }),
+      id: "evt_busy",
+    };
+    await built.env.DB.prepare("INSERT INTO stripe_events (id, type, received_at) VALUES (?, ?, ?)")
+      .bind(inFlight.id, inFlight.type, new Date().toISOString())
+      .run();
+    expect(await (await webhook(built.env, inFlight)).text()).toBe("duplicate");
+  });
+
   // The retry path fulfilment depends on: a 500 must stay retryable, so a
   // failed send must NOT record the event as handled.
   it("does not record an event whose handling failed", async () => {

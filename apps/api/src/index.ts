@@ -506,24 +506,27 @@ const handleWebhook = async (request: Request, env: Env): Promise<Response> => {
   // deliveries of one event overlap (a retry of a slow first attempt, a
   // "Resend" from the dashboard) and both found nothing, so both were handled
   // and both mailed the key. `changes` is 1 for exactly one of them.
+  //
+  // Or by taking over a claim that was abandoned: no `handled_at`, and older
+  // than any handler runs. That is a Worker that died between the insert and
+  // its answer, which could never give its claim back; Stripe's retries used
+  // to read as duplicates for days and the payment could end with no licence.
+  const now = new Date();
+  const abandoned = new Date(now.getTime() - ABANDONED_CLAIM_MS).toISOString();
   const claim = await env.DB.prepare(
     "INSERT INTO stripe_events (id, type, received_at) VALUES (?, ?, ?)" +
-      " ON CONFLICT (id) DO NOTHING",
+      " ON CONFLICT (id) DO UPDATE SET received_at = excluded.received_at" +
+      " WHERE stripe_events.handled_at IS NULL AND stripe_events.received_at < ?",
   )
-    .bind(event.id, event.type, new Date().toISOString())
+    .bind(event.id, event.type, now.toISOString(), abandoned)
     .run();
   if (claim.meta.changes !== 1) return new Response("duplicate", { status: 200 });
 
   // A 500 must stay retryable, since that is what turns a failed send into a
   // second attempt rather than a customer who paid and got nothing. So the
   // claim is given back whenever the handler did not succeed, thrown errors
-  // included.
-  //
-  // What this cannot give back is a claim held by a Worker that died between
-  // the insert and the answer. Stripe retries that delivery, finds the claim
-  // and is told "duplicate". Rare, and not silent: the licence row, if one was
-  // written, still serves /thanks and the resend route, and the claim with no
-  // matching licence is visible in `stripe_events`.
+  // included — and a claim nobody gives back is taken over once it is stale,
+  // above.
   const release = async () => {
     try {
       await env.DB.prepare("DELETE FROM stripe_events WHERE id = ?").bind(event.id).run();
@@ -540,9 +543,20 @@ const handleWebhook = async (request: Request, env: Env): Promise<Response> => {
     await release();
     throw error;
   }
-  if (response.status >= 300) await release();
+  if (response.status >= 300) {
+    await release();
+  } else {
+    // What makes the claim permanent: a handled event is a duplicate forever,
+    // an unhandled one only until it looks abandoned.
+    await env.DB.prepare("UPDATE stripe_events SET handled_at = ? WHERE id = ?")
+      .bind(new Date().toISOString(), event.id)
+      .run();
+  }
   return response;
 };
+
+/** Longer than any handler runs, short of Stripe's first few retries. */
+const ABANDONED_CLAIM_MS = 5 * 60 * 1000;
 
 const dispatch = async (
   type: string,
