@@ -231,7 +231,10 @@ struct LogPane: View {
         // what keeps the split view sized to the window instead.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .textSelection(.enabled)
-        .onChange(of: LogStore.shared.entries.count) {
+        // The newest row's id, not the count: once the ring is full every
+        // append also trims a row, so the count stops moving and following
+        // stopped with it.
+        .onChange(of: LogStore.shared.entries.last?.id) {
           guard following else { return }
           withAnimation(.linear(duration: 0.1)) { proxy.scrollTo(Self.tailAnchor, anchor: .bottom) }
         }

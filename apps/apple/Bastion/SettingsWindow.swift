@@ -723,7 +723,11 @@ private struct AuditPane: View {
 
   @State private var summary: AuditLog.Summary?
   @State private var note: String?
-  @State private var fingerprint = AuditSigning.currentFingerprint()
+  /// Loaded in `.task`, not as the initial value: SwiftUI evaluates that
+  /// expression on every init of this view, which made each rebuild a
+  /// Keychain read of the signing key on the main thread — and, after an
+  /// update re-signs the app, possibly an access prompt.
+  @State private var fingerprint: String?
   @State private var copied = false
 
   var body: some View {
@@ -913,7 +917,12 @@ private struct AuditPane: View {
     // Off the main actor: at the larger limits the log is gigabytes, and this
     // used to read, parse and hash all of it on the main thread every time
     // the pane appeared.
-    .task { await refresh() }
+    .task {
+      fingerprint = await Task.detached(priority: .userInitiated) {
+        AuditSigning.currentFingerprint()
+      }.value
+      await refresh()
+    }
     // A shorter limit applies now, not at the next rotation.
     .onChange(of: maxDays) {
       AuditLog.shared.prune()

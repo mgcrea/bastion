@@ -32,7 +32,10 @@ import Foundation
 /// never the decoded object.** A verifier re-reads the manifest as text and
 /// checks the signature against those exact bytes, so no JSON encoder's field
 /// order or escaping can come between the two halves.
-enum AuditSigning {
+///
+/// Nonisolated: it only reaches the Keychain and CryptoKit, and the Audit pane
+/// reads the fingerprint off the main actor.
+nonisolated enum AuditSigning {
   private static let account = "export"
 
   /// The key, minted on first use.

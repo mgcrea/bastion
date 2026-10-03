@@ -128,12 +128,16 @@ final class LogStore {
   /// A miss is ordinary rather than an error: the row may have been trimmed out
   /// of the ring buffer while the child was still working on it.
   func attachResult(_ id: UUID, _ result: String?, failed: Bool) {
+    // Told first, and whether or not the row is still here. The ring keeps
+    // 2000 rows, fewer with payloads on, and a slow reply during a burst
+    // arrives after its row has gone — which used to mean the audit log
+    // recorded the call as never answered.
+    Self.onResult?(id, result, failed)
     guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
     weight -= entries[index].weight
     entries[index].result = result
     entries[index].failed = failed
     weight += entries[index].weight
-    Self.onResult?(entries[index])
   }
 
   /// Seed one entry at a fixed instant, for `DemoSeed` only.
@@ -185,7 +189,8 @@ final class LogStore {
   /// Nil until something asks, which is also the default state of the feature:
   /// with the Audit pane untouched nothing is listening and no file is opened.
   static var onCall: ((Entry) -> Void)?
-  static var onResult: ((Entry) -> Void)?
+  /// The call's row id, what came back, and whether it failed.
+  static var onResult: ((UUID, String?, Bool) -> Void)?
 }
 
 /// Post a log line from any thread.

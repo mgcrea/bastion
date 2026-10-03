@@ -63,9 +63,11 @@ final class UpdateController: NSObject {
   /// even when automatic checks are off, and leaves them off.
   func checkNow() {
     start()
+    // No updater means no callback will ever clear the spinner.
+    guard let controller else { return }
     isChecking = true
     lastCheck = Date()
-    controller?.updater.checkForUpdates()
+    controller.updater.checkForUpdates()
   }
 
   func setAutomatic(_ on: Bool) {
@@ -166,8 +168,21 @@ extension UpdateController: SPUUpdaterDelegate {
   /// path, so the Activity window shows an update rather than a crash.
   nonisolated func updaterWillRelaunchApplication(_ updater: SPUUpdater) {
     hostLog("update", .info, "relaunching — stopping every supervised server")
-    Supervisor.shared.stopAll()
+    // The listener first, as at quit: a request arriving between the two would
+    // spawn a child from the outgoing bundle after the sweep.
     Gateway.shared.stop()
+    Supervisor.shared.stopAll()
+  }
+
+  /// Every check ends here, found or not, failed or not. The user-driver
+  /// callbacks below only fire when there is something to show, so a check
+  /// that failed, or was ignored because one was already running, left the
+  /// button saying "Checking…" until the app quit.
+  nonisolated func updater(
+    _ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck,
+    error: (any Error)?
+  ) {
+    Task { @MainActor in UpdateController.shared.isChecking = false }
   }
 }
 

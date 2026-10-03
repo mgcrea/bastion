@@ -538,8 +538,16 @@ final class ChatSession {
     var entries = Array(session.transcript)
     let instructions = entries.filter { if case .instructions = $0 { true } else { false } }
     entries.removeAll { if case .instructions = $0 { true } else { false } }
-    guard entries.count > 2 else { return false }
-    entries.removeFirst(2)
+    // A whole turn at a time: everything up to the next prompt. Two entries
+    // at a time cut a turn that used tools — prompt, tool calls, tool output,
+    // response — down the middle and could leave a tool output first, the
+    // shape `reseat()` exists to avoid. With one turn or none, nothing is left
+    // to shed.
+    let isPrompt = { (entry: Transcript.Entry) -> Bool in
+      if case .prompt = entry { true } else { false }
+    }
+    guard let next = entries.dropFirst().firstIndex(where: isPrompt) else { return false }
+    entries.removeFirst(next)
     trims += 1
     self.session = LanguageModelSession(
       tools: bound, transcript: Transcript(entries: instructions + entries))

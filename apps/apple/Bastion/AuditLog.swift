@@ -130,9 +130,11 @@ final class AuditLog {
   nonisolated private static let disk = OSAllocatedUnfairLock(initialState: Disk())
 
   /// Call ids that have a `seq` on file, so a result can name the call it
-  /// answers. Bounded: a reply that never comes would otherwise keep its entry
-  /// for the life of the process.
-  private var pending: [UUID: Int] = [:]
+  /// answers — with the call's origin and text, because the row they came from
+  /// may have left `LogStore`'s ring by the time a slow reply lands. Bounded: a
+  /// reply that never comes would otherwise keep its entry for the life of the
+  /// process.
+  private var pending: [UUID: (seq: Int, origin: String, text: String)] = [:]
   private var pendingOrder: [UUID] = []
   private static let pendingLimit = 512
 
@@ -145,7 +147,7 @@ final class AuditLog {
   /// one branch per row and touches no file.
   static func install() {
     LogStore.onCall = { shared.record($0) }
-    LogStore.onResult = { shared.result($0) }
+    LogStore.onResult = { shared.result(id: $0, result: $1, failed: $2) }
   }
 
   /// Record a call, if the log is on. Returns nothing: the caller already has
@@ -156,21 +158,21 @@ final class AuditLog {
     let number = append(
       kind: .call, origin: entry.origin, text: entry.text,
       args: Self.recordsPayloads ? entry.arguments : nil)
-    remember(entry.id, number)
+    remember(entry.id, number, origin: entry.origin, text: entry.text)
   }
 
   /// Record the reply to a call already on file.
   ///
   /// Silent when the call was not recorded — the log may have been switched on
   /// between the request and its answer, and half a pair is worse than none.
-  func result(_ entry: LogStore.Entry) {
-    guard Self.isEnabled, let reference = pending.removeValue(forKey: entry.id) else { return }
-    pendingOrder.removeAll { $0 == entry.id }
+  func result(id: UUID, result: String?, failed: Bool) {
+    guard Self.isEnabled, let call = pending.removeValue(forKey: id) else { return }
+    pendingOrder.removeAll { $0 == id }
     open()
     append(
-      kind: entry.failed ? .error : .result, origin: entry.origin, text: entry.text,
-      args: nil, result: Self.recordsPayloads ? entry.result : nil,
-      failed: entry.failed ? true : nil, ref: reference)
+      kind: failed ? .error : .result, origin: call.origin, text: call.text,
+      args: nil, result: Self.recordsPayloads ? result : nil,
+      failed: failed ? true : nil, ref: call.seq)
   }
 
   @discardableResult
@@ -208,8 +210,8 @@ final class AuditLog {
     return seq
   }
 
-  private func remember(_ id: UUID, _ number: Int) {
-    pending[id] = number
+  private func remember(_ id: UUID, _ number: Int, origin: String, text: String) {
+    pending[id] = (number, origin, text)
     pendingOrder.append(id)
     while pendingOrder.count > Self.pendingLimit {
       pending.removeValue(forKey: pendingOrder.removeFirst())
@@ -300,7 +302,7 @@ final class AuditLog {
     seq = landed
     head = landedHead
     segmentSize = Self.size(of: Self.url(for: segment))
-    pending = pending.filter { $0.value <= landed }
+    pending = pending.filter { $0.value.seq <= landed }
     pendingOrder.removeAll { pending[$0] == nil }
     append(
       kind: .error, origin: "audit",
