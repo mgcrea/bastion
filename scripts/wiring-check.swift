@@ -106,6 +106,7 @@ struct WiringCheck {
 
     unrelatedKeysSurvive()
     bothTransportsRoundTrip()
+    rewireKeepsTheUsersOwnSettings()
     isOursIsNarrow()
     targetReadsBothShapes()
     renamedKeysMigrateOnlyWhenOurs()
@@ -130,6 +131,7 @@ struct WiringCheck {
     tomlValuesDegradeRatherThanLie()
     tomlNamesWhatItCannotParse()
     tomlRefusesShapesItCannotSplice()
+    tomlRewireKeepsTheUsersOwnSettings()
     tomlSpliceLeavesEveryOtherByteAlone()
     tomlKeepsComments()
     tomlWireIsIdempotent()
@@ -357,6 +359,55 @@ struct WiringCheck {
       (servers["other-local"] as? [String: Any])?["url"] as? String == "http://127.0.0.1:9000/mcp")
     check("every server written", Self.servers.allSatisfy { servers["bastion-\($0.id)"] != nil })
     check("nothing else appeared", servers.count == 4 + Self.servers.count)
+  }
+
+  /// A rewire replaces what Bastion owns in its entry and nothing else.
+  ///
+  /// It used to replace the whole entry, and rewires happen unattended on every
+  /// profile save: a server the user switched off in their client (`disabled`
+  /// in Cursor, `enabled = false` in Codex) came straight back on, and a
+  /// timeout they set was gone, while the pane went on reporting it disabled.
+  static func rewireKeepsTheUsersOwnSettings() {
+    print("\nA rewire keeps what the user added to our entries")
+    let url = "http://127.0.0.1:8720/s/prod/shopify"
+    let before: [String: Any] = [
+      "mcpServers": [
+        "bastion-prod-shopify": [
+          "type": "http", "url": url, "headers": ["Authorization": "Bearer old"],
+          "disabled": true, "timeout": 30,
+        ]
+      ]
+    ]
+    let out = ClientWiringMerge.merged(
+      into: before, rootKey: "mcpServers",
+      entries: [
+        "bastion-prod-shopify": [
+          "type": "http", "url": url, "headers": ["Authorization": "Bearer new"],
+        ]
+      ])
+    let entry = (out["mcpServers"] as? [String: Any])?["bastion-prod-shopify"] as? [String: Any]
+    check("the user's `disabled` survives", entry?["disabled"] as? Bool == true)
+    check("and so does their timeout", entry?["timeout"] as? Int == 30)
+    check(
+      "while what Bastion owns is rewritten",
+      (entry?["headers"] as? [String: Any])?["Authorization"] as? String == "Bearer new")
+
+    // A key Bastion owns and no longer writes goes, rather than lingering
+    // beside the shape that replaced it: http → bridge drops url and headers.
+    let switched = ClientWiringMerge.merged(
+      into: before, rootKey: "mcpServers",
+      entries: [
+        "bastion-prod-shopify": [
+          "command": "/Applications/Bastion.app/Contents/Helpers/bastion-bridge",
+          "args": ["--profile=prod", "--server=shopify"], "env": ["BASTION_TOKEN": "t"],
+        ]
+      ])
+    let bridged =
+      (switched["mcpServers"] as? [String: Any])?["bastion-prod-shopify"] as? [String: Any]
+    check(
+      "changing transport drops the old one's keys",
+      bridged?["url"] == nil && bridged?["headers"] == nil && bridged?["type"] == nil)
+    check("and still keeps the user's", bridged?["disabled"] as? Bool == true)
   }
 
   /// Both entry shapes survive a write and read back as configured.
@@ -1290,6 +1341,45 @@ struct WiringCheck {
         == ["inline", "opaque", "stripe"])
   }
 
+  /// The TOML half of `rewireKeepsTheUsersOwnSettings`. Codex re-renders our
+  /// block rather than merging into it, so what is carried has to be readable
+  /// — and a value the scanner could not type is refused, never dropped.
+  static func tomlRewireKeepsTheUsersOwnSettings() {
+    print("\nA TOML rewire keeps what the user added to our block")
+    let url = "http://127.0.0.1:\(port)/s/prod/shopify"
+    let text = """
+      model = "o3"
+
+      [mcp_servers.shopify]
+      url = "\(url)"
+      http_headers = { Authorization = "Bearer old" }
+      enabled = false
+      startup_timeout_sec = 20
+      enabled_tools = ["get_shop"]
+      """
+    guard let doc = scanned(text) else {
+      check("the fixture scans", false)
+      return
+    }
+    let fresh = ["shopify": tomlEntry("shopify", token: "new")]
+    let carried = try? ClientWiringTOML.carried(doc, upserting: fresh)
+    let rewritten = carried.map { ClientWiringTOML.spliced(doc, removing: [], upserting: $0) }
+    let block = rewritten.flatMap(scanned)?.tables["shopify"]?.value
+    check("the user's `enabled = false` survives", block?["enabled"] as? Bool == false)
+    check("and their timeout", block?["startup_timeout_sec"] as? Int == 20)
+    check("and their tool list", block?["enabled_tools"] as? [String] == ["get_shop"])
+    check(
+      "while the credential is rewritten",
+      (block?["http_headers"] as? [String: Any])?["Authorization"] as? String == "Bearer new")
+
+    let float = text + "\ntool_timeout_sec = 60.5\n"
+    var refused = false
+    if let floatDoc = scanned(float) {
+      do { _ = try ClientWiringTOML.carried(floatDoc, upserting: fresh) } catch { refused = true }
+    }
+    check("a value it cannot read back is refused, not dropped", refused)
+  }
+
   /// What it refuses, and why a refusal is enough: every write path begins with
   /// a read, so a scan that throws is a client that cannot be written to.
   static func tomlRefusesShapesItCannotSplice() {
@@ -1754,6 +1844,31 @@ struct WiringCheck {
     let theirs = document.tables.keys.filter { !ours.contains($0) }.sorted()
     check(
       "\(document.tables.count) servers found, \(theirs.count) of them not ours", true)
+
+    // Every block of ours rewritten in place, the way a rewire does it: the
+    // user's own keys carried over, and nothing refused that the app would
+    // then fail to write.
+    let rewires = Dictionary(
+      uniqueKeysWithValues: ours.compactMap { name -> (String, [String: Any])? in
+        guard let url = document.tables[name]?.value["url"] as? String else { return nil }
+        return (name, ["url": url, "http_headers": ["Authorization": "Bearer tok"]])
+      })
+    do {
+      let carried = try ClientWiringTOML.carried(document, upserting: rewires)
+      let rewired = try ClientWiringTOML.scan(
+        ClientWiringTOML.spliced(document, removing: [], upserting: carried))
+      let kept = rewires.keys.allSatisfy { name in
+        let before =
+          document.tables[name]?.value.filter {
+            !ClientWiringMerge.ownedKeys.contains($0.key)
+          } ?? [:]
+        let after = rewired.tables[name]?.value ?? [:]
+        return before.allSatisfy { deepEqual($0.value, after[$0.key]) }
+      }
+      check("rewiring all \(rewires.count) of our blocks keeps every key the user added", kept)
+    } catch {
+      check("rewiring our blocks (\(error.localizedDescription))", false)
+    }
 
     let written = tomlEntries()
     let out = ClientWiringTOML.spliced(document, removing: [], upserting: written)

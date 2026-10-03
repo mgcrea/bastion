@@ -263,10 +263,32 @@ enum ClientWiringMerge {
       servers.removeValue(forKey: key)
     }
 
-    for (key, entry) in entries { servers[key] = entry }
+    for (key, entry) in entries {
+      // Over an entry that is already ours, only what Bastion owns is
+      // replaced. Rewires run unattended on every profile save, and replacing
+      // the whole entry switched a server the user had turned off in their
+      // client (`disabled`, `enabled = false`) back on and dropped any timeout
+      // they had set. Anything else at this key — somebody's own server — is
+      // replaced whole, as before; `wire` has already refused that unless the
+      // user forced it.
+      guard let existing = servers[key] as? [String: Any], isOurs(existing) else {
+        servers[key] = entry
+        continue
+      }
+      servers[key] = existing.filter { !ownedKeys.contains($0.key) }.merging(entry) { _, new in new
+      }
+    }
     root[rootKey] = servers
     return root
   }
+
+  /// Every key Bastion writes into an entry, across the three shapes `entry`
+  /// builds: `type`/`url`/`headers`, `url`/`http_headers`, and
+  /// `command`/`args`/`env`. Dropped before the new entry is laid over the old,
+  /// so switching transport leaves no key of the old shape behind.
+  static let ownedKeys: Set<String> = [
+    "type", "url", "headers", "http_headers", "command", "args", "env",
+  ]
 
   /// `target(of:)` flattened to something hashable, for comparing entries.
   ///

@@ -49,6 +49,10 @@ enum ClientWiringTOML {
     var ranges: [Range<Int>]
     /// Best effort. Empty is a legitimate answer — see the invariant above.
     var value: [String: Any]
+    /// Keys whose value the scanner could not type — a float, a datetime, a
+    /// multi-line array — and so left out of `value`. Re-rendering the block
+    /// would drop them, so `carried` refuses a block that has any.
+    var unreadable: [String] = []
 
     /// `enabled = false`, which Codex honours and no JSON client has. Worth
     /// carrying separately because it is the one way a config can audit as
@@ -155,7 +159,11 @@ enum ClientWiringTOML {
 
     func record(_ name: String, path: [String], key: [String], value: Any?) {
       var table = tables[name] ?? Table(name: name, ranges: [], value: [:])
-      if let value { set(&table.value, path: path + key, to: value) }
+      if let value {
+        set(&table.value, path: path + key, to: value)
+      } else {
+        table.unreadable.append((path + key).joined(separator: "."))
+      }
       tables[name] = table
     }
 
@@ -234,7 +242,11 @@ enum ClientWiringTOML {
           let name = key[0]
           var table = tables[name] ?? Table(name: name, ranges: [], value: [:])
           table.ranges.append(index..<(index + 1))
-          if let value = value as? [String: Any] { table.value = value }
+          if let value = value as? [String: Any] {
+            table.value = value
+          } else {
+            table.unreadable.append(name)
+          }
           tables[name] = table
         case .server(let name, let path):
           record(name, path: path, key: key, value: value)
@@ -255,6 +267,46 @@ enum ClientWiringTOML {
   }
 
   // MARK: - Writing
+
+  /// `entries`, each laid over the block of ours it replaces so the user's
+  /// own keys come through — `enabled = false`, a timeout, a tool list.
+  ///
+  /// The TOML half of the rule `ClientWiringMerge.merged` keeps for JSON: our
+  /// block is re-rendered rather than edited in place, so what is carried has
+  /// to be something `render` can write back. A key the scanner could not type
+  /// is refused by line rather than silently dropped, and so is a value
+  /// `literal` cannot spell. A block that is not ours is not merged into; it is
+  /// replaced whole, which `wire` has already refused unless forced.
+  static func carried(_ document: Document, upserting entries: [String: [String: Any]]) throws
+    -> [String: [String: Any]]
+  {
+    var out: [String: [String: Any]] = [:]
+    for (name, entry) in entries {
+      guard let table = document.tables[name], ClientWiringMerge.isOurs(table.value) else {
+        out[name] = entry
+        continue
+      }
+      let line = table.ranges.first?.lowerBound ?? 0
+      let lost = table.unreadable.filter {
+        !ClientWiringMerge.ownedKeys.contains(String($0.prefix { $0 != "." }))
+      }
+      if !lost.isEmpty {
+        throw ScanError.unsupportedShape(
+          line: line,
+          why: "[\(rootKey).\(name)] sets \(lost.joined(separator: ", ")), which Bastion cannot "
+            + "read back, so rewriting the block would drop it")
+      }
+      let merged = table.value.filter { !ClientWiringMerge.ownedKeys.contains($0.key) }
+        .merging(entry) { _, new in new }
+      if let unspellable = merged.first(where: { literal($0.value) == nil })?.key {
+        throw ScanError.unsupportedShape(
+          line: line,
+          why: "[\(rootKey).\(name)] sets \(unspellable) to a value Bastion cannot write back")
+      }
+      out[name] = merged
+    }
+    return out
+  }
 
   /// One `[mcp_servers.<name>]` block.
   ///

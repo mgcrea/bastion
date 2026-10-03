@@ -736,8 +736,11 @@ enum ClientWiring {
     let backup: URL?
     switch client.format {
     case .toml:
+      // Laid over our existing blocks, so the user's own keys survive the
+      // re-render. See `ClientWiringTOML.carried`.
       backup = try splice(
-        client, document, into: servers(merged, client.rootKey), upserting: entries,
+        client, document, into: servers(merged, client.rootKey),
+        upserting: try ClientWiringTOML.carried(document, upserting: entries),
         expecting: stamp)
     case .json:
       backup = try ClientWiringMerge.write(
