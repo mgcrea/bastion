@@ -70,6 +70,11 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     /// a denylist somebody wrote down; this is the server's own answer, and it
     /// covers a mutating tool added after the list was written.
     var annotatedWriteTools: Set<String> = []
+    /// Set by `stop()` before the session is invalidated. A request thread can
+    /// still hold this instance after an edit retired it, and creating a task
+    /// on an invalidated session raises an Objective-C exception — which ends
+    /// the app, not the request.
+    var stopped = false
     var calls = 0
     /// Requests sent upstream and not yet answered.
     ///
@@ -138,6 +143,7 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
   var pendingCount: Int { state.withLock { $0.inFlight } }
 
   func stop(reason: String) {
+    state.withLock { $0.stopped = true }
     session.invalidateAndCancel()
     let id = key
     Task(priority: Activity.priority) { @MainActor in Activity.shared.stopped(id: id) }
@@ -669,35 +675,42 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     let host = endpoint.host() ?? ""
     let collector = MetricsCollector()
 
-    let task = session.dataTask(with: request) { data, response, error in
-      let result: Result<Response, Error>
-      defer {
-        outcome.withLock { $0 = result }
-        semaphore.signal()
+    // Checked and created under one lock, so `stop()` cannot invalidate the
+    // session between the two.
+    let session = self.session
+    let prepared = request
+    let created = state.withLock { current -> URLSessionDataTask? in
+      guard !current.stopped else { return nil }
+      return session.dataTask(with: prepared) { data, response, error in
+        let result: Result<Response, Error>
+        defer {
+          outcome.withLock { $0 = result }
+          semaphore.signal()
+        }
+        if let error {
+          result = .failure(Supervisor.SupervisorError.startFailed(error.localizedDescription))
+          return
+        }
+        guard let http = response as? HTTPURLResponse else {
+          result = .failure(Supervisor.SupervisorError.childDied("no HTTP response"))
+          return
+        }
+        // A refused redirect: the more specific fact, and it would otherwise
+        // surface as whatever partial response the refusal produced.
+        if let refusal = collector.refusal {
+          result = .failure(refusal)
+          return
+        }
+        result = .success(
+          Response(
+            status: http.statusCode,
+            body: data ?? Data(),
+            contentType: (http.value(forHTTPHeaderField: "Content-Type") ?? "").lowercased(),
+            sessionID: http.value(forHTTPHeaderField: "Mcp-Session-Id")))
       }
-      if let error {
-        result = .failure(Supervisor.SupervisorError.startFailed(error.localizedDescription))
-        return
-      }
-      guard let http = response as? HTTPURLResponse else {
-        result = .failure(Supervisor.SupervisorError.childDied("no HTTP response"))
-        return
-      }
-      // The address the connection actually landed on, judged before a single
-      // byte of the body is handed back. Too late to stop the request — which
-      // is why `preflight` runs first — in time to refuse the answer.
-      // A refused redirect first: it is the more specific fact, and it would
-      // otherwise surface as whatever partial response the refusal produced.
-      if let refusal = collector.refusal {
-        result = .failure(refusal)
-        return
-      }
-      result = .success(
-        Response(
-          status: http.statusCode,
-          body: data ?? Data(),
-          contentType: (http.value(forHTTPHeaderField: "Content-Type") ?? "").lowercased(),
-          sessionID: http.value(forHTTPHeaderField: "Mcp-Session-Id")))
+    }
+    guard let task = created else {
+      throw Supervisor.SupervisorError.childDied("this server was stopped")
     }
     task.delegate = collector
     task.resume()
