@@ -362,6 +362,60 @@ nonisolated enum Changelog {
             body: [
               "`-autoWireClients YES` now turns automatic wiring back on in a Debug build; it was ignored.",
             ]),
+          Entry(
+            ordinal: 2,
+            headline: "A store file that will not decode is kept, not emptied.",
+            body: [
+              "The server list, profiles, skills and workspaces each keep a `.unreadable` copy and refuse to save over it, and client wiring stands down until it reads again, so one bad edit no longer costs the whole list.",
+            ]),
+          Entry(
+            ordinal: 3,
+            headline: "A rewire changes only what Bastion owns.",
+            body: [
+              "It replaces the keys Bastion writes in its own entries and leaves the rest of each entry alone, writes through a symlinked config instead of replacing the link, reads a config that is empty mid-write again, and never replaces a client token the Keychain failed to read. A Codex `config.toml` shape the splice would corrupt is refused rather than rewritten. `-trustProfilesForStaleEntries YES` is now read.",
+            ]),
+          Entry(
+            ordinal: 4,
+            headline: "Supervised servers.",
+            body: [
+              "A child that fails its handshake, or is stopped, is sent SIGKILL if it outlives a grace period, so none is left running; a server that keeps crashing is restarted with a growing backoff after one immediate retry; frames from concurrent clients no longer interleave on a child's stdin; a client's cancel reaches the child under the id the child was given; stderr is redacted line by line; and a streamed reply sends no progress after its result.",
+            ]),
+          Entry(
+            ordinal: 5,
+            headline: "Writes off holds on a fresh server.",
+            body: [
+              "A `tools/call` that arrives before the server's tool list was ever fetched is judged against the catalog, and refused when the catalog cannot be read.",
+            ]),
+          Entry(
+            ordinal: 6,
+            headline: "Remote servers",
+            body: [
+              "refuse a reply whose peer address was never observed, and one that was stopped no longer starts a request.",
+            ]),
+          Entry(
+            ordinal: 7,
+            headline: "Bastion's own server.",
+            body: [
+              "`add_custom_server` refuses a catalog id, or an id profiles already hold credentials for, and `server_stats` totals count only the servers asked about.",
+            ]),
+          Entry(
+            ordinal: 8,
+            headline: "The audit log",
+            body: [
+              "verifies as truncated, not tampered, once retention has pruned its oldest segments. Retention applies at launch and when the setting changes, a torn last record no longer breaks the chain, a reply that arrives late is still recorded, queued records are written before quit, and the export is the text that was hashed.",
+            ]),
+          Entry(
+            ordinal: 9,
+            headline: "Skills.",
+            body: [
+              "Repository links are kept out of git in submodules and worktrees too, a link to a skill that became invalid is kept and shown instead of removed, and a skill's ZIP leaves `.git`, `.env` and other hidden entries out.",
+            ]),
+          Entry(
+            ordinal: 10,
+            headline: nil,
+            body: [
+              "A licence key a mail client wrapped across lines is accepted, an OAuth sign-in keeps waiting when a stray request reaches its callback, the Log pane follows new entries, a stuck update check clears, and relaunching to update stops the gateway first.",
+            ]),
         ]),
     ])
 

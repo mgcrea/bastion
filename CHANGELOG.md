@@ -25,6 +25,50 @@ are taken from this file, which is the curated summary.
 ### Fixed
 
 - `-autoWireClients YES` now turns automatic wiring back on in a Debug build; it was ignored.
+- **A store file that will not decode is kept, not emptied.** The server list, profiles, skills
+  and workspaces each keep a `.unreadable` copy and refuse to save over it, and client wiring stands
+  down until it reads again, so one bad edit no longer costs the whole list.
+- **A rewire changes only what Bastion owns.** It replaces the keys Bastion writes in its own
+  entries and leaves the rest of each entry alone, writes through a symlinked config instead of
+  replacing the link, reads a config that is empty mid-write again, and never replaces a client
+  token the Keychain failed to read. A Codex `config.toml` shape the splice would corrupt is
+  refused rather than rewritten. `-trustProfilesForStaleEntries YES` is now read.
+- **Supervised servers.** A child that fails its handshake, or is stopped, is sent SIGKILL if it
+  outlives a grace period, so none is left running; a server that keeps crashing is restarted with
+  a growing backoff after one immediate retry; frames from concurrent clients no longer interleave
+  on a child's stdin; a client's cancel reaches the child under the id the child was given; stderr
+  is redacted line by line; and a streamed reply sends no progress after its result.
+- **Writes off holds on a fresh server.** A `tools/call` that arrives before the server's tool list
+  was ever fetched is judged against the catalog, and refused when the catalog cannot be read.
+- **Remote servers** refuse a reply whose peer address was never observed, and one that was stopped
+  no longer starts a request.
+- **Bastion's own server.** `add_custom_server` refuses a catalog id, or an id profiles already hold
+  credentials for, and `server_stats` totals count only the servers asked about.
+- **The audit log** verifies as truncated, not tampered, once retention has pruned its oldest
+  segments. Retention applies at launch and when the setting changes, a torn last record no longer
+  breaks the chain, a reply that arrives late is still recorded, queued records are written before
+  quit, and the export is the text that was hashed.
+- **Skills.** Repository links are kept out of git in submodules and worktrees too, a link to a
+  skill that became invalid is kept and shown instead of removed, and a skill's ZIP leaves `.git`,
+  `.env` and other hidden entries out.
+- A licence key a mail client wrapped across lines is accepted, an OAuth sign-in keeps waiting when
+  a stray request reaches its callback, the Log pane follows new entries, a stuck update check
+  clears, and relaunching to update stops the gateway first.
+
+### Internal
+
+- The API revokes, on fulfilment, a licence refunded before it was issued, and does not mail it;
+  a dispute inquiry no longer revokes; a free checkout is fulfilled; an event claim a dead Worker
+  abandoned is taken over after five minutes; and a `CURRENT_MAJOR` the app cannot read fails the
+  config check. Apply migrations 0003 and 0004 before deploying it.
+- `make revocations` renders against the real `Revocations.swift` declaration and revokes every
+  licence the test environment minted, and its `--check` fails on a release tag without a token.
+- CI refuses pre-release tags, runs skills-check and remote-check, and drops the signing keychain
+  and API key before any third-party code runs. `make sign` fails when any signature does, and
+  `make node` pins the runtime tarball's digest.
+- The website's HSTS header no longer asks for preloading, which bastion.mgcrea.io cannot have.
+- builtin-check and facade-check pin the settings they depend on, `make smoke` passes on any
+  server, and a demo capture never writes, deletes or reads the developer's real state.
 
 ## [1.24.0] - 2026-09-26
 
