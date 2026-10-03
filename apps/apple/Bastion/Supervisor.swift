@@ -391,6 +391,9 @@ nonisolated extension Supervisor {
       /// shutdown. A second map would be a second answer, with a fourth
       /// lifetime to get wrong.
       let progress: (clientToken: SendableJSON<Any>, sink: ProgressSink)?
+      /// Which client sent it, so a `notifications/cancelled` can find its own
+      /// request among every client's. Nil for Bastion's own requests.
+      var client: String? = nil
       let resume: @Sendable (Result<Data, Error>) -> Void
     }
 
@@ -556,7 +559,10 @@ nonisolated extension Supervisor {
     /// Read newline-delimited JSON from the child until EOF.
     private func readLoop(_ fd: Int32) {
       onDedicatedThread("bastion.child.\(server.id)") { [weak self] in
-        var pending = Data()
+        // Reads come back with no regard for line boundaries, so a frame that
+        // straddles two chunks has to be reassembled — and a large tool result
+        // is exactly the size that does. See `LineFramer`.
+        var framer = LineFramer()
         var buffer = [UInt8](repeating: 0, count: 64 * 1024)
         while true {
           let n = buffer.withUnsafeMutableBufferPointer { read(fd, $0.baseAddress, $0.count) }
@@ -565,23 +571,7 @@ nonisolated extension Supervisor {
             break
           }
           if n == 0 { break }
-          pending.append(contentsOf: buffer[0..<n])
-
-          // Split on the LAST newline, not each chunk on its own. Reads come
-          // back with no regard for line boundaries, so a frame that straddles
-          // two chunks would otherwise be dropped — and a large tool result is
-          // exactly the size that hits this.
-          guard let last = pending.lastIndex(of: UInt8(ascii: "\n")) else {
-            // A frame this long is not MCP framing. Stop buffering rather than
-            // grow without bound on a child that never sends a newline.
-            if pending.count > 32 << 20 { pending.removeAll(keepingCapacity: false) }
-            continue
-          }
-          let complete = pending[..<last]
-          pending = Data(pending[pending.index(after: last)...])
-          for line in complete.split(separator: UInt8(ascii: "\n")) where !line.isEmpty {
-            self?.received(Data(line))
-          }
+          for line in framer.feed(buffer[0..<n]) { self?.received(line) }
         }
       }
     }
@@ -591,16 +581,25 @@ nonisolated extension Supervisor {
     private func drainStderr(_ handle: FileHandle) {
       let origin = key
       onDedicatedThread("bastion.stderr") { [weak self] in
-        while true {
-          let data = handle.availableData
-          if data.isEmpty { break }
-          var text = String(decoding: data, as: UTF8.self)
+        // Redacted a line at a time, not a read at a time. A read ends wherever
+        // the pipe happened to, and a credential split across two of them was
+        // matched by neither half and reached the log, and the audit file,
+        // whole.
+        var framer = LineFramer(limit: 1 << 20)
+        let log = { (line: Data) in
+          var text = String(decoding: line, as: UTF8.self)
             .trimmingCharacters(in: .whitespacesAndNewlines)
           for secret in self?.state.withLock({ $0.secretValues }) ?? [] {
             text = text.replacingOccurrences(of: secret, with: "[redacted]")
           }
           if !text.isEmpty { hostLog(origin, .info, text) }
         }
+        while true {
+          let data = handle.availableData
+          if data.isEmpty { break }
+          for line in framer.feed(data) { log(line) }
+        }
+        if let tail = framer.flush() { log(tail) }
       }
     }
 
@@ -893,13 +892,29 @@ nonisolated extension Supervisor {
 
       guard let clientID else {
         // A notification. Forwarded and forgotten — there is nothing to
-        // correlate and nothing to wait for.
+        // correlate and nothing to wait for. Except a cancel, which names a
+        // request by the client's id and has to carry the child's.
+        if method == "notifications/cancelled" {
+          // Wrapped inside the lock, unwrapped outside it: an id is `Any`,
+          // and the lock only hands back what is Sendable.
+          let held = state.withLock { current in
+            current.pending.map { (key: $0.key, client: $0.value.client, id: $0.value.clientID) }
+          }
+          let pending = held.map { (internalID: $0.key, client: $0.client, clientID: $0.id?.value) }
+          guard let mapped = Dialect.cancelForChild(frame, from: client, pending: pending) else {
+            hostLog(
+              key, .info, "dropped a cancel from \(client): no single pending request matches it")
+            return nil
+          }
+          try write(mapped)
+          return nil
+        }
         try write(frame)
         return nil
       }
 
       let data = try awaitReply(
-        frame: frame, logID: logID, clientID: clientID, progress: progress)
+        frame: frame, logID: logID, clientID: clientID, progress: progress, client: client)
       return filteredForWriteGate(data, method: method)
     }
 
@@ -915,7 +930,8 @@ nonisolated extension Supervisor {
     /// and Bastion's own requests pass nil for both, which is what keeps them out
     /// of the Activity window. `progress` is carried the same way.
     private func awaitReply(
-      frame: [String: Any], logID: UUID?, clientID: Any?, progress: ProgressSink? = nil
+      frame: [String: Any], logID: UUID?, clientID: Any?, progress: ProgressSink? = nil,
+      client: String? = nil
     ) throws -> Data {
       var frame = frame
       let internalID = state.withLock { current -> Int in
@@ -947,7 +963,8 @@ nonisolated extension Supervisor {
         clientID: clientID.map { SendableJSON($0) },
         deadline: Date().addingTimeInterval(Self.callTimeout),
         logID: logID,
-        progress: carried
+        progress: carried,
+        client: client
       ) { result in
         // Exactly once. Three different threads can reach a waiter — the reader
         // when a response arrives, the reaper when it expires, and the exit

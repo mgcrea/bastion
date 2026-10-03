@@ -231,6 +231,45 @@ nonisolated enum Dialect {
     return token is NSNull ? nil : token
   }
 
+  /// A client's `notifications/cancelled`, rewritten for the child, or nil
+  /// when there is nothing of that client's left to cancel.
+  ///
+  /// The cancel names the request by the id the CLIENT chose, and the child
+  /// only knows Bastion's. Forwarded as it came, it cancelled nothing — or, on
+  /// a young child whose numbering happened to collide, a different client's
+  /// call. So it is matched against this client's own pending requests and
+  /// carries that request's internal id, or it is dropped: a cancel for a
+  /// request already answered is a no-op the spec allows either way.
+  static func cancelForChild(
+    _ frame: [String: Any], from client: String,
+    pending: [(internalID: Int, client: String?, clientID: Any?)]
+  ) -> [String: Any]? {
+    guard var params = frame["params"] as? [String: Any],
+      let requested = params["requestId"]
+    else { return nil }
+    // Exactly one. `client` is the client's name, which two sessions of one
+    // editor share, and both may have a request with this id in flight; which
+    // of them the user stopped is unknowable here.
+    let matches = pending.filter { $0.client == client && sameRequestID($0.clientID, requested) }
+    guard matches.count == 1, let target = matches.first else { return nil }
+    params["requestId"] = target.internalID
+    var out = frame
+    out["params"] = params
+    return out
+  }
+
+  /// JSON-RPC ids are a string or a number, and `"7"` is not `7`.
+  private static func sameRequestID(_ lhs: Any?, _ rhs: Any) -> Bool {
+    switch (lhs, rhs) {
+    case (let a as String, let b as String): return a == b
+    case (let a as NSNumber, let b as NSNumber):
+      // A Bool bridges to NSNumber too, and is no id at all.
+      return CFGetTypeID(a) != CFBooleanGetTypeID() && CFGetTypeID(b) != CFBooleanGetTypeID()
+        && a == b
+    default: return false
+    }
+  }
+
   /// Which of the two places a token is being written to.
   enum TokenLocation {
     case requestMeta

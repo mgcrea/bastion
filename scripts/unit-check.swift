@@ -2704,6 +2704,93 @@ struct UnitCheck {
         })
     }
 
+    print("\nDialect: a client cancelling its own request")
+    // `notifications/cancelled` names the request by the id the CLIENT chose,
+    // and the child only knows Bastion's. Forwarded as it came, a cancel did
+    // nothing — or, on a young child whose ids happened to collide, cancelled
+    // a different client's call.
+    do {
+      let cancel: [String: Any] = [
+        "jsonrpc": "2.0", "method": "notifications/cancelled",
+        "params": ["requestId": 7, "reason": "user pressed stop"],
+      ]
+      let pending: [(internalID: Int, client: String?, clientID: Any?)] = [
+        (12, "editor-a", 7), (13, "editor-b", 7), (14, "editor-a", "7"),
+      ]
+      let mapped = Dialect.cancelForChild(cancel, from: "editor-a", pending: pending)
+      check(
+        "is rewritten to the internal id of that client's request",
+        ((mapped?["params"] as? [String: Any])?["requestId"] as? Int) == 12)
+      check(
+        "and keeps its reason",
+        ((mapped?["params"] as? [String: Any])?["reason"] as? String) == "user pressed stop")
+      check(
+        "never another client's request with the same id",
+        ((Dialect.cancelForChild(cancel, from: "editor-b", pending: pending)?["params"]
+          as? [String: Any])?["requestId"] as? Int) == 13)
+      check(
+        "a string id is not the number it spells",
+        Dialect.cancelForChild(
+          ["method": "notifications/cancelled", "params": ["requestId": "7"]],
+          from: "editor-b", pending: pending) == nil)
+      check(
+        "a request that is no longer pending is not forwarded",
+        Dialect.cancelForChild(cancel, from: "editor-c", pending: pending) == nil)
+      // Two sessions of one editor share its name, and both are free to have
+      // a request 7 in flight. Which one the user stopped is unknowable here,
+      // so neither is cancelled rather than possibly the wrong one.
+      check(
+        "an id two sessions of one client both have pending is not guessed at",
+        Dialect.cancelForChild(
+          cancel, from: "editor-a", pending: pending + [(15, "editor-a", 7)]) == nil)
+    }
+
+    print("\nLineFramer: newline-delimited frames off a pipe")
+    // Reads come back with no regard for line boundaries. The framer used to
+    // rescan everything it held on every read, so a 30 MB tool result arriving
+    // 64 KB at a time cost seconds of CPU on the reader every other client of
+    // that child waits behind.
+    do {
+      var framer = LineFramer()
+      check("a partial frame yields nothing yet", framer.feed(Array(#"{"id":1,"#.utf8)).isEmpty)
+      let closed = framer.feed(Array(#""ok":true}"#.utf8) + [10] + Array(#"{"id":2}"#.utf8))
+      check(
+        "the frame it straddled arrives whole, once its newline does",
+        closed.map { String(decoding: $0, as: UTF8.self) } == [#"{"id":1,"ok":true}"#])
+      let next = framer.feed([10, 10] + Array(#"{"id":3}"#.utf8) + [10])
+      check(
+        "and so does the one after it, with blank lines skipped",
+        next.map { String(decoding: $0, as: UTF8.self) } == [#"{"id":2}"#, #"{"id":3}"#])
+
+      var big = LineFramer()
+      let chunk = [UInt8](repeating: UInt8(ascii: "a"), count: 64 * 1024)
+      var lines: [Data] = []
+      for _ in 0..<160 { lines += big.feed(chunk) }
+      lines += big.feed([10])
+      check(
+        "a 10 MB frame fed 64 KB at a time is one line",
+        lines.count == 1 && lines[0].count == 160 * 64 * 1024)
+
+      var capped = LineFramer(limit: 1024)
+      _ = capped.feed([UInt8](repeating: 1, count: 2048))
+      let after = capped.feed(Array("tail".utf8) + [10] + Array(#"{"id":4}"#.utf8) + [10])
+      check(
+        "past its limit with no newline it drops what it held, and frames again after",
+        after.last.map { String(decoding: $0, as: UTF8.self) } == #"{"id":4}"#)
+    }
+
+    do {
+      // stderr is framed too, so a credential split across two reads is
+      // redacted as the one line it is. What is left at EOF, with no final
+      // newline, is still a line somebody printed.
+      var stderr = LineFramer()
+      _ = stderr.feed(Array("token=abc".utf8))
+      _ = stderr.feed(Array("def".utf8))
+      check(
+        "what is held at EOF comes back as one line", stderr.flush() == Data("token=abcdef".utf8))
+      check("and only once", stderr.flush() == nil)
+    }
+
     print("\nStoreFile: a file that is there and cannot be read")
     // Every store used to read "would not decode" as "no file": an empty list,
     // which the next save then wrote over the original. One hand-edit typo, or

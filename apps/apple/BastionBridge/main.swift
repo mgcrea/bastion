@@ -272,7 +272,18 @@ func emitError(id: Any?, _ message: String) {
 
 // MARK: - One frame
 
-let session = URLSession(configuration: .ephemeral)
+/// Long enough to outlast the gateway's own deadline for a call (180s in
+/// `Supervisor.Instance.callTimeout`), and wide enough for a host's parallel
+/// calls. The defaults were 60s and 6 connections: a buffered reply sends
+/// nothing until it is done, so a 60–180s tool call failed here as a timeout
+/// while Bastion finished it and recorded success, and a seventh concurrent
+/// call queued behind the first six.
+let session: URLSession = {
+  let configuration = URLSessionConfiguration.ephemeral
+  configuration.timeoutIntervalForRequest = 185
+  configuration.httpMaximumConnectionsPerHost = 32
+  return URLSession(configuration: configuration)
+}()
 let inFlight = DispatchGroup()
 
 /// The `_meta` version, when the client is speaking the modern protocol.
@@ -477,7 +488,7 @@ final class Exchange: NSObject, URLSessionDataDelegate {
 
 warn("relaying \(profile)/\(server) to \(endpoint.absoluteString)")
 
-var pending = Data()
+var framer = LineFramer()
 var buffer = [UInt8](repeating: 0, count: 64 * 1024)
 
 while true {
@@ -488,26 +499,13 @@ while true {
     break
   }
   if n == 0 { break }  // the host closed its end
-  pending.append(contentsOf: buffer[0..<n])
-
-  // Split on the LAST newline, not each chunk on its own. Reads come back with
-  // no regard for line boundaries, so a frame straddling two chunks would
-  // otherwise be dropped — and a large tool result is exactly the size that
-  // hits this.
-  guard let last = pending.lastIndex(of: UInt8(ascii: "\n")) else {
-    // A line this long is not MCP framing. Stop buffering rather than grow
-    // without bound on a host that never sends a newline.
-    if pending.count > 32 << 20 {
-      warn("discarding an oversized partial frame")
-      pending.removeAll(keepingCapacity: false)
-    }
-    continue
-  }
-  let complete = pending[..<last]
-  pending = Data(pending[pending.index(after: last)...])
-  for line in complete.split(separator: UInt8(ascii: "\n")) where !line.isEmpty {
-    forward(Data(line))
-  }
+  // Reads come back with no regard for line boundaries, so a frame straddling
+  // two chunks has to be reassembled — and a large tool result is exactly the
+  // size that does. See `LineFramer`.
+  let discardedBefore = framer.discarded
+  let lines = framer.feed(buffer[0..<n])
+  if framer.discarded > discardedBefore { warn("discarding an oversized partial frame") }
+  for line in lines { forward(line) }
 }
 
 // Let anything already sent come back before going. The host has closed stdin,
