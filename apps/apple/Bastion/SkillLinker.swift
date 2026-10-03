@@ -127,7 +127,11 @@ nonisolated enum SkillLinker {
     }
 
     if (info.st_mode & S_IFMT) == S_IFLNK {
-      // It was our old link. Remove it (Bastion owns all symlinks in the target).
+      // A symlink, which the plan claimed as ours moments ago. Not every
+      // symlink in a target is Bastion's — foreign ones are reported and left
+      // alone — so this trusts that nothing replaced ours with one of its own
+      // between the plan and this swap. Checking the destination here would
+      // close that window; the actions do not carry it yet.
       guard unlink(temporary) == 0 else {
         // Swallow this error. The new link is in place; the old one is just orphaned.
         return
@@ -175,7 +179,8 @@ nonisolated enum SkillLinker {
     }
 
     if (info.st_mode & S_IFMT) == S_IFLNK {
-      // It's a symlink (Bastion owns all symlinks in the target). Remove it.
+      // A symlink the plan claimed as ours; see `replaceLink` for the window
+      // this trusts.
       guard unlink(hidden) == 0 else {
         // Swallow the error; the symlink is orphaned but we're reporting unlink failed anyway.
         return
