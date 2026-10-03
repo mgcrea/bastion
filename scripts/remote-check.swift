@@ -535,6 +535,42 @@ struct RemoteCheck {
       WriteGate.isWriteTool(
         "brand_new_writer", declared: [], annotated: learnedWithWritesOn.learned))
 
+    print("\nThe write gate: a fresh instance, before any list has passed through")
+    // An instance learns annotations from a `tools/list` that passes through.
+    // A new one — after the toggle, a profile edit, a relaunch — has learned
+    // nothing, while a client still holds the list it was served before. The
+    // call it then makes must be judged against the catalog, not against the
+    // empty set.
+    let fresh = [tool("look", readOnly: true), tool("wipe", destructive: true), tool("plain")]
+    var catalogReads = 0
+    let readCatalog: () throws -> [[String: Any]] = {
+      catalogReads += 1
+      return fresh
+    }
+    let wipe = WriteGate.gatesCall(
+      "wipe", declared: [], annotated: [], catalog: readCatalog)
+    check("an annotated write tool is refused on a fresh instance", wipe.refused)
+    check("and what the catalog said is learned for the next call", wipe.learned == ["wipe"])
+    check(
+      "a read tool on a fresh instance is forwarded",
+      !WriteGate.gatesCall("look", declared: [], annotated: [], catalog: readCatalog).refused)
+    catalogReads = 0
+    check(
+      "a declared write tool is refused without reading the catalog",
+      WriteGate.gatesCall(
+        "stripe_api_write", declared: declared, annotated: [], catalog: readCatalog
+      )
+      .refused && catalogReads == 0)
+    check(
+      "a write tool already learned is refused without reading the catalog",
+      WriteGate.gatesCall("wipe", declared: [], annotated: ["wipe"], catalog: readCatalog).refused
+        && catalogReads == 0)
+    struct Unreadable: Error {}
+    check(
+      "a catalog that cannot be read refuses: a gate that cannot tell does not forward",
+      WriteGate.gatesCall("look", declared: [], annotated: [], catalog: { throw Unreadable() })
+        .refused)
+
     let call: [String: Any] = ["result": ["content": [["type": "text", "text": "hi"]]]]
     check(
       "a tools/call result is passed through untouched",

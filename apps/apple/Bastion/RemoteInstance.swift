@@ -273,7 +273,7 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     // can actually perform on a server it does not run.
     if !profile.allowWrites, method == "tools/call",
       let params = frame["params"] as? [String: Any],
-      let name = params["name"] as? String, isWriteTool(name)
+      let name = params["name"] as? String, gatesCall(name)
     {
       // A gated notification is simply dropped: there is no id to answer.
       guard clientID != nil else { return nil }
@@ -520,10 +520,15 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
 
   // MARK: - The write gate
 
-  private func isWriteTool(_ name: String) -> Bool {
-    WriteGate.isWriteTool(
+  /// `WriteGate.gatesCall`, against this server's catalog. For a remote server
+  /// with no `writeTools` the annotations are the whole gate, so a fresh
+  /// instance that had not yet seen a `tools/list` used to forward everything.
+  private func gatesCall(_ name: String) -> Bool {
+    let (refused, learned) = WriteGate.gatesCall(
       name, declared: server.writeTools,
-      annotated: state.withLock { $0.annotatedWriteTools })
+      annotated: state.withLock { $0.annotatedWriteTools }, catalog: ensureCatalog)
+    if !learned.isEmpty { state.withLock { $0.annotatedWriteTools.formUnion(learned) } }
+    return refused
   }
 
   /// Hide the gated tools from `tools/list`, and learn the server's own

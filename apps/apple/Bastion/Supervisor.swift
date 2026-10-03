@@ -841,7 +841,7 @@ nonisolated extension Supervisor {
       // `WriteGate` so there is one of it rather than two.
       if !profile.allowWrites, !server.writeTools.isEmpty, method == "tools/call",
         let params = frame["params"] as? [String: Any],
-        let name = params["name"] as? String, isWriteTool(name)
+        let name = params["name"] as? String, gatesCall(name)
       {
         // A gated notification is simply dropped: there is no id to answer.
         guard clientID != nil else { return nil }
@@ -956,9 +956,18 @@ nonisolated extension Supervisor {
       state.withLock { $0.annotatedWriteTools }
     }
 
-    private func isWriteTool(_ name: String) -> Bool {
-      WriteGate.isWriteTool(
-        name, declared: server.writeTools, annotated: annotatedWriteTools)
+    /// `WriteGate.gatesCall`, against this child's catalog — so a fresh
+    /// instance refuses an annotated write tool on the first call rather than
+    /// after the first `tools/list` a client happens to send.
+    private func gatesCall(_ name: String) -> Bool {
+      let (refused, learned) = WriteGate.gatesCall(
+        name, declared: server.writeTools, annotated: annotatedWriteTools
+      ) {
+        try ensureRunning()
+        return try ensureCatalog()
+      }
+      if !learned.isEmpty { state.withLock { $0.annotatedWriteTools.formUnion(learned) } }
+      return refused
     }
 
     /// Hide the gated tools from `tools/list`, and learn the child's own
@@ -1345,10 +1354,17 @@ nonisolated extension Supervisor {
           let frozen = SendableJSON(entries)
           self?.state.withLock { $0.toolCatalog = frozen }
         }
+        // The gate learns from this listing too. It is the first one this
+        // child answers, and without it a fresh instance knows no annotations
+        // until a client happens to list.
+        let learned = WriteGate.annotatedWriteTools(in: entries)
+        if !learned.isEmpty {
+          self?.state.withLock { $0.annotatedWriteTools.formUnion(learned) }
+        }
         let bytes = entries.reduce(0) { $0 + ToolCost.bytes(of: $1) }
         // Both of `WriteGate`'s sources, so a view can later tell "no writes
         // here" from "Bastion cannot tell" — see `ToolCostStore.Measurement`.
-        let writes = Set(declaredWrites).union(WriteGate.annotatedWriteTools(in: entries)).count
+        let writes = Set(declaredWrites).union(learned).count
         // Read here rather than inside the task: the task runs on the main
         // actor, and neither dictionary is Sendable, so neither may follow it.
         let count = entries.count

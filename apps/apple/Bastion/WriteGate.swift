@@ -48,6 +48,28 @@ nonisolated enum WriteGate {
     declared.contains(name) || annotated.contains(name)
   }
 
+  /// Whether a `tools/call` for `name` is refused on a writes-off profile.
+  ///
+  /// `annotated` is whatever has passed through so far, and on a fresh instance
+  /// that is nothing: after the toggle, a profile edit or a relaunch, a client
+  /// still holding the list it was served before can name a mutating tool
+  /// before any `tools/list` has gone by to teach the gate. So a name the gate
+  /// does not already know to be a write is judged against the catalog —
+  /// cached by the caller, so this costs a round trip once per instance — and a
+  /// catalog that cannot be read refuses. A gate that cannot tell must not
+  /// forward.
+  ///
+  /// Returns the annotations read on the way, for the caller to keep.
+  static func gatesCall(
+    _ name: String, declared: [String], annotated: Set<String>,
+    catalog: () throws -> [[String: Any]]
+  ) -> (refused: Bool, learned: Set<String>) {
+    if isWriteTool(name, declared: declared, annotated: annotated) { return (true, []) }
+    guard let tools = try? catalog() else { return (true, []) }
+    let learned = annotatedWriteTools(in: tools)
+    return (learned.contains(name), learned)
+  }
+
   /// The tools a client may see.
   ///
   /// Absent rather than offered-and-refused, which is what `BuiltinTools`
