@@ -312,7 +312,9 @@ nonisolated final class RemoteOAuthSession: @unchecked Sendable {
     // Five minutes. Long enough to find a password manager and a second factor,
     // short enough that an abandoned flow closes its socket rather than leaving
     // one open for the rest of the session.
-    let redirect = try await offMain { try callback.waitForCallback(timeout: 300) }
+    let redirect = try await offMain {
+      try callback.waitForCallback(timeout: 300, expecting: state)
+    }
     let code = try RemoteOAuth.code(fromCallback: redirect, expecting: state)
 
     // Built and finished here, then handed over immutable. Capturing a `var`

@@ -79,6 +79,9 @@ nonisolated final class RemoteOAuthCallback: Sendable {
     // `self`, which Swift refuses outright.
     let fd = Darwin.socket(AF_INET, SOCK_STREAM, 0)
     guard fd >= 0 else { throw CallbackError.cannotListen("socket: \(errno)") }
+    // Not inherited by a server spawned while the flow is waiting, which would
+    // otherwise hold the port, and the redirect, after Bastion let go of it.
+    closeOnExec(fd)
     socket = fd
 
     var yes: Int32 = 1
@@ -126,10 +129,10 @@ nonisolated final class RemoteOAuthCallback: Sendable {
   /// actor precisely so a person taking two minutes to click Allow does not
   /// freeze the window that started it.
   ///
-  /// Keeps accepting until it sees a request for the callback path, so a
-  /// favicon fetch or a stray probe does not end the flow. The state check that
-  /// makes this safe is `RemoteOAuth.code(fromCallback:expecting:)`, above.
-  func waitForCallback(timeout: TimeInterval) throws -> URL {
+  /// Keeps accepting until it sees a request for the callback path carrying
+  /// `state`, so a favicon fetch, a stray probe or a forged callback does not
+  /// end the flow. `RemoteOAuth.code(fromCallback:expecting:)` checks it again.
+  func waitForCallback(timeout: TimeInterval, expecting state: String) throws -> URL {
     let deadline = Date().addingTimeInterval(timeout)
 
     while Date() < deadline {
@@ -150,6 +153,18 @@ nonisolated final class RemoteOAuthCallback: Sendable {
       let target = String(parts[1])
       guard target.hasPrefix("/oauth/callback") else {
         Self.respond(client, status: "404 Not Found", body: "<p>Nothing here.</p>")
+        continue
+      }
+      // Only the redirect this flow asked for ends it. Any local process, or a
+      // page probing ports, can request the callback path, and the state used
+      // to be checked only after the listener had stopped — so one such hit
+      // aborted the authorization somebody was in the middle of, and the page
+      // said "Authorized" while it did.
+      let query = URLComponents(string: "http://127.0.0.1\(target)")?.queryItems ?? []
+      guard query.first(where: { $0.name == "state" })?.value == state else {
+        Self.respond(
+          client, status: "400 Bad Request",
+          body: "<p>This is not the authorization Bastion is waiting for.</p>")
         continue
       }
 

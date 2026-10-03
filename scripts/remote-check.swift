@@ -443,22 +443,48 @@ struct RemoteCheck {
         "the redirect URI is loopback http",
         callback.redirectURI == "http://127.0.0.1:\(callback.port)/oauth/callback")
 
+      // Listening first, then each request in turn, waiting for its answer:
+      // sent before anything accepts, they sit in a backlog of one and the
+      // ordering under test is not the ordering that happens.
+      final class Box: @unchecked Sendable {
+        var url: URL?
+        var error: Error?
+      }
+      let box = Box()
+      let finished = DispatchSemaphore(value: 0)
+      Thread.detachNewThread {
+        do { box.url = try callback.waitForCallback(timeout: 15, expecting: "st4te") } catch {
+          box.error = error
+        }
+        finished.signal()
+      }
       let session = URLSession(configuration: .ephemeral)
+      func get(_ path: String) -> Int? {
+        let done = DispatchSemaphore(value: 0)
+        var status: Int?
+        session.dataTask(with: URL(string: "http://127.0.0.1:\(callback.port)\(path)")!) {
+          _, response, _ in
+          status = (response as? HTTPURLResponse)?.statusCode
+          done.signal()
+        }.resume()
+        _ = done.wait(timeout: .now() + 5)
+        return status
+      }
       // A stray request first. A favicon fetch or a probe must not end the
       // flow, or an abandoned tab could cancel somebody's authorization.
-      let stray = DispatchSemaphore(value: 0)
-      session.dataTask(with: URL(string: "http://127.0.0.1:\(callback.port)/favicon.ico")!) {
-        _, _, _ in stray.signal()
-      }.resume()
-      _ = stray.wait(timeout: .now() + 5)
-
-      let hit = URL(
-        string: "http://127.0.0.1:\(callback.port)/oauth/callback?code=oac_x&state=st4te")!
-      session.dataTask(with: hit) { _, _, _ in }.resume()
-
-      let received = try callback.waitForCallback(timeout: 10)
+      check("a stray path is answered 404", get("/favicon.ico") == 404)
+      // The callback path with the wrong state: any local process, or a page
+      // probing ports, can send one. It used to end the flow — the state was
+      // only checked after the listener had stopped — so the authorization
+      // somebody was in the middle of was aborted.
       check(
-        "a stray path does not end the flow, and the real one is returned",
+        "a callback with the wrong state is refused",
+        get("/oauth/callback?code=evil&state=wrong") == 400)
+      check("the real one is accepted", get("/oauth/callback?code=oac_x&state=st4te") == 200)
+      _ = finished.wait(timeout: .now() + 10)
+      guard let received = box.url else { throw box.error ?? URLError(.timedOut) }
+      check(
+        "neither ended the flow, and the real callback is what it returns",
         received.absoluteString.contains("code=oac_x"))
       check(
         "the code parses out of it",
