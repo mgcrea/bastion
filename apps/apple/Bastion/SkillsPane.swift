@@ -273,6 +273,13 @@ struct SkillsPane: View {
       Text("Lost this folder to an earlier source: " + report.shadowed.joined(separator: ", "))
         .font(.caption).foregroundStyle(.secondary)
     }
+    if !report.invalid.isEmpty {
+      Text(
+        "Left alone because the skill no longer validates (fix its SKILL.md, or deselect it): "
+          + report.invalid.joined(separator: ", ")
+      )
+      .font(.caption).foregroundStyle(.secondary)
+    }
     ForEach(store.failures.filter { $0.target == target.id }, id: \.self) { failure in
       Text("\(failure.name): \(failure.message)").font(.caption).foregroundStyle(.red)
     }

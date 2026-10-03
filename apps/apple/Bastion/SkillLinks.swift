@@ -72,6 +72,10 @@ nonisolated enum SkillLinks {
     var links: [String: [String: Skill]] = [:]
     /// Target id → ids of skills that lost the folder to an earlier source.
     var shadowed: [String: [String]] = [:]
+    /// Folders of skills that do not validate. They are never linked, and a
+    /// link already pointing at one is left where it is: the spec says an
+    /// invalid skill produces no action, and unlinking is one.
+    var invalid: [String] = []
   }
 
   struct TargetReport: Equatable {
@@ -82,12 +86,15 @@ nonisolated enum SkillLinks {
     /// Links into a source in a repository folder that Bastion did not make
     /// and does not want there. Left alone.
     var unadopted: [String] = []
+    /// Links to a skill that no longer validates — a SKILL.md edited past the
+    /// length limit, say. Left alone until it is fixed or deselected.
+    var invalid: [String] = []
     var refused: String?
 
     /// Whether the folder has anything to say beyond "all as wanted".
     var isQuiet: Bool {
       collisions.isEmpty && unavailable.isEmpty && shadowed.isEmpty && unadopted.isEmpty
-        && refused == nil
+        && invalid.isEmpty && refused == nil
     }
   }
 
@@ -214,6 +221,7 @@ nonisolated enum SkillLinks {
       out.links[target, default: [:]][skill.name] = skill
     }
 
+    out.invalid = skills.filter { !$0.isValid }.map(\.path)
     for skill in skills where skill.isValid {
       if scoped.contains(skill.id) {
         for workspace in scopes.keys.sorted() where scopes[workspace]?.contains(skill.id) == true {
@@ -281,6 +289,8 @@ nonisolated enum SkillLinks {
           if !same(absolute(raw, in: folder), skill.path, fs: fs) {
             plan.actions.append(.relink(target: target.id, name: name, destination: skill.path))
           }
+        } else if desired.invalid.contains(where: { same(absolute(raw, in: folder), $0, fs: fs) }) {
+          report.invalid.append(name)
         } else {
           plan.actions.append(.unlink(target: target.id, name: name))
         }
@@ -429,6 +439,13 @@ nonisolated enum SkillLinks {
     var out: Set<String> = []
     for target in targets {
       let recorded = ledgerNames(target, ledger)
+      // A folder holding links of ours that cannot be listed — unmounted,
+      // unreadable — hides which sources they point into. Every retired one
+      // stays: dropped here, the links it still has were later read as
+      // pointing nowhere, and their exclude lines went while they remained.
+      if recorded?.isEmpty == false, !fs.canList(target.path) {
+        return Set(sources.filter(\.retired).map(\.name))
+      }
       let physical = fs.canonical(target.path)
       for name in fs.children(target.path) where !name.hasPrefix(".") {
         if let recorded, !recorded.contains(name) { continue }
@@ -604,7 +621,29 @@ nonisolated enum SkillExclude {
 
   static func path(forKey key: String, fs: SkillFileSystem) -> String? {
     let git = (key as NSString).appendingPathComponent(".git")
-    guard fs.isDirectory(git) else { return nil }
-    return (git as NSString).appendingPathComponent("info/exclude")
+    if fs.isDirectory(git) { return (git as NSString).appendingPathComponent("info/exclude") }
+    // A `.git` FILE: a submodule, a `--separate-git-dir` repository, or a
+    // worktree of a bare one. Its `gitdir:` names the real git directory, and
+    // a `commondir` inside that says where the shared files — info/exclude
+    // among them — actually live. Answering nil here used to leave links in
+    // these repositories with no exclude at all, one `git add .` from being
+    // committed as symlinks into somebody's home folder.
+    guard fs.isFile(git), let text = fs.contents(git),
+      let line = text.split(separator: "\n").first(where: { $0.hasPrefix("gitdir:") })
+    else { return nil }
+    let named = line.dropFirst("gitdir:".count).trimmingCharacters(in: .whitespaces)
+    let gitdir = absolute(named, from: key)
+    guard fs.isDirectory(gitdir) else { return nil }
+    let commondir = (gitdir as NSString).appendingPathComponent("commondir")
+    let shared =
+      fs.contents(commondir).map {
+        absolute($0.trimmingCharacters(in: .whitespacesAndNewlines), from: gitdir)
+      } ?? gitdir
+    return (shared as NSString).appendingPathComponent("info/exclude")
+  }
+
+  private static func absolute(_ path: String, from base: String) -> String {
+    let joined = path.hasPrefix("/") ? path : (base as NSString).appendingPathComponent(path)
+    return (joined as NSString).standardizingPath
   }
 }

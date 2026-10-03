@@ -40,6 +40,7 @@ struct SkillsCheck {
     sourceNames()
 
     targetsDeduplicateThroughSymlinks()
+    anInvalidSkillIsLeftLinked()
     planLinksWhatIsMissingAndNothingElse()
     relativeLinksAreJudgedByWhereTheyLand()
     sourceSpelledThroughASymlink()
@@ -136,6 +137,9 @@ struct SkillsCheck {
 
     func children(_ path: String) -> [String] {
       let folder = resolve(path)
+      // What the real one does, and what `SkillFileSystem` documents: a folder
+      // that cannot be listed answers no entries, not its true ones.
+      if unlistable.contains(folder) { return [] }
       return directories.union(files.keys).union(links.keys)
         .filter { $0 != folder && Self.parent($0) == folder }
         .map { ($0 as NSString).lastPathComponent }
@@ -384,6 +388,24 @@ struct SkillsCheck {
         targets: targets, desired: desired, sources: sources, available: catalog.available,
         ledger: ledger, fs: fs)
     )
+  }
+
+  /// The spec: an invalid skill produces no action. `desired` skipped it, but
+  /// its existing links were still claimed and then unlinked — so a SKILL.md
+  /// edited past the length limit, or missing `name:` (which Claude Code
+  /// accepts), vanished from every folder on the next save, with no preview.
+  static func anInvalidSkillIsLeftLinked() {
+    print("invalid skills")
+    var fs = machine()
+    fs.skill(globalPath + "/alpha", description: String(repeating: "x", count: 2000))
+    fs.link(home + "/.agents/skills/alpha", to: globalPath + "/alpha")
+    let (_, plan) = planned(fs, choices: ["global:alpha": ["shared"]])
+    check(
+      "a link to a skill that no longer validates is not unlinked",
+      !plan.actions.contains(.unlink(target: "shared", name: "alpha")))
+    check(
+      "and is reported as invalid",
+      plan.reports["shared"]?.invalid == ["alpha"])
   }
 
   static func targetsDeduplicateThroughSymlinks() {
@@ -915,6 +937,17 @@ struct SkillsCheck {
       SkillLinks.retiredStillLinked(
         targets: repository, sources: [global, old], ledger: [claude: ["legacy"]], fs: retired)
         == ["old"])
+    // The repository folder is unmounted or unreadable: its links cannot be
+    // seen, so they cannot be counted as gone. Dropping the retired source
+    // here meant that when the folder came back, its links pointed into a
+    // source nobody remembered, and their exclude lines were removed.
+    var unreadable = retired
+    unreadable.unlistable.insert("/r/app/.claude/skills")
+    check(
+      "a folder that cannot be listed keeps the retired sources it may still link",
+      SkillLinks.retiredStillLinked(
+        targets: repository, sources: [global, old], ledger: [claude: ["legacy"]],
+        fs: unreadable) == ["old"])
     let (_, leftAlone) = planned(
       retired, sources: [global, old], choices: [:], scopes: ["app": ["global:alpha"]],
       resolved: ["app": ["/r/app"]])
@@ -1320,6 +1353,54 @@ struct SkillsCheck {
       "a repository with no info folder gets one",
       SkillLinker.writeExclude(key: root + "/fresh", entries: ["/x"], fs: fs) == nil
         && manager.fileExists(atPath: root + "/fresh/.git/info/exclude"))
+
+    // An exclude file kept in dotfiles and linked in. The atomic write
+    // replaced the link with a regular file, cutting it off from the file the
+    // user maintains.
+    try? manager.createDirectory(
+      atPath: root + "/linked/.git/info", withIntermediateDirectories: true)
+    try? manager.createDirectory(atPath: root + "/dotfiles", withIntermediateDirectories: true)
+    try? "*.swp\n".write(toFile: root + "/dotfiles/exclude", atomically: true, encoding: .utf8)
+    try? manager.createSymbolicLink(
+      atPath: root + "/linked/.git/info/exclude", withDestinationPath: root + "/dotfiles/exclude")
+    _ = SkillLinker.writeExclude(key: root + "/linked", entries: ["/y"], fs: fs)
+    // A submodule: `.git` is a file naming the superproject's
+    // `.git/modules/<name>`, and that is where git reads its exclude from.
+    try? manager.createDirectory(
+      atPath: root + "/super/.git/modules/sub", withIntermediateDirectories: true)
+    try? manager.createDirectory(atPath: root + "/super/sub", withIntermediateDirectories: true)
+    try? "gitdir: ../.git/modules/sub\n".write(
+      toFile: root + "/super/sub/.git", atomically: true, encoding: .utf8)
+    check(
+      "a submodule's exclude is the one in the superproject's modules folder",
+      SkillLinker.writeExclude(key: root + "/super/sub", entries: ["/s"], fs: fs) == nil
+        && ((try? String(
+          contentsOfFile: root + "/super/.git/modules/sub/info/exclude", encoding: .utf8)) ?? "")
+          .contains("/s")
+    )
+
+    // A worktree of a bare repository: its gitdir carries a `commondir`, and
+    // git reads info/exclude from the common directory, not the worktree's.
+    try? manager.createDirectory(
+      atPath: root + "/proj.git/worktrees/x", withIntermediateDirectories: true)
+    try? "../..\n".write(
+      toFile: root + "/proj.git/worktrees/x/commondir", atomically: true, encoding: .utf8)
+    try? manager.createDirectory(atPath: root + "/x", withIntermediateDirectories: true)
+    try? "gitdir: \(root)/proj.git/worktrees/x\n".write(
+      toFile: root + "/x/.git", atomically: true, encoding: .utf8)
+    check(
+      "a worktree's exclude is the common directory's",
+      SkillLinker.writeExclude(key: root + "/x", entries: ["/w"], fs: fs) == nil
+        && ((try? String(contentsOfFile: root + "/proj.git/info/exclude", encoding: .utf8))
+          ?? "").contains("/w")
+    )
+
+    check(
+      "a linked exclude file is written through, and stays a link",
+      (try? manager.destinationOfSymbolicLink(atPath: root + "/linked/.git/info/exclude")) != nil
+        && ((try? String(contentsOfFile: root + "/dotfiles/exclude", encoding: .utf8)) ?? "")
+          .contains("/y")
+    )
   }
 
   static func linkNeverReplaces() {

@@ -87,7 +87,11 @@ nonisolated enum SkillLinker {
     do {
       try FileManager.default.createDirectory(
         atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
-      try next.write(toFile: path, atomically: true, encoding: .utf8)
+      // Through a symlink, to the file it names: an atomic write replaces
+      // whatever is at the path, and an exclude file kept in dotfiles and
+      // linked in was cut off from the copy the user maintains.
+      let target = (path as NSString).resolvingSymlinksInPath
+      try next.write(toFile: target, atomically: true, encoding: .utf8)
       return nil
     } catch {
       return Failure(target: key, name: ".git/info/exclude", message: error.localizedDescription)
