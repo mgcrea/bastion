@@ -49,6 +49,13 @@ done
 # were keeping.
 [ -d "$SUPPORT/audit" ] && mv "$SUPPORT/audit" "$SUPPORT/audit.builtin-check-backup"
 
+# The scoping checks assert the default, and a developer who opted into
+# "recent activity from every profile" — or cloned a Release setup that had —
+# would see them fail on a build that is right. Off for the run, and put back
+# exactly as it was found.
+ALL_PROFILES="$(defaults read "$BUNDLE" recentActivityAllProfiles 2>/dev/null || true)"
+defaults write "$BUNDLE" recentActivityAllProfiles -bool false
+
 restore() {
   kill "${APP:-0}" 2>/dev/null || true
   wait "${APP:-0}" 2>/dev/null || true
@@ -59,6 +66,14 @@ restore() {
   done
   defaults delete "$BUNDLE" auditEnabled 2>/dev/null || true
   defaults delete "$BUNDLE" auditPayloads 2>/dev/null || true
+  # `defaults read` prints a bool as 1 or 0, and `-bool` accepts neither.
+  if [ "$ALL_PROFILES" = 1 ]; then
+    defaults write "$BUNDLE" recentActivityAllProfiles -bool true
+  elif [ "$ALL_PROFILES" = 0 ]; then
+    defaults write "$BUNDLE" recentActivityAllProfiles -bool false
+  else
+    defaults delete "$BUNDLE" recentActivityAllProfiles 2>/dev/null || true
+  fi
   rm -rf "$SUPPORT/audit"
   if [ -d "$SUPPORT/audit.builtin-check-backup" ]; then
     mv "$SUPPORT/audit.builtin-check-backup" "$SUPPORT/audit"

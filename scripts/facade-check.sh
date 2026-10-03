@@ -78,8 +78,28 @@ restore() {
   defaults delete "$BUNDLE" lazyToolsDefault 2>/dev/null || true
   defaults delete "$BUNDLE" lazyToolsMovedToServers 2>/dev/null || true
   defaults delete "$BUNDLE" "lazyToolsClient.$LAZYCLIENT" 2>/dev/null || true
+  if [ -n "$CAPTURE" ]; then
+    defaults write "$BUNDLE" callCaptureMode -string "$CAPTURE"
+  fi
+  # `defaults read` prints a bool as 1 or 0, and `-bool` accepts neither.
+  case "$ALL_PROFILES" in
+    1) defaults write "$BUNDLE" recentActivityAllProfiles -bool true ;;
+    0) defaults write "$BUNDLE" recentActivityAllProfiles -bool false ;;
+    *) defaults delete "$BUNDLE" recentActivityAllProfiles 2>/dev/null || true ;;
+  esac
 }
 trap restore EXIT
+
+# The audit assertions read `recent_activity` and assert what it does NOT
+# contain, so two of the developer's own settings can fail them on a build that
+# is right: capturing results puts `bastion_describe_tool`'s answer, which
+# names `bastion_call_tool`, in the log; reporting every profile puts the other
+# profiles' dispatches there. Both back to the app's defaults for the run, and
+# put back exactly as they were found.
+CAPTURE="$(defaults read "$BUNDLE" callCaptureMode 2>/dev/null || true)"
+ALL_PROFILES="$(defaults read "$BUNDLE" recentActivityAllProfiles 2>/dev/null || true)"
+defaults delete "$BUNDLE" callCaptureMode 2>/dev/null || true
+defaults write "$BUNDLE" recentActivityAllProfiles -bool false
 
 # The app-wide switch ON, and the scratch server below carries NO override, so
 # every assertion about the facade is also an assertion that the app-wide
