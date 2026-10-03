@@ -463,6 +463,8 @@ final class ServerInstaller {
     // reporting a problem that does not exist.
     guard let package = server.package else { return }
     guard !isRunning(server.id) else { return }
+    // Nothing is downloaded into the real Application Support from a capture.
+    if DemoSeed.isEnabled { return }
     running[server.id] = "Installing…"
     failures[server.id] = nil
     // Whatever a check last said is about to stop being true either way.
@@ -666,6 +668,9 @@ final class ServerInstaller {
   /// been replaced, and a `BastionServer` parameter would quietly delete the new
   /// install instead of the stale one.
   nonisolated static func removeInstall(id: String) {
+    // The fixture's ids are real catalog ids, so removing one in a demo launch
+    // deleted the developer's own install of it.
+    if DemoSeed.isEnabled { return }
     try? FileManager.default.removeItem(at: directory(of: id))
   }
 

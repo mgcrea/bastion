@@ -163,6 +163,10 @@ nonisolated enum CredentialStore {
   /// no-op the caller believes worked.
   static func write(_ scope: Scope, account: String, value: String) throws {
     guard !value.isEmpty else { throw StoreError.emptyValue(account) }
+    // Never the real Keychain under a capture: a staged screen that saves a
+    // fixture profile would otherwise write, or sweep, the developer's own
+    // items. See `accounts` below for the read side of the same rule.
+    if DemoSeed.isEnabled { return }
     let data = Data(value.utf8)
     var query = baseQuery(scope, account: account)
 
@@ -185,6 +189,10 @@ nonisolated enum CredentialStore {
   }
 
   static func delete(_ scope: Scope, account: String) throws {
+    // Never the real Keychain under a capture: a staged screen that saves a
+    // fixture profile would otherwise write, or sweep, the developer's own
+    // items. See `accounts` below for the read side of the same rule.
+    if DemoSeed.isEnabled { return }
     let status = SecItemDelete(baseQuery(scope, account: account) as CFDictionary)
     guard status == errSecSuccess || status == errSecItemNotFound else {
       throw StoreError.keychain(status, "delete \(account)")

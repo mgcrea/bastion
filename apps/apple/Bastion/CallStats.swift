@@ -538,6 +538,8 @@ nonisolated final class CallStats: Sendable {
   /// Both halves, because an off switch that leaves the file behind is an off
   /// switch whose claim expires the moment somebody looks in the directory.
   func disableAndForget() {
+    // The toggle in a capture must not delete the developer's real rollup.
+    if DemoSeed.isEnabled { return }
     state.withLock { table in
       table.calls = [:]
       table.clients = [:]

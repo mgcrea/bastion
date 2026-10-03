@@ -61,7 +61,11 @@ final class AuditLog {
 
   /// Absence means off, for both. An audit log that switched itself on would
   /// be writing a file nobody asked for out of what is otherwise memory.
-  nonisolated static var isEnabled: Bool { UserDefaults.standard.bool(forKey: enabledKey) }
+  /// Never under a capture: the audit directory is the developer's own, and a
+  /// staged launch neither appends to it, reports its size, nor deletes it.
+  nonisolated static var isEnabled: Bool {
+    !DemoSeed.isEnabled && UserDefaults.standard.bool(forKey: enabledKey)
+  }
   nonisolated static var recordsPayloads: Bool { UserDefaults.standard.bool(forKey: payloadsKey) }
 
   nonisolated static let defaultMaxDays = 30
@@ -461,6 +465,7 @@ final class AuditLog {
   /// a torn line. See `AuditChain.verify(segments:)` for what a pruned log
   /// reports.
   nonisolated static func verifyAll() -> Summary {
+    if DemoSeed.isEnabled { return Summary() }
     settle()
     let found = readSegments()
     let chain = AuditChain.verify(
@@ -500,6 +505,7 @@ final class AuditLog {
   /// visible.
   @discardableResult
   func export(to folder: URL, sign: Bool) throws -> Summary {
+    if DemoSeed.isEnabled { return Summary() }
     try FileManager.default.createDirectory(
       at: folder, withIntermediateDirectories: true,
       attributes: [.posixPermissions: 0o700])
@@ -547,6 +553,7 @@ final class AuditLog {
   }
 
   func clear() {
+    if DemoSeed.isEnabled { return }
     // Drained first, or a record still queued lands in a fresh segment 1
     // after the delete, sealed against the head that was just erased.
     Self.settle()
