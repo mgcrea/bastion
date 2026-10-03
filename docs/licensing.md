@@ -162,9 +162,11 @@ so two deliveries arriving at once cannot both get past it, and the claim is
 deleted again when handling answers 300 or above or throws, so a failed email
 still returns 500, Stripe still retries, and the send is attempted again. The
 send itself is claimed the same way, with a conditional update on `last_sent_at`
-that is put back if the email fails. One gap is left: a Worker killed between
-the claim and its answer leaves the row behind, and Stripe's retries of that
-event are then answered as duplicates until the row is deleted by hand.
+that is put back if the email fails. A Worker killed between the claim and its
+answer used to leave the row behind, and Stripe's retries were answered as
+duplicates until somebody deleted it by hand. The row now carries `handled_at`,
+stamped on success, and a retry that finds a claim older than five minutes with
+no `handled_at` takes it over (migration 0004).
 
 Refunds and lost disputes mark `revoked_at` along with `revoked_reason`. A
 dispute **won** clears it only when the dispute is what set it — otherwise a
@@ -177,6 +179,20 @@ with `checkout.session.async_payment_succeeded`, which fulfils the same way. Non
 of the methods enabled on the payment link today is delayed, so this costs
 nothing now and is the difference between a key and silence if one is ever
 switched on in the Stripe dashboard.
+
+That holds only while the webhook endpoint subscribes to the events. Until
+2026-10-03 the live endpoint listed `checkout.session.completed`, the refund and
+the two dispute events, and not the async pair, so the handler above could never
+have run. It now lists all six:
+
+    checkout.session.completed
+    checkout.session.async_payment_succeeded
+    checkout.session.async_payment_failed
+    charge.refunded
+    charge.dispute.created
+    charge.dispute.closed
+
+An endpoint created for a new environment needs the same list.
 
 `POST /license/resend` re-sends a key to the address that bought it. Nothing on
 the website calls it and nothing is planned to: there is no form, the Worker
