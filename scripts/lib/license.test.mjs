@@ -62,6 +62,13 @@ describe("verifyKey accepts what it should", () => {
     assert.equal(verifyKey(pasted, { major: 1, publicKey: keys.publicKey }).ok, true);
   });
 
+  // A key is ~200 characters with no spaces, which is exactly what a mail
+  // client hard-wraps at 76 or 78. Pasted back, the breaks come with it.
+  it("accepts a key a mail client wrapped across lines", () => {
+    const wrapped = valid.match(/.{1,76}/g).join("\r\n ");
+    assert.equal(verifyKey(wrapped, { major: 1, publicKey: keys.publicKey }).ok, true);
+  });
+
   it("accepts without a major when the caller does not care", () => {
     assert.equal(verifyKey(valid, { publicKey: keys.publicKey }).ok, true);
   });

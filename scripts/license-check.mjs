@@ -45,6 +45,14 @@ console.log(
       expect: true,
     },
     {
+      // ~200 characters with no spaces, which a mail client hard-wraps; the
+      // breaks come back with the paste, inside the payload and signature.
+      label: "the same key wrapped across lines by a mail client",
+      key: genuine.match(/.{1,76}/g).join("\r\n "),
+      major: 1,
+      expect: true,
+    },
+    {
       label: "a forged email",
       key: tamper(genuine, { email: "thief@example.com" }),
       major: 1,

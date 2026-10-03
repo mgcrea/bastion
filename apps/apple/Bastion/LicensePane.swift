@@ -229,7 +229,7 @@ struct LicensePane: View {
       // A `TextEditor` rather than the single-line field this used to be: the
       // key is 240 characters, and a key pasted out of a mail client can arrive
       // with the line breaks that client wrapped it at. `LicenseKey.check`
-      // trims, and a box that shows the whole thing is what lets somebody see
+      // drops every whitespace character, and a box that shows the whole thing is what lets somebody see
       // they have pasted half of it.
       TextEditor(text: $entry)
         .font(.system(.caption, design: .monospaced))
