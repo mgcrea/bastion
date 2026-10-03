@@ -132,6 +132,18 @@ nonisolated enum CredentialStore {
   /// cheerfully reports the variable unset. The call still returns `nil`,
   /// because there is no value to return — but it says so first.
   static func read(_ scope: Scope, account: String) -> String? {
+    do {
+      return try lookup(scope, account: account)
+    } catch {
+      hostLog("keychain", .error, error.localizedDescription)
+      return nil
+    }
+  }
+
+  /// The value, nil when it is not set, and an error when it is set and could
+  /// not be had. For a caller whose next step depends on the difference — one
+  /// that would otherwise replace a value it merely failed to read.
+  static func lookup(_ scope: Scope, account: String) throws -> String? {
     var query = baseQuery(scope, account: account)
     query[kSecReturnData as String] = true
     query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -141,9 +153,8 @@ nonisolated enum CredentialStore {
     if status == errSecSuccess, let data = item as? Data {
       return String(data: data, encoding: .utf8)
     }
-    if status != errSecItemNotFound {
-      let error = StoreError.keychain(status, "read \(account)")
-      hostLog("keychain", .error, error.localizedDescription)
+    guard status == errSecItemNotFound else {
+      throw StoreError.keychain(status, "read \(account)")
     }
     return nil
   }

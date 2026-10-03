@@ -52,7 +52,15 @@ enum ClientWiringMerge {
   }
 
   static func readJSON(_ url: URL) throws -> [String: Any] {
-    let data = try Data(contentsOf: url)
+    var data = try Data(contentsOf: url)
+    // Empty is also what a config looks like halfway through another process
+    // rewriting it — truncate, then write — and read as `{}` there, the merge
+    // wrote back a file holding only Bastion's entries. One more look, a
+    // moment later, tells that apart from a file that really is empty.
+    if data.isEmpty {
+      Thread.sleep(forTimeInterval: 0.25)
+      data = try Data(contentsOf: url)
+    }
     if data.isEmpty { return [:] }
     guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
       throw ReadError.notJSONObject(url)
@@ -525,6 +533,9 @@ enum ClientWiringMerge {
   /// the same `URL` around a write come back identical and the precondition this
   /// exists for silently passes.
   static func stamp(of url: URL) -> Stamp {
+    // Of the file, not of a symlink to it: `attributesOfItem` does not follow
+    // one, and a link's own size and date never move when the file does.
+    let url = url.resolvingSymlinksInPath()
     guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
       let size = attributes[.size] as? Int, let modified = attributes[.modificationDate] as? Date
     else { return .absent }
@@ -560,6 +571,16 @@ enum ClientWiringMerge {
   ) throws -> URL? {
     let fm = FileManager.default
     var backup: URL?
+    // A config that is a symlink — into a dotfiles repository, most often —
+    // is written through: backed up, swapped and stamped at the file it points
+    // at, and the link left as it was. Against the link itself `replaceItemAt`
+    // refused, and `copyItem` made a "backup" that was a second link to the
+    // live file rather than a copy of it. The backup stays beside the path
+    // the client reads, not beside the file: inside a dotfiles repository a
+    // stray `.bastion-backup` holding a bearer token is one `git add .` from
+    // being published.
+    let configured = url
+    let url = url.resolvingSymlinksInPath()
 
     // Before the backup: a write that is not going to happen must not leave a
     // new `.bastion-backup` behind claiming it did.
@@ -573,7 +594,7 @@ enum ClientWiringMerge {
     if let current = try? Data(contentsOf: url), current == data { return nil }
 
     if fm.fileExists(atPath: url.path) {
-      backup = url.appendingPathExtension(backupSuffix)
+      backup = configured.appendingPathExtension(backupSuffix)
       try? fm.removeItem(at: backup!)
       try fm.copyItem(at: url, to: backup!)
       // Same 0600 the target gets below, and for a stronger reason: a copy

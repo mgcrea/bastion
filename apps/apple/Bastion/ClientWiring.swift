@@ -485,7 +485,13 @@ enum ClientWiring {
   /// re-running "Configure" to pick up a new server would silently break the
   /// entries it was not touching.
   static func token(for client: Client) throws -> String {
-    if let existing = CredentialStore.read(.gatewayToken, account: client.id), !existing.isEmpty {
+    // Minted only when there is none. A token that is there and could not be
+    // read — a locked keychain, a denied prompt — used to be replaced, and if
+    // the config write then failed the Keychain held a new token while the
+    // client still sent the old one, and every call came back 401.
+    if let existing = try CredentialStore.lookup(.gatewayToken, account: client.id),
+      !existing.isEmpty
+    {
       return existing
     }
     return try GatewayToken.issue(to: client.id)

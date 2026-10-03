@@ -107,6 +107,8 @@ struct WiringCheck {
     unrelatedKeysSurvive()
     bothTransportsRoundTrip()
     rewireKeepsTheUsersOwnSettings()
+    aSymlinkedConfigIsWrittenThrough()
+    anEmptyReadIsReadAgain()
     isOursIsNarrow()
     targetReadsBothShapes()
     renamedKeysMigrateOnlyWhenOurs()
@@ -408,6 +410,77 @@ struct WiringCheck {
       "changing transport drops the old one's keys",
       bridged?["url"] == nil && bridged?["headers"] == nil && bridged?["type"] == nil)
     check("and still keeps the user's", bridged?["disabled"] as? Bool == true)
+  }
+
+  /// An empty file is what a config looks like halfway through another
+  /// process rewriting it — truncate, then write. Read as `{}` there, the
+  /// merge wrote back a file holding only Bastion's entries, and the backup
+  /// was of the empty file.
+  static func anEmptyReadIsReadAgain() {
+    print("\nA config that is empty when first read")
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("bastion-empty-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: url) }
+    try? Data().write(to: url)
+    DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
+      try? Data(#"{"theirs":1}"#.utf8).write(to: url)
+    }
+    let root = try? ClientWiringMerge.readJSON(url)
+    check(
+      "a file that fills in a moment later is read as what it became", root?["theirs"] as? Int == 1)
+
+    try? Data().write(to: url)
+    check(
+      "a file that stays empty is still an empty config",
+      (try? ClientWiringMerge.readJSON(url))?.isEmpty == true)
+  }
+
+  /// A config that is a symlink into somebody's dotfiles repository.
+  ///
+  /// `replaceItemAt` refused to swap a symlink, so such a config could never be
+  /// written; the backup `copyItem` made first was itself a symlink to the
+  /// live file, not a snapshot of it; and the stamp was the link's own, so the
+  /// changed-underneath check could not see the file change.
+  static func aSymlinkedConfigIsWrittenThrough() {
+    print("\nA config that is a symlink")
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appendingPathComponent("bastion-link-\(UUID().uuidString)")
+    let dotfiles = root.appendingPathComponent("dotfiles", isDirectory: true)
+    try? fm.createDirectory(at: dotfiles, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: root) }
+    let real = dotfiles.appendingPathComponent("mcp.json")
+    let link = root.appendingPathComponent("mcp.json")
+    try? Data(#"{"old":true}"#.utf8).write(to: real)
+    try? fm.createSymbolicLink(at: link, withDestinationURL: real)
+
+    let stamp = ClientWiringMerge.stamp(of: link)
+    var backup: URL?
+    var threw: Error?
+    do {
+      backup = try ClientWiringMerge.write(
+        Data(#"{"new":true}"#.utf8), to: link, backupSuffix: "bastion-backup", expecting: stamp)
+    } catch {
+      threw = error
+    }
+    check("it is written (\(threw.map { "\($0)" } ?? "no error"))", threw == nil)
+    check(
+      "through the link, into the file it points at",
+      (try? Data(contentsOf: real)) == Data(#"{"new":true}"#.utf8))
+    check(
+      "and the link is still a link",
+      (try? fm.destinationOfSymbolicLink(atPath: link.path)) != nil)
+    let backedUp =
+      backup.map { (try? fm.destinationOfSymbolicLink(atPath: $0.path)) == nil } ?? false
+    check(
+      "the backup is a copy of what was there, not a link to the live file",
+      backedUp && backup.flatMap { try? Data(contentsOf: $0) } == Data(#"{"old":true}"#.utf8))
+
+    // The stamp follows the link too, so a change to the real file is seen.
+    let before = ClientWiringMerge.stamp(of: link)
+    try? Data(#"{"changed by someone else":true,"padding":"xxxxxxxx"}"#.utf8).write(to: real)
+    check(
+      "a change to the file behind the link moves its stamp",
+      ClientWiringMerge.stamp(of: link) != before)
   }
 
   /// Both entry shapes survive a write and read back as configured.
