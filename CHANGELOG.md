@@ -60,7 +60,8 @@ are taken from this file, which is the curated summary.
 - The API revokes, on fulfilment, a licence refunded before it was issued, and does not mail it;
   a dispute inquiry no longer revokes; a free checkout is fulfilled; an event claim a dead Worker
   abandoned is taken over after five minutes; and a `CURRENT_MAJOR` the app cannot read fails the
-  config check. Apply migrations 0003 and 0004 before deploying it.
+  config check. Apply migrations 0003 and 0004 before deploying it. The test environment now pins
+  its own test-mode price, so a rehearsal refuses another product's sale as production does.
 - `make revocations` renders against the real `Revocations.swift` declaration and revokes every
   licence the test environment minted, and its `--check` fails on a release tag without a token.
 - CI refuses pre-release tags, runs skills-check and remote-check, and drops the signing keychain

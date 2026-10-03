@@ -514,9 +514,11 @@ describe("the product guard", () => {
   });
 
   // Unset means unguarded, which is what makes this safe to deploy before the
-  // var is configured, and what the test environment runs as.
+  // var is configured.
   it("fulfils any price when none is configured", async () => {
-    const built = testEnv({ EXPECTED_PRICE_ID: "" });
+    // Cast: the generated `Env` types EXPECTED_PRICE_ID as the literals in
+    // wrangler.jsonc, and both environments now pin one.
+    const built = testEnv({ EXPECTED_PRICE_ID: "" } as unknown as Partial<Env>);
     const response = await webhook(built.env, completed({ metadata: { price_id: "price_other" } }));
     expect(response.status).toBe(200);
     expect(await count(built.env)).toBe(1);
