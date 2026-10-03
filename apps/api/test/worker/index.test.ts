@@ -18,6 +18,7 @@ const INTENT = "pi_test_1";
 beforeEach(async () => {
   await env.DB.prepare("DELETE FROM licenses").run();
   await env.DB.prepare("DELETE FROM stripe_events").run();
+  await env.DB.prepare("DELETE FROM early_revocations").run();
 });
 
 // Several tests spy on `console.error` or stub `fetch`; none may leak into the next.
@@ -247,6 +248,18 @@ describe("the webhook", () => {
     const again = await webhook(built.env, completed());
     expect(again.status).toBe(200);
     expect(await again.text()).toBe("already sent");
+    expect(await count(built.env)).toBe(1);
+    expect(built.sent).toHaveLength(1);
+  });
+
+  // A 100%-off promotion code: nothing to pay, and still a sale.
+  it("mints and mails a key for a session that needed no payment", async () => {
+    const built = testEnv();
+    const response = await webhook(
+      built.env,
+      completed({ payment_status: "no_payment_required", amount_total: 0 }),
+    );
+    expect(response.status).toBe(200);
     expect(await count(built.env)).toBe(1);
     expect(built.sent).toHaveLength(1);
   });
@@ -561,6 +574,52 @@ describe("refunds and disputes", () => {
     const won = await webhook(built.env, disputeEvent("charge.dispute.closed", { status: "won" }));
     expect(await won.text()).toBe("dispute won: restored 0");
     expect((await row(built.env))?.revoked_at).toBe(when);
+  });
+
+  // Fulfilment answers 500 until the key is mailed, and Stripe retries it for
+  // days; a buyer refunded inside that window used to get a working key from
+  // the retry, for money already returned, and nothing ever revoked it.
+  it("records a refund that arrives before the licence, and mails nothing later", async () => {
+    const built = testEnv();
+    const early = await webhook(
+      built.env,
+      chargeEvent("charge.refunded", { amount_refunded: 1499 }),
+    );
+    expect(early.status).toBe(200);
+    expect(await early.text()).toContain("before the licence");
+
+    const late = await webhook(built.env, completed());
+    expect(late.status).toBe(200);
+    expect(await late.text()).toBe("revoked, not re-sent");
+    expect(built.sent).toHaveLength(0);
+    const licence = await row(built.env);
+    expect(licence?.revoked_at).not.toBeNull();
+    expect(licence?.revoked_reason).toBe("refunded");
+  });
+
+  it("restores a licence revoked by an early dispute once the dispute is won", async () => {
+    const built = testEnv();
+    await webhook(built.env, disputeEvent("charge.dispute.created"));
+    await webhook(built.env, completed());
+    expect((await row(built.env))?.revoked_reason).toBe("disputed");
+    expect(built.sent).toHaveLength(0);
+
+    const won = await webhook(built.env, disputeEvent("charge.dispute.closed", { status: "won" }));
+    expect(await won.text()).toBe("dispute won: restored 1");
+    expect((await row(built.env))?.revoked_at).toBeNull();
+  });
+
+  // An inquiry (`warning_needs_response`) is the bank asking a question, not
+  // a chargeback, and it closes as `warning_closed` rather than `won` — so
+  // revoking on it left a paying customer revoked for good.
+  it("leaves a licence alone on an inquiry", async () => {
+    const built = await fulfilled();
+    const response = await webhook(
+      built.env,
+      disputeEvent("charge.dispute.created", { status: "warning_needs_response" }),
+    );
+    expect(await response.text()).toContain("inquiry");
+    expect((await row(built.env))?.revoked_at).toBeNull();
   });
 
   it("does not re-send a revoked licence", async () => {

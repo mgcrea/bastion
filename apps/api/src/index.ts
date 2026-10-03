@@ -209,7 +209,11 @@ const fulfil = async (object: unknown, env: Env, livemode: boolean): Promise<Res
     return unfixable(`session: ${explain(parsed.error)}`);
   }
   const session = parsed.data;
-  if (session.payment_status !== "paid") {
+  // `no_payment_required` is a 100%-off promotion code: nothing to pay, and
+  // still a sale. It used to fall in with "not paid yet" and be dropped with a
+  // 200, so the code's holder got no key and nothing said why.
+  if (session.payment_status !== "paid" && session.payment_status !== "no_payment_required") {
+    console.log(`fulfil: ${session.id} is ${session.payment_status}, nothing minted yet`);
     return new Response("not paid yet", { status: 200 });
   }
   const email = session.customer_details?.email?.trim().toLowerCase();
@@ -306,6 +310,25 @@ const fulfil = async (object: unknown, env: Env, livemode: boolean): Promise<Res
     return new Response("could not record the licence", { status: 500 });
   }
 
+  // Refunded or disputed before it got here. Recorded all the same, so a won
+  // dispute can restore it and the resend route can deliver it then — but
+  // recorded revoked, so the check below does not mail it.
+  if (!row.revoked_at && session.payment_intent) {
+    const early = await env.DB.prepare(
+      "SELECT reason, revoked_at FROM early_revocations WHERE payment_intent = ?",
+    )
+      .bind(session.payment_intent)
+      .first<{ reason: string; revoked_at: string }>();
+    if (early) {
+      await env.DB.prepare(
+        "UPDATE licenses SET revoked_at = ?, revoked_reason = ? WHERE id = ? AND revoked_at IS NULL",
+      )
+        .bind(early.revoked_at, early.reason, row.id)
+        .run();
+      row = { ...row, revoked_at: early.revoked_at };
+    }
+  }
+
   // A revoked licence is not re-sent, for the same reason `handleResend` will
   // not send one: the money has been given back. Without this, a redelivery
   // arriving after the cooldown — or a "Resend" click on the event in the Stripe
@@ -345,13 +368,32 @@ const revoke = async (env: Env, paymentIntent: string | null | undefined, why: s
     // log on the Stripe dashboard, where someone will see it.
     return new Response(`${why}: no payment intent on the event, nothing revoked`, { status: 200 });
   }
+  const now = new Date().toISOString();
   const result = await env.DB.prepare(
     "UPDATE licenses SET revoked_at = ?, revoked_reason = ?" +
       " WHERE payment_intent = ? AND revoked_at IS NULL",
   )
-    .bind(new Date().toISOString(), why, paymentIntent)
+    .bind(now, why, paymentIntent)
     .run();
-  return new Response(`${why}: revoked ${result.meta.changes ?? 0}`, { status: 200 });
+  const changes = result.meta.changes ?? 0;
+  if (changes > 0) return new Response(`${why}: revoked ${changes}`, { status: 200 });
+
+  // Nothing to revoke: either already revoked, or the licence does not exist
+  // YET — fulfilment answers 500 until the key is mailed, and a buyer refunded
+  // inside that window used to get a working key from the retry. Written down
+  // so `fulfil` records that licence revoked. A payment that already has a
+  // licence is the first case, and needs nothing more.
+  const known = await env.DB.prepare("SELECT 1 FROM licenses WHERE payment_intent = ?")
+    .bind(paymentIntent)
+    .first();
+  if (known) return new Response(`${why}: revoked 0`, { status: 200 });
+  await env.DB.prepare(
+    "INSERT INTO early_revocations (payment_intent, reason, revoked_at) VALUES (?, ?, ?)" +
+      " ON CONFLICT (payment_intent) DO NOTHING",
+  )
+    .bind(paymentIntent, why, now)
+    .run();
+  return new Response(`${why}: recorded before the licence existed`, { status: 200 });
 };
 
 /**
@@ -371,6 +413,13 @@ const refunded = async (object: unknown, env: Env): Promise<Response> => {
 const disputed = async (object: unknown, env: Env): Promise<Response> => {
   const parsed = dispute.safeParse(object);
   if (!parsed.success) return unfixable(`dispute: ${explain(parsed.error)}`);
+  // An inquiry is the bank asking a question, not a chargeback. It arrives as
+  // `charge.dispute.created` with a `warning_` status and closes as
+  // `warning_closed`, never `won` — so revoking on it left a paying customer
+  // revoked for good. If it escalates, Stripe sends a real dispute.
+  if (parsed.data.status?.startsWith("warning_")) {
+    return new Response(`inquiry (${parsed.data.status}): licence left alone`, { status: 200 });
+  }
   return revoke(env, parsed.data.payment_intent, "disputed");
 };
 
@@ -401,6 +450,13 @@ const disputeClosed = async (object: unknown, env: Env): Promise<Response> => {
   const result = await env.DB.prepare(
     "UPDATE licenses SET revoked_at = NULL, revoked_reason = NULL" +
       " WHERE payment_intent = ? AND revoked_reason = 'disputed'",
+  )
+    .bind(paymentIntent)
+    .run();
+  // And the note an early dispute left, or a licence fulfilled after this
+  // would still be recorded revoked.
+  await env.DB.prepare(
+    "DELETE FROM early_revocations WHERE payment_intent = ? AND reason = 'disputed'",
   )
     .bind(paymentIntent)
     .run();
