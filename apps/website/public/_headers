@@ -8,8 +8,12 @@
 # per page as a <meta> tag carrying a sha256 for each inline script, and those
 # hashes change with the build, so a copy here would go stale on the next deploy
 # and start refusing the site's own scripts.
+#
+# No `preload` on Strict-Transport-Security. The preload list takes registrable
+# domains only, so on bastion.mgcrea.io the token did nothing except suggest the
+# site was on the list. Preloading belongs on mgcrea.io itself, if anywhere.
 /*
-  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
