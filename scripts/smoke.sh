@@ -108,11 +108,20 @@ echo "Two clients, colliding ids"
 # than merely suspected. The first attempt paired tools/list with resources/list
 # and prompts/list, which this server does not implement — the relay was fine
 # and the test was measuring the server's "Method not found".
-CALL_TOOL="${CALL_TOOL:-shopify_get_shop}"
+#
+# The second shape is a tool call when one is named (CALL_TOOL, or shopify's own
+# read for the documented default) and `ping` otherwise: every server answers
+# it, with an empty result, which is still not a tool list. A hard-coded
+# shopify tool used to fail this section on every other server.
+if [ -n "${CALL_TOOL:-}" ] || [ "$SERVER" = "shopify" ]; then
+  SECOND='"method":"tools/call","params":{"name":"'"${CALL_TOOL:-shopify_get_shop}"'","arguments":{}}'
+else
+  SECOND='"method":"ping"'
+fi
 post "$TMP"/smoke-a.json '{"jsonrpc":"2.0","id":7,"method":"tools/list"}' & A=$!
-post "$TMP"/smoke-b.json '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"'"$CALL_TOOL"'","arguments":{}}}' & B=$!
+post "$TMP"/smoke-b.json '{"jsonrpc":"2.0","id":7,'"$SECOND"'}' & B=$!
 post "$TMP"/smoke-c.json '{"jsonrpc":"2.0","id":8,"method":"tools/list"}' & C=$!
-post "$TMP"/smoke-d.json '{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"'"$CALL_TOOL"'","arguments":{}}}' & D=$!
+post "$TMP"/smoke-d.json '{"jsonrpc":"2.0","id":8,'"$SECOND"'}' & D=$!
 wait $A $B $C $D
 
 # The id AND a non-error result. Matching the id alone passed vacuously the
