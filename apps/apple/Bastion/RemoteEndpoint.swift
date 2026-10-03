@@ -51,6 +51,7 @@ nonisolated enum RemoteEndpoint {
     case bastionItself(String)
     case unresolvable(host: String, detail: String)
     case crossOriginRedirect(from: String, to: String)
+    case unconfirmedPeer(host: String)
 
     var errorDescription: String? {
       switch self {
@@ -79,6 +80,10 @@ nonisolated enum RemoteEndpoint {
           "\(from) redirected to \(to), and following it would have sent this profile's "
           + "credential there. Refused rather than followed without it: a cross-origin redirect "
           + "on an MCP endpoint has no legitimate reading"
+      case .unconfirmedPeer(let host):
+        return
+          "could not see which address \(host) answered from, so the answer was refused — a name "
+          + "that resolves somewhere else on the second lookup looks exactly like this"
       }
     }
   }
@@ -140,6 +145,21 @@ nonisolated enum RemoteEndpoint {
     // allowed back from there. A NAME that lands on loopback is still refused.
     if isLoopbackLiteral(host), case .bastion? = judgement { return }
     if let judgement { throw judgement.error(host: host) }
+  }
+
+  /// Every hop of one exchange, as `RemoteInstance` observed them — nil when
+  /// the metrics never arrived.
+  ///
+  /// Nothing observed is refused. It used to pass, on the reasoning that
+  /// `preflight` had judged the name; but `preflight` is the resolution BEFORE
+  /// the request, and a rebinding answer is precisely a second resolution that
+  /// differs. An exchange whose peer was never seen is one this cannot vouch
+  /// for.
+  static func verify(connectedTo addresses: [String]?, host: String) throws {
+    guard let addresses, !addresses.isEmpty else {
+      throw EndpointError.unconfirmedPeer(host: host)
+    }
+    for address in addresses { try verify(connectedTo: address, host: host) }
   }
 
   // MARK: - The loopback exception

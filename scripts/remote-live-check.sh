@@ -111,7 +111,9 @@ profiles.append({"name": "remotecheckdocs", "server": "cloudflare-docs",
 json.dump(profiles, open(os.path.join(support, "profiles.json"), "w"), indent=2)
 PY
 
-"$BIN" --trial >"$TMP/bastion-remote.log" 2>&1 &
+# `-gatewayPort` so BASTION_PORT moves the build under test, not just the
+# requests below — see smoke.sh.
+"$BIN" --trial -gatewayPort "$PORT" >"$TMP/bastion-remote.log" 2>&1 &
 APP=$!
 for _ in $(seq 1 40); do nc -z 127.0.0.1 "$PORT" 2>/dev/null && break; sleep 0.25; done
 sleep 1
@@ -166,7 +168,7 @@ cat > "$SUPPORT/import.json" <<JSON
 }
 JSON
 kill "$APP" 2>/dev/null; wait "$APP" 2>/dev/null
-"$BIN" --trial >>"$TMP/bastion-remote.log" 2>&1 &
+"$BIN" --trial -gatewayPort "$PORT" >>"$TMP/bastion-remote.log" 2>&1 &
 APP=$!
 for _ in $(seq 1 40); do nc -z 127.0.0.1 "$PORT" 2>/dev/null && break; sleep 0.25; done
 sleep 2

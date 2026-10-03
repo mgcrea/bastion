@@ -113,6 +113,11 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     // Bastion adds every header itself, and an implicit one is a header nobody
     // reviewed.
     configuration.httpAdditionalHeaders = [:]
+    // No cache, so every answer came over a connection whose peer can be
+    // judged. A cached one has no remote address, and the check after the
+    // exchange refuses an answer it cannot place.
+    configuration.urlCache = nil
+    configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
     self.session = URLSession(configuration: configuration)
 
     // Before anything is sent, and before Activity claims this is running.
@@ -687,14 +692,6 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
         result = .failure(refusal)
         return
       }
-      do {
-        for address in collector.remoteAddresses {
-          try RemoteEndpoint.verify(connectedTo: address, host: host)
-        }
-      } catch {
-        result = .failure(error)
-        return
-      }
       result = .success(
         Response(
           status: http.statusCode,
@@ -713,6 +710,15 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
       throw Supervisor.SupervisorError.childDied("no response")
     }
     let response = try result.get()
+
+    // The address the connection actually landed on, judged before a single
+    // byte of the body is handed back. Too late to stop the request — which is
+    // why `preflight` runs first — in time to refuse the answer. Here rather
+    // than in the completion handler, because the metrics that carry the
+    // address are not promised to arrive before it: judged there, a late
+    // callback meant nothing was judged at all.
+    try RemoteEndpoint.verify(
+      connectedTo: collector.remoteAddresses(waitingUpTo: 2), host: host)
 
     // 202 is the spec's answer to a notification, and it carries no body.
     if response.status == 202 { return response }
@@ -789,7 +795,16 @@ private nonisolated final class MetricsCollector:
 
   private let state = OSAllocatedUnfairLock(initialState: State())
 
-  var remoteAddresses: [String] { state.withLock { $0.addresses } }
+  /// Signalled once the metrics are in, which may be after the completion
+  /// handler has run.
+  private let collected = DispatchSemaphore(value: 0)
+
+  /// Every hop's peer, or nil if the metrics did not arrive in time.
+  func remoteAddresses(waitingUpTo seconds: TimeInterval) -> [String]? {
+    guard collected.wait(timeout: .now() + seconds) == .success else { return nil }
+    collected.signal()
+    return state.withLock { $0.addresses }
+  }
   var refusal: Error? { state.withLock { $0.refusal } }
 
   func urlSession(
@@ -825,5 +840,6 @@ private nonisolated final class MetricsCollector:
   ) {
     let seen = metrics.transactionMetrics.compactMap { $0.remoteAddress }.filter { !$0.isEmpty }
     state.withLock { $0.addresses.append(contentsOf: seen) }
+    collected.signal()
   }
 }

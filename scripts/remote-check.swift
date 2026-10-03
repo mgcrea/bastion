@@ -140,10 +140,20 @@ struct RemoteCheck {
     check("a typed 127.0.0.1 may land on loopback", landed("127.0.0.1", typed: "127.0.0.1"))
     check("a typed ::1 may land on loopback", landed("::1", typed: "::1"))
     check("a typed 127.0.0.1 may not land elsewhere", !landed("192.168.1.10", typed: "127.0.0.1"))
-    // Nothing observed is not the same as nothing wrong, but there is also
-    // nothing to judge — `preflight` is what covers this case, and it ran
-    // before the request.
-    check("no observed address is not a failure", !refusesAddress(""))
+    // Nothing observed used to pass, on the reasoning that `preflight` had
+    // judged the name. But `preflight` is the resolution BEFORE the request,
+    // and a rebinding answer is exactly a second resolution that differs —
+    // so an exchange whose peer was never seen (its metrics arrived late, or
+    // not at all) is one the check cannot vouch for.
+    func refusesPeers(_ addresses: [String]?) -> Bool {
+      (try? RemoteEndpoint.verify(connectedTo: addresses, host: "example.com")) == nil
+    }
+    check("an exchange whose peer was never observed is refused", refusesPeers(nil))
+    check("and one that observed no address at all", refusesPeers([]))
+    check("a public peer on every hop is accepted", !refusesPeers(["93.184.216.34"]))
+    check(
+      "one private hop among public ones is refused",
+      refusesPeers(["93.184.216.34", "10.0.0.5"]))
 
     print("\nNo host at all")
     check("a bare scheme is refused", refusesShape("https://"))
