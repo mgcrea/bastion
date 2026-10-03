@@ -330,7 +330,11 @@ final class SkillStore {
   }
 
   func exportZIP(_ skill: Skill, to url: URL) throws {
-    let folder = URL(fileURLWithPath: skill.path).resolvingSymlinksInPath().path
+    // Zipped from a staged copy without hidden entries — see `SkillExport`.
+    let staging = FileManager.default.temporaryDirectory
+      .appendingPathComponent("bastion-export-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: staging) }
+    let folder = try SkillExport.stage(skill.path, in: staging).path
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
     process.arguments = ["-c", "-k", "--keepParent", folder, url.path]

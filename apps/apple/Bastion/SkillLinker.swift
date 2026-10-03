@@ -192,3 +192,40 @@ nonisolated enum SkillLinker {
     throw LinkError.notALink(path)
   }
 }
+
+/// What goes into a skill's ZIP for claude.ai.
+///
+/// A copy of the folder without its hidden entries. A `.skill` source rooted at
+/// a repository makes the skill folder the repository itself, and zipping it
+/// whole packed its `.git` — history, remotes, maybe a token in a remote URL —
+/// and any `.env` beside SKILL.md, into a file whose only purpose is to be
+/// uploaded somewhere else.
+nonisolated enum SkillExport {
+  /// The staged copy, named as the folder is, inside `staging`.
+  static func stage(_ folder: String, in staging: URL) throws -> URL {
+    let fm = FileManager.default
+    let source = (folder as NSString).resolvingSymlinksInPath
+    let target = staging.appendingPathComponent(
+      (source as NSString).lastPathComponent, isDirectory: true)
+    try fm.createDirectory(at: target, withIntermediateDirectories: true)
+    // Relative paths straight from the walk: building them by trimming an
+    // absolute prefix breaks wherever /var and /private/var both spell it.
+    guard let walk = fm.enumerator(atPath: source) else { return target }
+    while let relative = walk.nextObject() as? String {
+      if (relative as NSString).lastPathComponent.hasPrefix(".") {
+        walk.skipDescendants()
+        continue
+      }
+      let from = (source as NSString).appendingPathComponent(relative)
+      let destination = target.appendingPathComponent(relative)
+      var isFolder: ObjCBool = false
+      fm.fileExists(atPath: from, isDirectory: &isFolder)
+      if isFolder.boolValue {
+        try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+      } else {
+        try fm.copyItem(atPath: from, toPath: destination.path)
+      }
+    }
+    return target
+  }
+}

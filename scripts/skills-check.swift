@@ -41,6 +41,7 @@ struct SkillsCheck {
 
     targetsDeduplicateThroughSymlinks()
     anInvalidSkillIsLeftLinked()
+    anExportLeavesHiddenFilesBehind()
     planLinksWhatIsMissingAndNothingElse()
     relativeLinksAreJudgedByWhereTheyLand()
     sourceSpelledThroughASymlink()
@@ -406,6 +407,36 @@ struct SkillsCheck {
     check(
       "and is reported as invalid",
       plan.reports["shared"]?.invalid == ["alpha"])
+  }
+
+  /// The ZIP is for uploading to claude.ai. A `.skill` source rooted at a
+  /// repository makes the skill folder the repository, and `ditto` packed its
+  /// `.git` and any `.env` beside SKILL.md.
+  static func anExportLeavesHiddenFilesBehind() {
+    print("export")
+    let fm = FileManager.default
+    let root = scratch()
+    defer { try? fm.removeItem(atPath: root) }
+    let skill = root + "/my-skill"
+    try? fm.createDirectory(atPath: skill + "/scripts", withIntermediateDirectories: true)
+    try? fm.createDirectory(atPath: skill + "/.git", withIntermediateDirectories: true)
+    try? "---\nname: my-skill\n---\n".write(
+      toFile: skill + "/SKILL.md", atomically: true, encoding: .utf8)
+    try? "echo hi".write(toFile: skill + "/scripts/run.sh", atomically: true, encoding: .utf8)
+    try? "TOKEN=secret".write(toFile: skill + "/.env", atomically: true, encoding: .utf8)
+    try? "[core]".write(toFile: skill + "/.git/config", atomically: true, encoding: .utf8)
+
+    let staging = URL(fileURLWithPath: root + "/staging")
+    guard let staged = try? SkillExport.stage(skill, in: staging) else {
+      return check("a skill folder can be staged", false)
+    }
+    let present = Set(
+      (fm.enumerator(atPath: staged.path)?.allObjects as? [String]) ?? [])
+    check("it keeps the folder's name", staged.lastPathComponent == "my-skill")
+    check("SKILL.md and the scripts go", present.isSuperset(of: ["SKILL.md", "scripts/run.sh"]))
+    check(
+      "a .env and the .git folder do not",
+      !present.contains(".env") && !present.contains { $0.hasPrefix(".git") })
   }
 
   static func targetsDeduplicateThroughSymlinks() {
