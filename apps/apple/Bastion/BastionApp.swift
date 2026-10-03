@@ -159,8 +159,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// it does, and no parent to notice it is there — which is precisely the
   /// state the whole project exists to end.
   func applicationWillTerminate(_ notification: Notification) {
-    Supervisor.shared.stopAll()
+    // The listener first. A request arriving between the two would otherwise
+    // spawn a fresh child after `stopAll` had already swept the table.
     Gateway.shared.stop()
+    Supervisor.shared.stopAll()
     // The last minute of counters, which the sixty-second timer has not reached.
     // Synchronous on this thread on purpose: there is no later.
     CallStats.shared.flushNow()

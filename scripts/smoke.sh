@@ -55,7 +55,12 @@ sleep 1
 # `--trial` arms the same thirty-minute window the button does. The licence
 # gate refuses every request without one, and faking a key here would test a
 # path no user has.
-"$BIN" --trial >"$LOG" 2>&1 &
+#
+# `-gatewayPort` for the reason builtin-check.sh gives: without it BASTION_PORT
+# moves only the curl below, while the build under test still tries 8720, fails
+# to bind beside a Bastion somebody is working in, and every request lands on
+# that other copy.
+"$BIN" --trial -gatewayPort "$PORT" >"$LOG" 2>&1 &
 APP=$!
 trap 'kill "$APP" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 

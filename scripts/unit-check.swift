@@ -2757,6 +2757,71 @@ struct UnitCheck {
       }
     }
 
+    print("\nRestartBackoff: a server that will not start")
+    // The breaker lived on the instance, and the instance is replaced on every
+    // request once its child is dead — so the count went back to zero each
+    // time and a server that crashes on start was respawned on every request.
+    // The table is the supervisor's, keyed by profile, and outlives instances.
+    do {
+      let backoff = RestartBackoff()
+      let t0 = Date(timeIntervalSince1970: 1_000_000)
+      check(
+        "a profile that never failed is not held back", backoff.blockedUntil("p/s", now: t0) == nil)
+      // One crash of a child that was serving is retried on the next request:
+      // smoke.sh kills one with -9 and expects exactly that. A healthy child
+      // clears the count at its handshake, so only a failure to come back up
+      // is ever held back.
+      backoff.failed("p/s", now: t0)
+      check("the first failure is retried at once", backoff.blockedUntil("p/s", now: t0) == nil)
+      backoff.failed("p/s", now: t0)
+      check(
+        "a second holds it for two seconds",
+        backoff.blockedUntil("p/s", now: t0) == t0.addingTimeInterval(2))
+      check(
+        "and lets it go once they pass",
+        backoff.blockedUntil("p/s", now: t0.addingTimeInterval(2.5)) == nil)
+      for _ in 0..<10 { backoff.failed("p/s", now: t0) }
+      check(
+        "repeated failures back off to a ceiling of a minute",
+        backoff.blockedUntil("p/s", now: t0) == t0.addingTimeInterval(60))
+      check(
+        "another profile is not held back by this one", backoff.blockedUntil("q/s", now: t0) == nil)
+      backoff.succeeded("p/s")
+      check("a successful start clears it", backoff.blockedUntil("p/s", now: t0) == nil)
+    }
+
+    print("\nChildTermination: a child that will not stop")
+    // SIGTERM and nothing else: a child that ignores it, or is wedged, kept
+    // running with the profile's credentials and nothing supervising it.
+    func stubborn() -> Process {
+      let process = Process()
+      process.executableURL = URL(fileURLWithPath: "/bin/sh")
+      // `exec`, so the ignored SIGTERM is the sleep's own: one process, no
+      // grandchild for the check to miss.
+      process.arguments = ["-c", "trap '' TERM; exec /bin/sleep 30"]
+      try? process.run()
+      Thread.sleep(forTimeInterval: 0.2)
+      return process
+    }
+    func gone(_ process: Process, within seconds: TimeInterval) -> Bool {
+      let deadline = Date().addingTimeInterval(seconds)
+      while process.isRunning, Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
+      return !process.isRunning
+    }
+    do {
+      let quitting = [stubborn(), stubborn()]
+      ChildTermination.terminateAll(quitting, grace: 0.5)
+      check(
+        "at quit, every child is gone before the call returns",
+        quitting.allSatisfy { !$0.isRunning } || quitting.allSatisfy { gone($0, within: 0.3) })
+      let stopped = stubborn()
+      ChildTermination.terminate(stopped, grace: 0.3)
+      check("a stop escalates to SIGKILL after the grace", gone(stopped, within: 2))
+      for process in quitting + [stopped] where process.isRunning {
+        kill(process.processIdentifier, SIGKILL)
+      }
+    }
+
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 {
       print("\(failures) failed")

@@ -106,6 +106,12 @@ nonisolated final class Supervisor: @unchecked Sendable {
   /// Per key rather than one global gate: a slow server starting must not hold
   /// up a different profile's first request.
   private let startGates = OSAllocatedUnfairLock<[String: DispatchSemaphore]>(initialState: [:])
+  /// The backoff and the breaker, per profile, here rather than on `Instance`.
+  /// A dead child's instance is replaced on the next request, and while the
+  /// count lived on the instance it went back to zero every time — so a server
+  /// that crashes on start was respawned on every request and the breaker
+  /// never opened.
+  private let backoff = RestartBackoff()
 
   /// Route one client request to the right child, starting it if needed.
   ///
@@ -190,7 +196,11 @@ nonisolated final class Supervisor: @unchecked Sendable {
       taken.removeAll()
       return all
     }
-    for instance in live { instance.stop(reason: "Bastion is quitting") }
+    // Signalled together and waited on here: the app is about to exit, and a
+    // SIGKILL scheduled for later would never fire. A child that ignores
+    // SIGTERM would otherwise outlive Bastion holding its credentials.
+    let processes = live.compactMap { $0.stop(reason: "Bastion is quitting", escalate: false) }
+    ChildTermination.terminateAll(processes, grace: 3)
 
     let remote = remotes.withLock { taken -> [RemoteInstance] in
       let all = Array(taken.values)
@@ -289,7 +299,7 @@ nonisolated final class Supervisor: @unchecked Sendable {
     // Spawned outside the instances lock. Starting a child means a fork, an
     // exec and a blocking handshake, and holding that lock across all three
     // would stall every OTHER profile's requests behind one slow startup.
-    let created = try Instance(profile: profile, server: server)
+    let created = try Instance(profile: profile, server: server, backoff: backoff)
     instances.withLock { $0[key] = created }
     return created
   }
@@ -305,6 +315,7 @@ nonisolated extension Supervisor {
     private let server: BastionServer
 
     private let state = OSAllocatedUnfairLock<State>(initialState: State())
+    private let backoff: RestartBackoff
     /// Every connection thread writes to the one stdin; see `FrameWriter`.
     private let stdinWriter = FrameWriter()
 
@@ -323,9 +334,11 @@ nonisolated extension Supervisor {
       /// The child's `initialize` result, taken once at spawn.
       var handshake: SendableJSON<[String: Any]>?
       var clients: Set<String> = []
-      /// Consecutive failures, for the backoff and the breaker.
-      var failures = 0
-      var blockedUntil: Date?
+      /// Set by `stop()`. A thread still holding this instance after it left
+      /// the table must not spawn a child on it: nothing would reap that
+      /// child, it would not be in the table, and it would run with the
+      /// profile as it was before the edit that retired it.
+      var retired = false
       var lastActivity = Date()
       /// The credential values this child was spawned with, so a line it
       /// prints to stderr can have them struck before it reaches the log.
@@ -438,10 +451,11 @@ nonisolated extension Supervisor {
     var clientCount: Int { state.withLock { $0.clients.count } }
     var isAlive: Bool { state.withLock { $0.process?.isRunning ?? false } }
 
-    init(profile: Profile, server: BastionServer) throws {
+    init(profile: Profile, server: BastionServer, backoff: RestartBackoff) throws {
       self.key = profile.id
       self.profile = profile
       self.server = server
+      self.backoff = backoff
       try ensureRunning()
       startReaper()
     }
@@ -449,7 +463,7 @@ nonisolated extension Supervisor {
     // MARK: Lifecycle
 
     private func start() throws {
-      if let until = state.withLock({ $0.blockedUntil }), until > Date() {
+      if let until = backoff.blockedUntil(key) {
         throw SupervisorError.circuitOpen(profile: key, until: until)
       }
 
@@ -608,17 +622,22 @@ nonisolated extension Supervisor {
       // request of the child that is alive and serving. A nil `current.process`
       // is the ordinary teardown — `stop()` clears it before the SIGTERM — and
       // must still resolve its waiters.
-      let outcome = state.withLock { current -> [Waiter]? in
+      let outcome = state.withLock { current -> (waiters: [Waiter], wasLive: Bool)? in
         if let live = current.process, live !== process { return nil }
+        // Live means nobody took it away first. `stop()` and a failed
+        // handshake both clear `process` before signalling, so their exits
+        // are not crashes — and with the backoff outliving the instance, an
+        // edit that restarts a profile must not count against it.
+        let wasLive = current.process === process
         let taken = Array(current.pending.values)
         current.pending.removeAll()
         current.process = nil
         current.stdin = nil
         current.handshake = nil
         current.toolCatalog = nil
-        return taken
+        return (taken, wasLive)
       }
-      guard let waiters = outcome else {
+      guard let (waiters, wasLive) = outcome else {
         hostLog(
           key, .error,
           "an orphaned server process exited (exit \(status)) — the live one was left alone")
@@ -629,7 +648,7 @@ nonisolated extension Supervisor {
         key, status == 0 ? .info : .error,
         "server exited (\(detail))"
           + (waiters.isEmpty ? "" : " — \(waiters.count) request(s) in flight were dropped"))
-      if status != 0 { noteFailure() }
+      if status != 0, wasLive { noteFailure() }
       CallStats.shared.noteExited(profile: profile.name, server: server.id)
       let id = key
       let dropped = waiters.count
@@ -649,35 +668,45 @@ nonisolated extension Supervisor {
     /// failure legible instead: the error names the profile and says when it
     /// will be tried again.
     private func noteFailure() {
-      state.withLock {
-        $0.failures += 1
-        let delay = min(pow(2.0, Double($0.failures)), 60)
-        $0.blockedUntil = Date().addingTimeInterval(delay)
-      }
+      backoff.failed(key)
     }
 
     private func noteSuccess() {
-      state.withLock {
-        $0.failures = 0
-        $0.blockedUntil = nil
-        $0.lastActivity = Date()
-      }
+      backoff.succeeded(key)
+      state.withLock { $0.lastActivity = Date() }
     }
 
-    func stop(reason: String) {
-      let (timer, process) = state.withLock { current -> (DispatchSourceTimer?, Process?) in
+    /// Retire this instance and stop its child.
+    ///
+    /// SIGTERM first: the child gets to close its own token file and flush its
+    /// own state, and `childExited` still resolves every waiter. Then SIGKILL
+    /// if it is still there after the grace — unless `escalate` is false, when
+    /// the caller is collecting processes to wait on together and gets this
+    /// one back.
+    @discardableResult
+    func stop(reason: String, escalate: Bool = true) -> Process? {
+      let (timer, process, stdin) = state.withLock {
+        current -> (DispatchSourceTimer?, Process?, FileHandle?) in
+        current.retired = true
         let timer = current.reaper
         current.reaper = nil
         let taken = current.process
         current.process = nil
-        return (timer, taken)
+        let pipe = current.stdin
+        current.stdin = nil
+        return (timer, taken, pipe)
       }
       timer?.cancel()
-      guard let process, process.isRunning else { return }
+      // EOF on stdin is the polite half of the signal: a stdio server's read
+      // loop ends on it, and nothing else will ever write to this pipe.
+      try? stdin?.close()
+      guard let process, process.isRunning else { return nil }
       hostLog(key, .info, "stopping — \(reason)")
-      // SIGTERM, not SIGKILL: the child gets to close its own token file and
-      // flush its own state. `childExited` still resolves every waiter.
-      process.terminate()
+      if escalate {
+        ChildTermination.terminate(process, grace: 5)
+        return nil
+      }
+      return process
     }
 
     /// Sweep expired calls and stop an idle child.
@@ -1227,8 +1256,34 @@ nonisolated extension Supervisor {
       // Re-check under the gate. The thread that just released it may have done
       // exactly this work, in which case there is nothing left to do.
       if state.withLock({ $0.process?.isRunning == true && $0.handshake != nil }) { return }
-      if state.withLock({ $0.process?.isRunning != true }) { try start() }
-      try performHandshake()
+      if state.withLock({ $0.retired }) {
+        throw SupervisorError.childDied("this server was stopped")
+      }
+      let starting = state.withLock { $0.process?.isRunning != true }
+      if starting { try start() }
+      do {
+        try performHandshake()
+      } catch {
+        // A child that never answered `initialize` is one nothing will use,
+        // and when this is the first start nothing else knows it is there:
+        // `Instance.init` throws, so the instance never reaches the table and
+        // `stopAll` never sees it. Left alone it would run on, holding the
+        // profile's credentials, one more per retry.
+        noteFailure()
+        if starting {
+          let child = state.withLock { current -> Process? in
+            let taken = current.process
+            current.process = nil
+            current.stdin = nil
+            return taken
+          }
+          if let child {
+            hostLog(key, .error, "stopping a server that did not complete its handshake")
+            ChildTermination.terminate(child, grace: 2)
+          }
+        }
+        throw error
+      }
     }
 
     /// The one `initialize` the child ever sees.
