@@ -64,28 +64,56 @@ jobs:
       # licences against the public key compiled into the app. Both suites
       # existed for a month before anything ran them outside a developer's
       # shell.
-      # The one gate `scripts/generate-revocations.mjs` has always claimed to
-      # have and never had: its own header said "CI only checks that the
-      # committed file is current", and the fork-safe `--check` branch it
-      # implements for exactly this was dead code.
-      #
-      # What it prevents: a licence is refunded, `revoked_at` is set in D1, the
-      # manual `make revocations` is forgotten, and the next notarized release
-      # bakes in a stale list — leaving the refunded key working. Build-time
-      # revocation is the design's only enforcement point, so nothing else
-      # catches it.
-      #
-      # The script skips itself, passing, when there is no token: a pull request
-      # from a fork must not fail over a check it structurally cannot run. On a
-      # release tag it fails instead, since release-app needs this job.
-      - name: Revocations drift 🔍
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: node scripts/generate-revocations.mjs --check
       - name: Types (api) 🔍
         run: pnpm --filter @mgcrea/bastion-api typecheck
       - name: Tests 🔍
         run: pnpm test
+
+  # The one gate `scripts/generate-revocations.mjs` has always claimed to
+  # have: its own header said "CI only checks that the committed file is
+  # current", and the fork-safe `--check` branch it implements for exactly
+  # this was dead code.
+  #
+  # What it prevents: a licence is refunded, `revoked_at` is set in D1, the
+  # manual `make revocations` is forgotten, and the next notarized release
+  # bakes in a stale list — leaving the refunded key working. Build-time
+  # revocation is the design's only enforcement point, so nothing else
+  # catches it.
+  #
+  # Its own job, and the only verify job with `environment:`.
+  # CLOUDFLARE_API_TOKEN is a secret of the `production` environment, not of
+  # the repository. As a step in `manifest`, which names no environment, it
+  # read the secret as empty and skipped on every run, and on the next release
+  # tag that skip would have failed and blocked release-app. Not on pull
+  # requests: this compares the committed file with D1, which a pull request's
+  # code cannot change, and leaving them out keeps the token away from a
+  # branch's dependencies. The token is on the step, not the job, so
+  # `pnpm install` runs without it.
+  #
+  # The script skips itself, passing, when there is no token. On a release tag
+  # it fails instead, since release-app needs this job.
+  revocations:
+    name: Revocations
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    environment: production
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v5
+      - name: Setup pnpm 🔧
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - name: Setup node 🔧
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          check-latest: true
+          cache: "pnpm"
+      - name: Install 🪄
+        run: pnpm install --frozen-lockfile
+      - name: Revocations drift 🔍
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/generate-revocations.mjs --check
 
   # The site build, and the only job that needs Git LFS.
   #
@@ -364,7 +392,8 @@ jobs:
   release-app:
     name: Release Bastion.app
     runs-on: macos-latest
-    needs: [manifest, app]
+    # `revocations` too, so a stale list of refunded keys never ships.
+    needs: [manifest, app, revocations]
     if: startsWith(github.ref, 'refs/tags/app-v')
     permissions:
       contents: write
