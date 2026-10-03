@@ -305,6 +305,8 @@ nonisolated extension Supervisor {
     private let server: BastionServer
 
     private let state = OSAllocatedUnfairLock<State>(initialState: State())
+    /// Every connection thread writes to the one stdin; see `FrameWriter`.
+    private let stdinWriter = FrameWriter()
 
     private struct State {
       var process: Process?
@@ -1387,7 +1389,7 @@ nonisolated extension Supervisor {
       }
       var data = try JSONSerialization.data(withJSONObject: frame)
       data.append(UInt8(ascii: "\n"))
-      guard writeAll(stdin.fileDescriptor, data) else {
+      guard stdinWriter.write(stdin.fileDescriptor, data) else {
         throw SupervisorError.childDied("could not write to the server")
       }
     }

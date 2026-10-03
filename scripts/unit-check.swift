@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import Synchronization
 
 /// Unit checks for the two files that had none and could have.
 ///
@@ -2659,6 +2660,49 @@ struct UnitCheck {
       "while the read dispatcher still claims nothing",
       withWrites.first(where: { $0["name"] as? String == ToolFacade.callName })?["annotations"]
         == nil)
+
+    print("\nFrameWriter: one child's stdin, many connection threads")
+    // Every client of a child writes to the same pipe. A write longer than
+    // PIPE_BUF is not atomic, and `writeAll` loops on short writes, so two
+    // large frames written at once splice into a line that is neither — and
+    // both calls then hang until the deadline. The frames here are well past
+    // the pipe's own buffer, so a writer without a lock interleaves.
+    do {
+      var fds: [Int32] = [0, 0]
+      guard pipe(&fds) == 0 else { fatalError("pipe") }
+      let (readEnd, writeEnd) = (fds[0], fds[1])
+      let received = Mutex(Data())
+      let drained = DispatchSemaphore(value: 0)
+      onDedicatedThread("unit-check reader") {
+        var buffer = [UInt8](repeating: 0, count: 65536)
+        while true {
+          let n = read(readEnd, &buffer, buffer.count)
+          if n <= 0 { break }
+          received.withLock { $0.append(contentsOf: buffer[0..<n]) }
+        }
+        drained.signal()
+      }
+      let writer = FrameWriter()
+      let threads = 8
+      let framesEach = 12
+      let frameBytes = 200_000
+      DispatchQueue.concurrentPerform(iterations: threads) { index in
+        let letter = UInt8(ascii: "a") + UInt8(index)
+        var frame = Data(repeating: letter, count: frameBytes)
+        frame.append(UInt8(ascii: "\n"))
+        for _ in 0..<framesEach { _ = writer.write(writeEnd, frame) }
+      }
+      close(writeEnd)
+      drained.wait()
+      close(readEnd)
+      let lines = received.withLock { $0 }.split(separator: UInt8(ascii: "\n"))
+      check("every frame arrives", lines.count == threads * framesEach)
+      check(
+        "and none is spliced with another",
+        lines.allSatisfy { line in
+          line.count == frameBytes && line.allSatisfy { $0 == line.first }
+        })
+    }
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 {

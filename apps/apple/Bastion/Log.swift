@@ -324,6 +324,27 @@ nonisolated func onDedicatedThread(_ name: String, _ body: @escaping @Sendable (
   thread.start()
 }
 
+/// Whole frames onto one descriptor, one at a time.
+///
+/// A child's stdin is shared by every connection thread talking to it, and a
+/// pipe write longer than PIPE_BUF (512 bytes here) is not atomic: `writeAll`
+/// loops on short writes, so two large frames written at once splice into a
+/// line that is neither, and both calls hang until the deadline. The lock is
+/// held across the whole frame, not just the handle lookup, which is the part
+/// the first version got wrong.
+///
+/// `NSLock` rather than the unfair locks used elsewhere: this one is held
+/// across a blocking `write(2)` that waits as long as a slow child leaves its
+/// pipe full, and an unfair lock is for short critical sections.
+nonisolated final class FrameWriter: Sendable {
+  private let lock = NSLock()
+
+  @discardableResult
+  func write(_ fd: Int32, _ data: Data) -> Bool {
+    lock.withLock { writeAll(fd, data) }
+  }
+}
+
 @discardableResult
 nonisolated func writeAll(_ fd: Int32, _ data: Data) -> Bool {
   data.withUnsafeBytes { raw -> Bool in
