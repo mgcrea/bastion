@@ -6,9 +6,14 @@ import Foundation
 /// Foundation only, so `make skills-check` runs it against a throwaway folder.
 /// Every write is one of three shapes, each chosen so a reader of the folder
 /// never sees a half-made entry and nothing Bastion does not own is replaced.
-/// Relink and unlink avoid TOCTOU races by using atomic system calls: `renamex_np`
-/// with `RENAME_SWAP` for relink, and `renamex_np` with `RENAME_EXCL` for unlink.
-/// A foreign entry is never modified, moved or deleted.
+/// Relink and unlink first take the entry out of the way atomically —
+/// `renamex_np` with `RENAME_SWAP` for relink, with `RENAME_EXCL` for unlink —
+/// and only then look at what they took: it is removed if it is still the link
+/// the plan saw, the destination the action carries as `found`, and put back
+/// otherwise. Checking before the rename would leave a window between the look
+/// and the removal; checking what the rename handed over leaves none. A foreign
+/// entry, or a link another tool re-pointed since the plan, is never modified
+/// or deleted, only moved aside and back.
 nonisolated enum SkillLinker {
   struct Failure: Equatable, Hashable {
     let target: String
@@ -18,6 +23,7 @@ nonisolated enum SkillLinker {
 
   enum LinkError: LocalizedError {
     case notALink(String)
+    case changed(path: String, found: String, now: String)
     case rename(String, String)
     case moveAside(String, String)
     case leftAside(original: String, now: String)
@@ -25,10 +31,14 @@ nonisolated enum SkillLinker {
     var errorDescription: String? {
       switch self {
       case .notALink(let path): "\(path) is not a symlink, so Bastion leaves it alone."
+      case .changed(let path, let found, let now):
+        "\(path) now points at \(now), not at \(found) as when Bastion planned this change, "
+          + "so Bastion leaves it alone."
       case .rename(let path, let reason): "Could not put the new link at \(path): \(reason)."
       case .moveAside(let path, let reason): "Could not move \(path) aside to remove it: \(reason)."
       case .leftAside(let original, let now):
-        "\(original) is not a symlink; Bastion moved the foreign entry to \(now) for you to recover."
+        "\(original) is not the link Bastion planned to change; Bastion moved what was there to "
+          + "\(now) for you to recover."
       }
     }
   }
@@ -51,10 +61,10 @@ nonisolated enum SkillLinker {
           // Straight at the final name: symlink(2) fails if anything appeared
           // there since the plan, where a rename would silently replace it.
           try manager.createSymbolicLink(atPath: path, withDestinationPath: destination)
-        case .relink(_, _, let destination):
-          try replaceLink(at: path, with: destination, in: target.path)
-        case .unlink:
-          try unlinkIfSymlink(atPath: path, in: target.path)
+        case .relink(_, _, let found, let destination):
+          try replaceLink(at: path, found: found, with: destination, in: target.path)
+        case .unlink(_, _, let found):
+          try unlinkIfUnchanged(atPath: path, found: found, in: target.path)
         }
       } catch {
         failures.append(
@@ -99,13 +109,14 @@ nonisolated enum SkillLinker {
   }
 
   /// Creates a new link under a hidden temporary name, then atomically exchanges it
-  /// with whatever is at the path using renamex_np(RENAME_SWAP). If a symlink is
-  /// swapped out, removes it. If something else is swapped out, swaps it back and fails.
-  /// This avoids a TOCTOU race where a foreign entry could appear between the check
-  /// and the replacement.
-  private static func replaceLink(at path: String, with destination: String, in folder: String)
-    throws
-  {
+  /// with whatever is at the path using renamex_np(RENAME_SWAP). If what came out
+  /// is the link the plan saw, still pointing at `found`, removes it. Anything
+  /// else — a foreign entry, or a link another tool re-pointed since the plan —
+  /// is swapped back and reported. The check is on what the swap handed over,
+  /// so nothing can change between the look and the removal.
+  private static func replaceLink(
+    at path: String, found: String, with destination: String, in folder: String
+  ) throws {
     let temporary = (folder as NSString).appendingPathComponent(
       ".bastion-link-" + UUID().uuidString)
     let manager = FileManager.default
@@ -126,42 +137,42 @@ nonisolated enum SkillLinker {
       throw LinkError.leftAside(original: path, now: temporary)
     }
 
-    if (info.st_mode & S_IFMT) == S_IFLNK {
-      // A symlink, which the plan claimed as ours moments ago. Not every
-      // symlink in a target is Bastion's — foreign ones are reported and left
-      // alone — so this trusts that nothing replaced ours with one of its own
-      // between the plan and this swap. Checking the destination here would
-      // close that window; the actions do not carry it yet.
-      guard unlink(temporary) == 0 else {
-        // Swallow this error. The new link is in place; the old one is just orphaned.
-        return
-      }
+    let now = linkDestination(temporary, info)
+    if now == found {
+      // The link the plan claimed as ours, still saying what it said then.
+      // Not every symlink in a target is Bastion's: another tool may have
+      // re-pointed this name at its own copy since the plan, and "a symlink"
+      // alone would have taken that one too. A failed unlink is swallowed:
+      // the new link is in place, the old one is just orphaned.
+      _ = unlink(temporary)
       return
     }
 
-    // It's not a symlink, so it's foreign. Swap it back to path to preserve it.
-    // After this: path holds the foreign entry, temporary holds OUR new link (which failed).
+    // Not the link the plan saw. Swap it back to path to preserve it.
+    // After this: path holds that entry again, temporary holds OUR new link.
     guard renamex_np(temporary, path, UInt32(RENAME_SWAP)) == 0 else {
-      // The swap-back failed. Leave the foreign entry exactly where it is (at temporary)
+      // The swap-back failed. Leave the entry exactly where it is (at temporary)
       // and report where it went. Do NOT touch temporary; we never delete what isn't ours.
       // This branch has no deterministic test: nothing can force renamex_np to fail after
       // it succeeded before, except catastrophic file system issues. It is safe because it
-      // touches nothing and reports where the foreign entry is for recovery.
+      // touches nothing and reports where the entry is for recovery.
       throw LinkError.leftAside(original: path, now: temporary)
     }
-    // Swap-back succeeded: path is restored to foreign, temporary holds our new link.
-    // Remove our link (now at temporary, which is Bastion's own temporary name).
-    guard unlink(temporary) == 0 else {
-      // Swallow the error; our link stayed at temporary under a hidden name but we're going to fail anyway.
-      return
-    }
-    throw LinkError.notALink(path)
+    // Swap-back succeeded. Remove our link (now at temporary, Bastion's own
+    // temporary name); if that fails it stays there hidden, and the action
+    // fails either way.
+    _ = unlink(temporary)
+    throw now.map { LinkError.changed(path: path, found: found, now: $0) }
+      ?? LinkError.notALink(path)
   }
 
-  /// Moves the entry at path aside using atomic RENAME_EXCL, checks if it's a symlink,
-  /// and removes it if so. If it's not a symlink, moves it back and fails. This avoids
-  /// a TOCTOU race where a foreign entry could appear between the check and deletion.
-  private static func unlinkIfSymlink(atPath path: String, in folder: String) throws {
+  /// Moves the entry at path aside using atomic RENAME_EXCL, then removes it
+  /// if it is the link the plan saw, still pointing at `found`. Anything else
+  /// is moved back and reported. As in `replaceLink`, the check is on what the
+  /// rename handed over, so nothing can change between the look and the removal.
+  private static func unlinkIfUnchanged(atPath path: String, found: String, in folder: String)
+    throws
+  {
     let hidden = (folder as NSString).appendingPathComponent(
       ".bastion-unlink-" + UUID().uuidString)
 
@@ -178,23 +189,33 @@ nonisolated enum SkillLinker {
       throw LinkError.moveAside(path, reason)
     }
 
-    if (info.st_mode & S_IFMT) == S_IFLNK {
-      // A symlink the plan claimed as ours; see `replaceLink` for the window
-      // this trusts.
-      guard unlink(hidden) == 0 else {
-        // Swallow the error; the symlink is orphaned but we're reporting unlink failed anyway.
-        return
-      }
+    let now = linkDestination(hidden, info)
+    if now == found {
+      // The link the plan claimed as ours, unchanged; see `replaceLink`.
+      // A failed unlink is swallowed: the symlink is orphaned under a hidden name.
+      _ = unlink(hidden)
       return
     }
 
-    // It's not a symlink, so it's foreign. Move it back to path to restore it.
+    // Not the link the plan saw. Move it back to path to restore it.
     guard renamex_np(hidden, path, UInt32(RENAME_EXCL)) == 0 else {
-      // The move-back failed. Leave the foreign entry where it is (at hidden) and report it.
+      // The move-back failed. Leave the entry where it is (at hidden) and report it.
       // Do NOT touch hidden; we never delete what isn't ours.
       throw LinkError.leftAside(original: path, now: hidden)
     }
-    throw LinkError.notALink(path)
+    throw now.map { LinkError.changed(path: path, found: found, now: $0) }
+      ?? LinkError.notALink(path)
+  }
+
+  /// What a symlink at `path` points at, read the way the plan read it
+  /// (`destinationOfSymbolicLink`, as `LocalSkillFileSystem` does), so an
+  /// unchanged link compares equal to `found` byte for byte. nil when `info`,
+  /// its `lstat`, says it is not a symlink at all. A link re-spelled to land on
+  /// the same folder (relative where it was absolute) counts as changed: it is
+  /// left alone and reported, and the next plan sees it as it now is.
+  private static func linkDestination(_ path: String, _ info: stat) -> String? {
+    guard (info.st_mode & S_IFMT) == S_IFLNK else { return nil }
+    return try? FileManager.default.destinationOfSymbolicLink(atPath: path)
   }
 }
 

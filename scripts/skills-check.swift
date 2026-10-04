@@ -62,6 +62,7 @@ struct SkillsCheck {
     workspaceDecodesWithoutSkills()
     applyOnDisk()
     linkNeverReplaces()
+    aLinkChangedSinceThePlanIsLeftAlone()
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 { exit(1) }
@@ -391,6 +392,16 @@ struct SkillsCheck {
     )
   }
 
+  /// Whether the plan removes `name` from `target`, whatever the link said.
+  /// A check that something is NOT unlinked must not pass merely because it
+  /// spelled `found` differently from the plan.
+  static func unlinks(_ actions: [SkillAction], _ target: String, _ name: String) -> Bool {
+    actions.contains {
+      if case .unlink(target, name, _) = $0 { return true }
+      return false
+    }
+  }
+
   /// The spec: an invalid skill produces no action. `desired` skipped it, but
   /// its existing links were still claimed and then unlinked — so a SKILL.md
   /// edited past the length limit, or missing `name:` (which Claude Code
@@ -403,7 +414,7 @@ struct SkillsCheck {
     let (_, plan) = planned(fs, choices: ["global:alpha": ["shared"]])
     check(
       "a link to a skill that no longer validates is not unlinked",
-      !plan.actions.contains(.unlink(target: "shared", name: "alpha")))
+      !unlinks(plan.actions, "shared", "alpha"))
     check(
       "and is reported as invalid",
       plan.reports["shared"]?.invalid == ["alpha"])
@@ -504,8 +515,9 @@ struct SkillsCheck {
     check(
       "a link of ours not chosen, and a dangling one, are unlinked",
       Set(unlinked.actions) == [
-        .unlink(target: "claude-code", name: "alpha"),
-        .unlink(target: "claude-code", name: "astro-bootstrap"),
+        .unlink(target: "claude-code", name: "alpha", found: globalPath + "/alpha"),
+        .unlink(
+          target: "claude-code", name: "astro-bootstrap", found: globalPath + "/astro-bootstrap"),
       ])
 
     var workspace = machine()
@@ -537,6 +549,15 @@ struct SkillsCheck {
     check(
       "a relative link elsewhere is foreign",
       plan.reports["claude-code"]?.foreign == ["theirs"])
+    // Judged by where it lands, but remembered as spelled: the applier
+    // compares `found` with what readlink gives back, not with a resolution.
+    let (_, unchosen) = planned(fs, choices: [:])
+    check(
+      "an unlink of a relative link carries the link as it is spelled",
+      unchosen.actions == [
+        .unlink(
+          target: "claude-code", name: "alpha", found: "../../Projects/claude-skills/global/alpha")
+      ])
   }
 
   static func sourceSpelledThroughASymlink() {
@@ -585,7 +606,9 @@ struct SkillsCheck {
       plan.reports["claude-code"]?.unavailable == ["offline"])
     check(
       "a link into a retired source is removed even though its folder is gone",
-      plan.actions == [.unlink(target: "claude-code", name: "legacy")])
+      plan.actions == [
+        .unlink(target: "claude-code", name: "legacy", found: "/Users/me/old-skills/legacy")
+      ])
   }
 
   static func shadowingIsPerFolder() {
@@ -617,7 +640,9 @@ struct SkillsCheck {
     check(
       "a link of ours to a skill that lost precedence is relinked to the winner",
       precedence.actions == [
-        .relink(target: "claude-code", name: "alpha", destination: globalPath + "/alpha")
+        .relink(
+          target: "claude-code", name: "alpha", found: "/Users/me/second/alpha",
+          destination: globalPath + "/alpha")
       ])
   }
 
@@ -632,7 +657,7 @@ struct SkillsCheck {
     check(
       "a scoped skill is unlinked from global targets and linked into both repository folders",
       Set(plan.actions) == [
-        .unlink(target: "claude-code", name: "alpha"),
+        .unlink(target: "claude-code", name: "alpha", found: globalPath + "/alpha"),
         .link(
           target: SkillLinks.projectTargetID("/r/app", .claude), name: "alpha",
           destination: globalPath + "/alpha"),
@@ -702,7 +727,9 @@ struct SkillsCheck {
         .link(
           target: SkillLinks.projectTargetID("/r/app", .agents), name: "beta",
           destination: globalPath + "/beta"),
-        .unlink(target: SkillLinks.projectTargetID("/r/app", .claude), name: "alpha"),
+        .unlink(
+          target: SkillLinks.projectTargetID("/r/app", .claude), name: "alpha",
+          found: globalPath + "/alpha"),
       ])
 
     let (_, fresh) = planned(
@@ -839,7 +866,7 @@ struct SkillsCheck {
       ledger: [claude: ["beta"]])
     check(
       "a ledger name no longer wanted is unlinked",
-      recorded.actions.contains(.unlink(target: claude, name: "beta")))
+      recorded.actions.contains(.unlink(target: claude, name: "beta", found: globalPath + "/beta")))
 
     // A non-ledger link of ours at a wanted name, pointing at another skill:
     // the same name from another source, as `cut-a-release` is.
@@ -860,7 +887,9 @@ struct SkillsCheck {
     check(
       "the same link in the ledger is relinked",
       owned.actions.contains(
-        .relink(target: claude, name: "alpha", destination: globalPath + "/alpha")))
+        .relink(
+          target: claude, name: "alpha", found: "/Users/me/second/alpha",
+          destination: globalPath + "/alpha")))
 
     // The helper, after an apply simulated on the fake tree.
     var after = machine()
@@ -984,7 +1013,7 @@ struct SkillsCheck {
       resolved: ["app": ["/r/app"]])
     check(
       "and it is left alone, not unlinked",
-      !leftAlone.actions.contains(.unlink(target: claude, name: "legacy"))
+      !unlinks(leftAlone.actions, claude, "legacy")
         && leftAlone.reports[claude]?.unadopted == ["legacy"])
   }
 
@@ -1001,7 +1030,9 @@ struct SkillsCheck {
     let (_, plan) = planned(fs, sources: [parent, global], choices: [:])
     check(
       "so an unwanted link there is unlinked, not left as foreign",
-      plan.actions == [.unlink(target: "claude-code", name: "alpha")])
+      plan.actions == [
+        .unlink(target: "claude-code", name: "alpha", found: globalPath + "/alpha")
+      ])
   }
 
   static func parentSourceClaimsNothingBelowItsSlots() {
@@ -1044,7 +1075,7 @@ struct SkillsCheck {
         && !targets.map(\.id).contains(SkillLinks.projectTargetID(home, .agents)))
     check(
       "alpha, already linked and still chosen, is not unlinked",
-      !plan.actions.contains(.unlink(target: "claude-code", name: "alpha")))
+      !unlinks(plan.actions, "claude-code", "alpha"))
     check(
       "beta reaches claude-code and shared once each, not twice for either folder",
       Set(plan.actions) == [
@@ -1169,7 +1200,7 @@ struct SkillsCheck {
     let byID = Dictionary(uniqueKeysWithValues: targets.map { ($0.id, $0) })
     let allowed = plan.actions.allSatisfy { action in
       switch action {
-      case .unlink(let target, let name):
+      case .unlink(let target, let name, _):
         guard let folder = byID[target]?.path,
           let raw = fs.symlinkDestination((folder as NSString).appendingPathComponent(name))
         else { return false }
@@ -1291,7 +1322,7 @@ struct SkillsCheck {
         && (try? manager.destinationOfSymbolicLink(atPath: target.path + "/a")) == skillA)
 
     failures = SkillLinker.apply(
-      [.relink(target: "t", name: "a", destination: skillB)], targets: [target])
+      [.relink(target: "t", name: "a", found: skillA, destination: skillB)], targets: [target])
     check(
       "relink repoints it",
       failures.isEmpty
@@ -1299,7 +1330,8 @@ struct SkillsCheck {
     let leftovers = (try? manager.contentsOfDirectory(atPath: target.path)) ?? []
     check("and leaves no temporary entry behind", leftovers == ["a"])
 
-    failures = SkillLinker.apply([.unlink(target: "t", name: "a")], targets: [target])
+    failures = SkillLinker.apply(
+      [.unlink(target: "t", name: "a", found: skillB)], targets: [target])
     check(
       "unlink removes the link",
       failures.isEmpty && !LocalSkillFileSystem().entryExists(target.path + "/a"))
@@ -1308,7 +1340,9 @@ struct SkillsCheck {
     try? manager.createDirectory(atPath: target.path + "/real", withIntermediateDirectories: true)
     try? "content".write(
       toFile: target.path + "/real/file", atomically: true, encoding: .utf8)
-    failures = SkillLinker.apply([.unlink(target: "t", name: "real")], targets: [target])
+    // The plan saw a link at each of these names; a real entry took its place.
+    failures = SkillLinker.apply(
+      [.unlink(target: "t", name: "real", found: skillA)], targets: [target])
     check(
       "unlink refuses a real folder",
       failures.count == 1 && manager.fileExists(atPath: target.path + "/real"))
@@ -1323,7 +1357,8 @@ struct SkillsCheck {
     try? "data".write(
       toFile: target.path + "/folder2/data", atomically: true, encoding: .utf8)
     failures = SkillLinker.apply(
-      [.relink(target: "t", name: "folder2", destination: skillB)], targets: [target])
+      [.relink(target: "t", name: "folder2", found: skillA, destination: skillB)],
+      targets: [target])
     check(
       "relink refuses a real folder",
       failures.count == 1 && manager.fileExists(atPath: target.path + "/folder2"))
@@ -1335,7 +1370,8 @@ struct SkillsCheck {
 
     try? "regular".write(
       toFile: target.path + "/file", atomically: true, encoding: .utf8)
-    failures = SkillLinker.apply([.unlink(target: "t", name: "file")], targets: [target])
+    failures = SkillLinker.apply(
+      [.unlink(target: "t", name: "file", found: skillA)], targets: [target])
     check(
       "unlink refuses a regular file",
       failures.count == 1 && manager.fileExists(atPath: target.path + "/file"))
@@ -1449,5 +1485,104 @@ struct SkillsCheck {
     check(
       "and the thing is untouched",
       (try? String(contentsOfFile: target.path + "/a/SKILL.md", encoding: .utf8)) == "mine")
+  }
+
+  /// A plan is made, shown and applied at different moments, and another tool
+  /// can re-point a link of the same name in between: a teammate's script
+  /// linking its own copy of a skill, say. Relink and unlink only asked
+  /// whether what they swapped out was a symlink, so they replaced or removed
+  /// a link that had stopped being Bastion's since the plan. Planned and
+  /// applied on the real disk, under a throwaway folder: the applier only
+  /// works there, and the plan must read the very links it will check.
+  static func aLinkChangedSinceThePlanIsLeftAlone() {
+    print("race: a link changed since the plan")
+    let manager = FileManager.default
+    let fs = LocalSkillFileSystem()
+    let root = scratch()
+    defer { try? manager.removeItem(atPath: root) }
+    let first = SkillSource(name: "first", path: root + "/first", kind: .collection)
+    let second = SkillSource(name: "second", path: root + "/second", kind: .collection)
+    let theirs = root + "/theirs"
+    for folder in [
+      first.path + "/alpha", first.path + "/beta", second.path + "/alpha", theirs + "/alpha",
+      theirs + "/beta",
+    ] {
+      let name = (folder as NSString).lastPathComponent
+      try? manager.createDirectory(atPath: folder, withIntermediateDirectories: true)
+      try? "---\nname: \(name)\ndescription: Does a thing.\n---\nBody.\n".write(
+        toFile: folder + "/SKILL.md", atomically: true, encoding: .utf8)
+    }
+    let target = SkillTarget(
+      id: "t", aliases: [], label: "T", path: root + "/skills", projectKey: nil)
+    let sources = [first, second]
+
+    // alpha links the second source's copy and the first's is chosen: a
+    // relink. beta is linked and not chosen: an unlink.
+    func reset() {
+      try? manager.removeItem(atPath: target.path)
+      try? manager.createDirectory(atPath: target.path, withIntermediateDirectories: true)
+      try? manager.createSymbolicLink(
+        atPath: target.path + "/alpha", withDestinationPath: second.path + "/alpha")
+      try? manager.createSymbolicLink(
+        atPath: target.path + "/beta", withDestinationPath: first.path + "/beta")
+    }
+    func plan() -> [SkillAction] {
+      let catalog = SkillCatalog.catalog(sources, fs: fs)
+      let desired = SkillLinks.desired(
+        skills: catalog.skills, choices: ["first:alpha": ["t"]], scopes: [:],
+        resolved: { _ in [] }, targets: [target])
+      return SkillLinks.plan(
+        targets: [target], desired: desired, sources: sources, available: catalog.available,
+        ledger: [:], fs: fs
+      ).actions
+    }
+    func destination(_ name: String) -> String? {
+      try? manager.destinationOfSymbolicLink(atPath: target.path + "/" + name)
+    }
+    func leftovers() -> Bool {
+      ((try? manager.contentsOfDirectory(atPath: target.path)) ?? [])
+        .contains { $0.hasPrefix(".bastion-") }
+    }
+
+    reset()
+    let unchanged = plan()
+    check(
+      "each destructive action carries the destination the plan read",
+      Set(unchanged) == [
+        .relink(
+          target: "t", name: "alpha", found: second.path + "/alpha",
+          destination: first.path + "/alpha"),
+        .unlink(target: "t", name: "beta", found: first.path + "/beta"),
+      ])
+    var failures = SkillLinker.apply(unchanged, targets: [target])
+    check("with nothing changed since the plan, both apply", failures.isEmpty)
+    check("the relink repoints the link", destination("alpha") == first.path + "/alpha")
+    check("the unlink removes the other", !fs.entryExists(target.path + "/beta"))
+
+    reset()
+    let stale = plan()
+    // Another process, between the plan and the apply.
+    try? manager.removeItem(atPath: target.path + "/alpha")
+    try? manager.createSymbolicLink(
+      atPath: target.path + "/alpha", withDestinationPath: theirs + "/alpha")
+    try? manager.removeItem(atPath: target.path + "/beta")
+    try? manager.createSymbolicLink(
+      atPath: target.path + "/beta", withDestinationPath: theirs + "/beta")
+    failures = SkillLinker.apply(stale, targets: [target])
+    check(
+      "a relink whose link was re-pointed since the plan leaves it where the other tool put it",
+      destination("alpha") == theirs + "/alpha")
+    check(
+      "an unlink whose link was re-pointed since the plan leaves it too",
+      destination("beta") == theirs + "/beta")
+    check(
+      "and both are reported, as a foreign entry is",
+      failures.map(\.name).sorted() == ["alpha", "beta"]
+        && failures.allSatisfy { $0.target == "t" })
+    check(
+      "naming where each link points now",
+      !failures.isEmpty && failures.allSatisfy { $0.message.contains(theirs + "/" + $0.name) })
+    check("and no .bastion-* entry is left", !leftovers())
+    check("and nothing in either source is touched", fs.isFile(second.path + "/alpha/SKILL.md"))
   }
 }

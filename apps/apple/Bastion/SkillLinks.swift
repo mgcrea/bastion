@@ -14,29 +14,37 @@ nonisolated struct SkillTarget: Equatable, Identifiable {
   let projectKey: String?
 }
 
+/// One change to a skills folder.
+///
+/// `relink` and `unlink` carry `found`: the destination the plan read from the
+/// link it means to change, spelled as `readlink` gave it. A plan is made,
+/// shown and applied at different moments, and another tool can re-point a
+/// link of the same name in between. Not every symlink in a target is
+/// Bastion's, so "still a symlink" is not enough for the applier to go on:
+/// it replaces or removes a link only while it still says `found`.
 nonisolated enum SkillAction: Equatable, Hashable {
   case link(target: String, name: String, destination: String)
-  case relink(target: String, name: String, destination: String)
-  case unlink(target: String, name: String)
+  case relink(target: String, name: String, found: String, destination: String)
+  case unlink(target: String, name: String, found: String)
 
   var target: String {
     switch self {
-    case .link(let target, _, _), .relink(let target, _, _), .unlink(let target, _): target
+    case .link(let target, _, _), .relink(let target, _, _, _), .unlink(let target, _, _): target
     }
   }
 
   var name: String {
     switch self {
-    case .link(_, let name, _), .relink(_, let name, _), .unlink(_, let name): name
+    case .link(_, let name, _), .relink(_, let name, _, _), .unlink(_, let name, _): name
     }
   }
 
   var summary: String {
     switch self {
     case .link(let target, let name, let destination): "link \(target)/\(name) -> \(destination)"
-    case .relink(let target, let name, let destination):
+    case .relink(let target, let name, _, let destination):
       "relink \(target)/\(name) -> \(destination)"
-    case .unlink(let target, let name): "unlink \(target)/\(name)"
+    case .unlink(let target, let name, _): "unlink \(target)/\(name)"
     }
   }
 }
@@ -287,12 +295,13 @@ nonisolated enum SkillLinks {
         }
         if let skill = want[name] {
           if !same(absolute(raw, in: folder), skill.path, fs: fs) {
-            plan.actions.append(.relink(target: target.id, name: name, destination: skill.path))
+            plan.actions.append(
+              .relink(target: target.id, name: name, found: raw, destination: skill.path))
           }
         } else if desired.invalid.contains(where: { same(absolute(raw, in: folder), $0, fs: fs) }) {
           report.invalid.append(name)
         } else {
-          plan.actions.append(.unlink(target: target.id, name: name))
+          plan.actions.append(.unlink(target: target.id, name: name, found: raw))
         }
       }
       let present = Set(entries)

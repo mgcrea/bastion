@@ -228,7 +228,10 @@ the source folder itself is present.
   rather than replaces if something appeared there since the plan.
 - A relink swaps a temporary link in with `renamex_np(RENAME_SWAP)`, and an
   unlink moves the entry aside with `RENAME_EXCL`.
-- Both remove only what they verified is a symlink.
+- Both remove only what they verified, after the rename, is a symlink still
+  pointing where the plan saw it: each carries the destination it read
+  (`found`), so a link another tool re-pointed between the plan and the apply
+  is put back and reported, not replaced or removed.
 - Anything else is put back, or, if that fails, left under a hidden name that
   the error names.
 - `~/.agents/skills` is created if missing. A Claude Code target is created only
