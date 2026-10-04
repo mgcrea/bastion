@@ -41,14 +41,16 @@ const LINKS = [
       </a>
 
       {/* The version, where somebody looking for "which build is this" looks
-          first. It points at the releases page rather than at /download: a
-          number is a question about history, and the answer is the list. */}
+          first. It points at that version's page in the changelog rather than
+          at /download: a number is a question about what it brought, and the
+          page answers it, then links on to the list and the build. It was the
+          GitHub releases list in a new tab until the site had notes of its own.
+          src/data/changelog.ts fails the build if CHANGELOG.md has no section
+          for APP_VERSION, so this cannot point at a page that does not exist. */}
       {
         SHIPPED && (
           <a
-            href="/releases"
-            target="_blank"
-            rel="noopener"
+            href={`/changelog/${APP_VERSION}/`}
             class="hidden rounded-full border border-rule px-2 py-[3px] font-mono text-[10.5px] leading-none font-medium text-fg-muted transition-colors hover:border-accent hover:text-accent-hi sm:block"
           >
             {APP_VERSION}

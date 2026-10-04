@@ -1,0 +1,68 @@
+---
+/**
+ * The post that goes with a release's link, ready to send.
+ *
+ * The text is the release's summary — its `**Title.**` and the sentence after
+ * it in CHANGELOG.md — which a test holds under 256 characters, so it fits on X
+ * beside the link (a link always counts as 23 there). The link is what carries
+ * the release card: X, Slack and iMessage all unfurl og:image.
+ *
+ * One network, not a row of them. Cupertino's started with Bluesky beside X and
+ * took it off again; "Copy text" covers everywhere else, and every button here
+ * is one more thing to keep working.
+ *
+ * It is on the page for visitors as much as for us. Somebody who wants to tell
+ * a colleague about a release gets the same words, already the right length.
+ */
+import Button from "./Button.astro";
+
+interface Props {
+  post: string;
+  url: string;
+}
+
+const { post, url } = Astro.props;
+
+const x = `https://x.com/intent/post?${new URLSearchParams({ text: post, url })}`;
+---
+
+<section class="mt-10 rounded-[16px] border border-rule bg-bg-2 p-5 md:p-6" aria-labelledby="share">
+  <h2 id="share" class="eyebrow m-0 text-fg-muted">Share this release</h2>
+  <p class="mt-3 mb-0 text-[15px] leading-[1.6] text-fg">
+    {post} <span class="text-fg-muted">{url}</span>
+  </p>
+  <div class="mt-5 flex flex-wrap gap-2.5">
+    <Button href={x} variant="secondary" size="sm" external>Post on X</Button>
+    <button
+      type="button"
+      data-copy={`${post} ${url}`}
+      class="inline-flex items-center rounded-lg px-[13px] py-[7px] text-[13px] text-fg-dim transition-colors hover:text-fg"
+    >
+      Copy text
+    </button>
+  </div>
+</section>
+
+{/*
+  A processed script, not `is:inline` and not a file in public/. Astro bundles
+  it and, with `security.csp` on, adds its hash to the page's script-src — the
+  same path the scroll-reveal in Layout.astro and the feedback form take. An
+  `is:inline` script is the one shape that would be refused, and only in the
+  build: the dev server emits no CSP at all.
+*/}
+<script>
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-copy]")) {
+    button.addEventListener("click", async () => {
+      const label = button.textContent;
+      try {
+        await navigator.clipboard.writeText(button.dataset.copy ?? "");
+        button.textContent = "Copied";
+      } catch {
+        button.textContent = "Copy failed";
+      }
+      setTimeout(() => {
+        button.textContent = label;
+      }, 1600);
+    });
+  }
+</script>

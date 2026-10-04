@@ -1,0 +1,87 @@
+---
+/**
+ * Every release, newest first — the list the footer links and the version
+ * pages lead back to.
+ *
+ * An index rather than the whole file: CHANGELOG.md is nearly two thousand
+ * lines, and each release's notes live on its own page, which is also the page
+ * worth sharing. A release with a summary shows it; one from before summaries
+ * existed shows its entries' headlines instead, which say the same thing less
+ * well.
+ *
+ * Structure follows Cupertino's /changelog, in this site's type: the two apps
+ * are sold side by side, and somebody who reads one's release notes should not
+ * have to learn the other's.
+ */
+import Footer from "../../components/Footer.astro";
+import Nav from "../../components/Nav.astro";
+import { APP_NAME } from "../../config";
+import { RELEASES } from "../../data/changelog";
+import Layout from "../../layouts/Layout.astro";
+
+/** Headlines past this many are behind the release's own link. */
+const SHOWN = 4;
+
+const link = "underline underline-offset-2";
+---
+
+<Layout
+  title={`Changelog — ${APP_NAME}`}
+  description={`Every release of ${APP_NAME}, newest first: what changed in the app, its gateway and its server catalog.`}
+>
+  <Nav />
+  <main id="main" tabindex="-1" class="wrap py-20">
+    <div class="max-w-[72ch]">
+      <h1 class="m-0 font-display text-[clamp(28px,4.4vw,40px)] font-semibold tracking-[-0.04em]">
+        Changelog
+      </h1>
+      <p class="mt-4 mb-0 max-w-[62ch] text-[16px] leading-[1.6] text-fg-dim text-pretty">
+        Every release of {APP_NAME}, newest first. These are the notes the app shows before it updates
+        itself; the builds are on <a href="/releases" class={link}>GitHub</a>.
+      </p>
+
+      <ol class="m-0 mt-14 list-none space-y-12 p-0">
+        {
+          RELEASES.map((release) => (
+            <li id={`v${release.version}`} class="border-t border-rule pt-8">
+              <p class="m-0 font-mono text-[12.5px] text-fg-muted">
+                <a href={release.path} class="text-fg transition-colors hover:text-accent-hi">
+                  {release.version}
+                </a>
+                {" · "}
+                <time datetime={release.date}>{release.longDate}</time>
+              </p>
+              {release.summary ? (
+                <>
+                  <h2 class="mt-3 mb-0 font-display text-[22px] leading-[1.3] font-semibold tracking-[-0.03em] text-fg">
+                    <a href={release.path} class="transition-colors hover:text-accent-hi">
+                      {release.summary.title}
+                    </a>
+                  </h2>
+                  <p class="mt-3 mb-0 text-[15px] leading-[1.65] text-fg-dim text-pretty">
+                    {release.summary.description}
+                  </p>
+                </>
+              ) : (
+                <ul class="mt-4 mb-0 list-disc space-y-2 pl-5 text-[15px] leading-[1.6] text-fg-dim marker:text-fg-muted [&_code]:font-mono [&_code]:text-[0.92em] [&_code]:text-fg">
+                  {release.highlightsHtml.slice(0, SHOWN).map((headline) => (
+                    <li set:html={headline} />
+                  ))}
+                </ul>
+              )}
+              <a
+                href={release.path}
+                class="mt-4 inline-block text-[14px] text-fg-dim transition-colors hover:text-fg"
+              >
+                {release.highlights.length > SHOWN && !release.summary
+                  ? `All ${release.highlights.length} changes in ${release.version} →`
+                  : `Read the ${release.version} notes →`}
+              </a>
+            </li>
+          ))
+        }
+      </ol>
+    </div>
+  </main>
+  <Footer />
+</Layout>

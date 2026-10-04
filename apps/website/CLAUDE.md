@@ -66,3 +66,29 @@ the live Stripe product, so it is what a buyer sees beside the line item on the 
 Stripe stores the URL and fetches it, which has two consequences: the checkout only picks up a new
 mark **once the site deploys**, and renaming or deleting the file breaks a page nothing in this
 repo builds.
+
+## The changelog pages come from CHANGELOG.md
+
+`/changelog` and `/changelog/<version>` read the repository's `CHANGELOG.md` at build time
+(`src/data/changelog.ts`, `?raw`), through `scripts/lib/changelog.mjs` — the parser the appcast, the
+GitHub release body and the app's What's New pane use, so the four cannot disagree. `### Internal`
+is left out here through the same `userFacing`. Nothing is copied into this app; a release appears
+when its section does.
+
+- **Each release from 1.24.0 on opens with a summary**: one paragraph, `**Title.** Description.`,
+  right under its `## [x.y.z]` heading. It is the version page's headline and standfirst, its
+  og:title and og:description, and the post the "Share this release" box offers. A test in
+  `scripts/lib/changelog.test.mjs` holds the title to two lines on the card and the post to 256
+  characters, which is X's 280 less the link. Write it for somebody who has never opened the app.
+- **Each summary gets a social card**, `public/changelog/<version>.png`, rendered by `pnpm cards`
+  (`make changelog` runs it) through `composeReleaseCard` in `../../scripts/lib/lockup.mjs`, on the
+  store plates' ground from `apps/apple/Screenshots/screenshots.config.json`. It is baked on a Mac
+  and committed for the reason `og-image.png` is. `src/data/release-cards.json` records the hash of
+  the SVG each PNG came from, so `pnpm changelog:check` — which CI's manifest job runs on Linux —
+  catches a card that has fallen behind its title, its date or the layout without needing the font.
+  A release with no summary falls back to the site card.
+- **The nav's version badge links to `/changelog/${APP_VERSION}/`**, and `src/data/changelog.ts`
+  fails the build when `CHANGELOG.md` has no released section for `APP_VERSION`. Bump the two in the
+  same release commit.
+- **The copy button's script is a processed `<script>`** in `ShareRelease.astro`, which Astro hashes
+  into the CSP. An `is:inline` one would be refused, and only in the build.
