@@ -36,6 +36,7 @@ import {
   SUMMARY_TITLE_MAX,
   userFacing,
 } from "./changelog.mjs";
+import { RELEASE_CARD, wrapLines } from "./lockup.mjs";
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
@@ -370,6 +371,17 @@ Lead prose with no bold title is prose, not a summary.
       assert.ok(
         title.length <= SUMMARY_TITLE_MAX,
         `${release.version}: the title is ${title.length} characters, over ${SUMMARY_TITLE_MAX}`,
+      );
+      // The card's own wrap, not just a character count: a short title of
+      // wide capitals can still need a third line.
+      const lines = wrapLines(
+        title,
+        RELEASE_CARD.TITLE,
+        RELEASE_CARD.WIDTH - 2 * RELEASE_CARD.MARGIN,
+      );
+      assert.ok(
+        lines.length <= 2,
+        `${release.version}: the title needs ${lines.length} lines on the card`,
       );
       const post = postText(release.summary);
       assert.ok(

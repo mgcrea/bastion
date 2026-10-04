@@ -25,8 +25,8 @@
     "format:check": "oxfmt --check .",
     "servers": "node scripts/generate-servers.mjs",
     "servers:check": "node scripts/generate-servers.mjs --check",
-    "changelog": "node scripts/generate-changelog.mjs",
-    "changelog:check": "node scripts/generate-changelog.mjs --check",
+    "changelog": "node scripts/generate-changelog.mjs && pnpm -s -C apps/website cards",
+    "changelog:check": "node scripts/generate-changelog.mjs --check && pnpm -s -C apps/website cards --check",
     "provenance": "node scripts/provenance-check.mjs",
     "provenance:check": "node scripts/provenance-check.mjs --check"
   },

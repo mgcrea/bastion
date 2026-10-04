@@ -17,7 +17,17 @@ import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { composeCard, composeLockup, LOCKUP, SOCIAL_CARD, wordmarkWidth } from "./lockup.mjs";
+import {
+  composeCard,
+  composeLockup,
+  composeReleaseCard,
+  estimateWidth,
+  LOCKUP,
+  RELEASE_CARD,
+  SOCIAL_CARD,
+  wordmarkWidth,
+  wrapLines,
+} from "./lockup.mjs";
 
 const design = join(dirname(dirname(dirname(fileURLToPath(import.meta.url)))), "design");
 const icon = readFileSync(join(design, "bastion-icon.svg"), "utf8");
@@ -172,5 +182,87 @@ describe("composeCard", () => {
   it("escapes copy rather than letting it close a tag", () => {
     const escaped = composeCard(icon, palette, { ...CARD_COPY, subhead: 'a & b <c> "d"' });
     assert.ok(escaped.includes("a &amp; b &lt;c&gt; &quot;d&quot;"));
+  });
+});
+
+describe("composeReleaseCard", () => {
+  const release = {
+    ground: "#0b0c0f",
+    version: "1.24.0",
+    date: "2026-09-26",
+    title: "Xcode's own MCP server, shared by every client.",
+    footer: "bastion.mgcrea.io/changelog",
+  };
+  const svg = composeReleaseCard(icon, palette, release);
+  const width = RELEASE_CARD.WIDTH - 2 * RELEASE_CARD.MARGIN;
+
+  it("inherits the same mark, at the release card's own scale", () => {
+    for (const shape of MARK_SHAPES) assert.ok(svg.includes(shape), `missing ${shape}`);
+    assert.ok(svg.includes(`scale(${RELEASE_CARD.ICON / 1024})`));
+    assert.ok(svg.includes(`textLength="${wordmarkWidth(RELEASE_CARD.WORD)}"`));
+  });
+
+  it("scales the site card's lockup down rather than inventing a proportion", () => {
+    assert.equal(RELEASE_CARD.GAP, RELEASE_CARD.ICON / 4);
+    assert.equal(
+      RELEASE_CARD.WORD,
+      Math.round((RELEASE_CARD.ICON * SOCIAL_CARD.WORD) / SOCIAL_CARD.ICON),
+    );
+  });
+
+  it("is the size the og:image tags declare", () => {
+    assert.match(svg, /width="1200" height="630"/);
+  });
+
+  it("says the version, the date and the title", () => {
+    assert.match(svg, />Version 1\.24\.0</);
+    assert.match(svg, />September 26, 2026</);
+    assert.match(svg, />Xcode's own MCP server, shared by</);
+    assert.match(svg, />every client\.</);
+  });
+
+  it("dates the card in UTC, whatever the zone it is rendered in", () => {
+    // A New Year's Day release rendered west of Greenwich read December 31
+    // under a local-time conversion.
+    const card = composeReleaseCard(icon, palette, { ...release, date: "2027-01-01" });
+    assert.match(card, />January 1, 2027</);
+  });
+
+  it("escapes the title, which comes from prose", () => {
+    const card = composeReleaseCard(icon, palette, { ...release, title: "Mail & <Notes>" });
+    assert.match(card, /Mail &amp; &lt;Notes&gt;/);
+  });
+
+  it("wraps on whole words and fits two lines", () => {
+    const lines = wrapLines(release.title, RELEASE_CARD.TITLE, width);
+    assert.equal(lines.length, 2);
+    assert.equal(lines.join(" "), release.title);
+    for (const line of lines) assert.ok(estimateWidth(line, RELEASE_CARD.TITLE) <= width);
+  });
+
+  it("refuses a title that needs a third line, rather than letting it run off", () => {
+    assert.throws(
+      () =>
+        composeReleaseCard(icon, palette, {
+          ...release,
+          title: "MOST WINDOWS NOW WORK WITH MAIL, MAPS AND MESSAGES, WOW WOW WOW.",
+        }),
+      /needs 3 lines on the card/,
+    );
+  });
+
+  it("refuses a version or a date that is not a release's", () => {
+    assert.throws(() => composeReleaseCard(icon, palette, { ...release, version: "Unreleased" }));
+    assert.throws(() => composeReleaseCard(icon, palette, { ...release, date: "" }));
+  });
+
+  it("keeps everything out of the band X crops", () => {
+    const iconY = Number(/translate\(\d+ (\d+)\)/.exec(svg)?.[1]);
+    assert.ok(iconY >= RELEASE_CARD.SAFE_INSET, `the lockup starts at ${iconY}`);
+    const ys = [...svg.matchAll(/<text x="[^"]+" y="(\d+)"/g)].map((m) => Number(m[1]));
+    assert.ok(ys.length >= 5, "wordmark, version, two title lines, date and footer");
+    for (const y of ys) {
+      assert.ok(y >= RELEASE_CARD.SAFE_INSET && y <= RELEASE_CARD.HEIGHT - RELEASE_CARD.SAFE_INSET);
+    }
   });
 });

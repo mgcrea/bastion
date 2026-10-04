@@ -727,11 +727,19 @@ servers-check: ## Fail if any generated copy has drifted from servers.json
 # the head section is retitled with its version and date, and the result is
 # committed with it — otherwise the tag build fails changelog-check on a file
 # the release commit forgot.
-changelog: ## Regenerate the app's release notes from CHANGELOG.md
+#
+# It also renders the website's per-release social cards, one for each section
+# that opens with a summary. Those are baked on a Mac for the font, the same
+# reason og-image.png is, so the check only proves each card was rendered from
+# the SVG its release would compose today — which needs no font, and so runs on
+# Linux CI too, where `pnpm changelog:check` is the same pair of commands.
+changelog: ## Regenerate the app's release notes and the site's release cards from CHANGELOG.md
 	@node scripts/generate-changelog.mjs
+	@pnpm -s -C apps/website cards
 
-changelog-check: ## Fail if the app's release notes have drifted from CHANGELOG.md
+changelog-check: ## Fail if the app's release notes or release cards have drifted from CHANGELOG.md
 	@node scripts/generate-changelog.mjs --check
+	@pnpm -s -C apps/website cards --check
 
 # The other direction. `servers-check` asserts every generated copy matches the
 # manifest; this asserts the MANIFEST matches the servers it describes, which no
