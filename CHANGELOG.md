@@ -4,10 +4,14 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.24.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.25.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.25.0] - 2026-10-04
+
+**One set of Agent Skills, linked into every client.** Bastion links the skills in folders you
+choose into Claude Code, Codex, Cursor and the other clients that read them, and leaves alone what
+it did not create. Client wiring and supervision are safer too.
 
 ### Added
 
@@ -21,6 +25,9 @@ are taken from this file, which is the curated summary.
   warning that clients reading `~/.agents/skills` may skip it. Claude Desktop's pane lists the
   account skills synced to this Mac and exports a ZIP for any that are missing. Five new tools on
   Bastion's own server manage the same.
+- **Yahoo Finance is in the catalog**: prices, fundamentals, financial statements, holders, options,
+  news and analyst ratings, with no account or key, and nothing it can change. Apple Ads is listed
+  too, marked not published until its package is.
 
 ### Fixed
 
@@ -49,30 +56,37 @@ are taken from this file, which is the curated summary.
   breaks the chain, a reply that arrives late is still recorded, queued records are written before
   quit, and the export is the text that was hashed.
 - **Skills.** Repository links are kept out of git in submodules and worktrees too, a link to a
-  skill that became invalid is kept and shown instead of removed, and a skill's ZIP leaves `.git`,
-  `.env` and other hidden entries out.
+  skill that became invalid is kept and shown instead of removed, a link another tool re-pointed
+  while Bastion was applying a change is put back rather than replaced, and a skill's ZIP leaves
+  `.git`, `.env` and other hidden entries out.
 - A licence key a mail client wrapped across lines is accepted, an OAuth sign-in keeps waiting when
-  a stray request reaches its callback, the Log pane follows new entries, a stuck update check
-  clears, and relaunching to update stops the gateway first.
+  a stray request reaches its callback, the Log pane follows new entries, the chat drops whole turns
+  when it trims its history, a stuck update check clears, and relaunching to update stops the
+  gateway first.
 
 ### Internal
 
 - The API revokes, on fulfilment, a licence refunded before it was issued, and does not mail it;
   a dispute inquiry no longer revokes; a free checkout is fulfilled; an event claim a dead Worker
   abandoned is taken over after five minutes; and a `CURRENT_MAJOR` the app cannot read fails the
-  config check. Apply migrations 0003 and 0004 before deploying it. The test environment now pins
-  its own test-mode price, so a rehearsal refuses another product's sale as production does.
+  config check. Apply migrations 0003 and 0004 before deploying it. The test environment now has
+  its own Worker and database at bastion-api-test, and pins its own test-mode price, so a rehearsal
+  refuses another product's sale as production does and never reaches the live Worker.
 - `make revocations` renders against the real `Revocations.swift` declaration and revokes every
   licence the test environment minted, and its `--check` fails on a release tag without a token.
 - CI refuses pre-release tags, runs skills-check and remote-check, and drops the signing keychain
-  and API key before any third-party code runs. `make sign` fails when any signature does, and
+  and API key before any third-party code runs. The signing secrets live in a `release`
+  environment only `app-v*` tags can read, and the revocations check runs as its own job where its
+  token is. `make sign` fails when any signature does, and
   `make node` pins the runtime tarball's digest.
 - The website's HSTS header no longer asks for preloading, which bastion.mgcrea.io cannot have.
 - builtin-check and facade-check pin the settings they depend on, `make smoke` passes on any
   server, and a demo capture never writes, deletes or reads the developer's real state.
 - `make dev-clone` also copies the workspaces and the Settings window's values into the Debug
   build, and cuts its `dev.json` down to the node runtime, so `make run` serves what the installed
-  app does.
+  app does; a Debug build now runs its servers from such a `dev.json`.
+- The website has a changelog, with a page and a social card for each release, built from this
+  file, and a twenty-second tour of the app under the hero, rendered from the screenshot captures.
 
 ## [1.24.0] - 2026-09-26
 

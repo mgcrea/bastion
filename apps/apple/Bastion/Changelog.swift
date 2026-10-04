@@ -194,7 +194,96 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_24_0, v1_23_0, v1_22_0, v1_21_0, v1_20_0]
+  static let releases: [Release] = [v1_25_0, v1_24_0, v1_23_0, v1_22_0, v1_21_0]
+
+  // swift-format-ignore
+  private static let v1_25_0: Release = Release(
+    version: "1.25.0",
+    date: "2026-10-04",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Skills.",
+            body: [
+              "Settings → Skills links Agent Skills from folders you choose into `~/.agents/skills` (Codex, Cursor, VS Code Copilot, Gemini CLI and others) and every Claude Code config folder, or, per workspace, into each repository's `.claude/skills` and `.agents/skills`. Bastion only ever creates symlinks and never writes into a source; anything it did not create is left alone and shown, a repository link another tool made into a source included, and broken links it owns are removed. Repository links are kept out of git through `.git/info/exclude`. A description over the Agent Skills standard's 1,024 characters but within Claude Code's 1,536 is still linked, with a warning that clients reading `~/.agents/skills` may skip it. Claude Desktop's pane lists the account skills synced to this Mac and exports a ZIP for any that are missing. Five new tools on Bastion's own server manage the same.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "Yahoo Finance is in the catalog",
+            body: [
+              ": prices, fundamentals, financial statements, holders, options, news and analyst ratings, with no account or key, and nothing it can change. Apple Ads is listed too, marked not published until its package is.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 2,
+            headline: nil,
+            body: [
+              "`-autoWireClients YES` now turns automatic wiring back on in a Debug build; it was ignored.",
+            ]),
+          Entry(
+            ordinal: 3,
+            headline: "A store file that will not decode is kept, not emptied.",
+            body: [
+              "The server list, profiles, skills and workspaces each keep a `.unreadable` copy and refuse to save over it, and client wiring stands down until it reads again, so one bad edit no longer costs the whole list.",
+            ]),
+          Entry(
+            ordinal: 4,
+            headline: "A rewire changes only what Bastion owns.",
+            body: [
+              "It replaces the keys Bastion writes in its own entries and leaves the rest of each entry alone, writes through a symlinked config instead of replacing the link, reads a config that is empty mid-write again, and never replaces a client token the Keychain failed to read. A Codex `config.toml` shape the splice would corrupt is refused rather than rewritten. `-trustProfilesForStaleEntries YES` is now read.",
+            ]),
+          Entry(
+            ordinal: 5,
+            headline: "Supervised servers.",
+            body: [
+              "A child that fails its handshake, or is stopped, is sent SIGKILL if it outlives a grace period, so none is left running; a server that keeps crashing is restarted with a growing backoff after one immediate retry; frames from concurrent clients no longer interleave on a child's stdin; a client's cancel reaches the child under the id the child was given; stderr is redacted line by line; and a streamed reply sends no progress after its result.",
+            ]),
+          Entry(
+            ordinal: 6,
+            headline: "Writes off holds on a fresh server.",
+            body: [
+              "A `tools/call` that arrives before the server's tool list was ever fetched is judged against the catalog, and refused when the catalog cannot be read.",
+            ]),
+          Entry(
+            ordinal: 7,
+            headline: "Remote servers",
+            body: [
+              "refuse a reply whose peer address was never observed, and one that was stopped no longer starts a request.",
+            ]),
+          Entry(
+            ordinal: 8,
+            headline: "Bastion's own server.",
+            body: [
+              "`add_custom_server` refuses a catalog id, or an id profiles already hold credentials for, and `server_stats` totals count only the servers asked about.",
+            ]),
+          Entry(
+            ordinal: 9,
+            headline: "The audit log",
+            body: [
+              "verifies as truncated, not tampered, once retention has pruned its oldest segments. Retention applies at launch and when the setting changes, a torn last record no longer breaks the chain, a reply that arrives late is still recorded, queued records are written before quit, and the export is the text that was hashed.",
+            ]),
+          Entry(
+            ordinal: 10,
+            headline: "Skills.",
+            body: [
+              "Repository links are kept out of git in submodules and worktrees too, a link to a skill that became invalid is kept and shown instead of removed, a link another tool re-pointed while Bastion was applying a change is put back rather than replaced, and a skill's ZIP leaves `.git`, `.env` and other hidden entries out.",
+            ]),
+          Entry(
+            ordinal: 11,
+            headline: nil,
+            body: [
+              "A licence key a mail client wrapped across lines is accepted, an OAuth sign-in keeps waiting when a stray request reaches its callback, the Log pane follows new entries, the chat drops whole turns when it trims its history, a stuck update check clears, and relaunching to update stops the gateway first.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_24_0: Release = Release(
@@ -313,113 +402,11 @@ nonisolated enum Changelog {
         ]),
     ])
 
-  // swift-format-ignore
-  private static let v1_20_0: Release = Release(
-    version: "1.20.0",
-    date: "2026-09-17",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "A server running on this Mac can be added as a remote server.",
-            body: [
-              "A remote URL had to be https to a public host, which shut out an MCP server you run yourself on this Mac over plain http. A URL typed with the literal `127.0.0.1` or `[::1]` is now accepted over http or https, on any port but Bastion's own gateway. The credential never leaves the machine, so the reason for https does not apply. It stays narrow on purpose: `localhost`, the rest of `127/8` and any name that resolves to loopback are still refused, because a name can be rebound and a literal cannot. Typing `localhost` gets a message pointing at `127.0.0.1` instead. The same rule applies to `add_custom_server`, whose description now says so.",
-            ]),
-        ]),
-    ])
-
   /// Work that is written down but not shipped.
   ///
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  // swift-format-ignore
-  private static let unreleasedRelease: Release = Release(
-    version: "Unreleased",
-    date: "",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Skills.",
-            body: [
-              "Settings → Skills links Agent Skills from folders you choose into `~/.agents/skills` (Codex, Cursor, VS Code Copilot, Gemini CLI and others) and every Claude Code config folder, or, per workspace, into each repository's `.claude/skills` and `.agents/skills`. Bastion only ever creates symlinks and never writes into a source; anything it did not create is left alone and shown, a repository link another tool made into a source included, and broken links it owns are removed. Repository links are kept out of git through `.git/info/exclude`. A description over the Agent Skills standard's 1,024 characters but within Claude Code's 1,536 is still linked, with a warning that clients reading `~/.agents/skills` may skip it. Claude Desktop's pane lists the account skills synced to this Mac and exports a ZIP for any that are missing. Five new tools on Bastion's own server manage the same.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 1,
-            headline: nil,
-            body: [
-              "`-autoWireClients YES` now turns automatic wiring back on in a Debug build; it was ignored.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "A store file that will not decode is kept, not emptied.",
-            body: [
-              "The server list, profiles, skills and workspaces each keep a `.unreadable` copy and refuse to save over it, and client wiring stands down until it reads again, so one bad edit no longer costs the whole list.",
-            ]),
-          Entry(
-            ordinal: 3,
-            headline: "A rewire changes only what Bastion owns.",
-            body: [
-              "It replaces the keys Bastion writes in its own entries and leaves the rest of each entry alone, writes through a symlinked config instead of replacing the link, reads a config that is empty mid-write again, and never replaces a client token the Keychain failed to read. A Codex `config.toml` shape the splice would corrupt is refused rather than rewritten. `-trustProfilesForStaleEntries YES` is now read.",
-            ]),
-          Entry(
-            ordinal: 4,
-            headline: "Supervised servers.",
-            body: [
-              "A child that fails its handshake, or is stopped, is sent SIGKILL if it outlives a grace period, so none is left running; a server that keeps crashing is restarted with a growing backoff after one immediate retry; frames from concurrent clients no longer interleave on a child's stdin; a client's cancel reaches the child under the id the child was given; stderr is redacted line by line; and a streamed reply sends no progress after its result.",
-            ]),
-          Entry(
-            ordinal: 5,
-            headline: "Writes off holds on a fresh server.",
-            body: [
-              "A `tools/call` that arrives before the server's tool list was ever fetched is judged against the catalog, and refused when the catalog cannot be read.",
-            ]),
-          Entry(
-            ordinal: 6,
-            headline: "Remote servers",
-            body: [
-              "refuse a reply whose peer address was never observed, and one that was stopped no longer starts a request.",
-            ]),
-          Entry(
-            ordinal: 7,
-            headline: "Bastion's own server.",
-            body: [
-              "`add_custom_server` refuses a catalog id, or an id profiles already hold credentials for, and `server_stats` totals count only the servers asked about.",
-            ]),
-          Entry(
-            ordinal: 8,
-            headline: "The audit log",
-            body: [
-              "verifies as truncated, not tampered, once retention has pruned its oldest segments. Retention applies at launch and when the setting changes, a torn last record no longer breaks the chain, a reply that arrives late is still recorded, queued records are written before quit, and the export is the text that was hashed.",
-            ]),
-          Entry(
-            ordinal: 9,
-            headline: "Skills.",
-            body: [
-              "Repository links are kept out of git in submodules and worktrees too, a link to a skill that became invalid is kept and shown instead of removed, and a skill's ZIP leaves `.git`, `.env` and other hidden entries out.",
-            ]),
-          Entry(
-            ordinal: 10,
-            headline: nil,
-            body: [
-              "A licence key a mail client wrapped across lines is accepted, an OAuth sign-in keeps waiting when a stray request reaches its callback, the Log pane follows new entries, a stuck update check clears, and relaunching to update stops the gateway first.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  static let unreleased: Release? = unreleasedRelease
+  static let unreleased: Release? = nil
   // </generated:changelog>
 }
