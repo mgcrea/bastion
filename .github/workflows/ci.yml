@@ -395,6 +395,12 @@ jobs:
     # `revocations` too, so a stale list of refunded keys never ships.
     needs: [manifest, app, revocations]
     if: startsWith(github.ref, 'refs/tags/app-v')
+    # The signing secrets (Developer ID, App Store Connect key, Sparkle key)
+    # live in the `release` environment, whose deployment policy admits only
+    # `app-v*` tags: a workflow edited on a branch or a pull request cannot
+    # read them, whatever it asks for. AC_ISSUER_ID is a team identifier rather
+    # than a credential and stays a repository secret.
+    environment: release
     permissions:
       contents: write
       # attest-build-provenance signs the artifact's provenance, so the zip a
