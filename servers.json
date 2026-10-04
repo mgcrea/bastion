@@ -2798,6 +2798,201 @@
         "2025-06-18, and it advertises tools.listChanged - the list grew from",
         "53 to 54 during one session once a workspace was open."
       ]
+    },
+    {
+      "id": "apple-ads",
+      "displayName": "Apple Ads",
+      "summary": "Apple Ads Platform API: ad accounts, campaigns, ad groups, keywords, ads, budgets and reports.",
+      "transport": {
+        "kind": "child",
+        "npmName": "@mgcrea/mcp-apple-ads",
+        "binName": "apple-ads-mcp",
+        "distribution": "local",
+        "localPath": "mcp-apple-ads",
+        "vendor": "mgcrea"
+      },
+      "docsUrl": null,
+      "dialect": "2025-11-25",
+      "writeGate": "APPLE_ADS_ALLOW_WRITES",
+      "gateBypass": [],
+      "authModes": [
+        {
+          "id": "inline-key",
+          "displayName": "Inline private key",
+          "env": ["APPLE_ADS_PRIVATE_KEY"]
+        },
+        {
+          "id": "key-file",
+          "displayName": "Private key file",
+          "env": ["APPLE_ADS_PRIVATE_KEY_PATH"]
+        }
+      ],
+      "stateEnv": ["APPLE_ADS_CONFIG"],
+      "callbackEnv": [],
+      "env": [
+        {
+          "name": "APPLE_ADS_CLIENT_ID",
+          "required": true,
+          "secret": false,
+          "description": "Client id from Account Settings -> API at ads.apple.com. Starts SEARCHADS., never BUSINESSAPI."
+        },
+        {
+          "name": "APPLE_ADS_TEAM_ID",
+          "required": true,
+          "secret": false,
+          "description": "Team id, printed beside the client id once the public key is registered."
+        },
+        {
+          "name": "APPLE_ADS_KEY_ID",
+          "required": true,
+          "secret": false,
+          "description": "Key id, printed beside the client id once the public key is registered."
+        },
+        {
+          "name": "APPLE_ADS_PRIVATE_KEY",
+          "required": false,
+          "secret": true,
+          "description": "The EC P-256 private key, inline PEM. Preferred: Bastion keeps it in the Keychain and never writes it to disk."
+        },
+        {
+          "name": "APPLE_ADS_PRIVATE_KEY_PATH",
+          "required": false,
+          "secret": false,
+          "description": "Path to the private key PEM on disk. It leaves the key readable outside the Keychain."
+        },
+        {
+          "name": "APPLE_ADS_AD_ACCOUNT_ID",
+          "required": false,
+          "secret": false,
+          "description": "Default ad account. Needed when the API user reaches more than one; otherwise each call must name one."
+        },
+        {
+          "name": "APPLE_ADS_MAX_DAILY_BUDGET",
+          "required": false,
+          "secret": false,
+          "description": "Ceiling, in major currency units, on any daily budget a write tool may set. Unset means no ceiling."
+        },
+        {
+          "name": "APPLE_ADS_MAX_BID",
+          "required": false,
+          "secret": false,
+          "description": "Ceiling, in major currency units, on any bid a write tool may set. Unset means no ceiling."
+        },
+        {
+          "name": "APPLE_ADS_CONFIG",
+          "required": false,
+          "secret": false,
+          "description": "Config file path. Unset resolves under XDG_CONFIG_HOME, which Bastion already points at the profile's own directory."
+        },
+        {
+          "name": "APPLE_ADS_ALLOW_WRITES",
+          "required": false,
+          "secret": false,
+          "description": "Enables the mutating tools: creating, updating and deleting campaigns, ad groups, keywords and ads, budgets, and non-GET raw requests."
+        }
+      ],
+      "notes": [
+        "Local, not npm: @mgcrea/mcp-apple-ads 0.1.0 is unpublished and",
+        "github.com/mgcrea/mcp-apple-ads does not resolve, which is also why",
+        "docsUrl is null. Publishing it means switching distribution to npm,",
+        "adding provenance, and setting docsUrl once the repo is public.",
+        "",
+        "These are Apple Ads credentials, not App Store Connect ones. The key",
+        "pair is generated locally and only the public half is registered at",
+        "ads.apple.com, by a user holding an API role - an Account Admin has no",
+        "Public Key field. A .p8 from App Store Connect or a key from Apple",
+        "Business Manager will not authenticate here.",
+        "",
+        "On this API a write is a purchase order. Writes off, the mutating tools",
+        "are not registered at all and apple_ads_request accepts only GET; the",
+        "two ceilings are checked locally before any request goes out, which is",
+        "why they are surfaced here although both are optional.",
+        "",
+        "Without all four credential fields the server still starts and exposes",
+        "only apple_ads_auth_status, which names what is missing, rather than",
+        "exiting with its stderr swallowed.",
+        "",
+        "Left out of env: APPLE_ADS_API_URL and APPLE_ADS_AUTH_URL (endpoint",
+        "overrides), APPLE_ADS_MAX_RETRIES and APPLE_ADS_DEBUG."
+      ]
+    },
+    {
+      "id": "yahoo-finance",
+      "displayName": "Yahoo Finance",
+      "summary": "Yahoo Finance market data: prices, fundamentals, financial statements, holders, options, news and analyst ratings. Needs no credential.",
+      "transport": {
+        "kind": "child",
+        "npmName": "@mgcrea/mcp-yahoo-finance",
+        "binName": "yahoo-finance-mcp",
+        "distribution": "npm",
+        "localPath": "mcp-yahoo-finance",
+        "vendor": "mgcrea",
+        "provenance": true
+      },
+      "docsUrl": "https://github.com/mgcrea/mcp-yahoo-finance",
+      "dialect": "2025-11-25",
+      "writeGate": null,
+      "gateBypass": [],
+      "authModes": [],
+      "stateEnv": [],
+      "callbackEnv": [],
+      "env": [
+        {
+          "name": "YAHOO_FINANCE_COOKIE",
+          "required": false,
+          "secret": true,
+          "description": "Cookie header from a finance.yahoo.com browser session, to skip the automatic handshake if Yahoo's consent flow changes. Set it together with YAHOO_FINANCE_CRUMB. It does not get past a 429: Yahoo checks the TLS fingerprint on every request."
+        },
+        {
+          "name": "YAHOO_FINANCE_CRUMB",
+          "required": false,
+          "secret": true,
+          "description": "The crumb paired with that cookie, from query1.finance.yahoo.com/v1/test/getcrumb in the same browser. Useless without the cookie it was issued for."
+        },
+        {
+          "name": "YAHOO_FINANCE_CONCURRENCY",
+          "required": false,
+          "secret": false,
+          "description": "Max requests in flight to Yahoo, handshake included. Defaults to 4; lower it if a watchlist-sized fan-out trips 429s."
+        },
+        {
+          "name": "YAHOO_FINANCE_REQUEST_TIMEOUT_MS",
+          "required": false,
+          "secret": false,
+          "description": "Per-request timeout in milliseconds, body included. Defaults to 30000."
+        },
+        {
+          "name": "YAHOO_FINANCE_DEBUG",
+          "required": false,
+          "secret": false,
+          "description": "Any non-empty value logs every Yahoo request to stderr."
+        }
+      ],
+      "notes": [
+        "Published as @mgcrea/mcp-yahoo-finance on 2026-10-03, after the repo",
+        "went public the same day. 0.2.0 went out by hand - a brand-new name",
+        "cannot be claimed over OIDC - and carries no attestation; 0.2.1 went",
+        "out through the CI trusted publisher with a SLSA v1 one.",
+        "",
+        "WRITEGATE NULL IS MEANT LITERALLY: all nine tools are reads against",
+        "Yahoo's public, unofficial JSON endpoints, and none is annotated",
+        "otherwise. There is no account, no key and nothing to mutate.",
+        "",
+        "No credential, but not no state: the server runs Yahoo's cookie + crumb",
+        "handshake itself and keeps the result in memory, so one supervised",
+        "instance shared by every client is one session and one rate-limit",
+        "budget instead of N.",
+        "",
+        "Yahoo answers 429 to any client whose TLS handshake does not look like",
+        "a browser's, on every request and from any IP. 0.2.0 and 0.2.1 used",
+        "Node's default TLS and failed for everyone; 0.2.2 presents Chrome's",
+        "cipher order, groups and sigalgs over node:https, measured working",
+        "2026-10-03 from three networks. When it moves again, the repo's",
+        "weekly `live` CI job is what goes red first.",
+        "",
+        "The cookie and crumb override is marked secret because it is a live",
+        "browser session for whoever captured it, not because the server needs it."
+      ]
     }
   ]
 }

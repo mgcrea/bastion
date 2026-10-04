@@ -2865,6 +2865,187 @@ nonisolated enum ServerCatalog {
       env: [
 
       ]),
+    // Local, not npm: @mgcrea/mcp-apple-ads 0.1.0 is unpublished and
+    // github.com/mgcrea/mcp-apple-ads does not resolve, which is also why
+    // docsUrl is null. Publishing it means switching distribution to npm,
+    // adding provenance, and setting docsUrl once the repo is public.
+    //
+    // These are Apple Ads credentials, not App Store Connect ones. The key
+    // pair is generated locally and only the public half is registered at
+    // ads.apple.com, by a user holding an API role - an Account Admin has no
+    // Public Key field. A .p8 from App Store Connect or a key from Apple
+    // Business Manager will not authenticate here.
+    //
+    // On this API a write is a purchase order. Writes off, the mutating tools
+    // are not registered at all and apple_ads_request accepts only GET; the
+    // two ceilings are checked locally before any request goes out, which is
+    // why they are surfaced here although both are optional.
+    //
+    // Without all four credential fields the server still starts and exposes
+    // only apple_ads_auth_status, which names what is missing, rather than
+    // exiting with its stderr swallowed.
+    //
+    // Left out of env: APPLE_ADS_API_URL and APPLE_ADS_AUTH_URL (endpoint
+    // overrides), APPLE_ADS_MAX_RETRIES and APPLE_ADS_DEBUG.
+    BastionServer(
+      id: "apple-ads",
+      displayName: "Apple Ads",
+      summary: "Apple Ads Platform API: ad accounts, campaigns, ad groups, keywords, ads, budgets and reports.",
+      transport: .child(
+        .init(
+          npmName: "@mgcrea/mcp-apple-ads",
+          binName: "apple-ads-mcp",
+          distribution: .local,
+          localPath: "mcp-apple-ads",
+          vendor: .mgcrea,
+          provenance: false)),
+      docsURL: nil,
+      dialect: .v2025_11_25,
+      writeGate: "APPLE_ADS_ALLOW_WRITES",
+      writeTools: [],
+      gateBypass: [],
+      authModes: [
+        .init(
+          id: "inline-key",
+          displayName: "Inline private key",
+          kind: .env,
+          env: ["APPLE_ADS_PRIVATE_KEY"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+        .init(
+          id: "key-file",
+          displayName: "Private key file",
+          kind: .env,
+          env: ["APPLE_ADS_PRIVATE_KEY_PATH"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+      ],
+      stateEnv: ["APPLE_ADS_CONFIG"],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "APPLE_ADS_CLIENT_ID",
+          isRequired: true,
+          isSecret: false,
+          summary: "Client id from Account Settings -> API at ads.apple.com. Starts SEARCHADS., never BUSINESSAPI."),
+        .init(
+          name: "APPLE_ADS_TEAM_ID",
+          isRequired: true,
+          isSecret: false,
+          summary: "Team id, printed beside the client id once the public key is registered."),
+        .init(
+          name: "APPLE_ADS_KEY_ID",
+          isRequired: true,
+          isSecret: false,
+          summary: "Key id, printed beside the client id once the public key is registered."),
+        .init(
+          name: "APPLE_ADS_PRIVATE_KEY",
+          isRequired: false,
+          isSecret: true,
+          summary: "The EC P-256 private key, inline PEM. Preferred: Bastion keeps it in the Keychain and never writes it to disk."),
+        .init(
+          name: "APPLE_ADS_PRIVATE_KEY_PATH",
+          isRequired: false,
+          isSecret: false,
+          summary: "Path to the private key PEM on disk. It leaves the key readable outside the Keychain."),
+        .init(
+          name: "APPLE_ADS_AD_ACCOUNT_ID",
+          isRequired: false,
+          isSecret: false,
+          summary: "Default ad account. Needed when the API user reaches more than one; otherwise each call must name one."),
+        .init(
+          name: "APPLE_ADS_MAX_DAILY_BUDGET",
+          isRequired: false,
+          isSecret: false,
+          summary: "Ceiling, in major currency units, on any daily budget a write tool may set. Unset means no ceiling."),
+        .init(
+          name: "APPLE_ADS_MAX_BID",
+          isRequired: false,
+          isSecret: false,
+          summary: "Ceiling, in major currency units, on any bid a write tool may set. Unset means no ceiling."),
+        .init(
+          name: "APPLE_ADS_CONFIG",
+          isRequired: false,
+          isSecret: false,
+          summary: "Config file path. Unset resolves under XDG_CONFIG_HOME, which Bastion already points at the profile's own directory."),
+        .init(
+          name: "APPLE_ADS_ALLOW_WRITES",
+          isRequired: false,
+          isSecret: false,
+          summary: "Enables the mutating tools: creating, updating and deleting campaigns, ad groups, keywords and ads, budgets, and non-GET raw requests."),
+      ]),
+    // Published as @mgcrea/mcp-yahoo-finance on 2026-10-03, after the repo
+    // went public the same day. 0.2.0 went out by hand - a brand-new name
+    // cannot be claimed over OIDC - and carries no attestation; 0.2.1 went
+    // out through the CI trusted publisher with a SLSA v1 one.
+    //
+    // WRITEGATE NULL IS MEANT LITERALLY: all nine tools are reads against
+    // Yahoo's public, unofficial JSON endpoints, and none is annotated
+    // otherwise. There is no account, no key and nothing to mutate.
+    //
+    // No credential, but not no state: the server runs Yahoo's cookie + crumb
+    // handshake itself and keeps the result in memory, so one supervised
+    // instance shared by every client is one session and one rate-limit
+    // budget instead of N.
+    //
+    // Yahoo answers 429 to any client whose TLS handshake does not look like
+    // a browser's, on every request and from any IP. 0.2.0 and 0.2.1 used
+    // Node's default TLS and failed for everyone; 0.2.2 presents Chrome's
+    // cipher order, groups and sigalgs over node:https, measured working
+    // 2026-10-03 from three networks. When it moves again, the repo's
+    // weekly `live` CI job is what goes red first.
+    //
+    // The cookie and crumb override is marked secret because it is a live
+    // browser session for whoever captured it, not because the server needs it.
+    BastionServer(
+      id: "yahoo-finance",
+      displayName: "Yahoo Finance",
+      summary: "Yahoo Finance market data: prices, fundamentals, financial statements, holders, options, news and analyst ratings. Needs no credential.",
+      transport: .child(
+        .init(
+          npmName: "@mgcrea/mcp-yahoo-finance",
+          binName: "yahoo-finance-mcp",
+          distribution: .npm,
+          localPath: "mcp-yahoo-finance",
+          vendor: .mgcrea,
+          provenance: true)),
+      docsURL: URL(string: "https://github.com/mgcrea/mcp-yahoo-finance"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: [],
+      gateBypass: [],
+      authModes: [],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "YAHOO_FINANCE_COOKIE",
+          isRequired: false,
+          isSecret: true,
+          summary: "Cookie header from a finance.yahoo.com browser session, to skip the automatic handshake if Yahoo's consent flow changes. Set it together with YAHOO_FINANCE_CRUMB. It does not get past a 429: Yahoo checks the TLS fingerprint on every request."),
+        .init(
+          name: "YAHOO_FINANCE_CRUMB",
+          isRequired: false,
+          isSecret: true,
+          summary: "The crumb paired with that cookie, from query1.finance.yahoo.com/v1/test/getcrumb in the same browser. Useless without the cookie it was issued for."),
+        .init(
+          name: "YAHOO_FINANCE_CONCURRENCY",
+          isRequired: false,
+          isSecret: false,
+          summary: "Max requests in flight to Yahoo, handshake included. Defaults to 4; lower it if a watchlist-sized fan-out trips 429s."),
+        .init(
+          name: "YAHOO_FINANCE_REQUEST_TIMEOUT_MS",
+          isRequired: false,
+          isSecret: false,
+          summary: "Per-request timeout in milliseconds, body included. Defaults to 30000."),
+        .init(
+          name: "YAHOO_FINANCE_DEBUG",
+          isRequired: false,
+          isSecret: false,
+          summary: "Any non-empty value logs every Yahoo request to stderr."),
+      ]),
   ]
   // </generated:servers>
 

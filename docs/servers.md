@@ -74,7 +74,7 @@ sets no variable in it: a system command takes no credentials, and its write
 gate is a filter over tool names.
 
 Bastion curates lightly, and only to fill the first screen. The catalog seeds
-thirty-five entries — twelve servers written here, eleven somebody else
+thirty-seven entries — fourteen servers written here, eleven somebody else
 publishes, eleven endpoints their own vendors operate, and one command that
 ships with a developer tool on the Mac — because a catalog
 that opens with nothing recognisable in it teaches nobody what the app is for.
@@ -168,7 +168,7 @@ declares its protocol version, identity and capabilities in each request's
 shared server instance correct rather than a hack, and it is why Bastion fronts
 clients with it.
 
-None of the catalog entries below are modern. The twelve children written here
+None of the catalog entries below are modern. The fourteen children written here
 run an SDK whose newest protocol is `2025-11-25`, and `server/discover` against
 one returns `-32601` — the exact signal the spec names for recognising a legacy
 server. The eleven third-party children were measured at the same revision, and
@@ -249,6 +249,8 @@ asserts both eras against a running build.
 | [Apify](https://github.com/apify/apify-mcp-server) | `apify` | `actors-mcp-server` | `@apify/actors-mcp-server` (npm, provenance) | `abort-actor-run`, `call-actor`, `report-problem` (by name) | 1 |
 | [iOS Simulator](https://github.com/mgcrea/mcp-ios-simulator) | `ios-simulator` | `ios-simulator-mcp` | `@mgcrea/mcp-ios-simulator` (npm, provenance) | `IOS_SIMULATOR_ALLOW_WRITES` | — |
 | [Xcode](https://developer.apple.com/documentation/xcode/giving-agentic-coding-tools-access-to-xcode) | `xcode` | — | `/usr/bin/xcrun mcpbridge` (system) | `AddEntitlement`, `AddInfoPlist`, `InvokeDebuggerCommand`, `LocalizationPlanner`, `RunCodeSnippet`, `StringCatalogEdit`, `UpdateFileCompilerFlags`, `UpdateTargetBuildSetting`, `XcodeMV`, `XcodeMakeDir`, `XcodeNewProject`, `XcodeNewTarget`, `XcodeRM`, `XcodeUpdate`, `XcodeWrite` (by name) | — |
+| Apple Ads | `apple-ads` | `apple-ads-mcp` | `mcp-apple-ads` (local) | `APPLE_ADS_ALLOW_WRITES` | 1 |
+| [Yahoo Finance](https://github.com/mgcrea/mcp-yahoo-finance) | `yahoo-finance` | `yahoo-finance-mcp` | `@mgcrea/mcp-yahoo-finance` (npm, provenance) | read-only | 2 |
 
 ### App Store Connect
 
@@ -1245,4 +1247,84 @@ Runs `/usr/bin/xcrun mcpbridge`. Nothing to install and no variables. Requires X
 
 
 Hidden with writes off: `AddEntitlement`, `AddInfoPlist`, `InvokeDebuggerCommand`, `LocalizationPlanner`, `RunCodeSnippet`, `StringCatalogEdit`, `UpdateFileCompilerFlags`, `UpdateTargetBuildSetting`, `XcodeMV`, `XcodeMakeDir`, `XcodeNewProject`, `XcodeNewTarget`, `XcodeRM`, `XcodeUpdate`, `XcodeWrite` — and any tool the server annotates as not read-only. This filters what Bastion forwards; it does not bind the server, so the credential's own scopes remain the real boundary.
+
+### Apple Ads
+
+Apple Ads Platform API: ad accounts, campaigns, ad groups, keywords, ads, budgets and reports.
+
+Local, not npm: @mgcrea/mcp-apple-ads 0.1.0 is unpublished and
+github.com/mgcrea/mcp-apple-ads does not resolve, which is also why
+docsUrl is null. Publishing it means switching distribution to npm,
+adding provenance, and setting docsUrl once the repo is public.
+
+These are Apple Ads credentials, not App Store Connect ones. The key
+pair is generated locally and only the public half is registered at
+ads.apple.com, by a user holding an API role - an Account Admin has no
+Public Key field. A .p8 from App Store Connect or a key from Apple
+Business Manager will not authenticate here.
+
+On this API a write is a purchase order. Writes off, the mutating tools
+are not registered at all and apple_ads_request accepts only GET; the
+two ceilings are checked locally before any request goes out, which is
+why they are surfaced here although both are optional.
+
+Without all four credential fields the server still starts and exposes
+only apple_ads_auth_status, which names what is missing, rather than
+exiting with its stderr swallowed.
+
+Left out of env: APPLE_ADS_API_URL and APPLE_ADS_AUTH_URL (endpoint
+overrides), APPLE_ADS_MAX_RETRIES and APPLE_ADS_DEBUG.
+
+| Variable | Required | Secret | Meaning |
+| --- | --- | --- | --- |
+| `APPLE_ADS_CLIENT_ID` | yes | — | Client id from Account Settings -> API at ads.apple.com. Starts SEARCHADS., never BUSINESSAPI. |
+| `APPLE_ADS_TEAM_ID` | yes | — | Team id, printed beside the client id once the public key is registered. |
+| `APPLE_ADS_KEY_ID` | yes | — | Key id, printed beside the client id once the public key is registered. |
+| `APPLE_ADS_PRIVATE_KEY` | — | yes | The EC P-256 private key, inline PEM. Preferred: Bastion keeps it in the Keychain and never writes it to disk. |
+| `APPLE_ADS_PRIVATE_KEY_PATH` | — | — | Path to the private key PEM on disk. It leaves the key readable outside the Keychain. |
+| `APPLE_ADS_AD_ACCOUNT_ID` | — | — | Default ad account. Needed when the API user reaches more than one; otherwise each call must name one. |
+| `APPLE_ADS_MAX_DAILY_BUDGET` | — | — | Ceiling, in major currency units, on any daily budget a write tool may set. Unset means no ceiling. |
+| `APPLE_ADS_MAX_BID` | — | — | Ceiling, in major currency units, on any bid a write tool may set. Unset means no ceiling. |
+| `APPLE_ADS_CONFIG` | — | — | Config file path. Unset resolves under XDG_CONFIG_HOME, which Bastion already points at the profile's own directory. |
+| `APPLE_ADS_ALLOW_WRITES` | — | — | Enables the mutating tools: creating, updating and deleting campaigns, ad groups, keywords and ads, budgets, and non-GET raw requests. |
+
+Satisfy exactly one of: **Inline private key** (`APPLE_ADS_PRIVATE_KEY`), **Private key file** (`APPLE_ADS_PRIVATE_KEY_PATH`)
+
+Per-profile state: `APPLE_ADS_CONFIG`
+
+### Yahoo Finance
+
+Yahoo Finance market data: prices, fundamentals, financial statements, holders, options, news and analyst ratings. Needs no credential.
+
+Published as @mgcrea/mcp-yahoo-finance on 2026-10-03, after the repo
+went public the same day. 0.2.0 went out by hand - a brand-new name
+cannot be claimed over OIDC - and carries no attestation; 0.2.1 went
+out through the CI trusted publisher with a SLSA v1 one.
+
+WRITEGATE NULL IS MEANT LITERALLY: all nine tools are reads against
+Yahoo's public, unofficial JSON endpoints, and none is annotated
+otherwise. There is no account, no key and nothing to mutate.
+
+No credential, but not no state: the server runs Yahoo's cookie + crumb
+handshake itself and keeps the result in memory, so one supervised
+instance shared by every client is one session and one rate-limit
+budget instead of N.
+
+Yahoo answers 429 to any client whose TLS handshake does not look like
+a browser's, on every request and from any IP. 0.2.0 and 0.2.1 used
+Node's default TLS and failed for everyone; 0.2.2 presents Chrome's
+cipher order, groups and sigalgs over node:https, measured working
+2026-10-03 from three networks. When it moves again, the repo's
+weekly `live` CI job is what goes red first.
+
+The cookie and crumb override is marked secret because it is a live
+browser session for whoever captured it, not because the server needs it.
+
+| Variable | Required | Secret | Meaning |
+| --- | --- | --- | --- |
+| `YAHOO_FINANCE_COOKIE` | — | yes | Cookie header from a finance.yahoo.com browser session, to skip the automatic handshake if Yahoo's consent flow changes. Set it together with YAHOO_FINANCE_CRUMB. It does not get past a 429: Yahoo checks the TLS fingerprint on every request. |
+| `YAHOO_FINANCE_CRUMB` | — | yes | The crumb paired with that cookie, from query1.finance.yahoo.com/v1/test/getcrumb in the same browser. Useless without the cookie it was issued for. |
+| `YAHOO_FINANCE_CONCURRENCY` | — | — | Max requests in flight to Yahoo, handshake included. Defaults to 4; lower it if a watchlist-sized fan-out trips 429s. |
+| `YAHOO_FINANCE_REQUEST_TIMEOUT_MS` | — | — | Per-request timeout in milliseconds, body included. Defaults to 30000. |
+| `YAHOO_FINANCE_DEBUG` | — | — | Any non-empty value logs every Yahoo request to stderr. |
 <!-- </generated:servers> -->

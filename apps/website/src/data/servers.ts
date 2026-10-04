@@ -450,6 +450,28 @@ export const SERVERS: Server[] = [
     provenance: false,
     dialect: "2025-06-18",
   },
+  {
+    id: "apple-ads",
+    displayName: "Apple Ads",
+    summary: "Apple Ads Platform API: ad accounts, campaigns, ad groups, keywords, ads, budgets and reports.",
+    writeGate: "APPLE_ADS_ALLOW_WRITES",
+    gatesByName: false,
+    transport: "child",
+    vendor: "mgcrea",
+    provenance: false,
+    dialect: "2025-11-25",
+  },
+  {
+    id: "yahoo-finance",
+    displayName: "Yahoo Finance",
+    summary: "Yahoo Finance market data: prices, fundamentals, financial statements, holders, options, news and analyst ratings. Needs no credential.",
+    writeGate: null,
+    gatesByName: false,
+    transport: "child",
+    vendor: "mgcrea",
+    provenance: true,
+    dialect: "2025-11-25",
+  },
 ];
 // </generated:servers>
 

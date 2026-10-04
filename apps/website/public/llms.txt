@@ -79,9 +79,9 @@ runs it.
 
 ## Servers
 
-Bastion ships with nothing installed. Thirty-five entries are in the catalog you install from. Twelve
+Bastion ships with nothing installed. Thirty-seven entries are in the catalog you install from. Fourteen
 are servers written here and run as child processes — App Store Connect, Reddit, X, UniFi Protect,
-UniFi Network, Shopify, OVHcloud, Keycloak, npm, iOS Device, iOS Simulator and CloudKit.
+UniFi Network, Shopify, OVHcloud, Keycloak, npm, iOS Device, iOS Simulator, CloudKit, Apple Ads and Yahoo Finance.
 Eleven more are child processes too, but published by somebody else: MongoDB, DBHub, Kubernetes,
 Context7, Firecrawl, Exa, Tavily, Playwright, Supabase, Netlify and Apify — installed from npm and run
 on your machine, with the supervision, the Keychain and the audit line around them but no review of the
@@ -91,8 +91,8 @@ one is a command that ships with Xcode itself — Xcode's own MCP server, run as
 supervised like a child, with nothing to install and Xcode's own per-agent approval in front of it.
 Anything else on npm can be added by package name, or by URL for a remote server.
 
-Eighteen of the twenty-three children sit behind a write gate; Shopify, Context7, Firecrawl, Exa and
-Tavily are read-only. The gate takes two shapes. Fourteen have an environment variable, and three of
+Nineteen of the twenty-four children sit behind a write gate; Shopify, Context7, Firecrawl, Exa and
+Tavily are read-only. The gate takes two shapes. Fifteen have an environment variable, and three of
 those are inverted — MongoDB, DBHub and Kubernetes name a read-only switch rather than a write switch,
 so Bastion sends the opposite value. The other four — Playwright, Supabase, Netlify and Apify — gate by
 tool name instead, because their own read-only switch is a command-line flag and Bastion passes no
