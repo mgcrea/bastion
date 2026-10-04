@@ -117,7 +117,12 @@
       "id": "intro",
       "duration": 26,
       "poster": 5.6,
-      "outputs": { "promo": [[1920, 1080], [1200, 1200]] },
+      "outputs": {
+        "promo": [
+          [1920, 1080],
+          [1200, 1200]
+        ]
+      },
       "motion": "kinetic",
       "hook": "Every editor spawns *its own* servers.",
       "card": {
@@ -128,13 +133,32 @@
       },
       "beats": [
         { "at": 0, "screen": "running" },
-        { "at": 4.2, "caption": "Bastion runs *one per profile*, shared by all.", "focus": { "rect": [460, 170, 1880, 360] } },
+        {
+          "at": 4.2,
+          "caption": "Bastion runs *one per profile*, shared by all.",
+          "focus": { "rect": [460, 170, 1880, 360] }
+        },
         { "at": 5, "pop": { "rect": [470, 175, 1860, 90], "until": 8 } },
-        { "at": 8.5, "screen": "stats", "caption": "See what every connect *costs your context*.", "focus": "home" },
+        {
+          "at": 8.5,
+          "screen": "stats",
+          "caption": "See what every connect *costs your context*.",
+          "focus": "home"
+        },
         { "at": 9.5, "spotlight": { "rect": [472, 210, 1853, 440], "until": 12.5 } },
-        { "at": 13, "screen": "log", "caption": "Every call recorded, *secrets redacted*.", "focus": "home" },
+        {
+          "at": 13,
+          "screen": "log",
+          "caption": "Every call recorded, *secrets redacted*.",
+          "focus": "home"
+        },
         { "at": 14, "pop": { "rect": [470, 728, 960, 90], "until": 16.8 } },
-        { "at": 17.2, "screen": "client", "caption": "Wired into your editor, *not living inside it*.", "focus": "home" },
+        {
+          "at": 17.2,
+          "screen": "client",
+          "caption": "Wired into your editor, *not living inside it*.",
+          "focus": "home"
+        },
         { "at": 18.2, "spotlight": { "rect": [472, 519, 1853, 525], "until": 21.5 } },
         { "at": 22, "endCard": true }
       ]
