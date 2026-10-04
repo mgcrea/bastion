@@ -496,6 +496,14 @@ app's token, which a Debug build would otherwise refuse with a 401. A gateway to
 so this copy cannot sign anything out. The `dev` token is left alone, because the check scripts
 read it back from the `dev-token` file beside it.
 
+It copies `workspaces.json` and the Settings window's values too (call capture, audit and stats
+retention, the key prefix, the npm release age, the gateway port and the rest), and clears any the
+Debug build sets on its own. A `dev.json` is moved into the backup, since it would run servers from
+a checkout rather than from their installed trees; `make dev-config` puts it back. Sparkle, launch
+at login, the licence and the three switches a Debug build keeps off (`autoWireClients`,
+`reconcileSkills`, `trustProfilesForStaleEntries`) stay as they are, so a checkout build still does
+not rewrite your client configs or skill links unless you pass `-autoWireClients YES`.
+
 Two things deliberately do not come across. **OAuth token sets** are left behind because a refresh
 token is frequently single-use: the first build to refresh it rotates it, and the other build's
 copy stops working — so copying one would risk signing the real app out to save a button press.

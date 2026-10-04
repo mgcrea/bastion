@@ -70,6 +70,9 @@ are taken from this file, which is the curated summary.
 - The website's HSTS header no longer asks for preloading, which bastion.mgcrea.io cannot have.
 - builtin-check and facade-check pin the settings they depend on, `make smoke` passes on any
   server, and a demo capture never writes, deletes or reads the developer's real state.
+- `make dev-clone` also copies the workspaces and the Settings window's values into the Debug
+  build, and cuts its `dev.json` down to the node runtime, so `make run` serves what the installed
+  app does.
 
 ## [1.24.0] - 2026-09-26
 

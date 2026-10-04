@@ -8,11 +8,15 @@
 // script from writing over the real app's state — so this does not remove it.
 // It copies across it, once, when you ask.
 //
-// Four things move, by three different routes, because they are different
-// kinds of thing:
+// Six things move, by four different routes, because they are different kinds
+// of thing:
 //
 //   servers.json   a plain file copy. Carries catalog rows and the definitions
 //                  of any custom server, which a catalog lookup cannot rebuild.
+//   workspaces.json
+//                  a plain file copy too, or removed from the Debug side when
+//                  the Release app has none, so both builds scope the same
+//                  profiles to the same folders.
 //   servers/       the downloaded npm trees, copied with `/bin/cp -Rc`, which
 //                  uses clonefile(2) — on APFS the two copies share blocks, so
 //                  300MB of trees costs almost nothing. It falls back to a real
@@ -26,6 +30,16 @@
 //   gateway tokens the installed app's per-client tokens, through the same
 //                  file, so every config it wrote is accepted by the Debug
 //                  build too — both listen on the same port, one at a time.
+//   settings       the Settings window's UserDefaults, key by key through
+//                  `defaults`. See `SETTINGS` below for which keys, and why the
+//                  rest stay.
+//
+// And one thing is cut down: the Debug `dev.json`. `make dev-config` writes
+// two things there — the node to run servers with, which a Debug build has no
+// other way to find, and a checkout that every server built in it runs from
+// instead of its installed tree. The clone keeps the node and drops the
+// checkout, so the Debug build runs what the Release app runs. The original
+// goes into the backup, and `make dev-config` writes it again.
 //
 // What deliberately does NOT move: OAuth token sets. See `oauthProfiles` below
 // — copying one risks signing the real app out, and re-authorizing in the Debug
@@ -46,6 +60,8 @@ import {
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { runtimeOnlyDevConfig } from "./lib/dev-config.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const SUPPORT = join(homedir(), "Library/Application Support");
@@ -219,6 +235,98 @@ const oauthProfiles = releaseProfiles
   .filter((p) => keychain(OAUTH_SERVICE, `${p.name}/${p.server}/oauth`) !== null)
   .map((p) => `${p.name}/${p.server}`);
 
+/**
+ * The UserDefaults keys that are setup rather than state: the Settings window's
+ * controls, nothing else.
+ *
+ * Left out on purpose: Sparkle's `SU*` keys and `bastion.launchAtLogin` (a
+ * Debug build that updates itself or starts at login fights the Release one),
+ * `license` (the Debug build keeps its own), window and pane selection, and
+ * the one-shot migration markers — copying one of those tells the Debug build
+ * a migration ran against files it has not seen.
+ *
+ * Also left: `autoWireClients`, `reconcileSkills` and
+ * `trustProfilesForStaleEntries`. The Release app never stores them, and a
+ * Debug build defaults all three to off so a checkout build does not rewrite
+ * your real client configs and skill links. Pass `-autoWireClients YES` to
+ * the Debug app to change that for one run.
+ */
+const SETTINGS = [
+  "gatewayPort",
+  "callCaptureMode",
+  "recentActivityAllProfiles",
+  "auditEnabled",
+  "auditPayloads",
+  "auditMaxDays",
+  "auditMaxMegabytes",
+  "statsEnabled",
+  "statsMaxDays",
+  "statsIncludeBuiltin",
+  "clientKeyPrefix",
+  "detectClaudeConfigDirs",
+  "claudeConfigDirs",
+  "npmMinReleaseAge",
+  "lazyToolsDefault",
+];
+
+const RELEASE_DOMAIN = "io.mgcrea.bastion";
+const DEBUG_DOMAIN = "io.mgcrea.bastion.debug";
+
+/**
+ * A domain's settings, as the XML fragment `defaults write` takes, by key.
+ *
+ * Through an exported plist and `plutil -extract … xml1` rather than `defaults
+ * read`, whose old-style output drops the type: `-1` reads back the same as a
+ * string and an integer, and the app reads `npmMinReleaseAge` as an integer.
+ */
+const settingsOf = (domain) => {
+  let plist;
+  try {
+    plist = execFileSync("defaults", ["export", domain, "-"], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch {
+    // A domain that was never written, which is a fresh Debug build.
+    return new Map();
+  }
+  const out = new Map();
+  for (const key of SETTINGS) {
+    try {
+      const xml = execFileSync("plutil", ["-extract", key, "xml1", "-o", "-", "-"], {
+        input: plist,
+        encoding: "utf8",
+        stdio: ["pipe", "pipe", "ignore"],
+      });
+      const value = xml.match(/<plist[^>]*>\s*([\s\S]*?)\s*<\/plist>/)?.[1];
+      if (value) out.set(key, value);
+    } catch {
+      // Not set in this domain, so it reads as the app's default.
+    }
+  }
+  return out;
+};
+
+const releaseSettings = settingsOf(RELEASE_DOMAIN);
+const debugSettings = settingsOf(DEBUG_DOMAIN);
+const settingsToWrite = [...releaseSettings].filter(([k, v]) => debugSettings.get(k) !== v);
+// Set in the Debug build only, so deleting it gives both builds the default.
+const settingsToClear = [...debugSettings.keys()].filter((k) => !releaseSettings.has(k));
+
+const releaseWorkspaces = join(RELEASE, "workspaces.json");
+const debugWorkspaces = join(DEBUG, "workspaces.json");
+const devConfig = join(DEBUG, "dev.json");
+// The node on PATH, the way `make dev-config` finds it: `/opt/homebrew/bin/node`
+// outlives an upgrade, where `process.execPath` names the versioned Cellar
+// directory the upgrade deletes.
+const pathNode =
+  (() => {
+    try {
+      return execFileSync("/bin/sh", ["-c", "command -v node"], { encoding: "utf8" }).trim();
+    } catch {
+      return "";
+    }
+  })() || process.execPath;
+
 // ─── plan ────────────────────────────────────────────────────────────────────
 
 const rows = [];
@@ -305,6 +413,38 @@ if (oauthProfiles.length > 0) {
   say("  Press Authorize on each in the Debug app. Copying a refresh token risks");
   say("  rotating it out from under the Release app.");
 }
+say("");
+if (existsSync(releaseWorkspaces)) {
+  const count = readJSON(releaseWorkspaces, []).length;
+  say(`${count} workspace(s) to copy.`);
+} else if (existsSync(debugWorkspaces)) {
+  say("No workspaces in the Release app; the Debug build's workspaces.json will be removed.");
+} else {
+  say("No workspaces on either side.");
+}
+say("");
+if (settingsToWrite.length + settingsToClear.length === 0) {
+  say("Settings already match.");
+} else {
+  if (settingsToWrite.length > 0) {
+    say(`${settingsToWrite.length} setting(s) to copy:`);
+    for (const [key] of settingsToWrite) say(`    ${key}`);
+  }
+  if (settingsToClear.length > 0) {
+    say(`${settingsToClear.length} Debug-only setting(s) to clear back to the default:`);
+    for (const key of settingsToClear) say(`    ${key}`);
+  }
+}
+if (existsSync(devConfig)) {
+  say("");
+  say("dev.json will keep its node and lose its checkout, so every server runs from");
+  say("its installed tree. The original goes into the backup; `make dev-config`");
+  say("writes it again.");
+} else {
+  say("");
+  say(`dev.json will name ${pathNode}, the node on PATH: a Debug build embeds`);
+  say("none, and without one it cannot start any server.");
+}
 
 if (DRY) {
   say("");
@@ -321,20 +461,61 @@ mkdirSync(DEBUG, { recursive: true, mode: 0o700 });
 const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 const backup = join(DEBUG, "clone-backup", stamp);
 mkdirSync(backup, { recursive: true, mode: 0o700 });
-for (const name of ["servers.json", "profiles.json"]) {
+for (const name of ["servers.json", "profiles.json", "workspaces.json"]) {
   const from = join(DEBUG, name);
   if (existsSync(from)) {
     writeFileSync(join(backup, name), readFileSync(from), { mode: 0o600 });
   }
 }
+// The whole domain, not only the keys about to change: `defaults import
+// io.mgcrea.bastion.debug defaults.plist` puts it back as it was.
+if (debugSettings.size > 0 || settingsToWrite.length > 0) {
+  try {
+    execFileSync("defaults", ["export", DEBUG_DOMAIN, join(backup, "defaults.plist")], {
+      stdio: "ignore",
+    });
+  } catch {
+    // Never written, so there is nothing to keep.
+  }
+}
 say("");
-say(`Backed up the Debug servers.json and profiles.json to ${backup}`);
+say(`Backed up the Debug servers.json, profiles.json, workspaces.json and settings to ${backup}`);
+
+// Rewritten rather than moved away. Moving it took the node with it, and a
+// Debug build with no dev.json fails every child with "no embedded node
+// runtime" — see lib/dev-config.mjs.
+const devConfigBefore = existsSync(devConfig) ? readFileSync(devConfig, "utf8") : null;
+if (devConfigBefore !== null) {
+  writeFileSync(join(backup, "dev.json"), devConfigBefore, { mode: 0o600 });
+}
+writeFileSync(devConfig, runtimeOnlyDevConfig(devConfigBefore, pathNode), {
+  mode: 0o600,
+});
+say("Wrote dev.json with its node and no checkout, so every server runs from its installed tree");
 
 // The server list, definitions included.
 writeFileSync(join(DEBUG, "servers.json"), readFileSync(join(RELEASE, "servers.json")), {
   mode: 0o600,
 });
 say("Copied servers.json");
+
+if (existsSync(releaseWorkspaces)) {
+  writeFileSync(debugWorkspaces, readFileSync(releaseWorkspaces), { mode: 0o600 });
+  say("Copied workspaces.json");
+} else if (existsSync(debugWorkspaces)) {
+  rmSync(debugWorkspaces);
+  say("Removed the Debug workspaces.json (the Release app has none)");
+}
+
+for (const [key, value] of settingsToWrite) {
+  execFileSync("defaults", ["write", DEBUG_DOMAIN, key, value], { stdio: "ignore" });
+}
+for (const key of settingsToClear) {
+  execFileSync("defaults", ["delete", DEBUG_DOMAIN, key], { stdio: "ignore" });
+}
+if (settingsToWrite.length + settingsToClear.length > 0) {
+  say(`Copied ${settingsToWrite.length} setting(s), cleared ${settingsToClear.length}`);
+}
 
 // profiles.json is deliberately NOT copied. The import below rebuilds it
 // through `ProfileStore.upsert`, which is what routes each secret into the
