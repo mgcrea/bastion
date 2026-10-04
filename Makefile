@@ -972,6 +972,14 @@ screenshots-website: ## Emit bare app captures into apps/website/src/assets/shot
 
 screenshots-compose: screenshots-appstore screenshots-website ## Recompose both sets (no re-capture)
 
+# The promo video, from the captures already in $(SHOT_SOURCE): no app, no
+# recording, seconds per run. Captions, timing and focus rects live in the
+# config's videos[]; review videos/report/*.contact.png after every change and
+# after every `make screenshots`, because the rects are capture pixels.
+video: ## Render the promo video from the current captures
+	appshot compose video --config "$(SHOT_CONFIG)" --from-stills "$(SHOT_SOURCE)" \
+		--out "$(SHOT_DIR)/videos" --appearances $(SHOT_APPEARANCES)
+
 screenshots-doctor: ## Check what fails silently: font, Screen Recording, config
 	appshot doctor --config "$(SHOT_CONFIG)"
 
@@ -1083,7 +1091,7 @@ typecheck: ## tsc the Worker and astro check the website
 	smoke dialect builtin facade wiring-check wiring-check-real skills-check skills-check-real remote-check remote-live-check unit license-check revocations audit audit-check migrate servers servers-check changelog changelog-check catalog-check provenance provenance-check discover icon \
 	screenshots screenshots-capture screenshots-check screenshots-update \
 	screenshots-seal screenshots-selftest screenshots-appstore \
-	screenshots-website screenshots-compose screenshots-doctor screenshots-clean \
+	screenshots-website screenshots-compose screenshots-doctor screenshots-clean video \
 	lint format format-check format-swift format-swift-check swift-format-version blame-setup test typecheck
 
 # ─── deploy ──────────────────────────────────────────────────────────────────

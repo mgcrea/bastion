@@ -54,7 +54,8 @@
         ]
       },
       "title": "#F4F2EF",
-      "subtitle": "#9B9A96"
+      "subtitle": "#9B9A96",
+      "accent": "#F2A07C"
     }
   },
   "//screens": "Order here IS the order of the framed set — it stamps the 01-, 02- prefix. The capture filenames stay unnumbered, so reordering never renames an image. `id` matches <id>.png in source/, and it is also the -ScreenshotStage value DemoSeed.Stage parses.",
@@ -108,6 +109,35 @@
       "website": "licence",
       "title": "Thirty minutes,\nnothing held back.",
       "subtitle": "Every server relays and every write gate obeys its own switch. The trial answers whether this works on your Mac; the refund answers the other question."
+    }
+  ],
+  "//videos": "Rendered from the captures in source/ by `make video` (appshot compose video --from-stills): a caption or a timing change re-renders in seconds and needs no app. Rects are in the captures' own pixels (2360x1656), so a capture that moves a row leaves its rect pointing at the old place; look at the contact sheet in videos/report/ after every `make screenshots`. No App Store preview, because Bastion is not on the App Store: promos at 16:9 and 1:1 for X and LinkedIn.",
+  "videos": [
+    {
+      "id": "intro",
+      "duration": 25,
+      "poster": 4.6,
+      "outputs": { "promo": [[1920, 1080], [1200, 1200]] },
+      "motion": "kinetic",
+      "hook": "Every editor spawns *its own* servers.",
+      "card": {
+        "title": "Bastion",
+        "subtitle": "One MCP server, running once, for every client.",
+        "icon": "card-icon.png",
+        "cta": "bastion.mgcrea.io"
+      },
+      "beats": [
+        { "at": 0, "screen": "running" },
+        { "at": 3.2, "caption": "Bastion runs *one per profile*, shared by all.", "focus": { "rect": [460, 170, 1880, 360] } },
+        { "at": 4, "pop": { "rect": [470, 175, 1860, 90], "until": 7 } },
+        { "at": 7.5, "screen": "stats", "caption": "See what every connect *costs your context*.", "focus": "home" },
+        { "at": 8.5, "spotlight": { "rect": [472, 210, 1853, 440], "until": 11.5 } },
+        { "at": 12, "screen": "log", "caption": "Every call recorded, *secrets redacted*.", "focus": "home" },
+        { "at": 13, "pop": { "rect": [470, 728, 960, 90], "until": 15.8 } },
+        { "at": 16.2, "screen": "client", "caption": "Wired into your editor, *not living inside it*.", "focus": "home" },
+        { "at": 17.2, "spotlight": { "rect": [472, 519, 1853, 525], "until": 20.5 } },
+        { "at": 21, "endCard": true }
+      ]
     }
   ]
 }
