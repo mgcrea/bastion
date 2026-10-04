@@ -1,0 +1,72 @@
+---
+/**
+ * The app, moving, one section under the hero.
+ *
+ * The hero is drawn on purpose (see the note above its menu-bar mock), so it
+ * reflows on a phone; this is the first thing on the page that is the real
+ * window. `make site-video` renders it from the `tour` entry in
+ * apps/apple/Screenshots/screenshots.config.json, out of the same captures
+ * `ServerPane.astro` and `Screens.astro` show still, and writes it to
+ * public/video — so it goes stale exactly when they do, and a fresh
+ * `make screenshots` wants a `make site-video` after it. From public/ and not
+ * astro:assets, which does nothing for video.
+ *
+ * Its captions are burned in and are the hero's own three claims (one process
+ * per profile, credentials in the Keychain, every call recorded) plus the
+ * wiring one. Reword one of those on the page and this still says the old
+ * words until somebody re-renders.
+ *
+ * `preload="none"` and no `autoplay`: the script below plays it only while it
+ * is on screen, and not at all under reduced motion, where it stays on its
+ * poster with the controls showing. The controls are the no-JS fallback too.
+ * Muted because it has no sound to lose.
+ *
+ * Full 1160 CSS px column and the same plate styling as `ServerPane.astro`
+ * right below it, so the two read as one set.
+ */
+---
+
+{/* Top padding only. The hero's menu-bar mock bleeds into the marquee, so the
+    marquee is the hero's bottom edge and brings no space of its own; the gap
+    below this is `ServerPane`'s top padding. */}
+<section class="wrap pt-[96px]">
+  <figure id="tour" class="reveal m-0 scroll-mt-24">
+    <video
+      data-tour
+      src="/video/tour.mp4"
+      poster="/video/tour.jpg"
+      width="1920"
+      height="1080"
+      muted
+      loop
+      playsinline
+      controls
+      preload="none"
+      aria-label="A twenty-second loop of Bastion's window: the Running pane with one process per profile and the clients attached to it, the Shopify server's environment with its client secret marked secret, the log with a client_secret argument redacted, and Claude Code's config entries pointing at the gateway."
+      class="block h-auto w-full rounded-[14px] border border-rule-2 shadow-[0_24px_60px_-34px_rgb(0_0_0/90%)]"
+    >
+    </video>
+    <figcaption class="mt-5 max-w-[76ch] text-[14.5px] leading-[1.65] text-fg-dim text-pretty">
+      Twenty seconds of the app: one process per profile, the credentials it holds back, the log as
+      calls land, and the entries it writes into an editor's config. Each pane is shown still, and
+      explained, further down.
+    </figcaption>
+  </figure>
+</section>
+
+<script>
+  // Plays the tour only while it is on screen. Reduced motion, or no
+  // IntersectionObserver, leaves it as it rendered: paused, with controls.
+  const tour = document.querySelector<HTMLVideoElement>("video[data-tour]");
+  const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (tour && !still && "IntersectionObserver" in window) {
+    tour.controls = false;
+    new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) void tour.play().catch(() => (tour.controls = true));
+        else tour.pause();
+      },
+      { threshold: 0.4 },
+    ).observe(tour);
+  }
+</script>

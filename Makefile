@@ -980,6 +980,28 @@ video: ## Render the promo video from the current captures
 	appshot compose video --config "$(SHOT_CONFIG)" --from-stills "$(SHOT_SOURCE)" \
 		--out "$(SHOT_DIR)/videos" --appearances $(SHOT_APPEARANCES)
 
+# The website's tour loop: the `tour` entry in videos[], rendered from the same
+# captures as the plates, so it goes stale exactly when they do and is rebuilt
+# by the same hand: run it after every `make screenshots`. No re-capture and no
+# app launch. appshot writes ~10 Mbps with a silent stereo track because App
+# Store previews want both; a muted loop wants neither, so ffmpeg takes it down
+# to a size a page can carry and drops the audio. +faststart puts the index
+# first so it starts playing before the download ends. The poster is the frame
+# at the entry's `poster` (2 s). Into public/, not src/assets: astro:assets does
+# nothing for video, and `make screenshots` clears src/assets/shots.
+SITE_VIDEO := $(abspath apps/website/public/video)
+
+site-video: ## Render the website's tour loop into apps/website/public/video
+	appshot compose video --config "$(SHOT_CONFIG)" --from-stills "$(SHOT_SOURCE)" \
+		--out "$(SHOT_DIR)/videos" --videos tour --appearances $(SHOT_APPEARANCES)
+	@mkdir -p "$(SITE_VIDEO)"
+	ffmpeg -loglevel error -y -i "$(SHOT_DIR)/videos/promo/tour~dark~1920x1080.mp4" -an \
+		-c:v libx264 -preset slow -crf 26 -pix_fmt yuv420p -movflags +faststart \
+		"$(SITE_VIDEO)/tour.mp4"
+	ffmpeg -loglevel error -y -ss 2 -i "$(SHOT_DIR)/videos/promo/tour~dark~1920x1080.mp4" \
+		-frames:v 1 -q:v 3 "$(SITE_VIDEO)/tour.jpg"
+	@ls -l "$(SITE_VIDEO)"
+
 screenshots-doctor: ## Check what fails silently: font, Screen Recording, config
 	appshot doctor --config "$(SHOT_CONFIG)"
 
@@ -1091,7 +1113,7 @@ typecheck: ## tsc the Worker and astro check the website
 	smoke dialect builtin facade wiring-check wiring-check-real skills-check skills-check-real remote-check remote-live-check unit license-check revocations audit audit-check migrate servers servers-check changelog changelog-check catalog-check provenance provenance-check discover icon \
 	screenshots screenshots-capture screenshots-check screenshots-update \
 	screenshots-seal screenshots-selftest screenshots-appstore \
-	screenshots-website screenshots-compose screenshots-doctor screenshots-clean video \
+	screenshots-website screenshots-compose screenshots-doctor screenshots-clean video site-video \
 	lint format format-check format-swift format-swift-check swift-format-version blame-setup test typecheck
 
 # ─── deploy ──────────────────────────────────────────────────────────────────

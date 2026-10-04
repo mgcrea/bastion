@@ -15,6 +15,7 @@ import Rules from "../components/Rules.astro";
 import Screens from "../components/Screens.astro";
 import Servers from "../components/Servers.astro";
 import SiblingApps from "../components/SiblingApps.astro";
+import Tour from "../components/Tour.astro";
 import {
   APP_NAME,
   APP_VERSION,
@@ -106,11 +107,18 @@ const schema = {
 <Layout schema={[organizationSchema, websiteSchema, schema]}>
   <Nav />
   <main id="main" tabindex="-1">
+    {/* The marquee belongs to the hero: the menu-bar mock bleeds into its top
+        border, so nothing goes between them. */}
     <Hero />
     <Marquee />
-    {/* The app itself, before the page starts arguing — the same slot cupertino
-        gives `SurfacePane`. The hero draws the claim; this photographs it, and
-        everything below can then refer back to something already seen. */}
+    {/* Directly under the hero, the real window, moving, before anything else
+        is said about it: the hero is a drawing, and this is the first thing on
+        the page that is not. Twenty seconds, carrying its own captions. */}
+    <Tour />
+    {/* Then one pane of it, still, before the page starts arguing — the same
+        slot cupertino gives `SurfacePane`. The hero draws the claim; this
+        photographs it, and everything below can then refer back to something
+        already seen. */}
     <ServerPane />
     <Problem />
     <HowItWorks />
