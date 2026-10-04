@@ -62,14 +62,21 @@
   "env": {
     "test": {
       "name": "bastion-api-test",
+      // Empty, and it has to be said. This Wrangler inherits the top-level
+      // `routes` into a named environment, so without it `wrangler deploy --env
+      // test` takes the api.bastion.mgcrea.io custom domain away from the live
+      // Worker and live webhooks land on the rehearsal, signed for a secret it
+      // does not hold. It did, on 2026-10-04, for the six minutes before the
+      // live Worker was redeployed; no live event arrived in that window.
+      "routes": [],
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "bastion-licenses-test",
-          // No `database_id` yet, because the database does not exist yet.
-          // Create it with `wrangler d1 create bastion-licenses-test`, paste
-          // the id it prints here, and apply the migrations before the first
-          // `wrangler deploy --env test`. The steps are in .test.vars.example.
+          // Created 2026-10-04. Migrations go here before `wrangler deploy
+          // --env test`, as for production: `wrangler d1 migrations apply
+          // bastion-licenses-test --remote --env test`.
+          "database_id": "0e5e3f82-205e-4387-bd4c-b58ef06f015c",
           "migrations_dir": "./migrations"
         }
       ],

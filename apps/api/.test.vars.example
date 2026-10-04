@@ -10,17 +10,16 @@
 # test-mode one. Every genuine payment was then refused as an invalid signature,
 # and nothing said why until a buyer wrote in.
 #
-# The `test` environment is declared in wrangler.jsonc, but its database is not
-# created yet, and its binding has no `database_id` until one is pasted in. So,
-# once, from apps/api and before the first deploy:
+# The `test` environment is declared in wrangler.jsonc and has existed since
+# 2026-10-04: its database, bastion-licenses-test, has its id there, and the
+# Worker answers at bastion-api-test's workers.dev URL, which the test-mode
+# webhook endpoint and the test Payment Link's redirect point at. A new
+# migration goes to it as to production, before the deploy, from apps/api:
 #
-#   pnpm exec wrangler d1 create bastion-licenses-test
-#     then paste the database_id it prints into `env.test.d1_databases` in
-#     wrangler.jsonc
 #   pnpm exec wrangler d1 migrations apply bastion-licenses-test --remote --env test
 #   pnpm exec wrangler deploy --env test
 #
-# Then push these secrets with the command above.
+# These secrets only need pushing again when one changes.
 #
 # The same two keys as `.prod.vars`, from the test-mode side of the Stripe
 # dashboard. The licence signing key is the SAME value as production: a key

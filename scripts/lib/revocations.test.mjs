@@ -51,27 +51,28 @@ describe("renderRevocations", () => {
 
 // The test environment signs with the production key, so that a test purchase
 // proves the shipped app accepts it. That makes every key it mints a real one,
-// and the generator revokes all of them — but only once the database exists,
-// which is when wrangler.jsonc gains its id. Before that there is nothing to
-// read, and reading anyway would fail every run.
+// and the generator revokes all of them — once the database exists, which is
+// when wrangler.jsonc gains its id (2026-10-04). Without an id there is nothing
+// to read, and reading anyway would fail every run.
 describe("testDatabaseConfigured", () => {
   const wrangler = readFileSync(join(root, "apps/api/wrangler.jsonc"), "utf8");
+  // The same config before the test database existed: its binding with no id.
+  const unconfigured = wrangler.replace(
+    /("database_name":\s*"bastion-licenses-test",[\s\S]*?)\n\s*"database_id":\s*"[^"]+",/,
+    "$1",
+  );
 
-  it("is false for the committed config, whose test database has no id yet", () => {
-    assert.equal(testDatabaseConfigured(wrangler), false);
+  it("is true for the committed config, whose test database has an id", () => {
+    assert.equal(testDatabaseConfigured(wrangler), true);
   });
 
-  it("is true once the test database's binding carries an id", () => {
-    const configured = wrangler.replace(
-      /("database_name":\s*"bastion-licenses-test",)/,
-      '$1\n          "database_id": "00000000-0000-0000-0000-000000000000",',
-    );
-    assert.notEqual(configured, wrangler);
-    assert.equal(testDatabaseConfigured(configured), true);
+  it("is false while the test database's binding has no id", () => {
+    assert.notEqual(unconfigured, wrangler);
+    assert.equal(testDatabaseConfigured(unconfigured), false);
   });
 
   it("is not fooled by the production database's id", () => {
-    assert.match(wrangler, /"database_id"\s*:\s*"[^"]+"/);
-    assert.equal(testDatabaseConfigured(wrangler), false);
+    assert.match(unconfigured, /"database_id"\s*:\s*"[^"]+"/);
+    assert.equal(testDatabaseConfigured(unconfigured), false);
   });
 });
