@@ -143,7 +143,7 @@
       "//": "The website's loop, built by `make site-video` into apps/website/public/video and played under the hero. No hook and no card, because the hero has just said both; the captions are the hero's own three claims plus the wiring one, and it ends back on `running` at home so the loop does not jump. Same rects as `intro` where the screens are shared.",
       "id": "tour",
       "duration": 20,
-      "poster": 2,
+      "poster": 2.5,
       "outputs": { "promo": [[1920, 1080]], "website": false },
       "motion": "kinetic",
       "beats": [
@@ -152,8 +152,8 @@
           "screen": "running",
           "caption": "One process per profile, *shared by every client*."
         },
-        { "at": 0.6, "focus": { "rect": [460, 170, 1880, 360] } },
-        { "at": 1.2, "pop": { "rect": [470, 175, 1860, 90], "until": 4 } },
+        { "at": 1.1, "focus": { "rect": [460, 170, 1880, 360] } },
+        { "at": 1.8, "pop": { "rect": [470, 175, 1860, 90], "until": 4 } },
         {
           "at": 4.5,
           "screen": "server",

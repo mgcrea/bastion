@@ -987,7 +987,7 @@ video: ## Render the promo video from the current captures
 # Store previews want both; a muted loop wants neither, so ffmpeg takes it down
 # to a size a page can carry and drops the audio. +faststart puts the index
 # first so it starts playing before the download ends. The poster is the frame
-# at the entry's `poster` (2 s). Into public/, not src/assets: astro:assets does
+# at the entry's `poster` (2.5 s). Into public/, not src/assets: astro:assets does
 # nothing for video, and `make screenshots` clears src/assets/shots.
 SITE_VIDEO := $(abspath apps/website/public/video)
 
@@ -998,7 +998,7 @@ site-video: ## Render the website's tour loop into apps/website/public/video
 	ffmpeg -loglevel error -y -i "$(SHOT_DIR)/videos/promo/tour~dark~1920x1080.mp4" -an \
 		-c:v libx264 -preset slow -crf 26 -pix_fmt yuv420p -movflags +faststart \
 		"$(SITE_VIDEO)/tour.mp4"
-	ffmpeg -loglevel error -y -ss 2 -i "$(SHOT_DIR)/videos/promo/tour~dark~1920x1080.mp4" \
+	ffmpeg -loglevel error -y -ss 2.5 -i "$(SHOT_DIR)/videos/promo/tour~dark~1920x1080.mp4" \
 		-frames:v 1 -q:v 3 "$(SITE_VIDEO)/tour.jpg"
 	@ls -l "$(SITE_VIDEO)"
 
