@@ -13,3 +13,9 @@
 # patterns are relative to its own directory. Hoisting it up would silently stop
 # matching, and the next refresh would commit these as ordinary blobs.
 src/assets/shots/*.png filter=lfs diff=lfs merge=lfs -text
+
+# The tour loop `make site-video` writes, for the same reason: re-rendered in
+# full after every capture run. Served from public/ rather than imported, so a
+# pointer file here would not fail the build; it would deploy as a 130-byte
+# "video". Both website jobs in ci.yml check out with `lfs: true`.
+public/video/*.mp4 filter=lfs diff=lfs merge=lfs -text
