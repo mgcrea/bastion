@@ -73,6 +73,10 @@ are taken from this file, which is the curated summary.
 
 ## [1.24.0] - 2026-09-26
 
+**Xcode's own MCP server, shared by every client.** Xcode 26.3 and later ship an MCP server that
+builds, runs and tests a project. Bastion now runs it behind one approval in Xcode, and with writes
+off it cannot edit the project or run arbitrary code.
+
 ### Added
 
 - **Xcode is in the catalog.** Xcode 26.3 and later ship their own MCP server, `xcrun mcpbridge`:
