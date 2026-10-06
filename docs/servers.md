@@ -1305,8 +1305,11 @@ The market-data tools are reads against Yahoo's public, unofficial
 JSON endpoints. 0.3.0 added watchlists for a signed-in cookie (one
 carrying Yahoo's T login cookie): yahoo_list_watchlists is a read,
 and create, add, remove and delete register only with
-YAHOO_FINANCE_ALLOW_WRITES. They refuse manual portfolios, whose
-positions carry lots and transactions a removal would delete.
+YAHOO_FINANCE_ALLOW_WRITES. 0.5.0 opened them to manual portfolios
+and added trade tools (get is a read; add, update and delete are
+gated). Removing a position that holds lots or transactions, or
+deleting a portfolio that does, is refused unless the call passes
+delete_history: true.
 
 No credential, but not no state: the server runs Yahoo's cookie + crumb
 handshake itself and keeps the result in memory, so one supervised
@@ -1330,5 +1333,5 @@ browser session for whoever captured it - signed in, it is the account.
 | `YAHOO_FINANCE_CONCURRENCY` | — | — | Max requests in flight to Yahoo, handshake included. Defaults to 4; lower it if a watchlist-sized fan-out trips 429s. |
 | `YAHOO_FINANCE_REQUEST_TIMEOUT_MS` | — | — | Per-request timeout in milliseconds, body included. Defaults to 30000. |
 | `YAHOO_FINANCE_DEBUG` | — | — | Any non-empty value logs every Yahoo request to stderr. |
-| `YAHOO_FINANCE_ALLOW_WRITES` | — | — | Registers the four watchlist tools that change the account: create, add, remove and delete. Needs a signed-in cookie. |
+| `YAHOO_FINANCE_ALLOW_WRITES` | — | — | Registers the tools that change the account: watchlist and portfolio create, add, remove and delete, and recording, editing and deleting portfolio trades. Needs a signed-in cookie. |
 <!-- </generated:servers> -->

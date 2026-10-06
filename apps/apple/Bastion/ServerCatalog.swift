@@ -2985,8 +2985,11 @@ nonisolated enum ServerCatalog {
     // JSON endpoints. 0.3.0 added watchlists for a signed-in cookie (one
     // carrying Yahoo's T login cookie): yahoo_list_watchlists is a read,
     // and create, add, remove and delete register only with
-    // YAHOO_FINANCE_ALLOW_WRITES. They refuse manual portfolios, whose
-    // positions carry lots and transactions a removal would delete.
+    // YAHOO_FINANCE_ALLOW_WRITES. 0.5.0 opened them to manual portfolios
+    // and added trade tools (get is a read; add, update and delete are
+    // gated). Removing a position that holds lots or transactions, or
+    // deleting a portfolio that does, is refused unless the call passes
+    // delete_history: true.
     //
     // No credential, but not no state: the server runs Yahoo's cookie + crumb
     // handshake itself and keeps the result in memory, so one supervised
@@ -3052,7 +3055,7 @@ nonisolated enum ServerCatalog {
           name: "YAHOO_FINANCE_ALLOW_WRITES",
           isRequired: false,
           isSecret: false,
-          summary: "Registers the four watchlist tools that change the account: create, add, remove and delete. Needs a signed-in cookie."),
+          summary: "Registers the tools that change the account: watchlist and portfolio create, add, remove and delete, and recording, editing and deleting portfolio trades. Needs a signed-in cookie."),
       ]),
   ]
   // </generated:servers>
