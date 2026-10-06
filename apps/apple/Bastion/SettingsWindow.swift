@@ -80,7 +80,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
 
   /// Only ever on What's New, and only while something is genuinely unread. The
   /// package draws nothing for 0, so the read case needs no branch of its own.
-  var badge: Int { self == .whatsNew && Changelog.hasUnseen ? Changelog.unseen.count : 0 }
+  var badge: Int { self == .whatsNew ? Changelog.notes.badge : 0 }
 
   static var defaultPane: SettingsPane { .general }
 
@@ -150,7 +150,18 @@ struct SettingsView: View {
       case .workspaces: WorkspacesPane()
       case .skills: SkillsPane()
       case .about: AboutPane()
-      case .whatsNew: WhatsNewPane()
+      case .whatsNew:
+        WhatsNewSettingsPane(
+          notes: Changelog.notes,
+          historyURL: Changelog.historyURL,
+          footer: """
+            The most recent \(Changelog.releases.count) releases are shown here. Every release \
+            Bastion has ever had is in CHANGELOG.md, which is where these notes come from.
+            """
+        )
+        // The package pane knows nothing of captures, so the ready signal a
+        // settings stage waits on is sent from here, as `LicensePane` sends its own.
+        .task { DemoSeed.signalReady(from: .settings) }
       case .updates: UpdatesPane()
       case .help:
         // A replacement intro rather than the package default, which invites

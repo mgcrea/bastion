@@ -1,4 +1,5 @@
-import SwiftUI
+import Foundation
+import SupportKitSettings
 
 /// What changed, in the build you are running.
 ///
@@ -17,171 +18,42 @@ import SwiftUI
 /// where `changelog-check` can assert the result, rather than on every launch
 /// where nothing can.
 ///
-/// Every string below is **raw markdown**. The generator does not decide what
-/// bold looks like; `markdown(_:_:)` renders it, and the same strings would
-/// render differently in another context without being regenerated.
+/// Only the data lives here. The types, the seen/unseen bookkeeping, the
+/// markdown rendering and the pane are `SupportKitSettings`' `ReleaseNotes` and
+/// `WhatsNewSettingsPane`, shared with Armada, Cupertino and Cadence; the
+/// typealiases let the generated literals keep their short names. Every string
+/// below is **raw markdown**, which `ReleaseNotes.markdown(_:_:)` renders.
 ///
 /// The list is capped — see `Changelog.shown` in `scripts/generate-changelog.mjs`
 /// — because this is the pane you open after updating, not an archive. The full
 /// history is a link away, and `CHANGELOG.md` remains the source of truth.
 nonisolated enum Changelog {
-  /// One released version.
-  struct Release: Identifiable, Hashable {
-    /// `"1.13.0"`. Compared against `AppInfo.version` and against the seen key.
-    let version: String
-    /// `"2026-09-07"`. Kept as the ISO string the CHANGELOG wrote rather than a
-    /// `Date` literal: a `Date(timeIntervalSince1970:)` in a generated file is
-    /// unreadable in a diff, and formatting at generation time would bake the
-    /// generating machine's locale into every build.
-    let date: String
-    let sections: [Section]
+  typealias Release = ChangelogRelease
+  typealias Section = ChangelogRelease.Section
+  typealias Entry = ChangelogRelease.Entry
 
-    var id: String { version }
-  }
+  /// The releases, the installed version and the seen key, in one value the
+  /// badge, the indicators and the pane all read.
+  ///
+  /// The seen key stays `changelogSeenVersion`, the package's default and the
+  /// key Bastion has always written, so nobody's read releases come back unread.
+  ///
+  /// Suppressed under a screenshot capture: whether an indicator appears would
+  /// otherwise depend on what the capturing Mac last read, which is drift with no
+  /// code change behind it, and `DemoSeed`'s header forbids a capture writing
+  /// the seen version back into the user's real preference domain.
+  static let notes = ReleaseNotes(
+    releases: releases,
+    unreleased: unreleased,
+    showsUnreleased: AppInfo.isDebugBuild,
+    isSuppressed: { DemoSeed.isEnabled })
 
-  /// One `### Added` / `### Fixed` block.
-  struct Section: Identifiable, Hashable {
-    let name: String
-    /// The prose that can sit between the heading and the first bullet. Rare —
-    /// one release in the file has it — and dropping it silently shortens the
-    /// notes, which is exactly the kind of loss nothing would report.
-    let lead: [String]
-    let entries: [Entry]
-
-    var id: String { name }
-  }
-
-  /// One bullet.
-  struct Entry: Identifiable, Hashable {
-    /// Emitted rather than derived, so `ForEach` has a stable identity without
-    /// hashing prose or inventing a `UUID` that changes every render.
-    ///
-    /// Unique across the whole **release**, not within its section. SwiftUI
-    /// flattens the section/entry `ForEach` pair inside a `Form`, so
-    /// per-section numbering collides as soon as a release has two sections —
-    /// and the pane then draws the first section's bullet a second time in
-    /// place of the second section's. It looks like a duplicated entry, not
-    /// like an identity bug, which is why it is worth a paragraph.
-    let ordinal: Int
-    /// The leading `**…**`, asterisks removed — or nil. Seven bullets in the
-    /// file have no headline at all, so this is an optional by observation
-    /// rather than by caution.
-    let headline: String?
-    /// The rest, one string per paragraph.
-    let body: [String]
-
-    var id: Int { ordinal }
-  }
+  /// Whether to draw an indicator anywhere. False under a capture, through
+  /// `notes`' suppression.
+  static var hasUnseen: Bool { notes.badge > 0 }
 
   /// Where the full history lives, since only the most recent releases are here.
   static let historyURL = URL(string: "https://github.com/mgcrea/bastion/blob/main/CHANGELOG.md")!
-
-  // MARK: - Seen
-
-  /// The last version whose notes were actually read.
-  ///
-  /// A marketing version string, not a bool: the question the badge answers is
-  /// "did anything ship since you last looked", which needs the comparison.
-  static let seenKey = "changelogSeenVersion"
-
-  /// Seed the seen version on a launch that has never set it.
-  ///
-  /// Without this, a fresh install lights every indicator in the app on first
-  /// launch — the key is absent, so everything looks unread, and Bastion greets
-  /// somebody who has never run it with "five new releases". An upgrade from a
-  /// build that predates this pane is indistinguishable from that fresh install
-  /// (neither wrote the key), so both are treated as caught up. The cost is that
-  /// the indicator does nothing until the *next* release; the alternative costs
-  /// every new user a false badge.
-  static func markSeenIfUnset() {
-    guard UserDefaults.standard.string(forKey: seenKey) == nil else { return }
-    markSeen()
-  }
-
-  /// The marketing version alone: no build number, no demo override.
-  ///
-  /// `AppInfo.version` will not do. It returns `DemoSeed.version` under a
-  /// capture, and `DemoSeed`'s own header forbids writing anything to the user's
-  /// preference domain — "not even a `UserDefaults` key, because a capture runs
-  /// against the user's real preference domain".
-  ///
-  /// Both of `markSeen()`'s callers are already guarded (`AppDelegate` returns
-  /// before `markSeenIfUnset()` under a capture, and `WhatsNewPane` guards its
-  /// own call), so nothing writes a demo version today. That is exactly when to
-  /// fix it: the line that would make this a real write is one line, and it
-  /// would go in somewhere nobody reads as capture-sensitive. Cupertino reached
-  /// the same conclusion first and documents it on its own `marketingVersion`.
-  static var marketingVersion: String {
-    Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
-  }
-
-  /// Record that the notes for this build have been read.
-  static func markSeen() {
-    UserDefaults.standard.set(marketingVersion, forKey: seenKey)
-  }
-
-  /// Releases newer than the last one whose notes were read.
-  ///
-  /// Empty rather than everything when the key is unset — see
-  /// `markSeenIfUnset()`.
-  static var unseen: [Release] {
-    guard let seen = UserDefaults.standard.string(forKey: seenKey), !seen.isEmpty else { return [] }
-    // `ServerInstaller.isVersion(_:newerThan:)` rather than a second comparator.
-    // It already exists, it is already the app's answer to "is this one newer",
-    // and two semver comparisons that disagree would be a bug nobody could see.
-    return releases.filter { ServerInstaller.isVersion($0.version, newerThan: seen) }
-  }
-
-  /// Whether to draw an indicator anywhere.
-  ///
-  /// False under a screenshot capture, unconditionally. The indicator depends on
-  /// a defaults value the capture run does not set, so without this guard a dot
-  /// appears on the golden plates depending on what the developer's machine
-  /// happened to have read — drift with no code change behind it, which is the
-  /// hardest kind to explain.
-  static var hasUnseen: Bool {
-    if DemoSeed.isEnabled { return false }
-    return !unseen.isEmpty
-  }
-
-  // MARK: - Rendering
-
-  /// One markdown string as `Text` can draw it.
-  ///
-  /// `Text` honours `**bold**`, `_italic_` and links from an `AttributedString`
-  /// on its own. It does nothing at all for `` `code` `` — the markdown parser
-  /// records that as a semantic `inlinePresentationIntent` and applies no font —
-  /// so the loop below is the whole of the missing half.
-  ///
-  /// The style is a parameter because setting `.font` on a run **overrides** the
-  /// view's own `.font()` for that run: a body-sized helper used inside a
-  /// caption makes one word jump a size. And the emphasis has to be reapplied,
-  /// because every headline in this file that contains a code span contains it
-  /// inside the bold — `**A server that shells out to `npm` could not find
-  /// it.**` — and assigning a plain monospaced font would silently un-bold it.
-  ///
-  /// Note that `Text("**bold**")` renders markdown only for string *literals*,
-  /// through the `LocalizedStringKey` overload. Every string here is a variable,
-  /// which takes the `StringProtocol` overload and draws the asterisks. So this
-  /// is not an embellishment; without it the pane shows raw markdown.
-  static func markdown(_ source: String, _ style: Font.TextStyle = .body) -> AttributedString {
-    guard
-      var text = try? AttributedString(
-        markdown: source,
-        options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))
-    else {
-      // Literal asterisks are ugly and honest. Nothing here is worth a crash.
-      return AttributedString(source)
-    }
-    for run in text.runs {
-      guard let intent = run.inlinePresentationIntent, intent.contains(.code) else { continue }
-      var font = Font.system(style, design: .monospaced)
-      if intent.contains(.stronglyEmphasized) { font = font.bold() }
-      if intent.contains(.emphasized) { font = font.italic() }
-      text[run.range].font = font
-    }
-    return text
-  }
 
   // MARK: - Generated
 

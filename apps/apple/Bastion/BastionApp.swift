@@ -34,7 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Without it, a fresh install has no seen-version recorded, every release
     // in the pane looks unread, and Bastion greets somebody who has never run
     // it with an indicator in three places. See `markSeenIfUnset()`.
-    Changelog.markSeenIfUnset()
+    Changelog.notes.markSeenIfUnset()
 
     // Before anything can be logged. `LogStore` publishes rows through two
     // hooks rather than calling the audit log itself, so nothing is kept until
