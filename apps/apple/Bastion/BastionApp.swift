@@ -296,12 +296,12 @@ private struct GatewayMenu: View {
     MenuBarPanel(
       app: Support.app,
       version: AppInfo.shortVersion,
-      onOpenApp: { MainWindowController.show() },
+      onOpenApp: { leavePanel { MainWindowController.show() } },
       // The version opens About, which is the pane that says what the number
       // means — build, machine, the copy-for-a-bug-report button. `SettingsPane`
       // puts it first of three for the same reason: which build is this, what
       // did it change, is there a newer one.
-      onShowAbout: { SettingsWindowController.show(.about) },
+      onShowAbout: { leavePanel { SettingsWindowController.show(.about) } },
       footer: MenuBarFooter(
         // Logs is the one destination that earns a standing place beside
         // Settings: every line in the body above is a count of calls, and "what
@@ -309,14 +309,16 @@ private struct GatewayMenu: View {
         // answer. It is also what people arrive with urgently — an agent just
         // did something and they want to see what.
         routes: [
-          .logs { MainWindowController.show(.log) },
-          .settings { SettingsWindowController.show() },
+          .logs { leavePanel { MainWindowController.show(.log) } },
+          .settings { leavePanel { SettingsWindowController.show() } },
         ],
         // A row that appears once after an update and then goes away, rather
         // than a permanent badge on the version text above. MenuBarExtra builds
         // this content lazily, so the test is re-read every time the panel opens.
         whatsNew: Changelog.hasUnseen
-          ? .init(version: AppInfo.version) { SettingsWindowController.show(.whatsNew) }
+          ? .init(version: AppInfo.version) {
+            leavePanel { SettingsWindowController.show(.whatsNew) }
+          }
           : nil
       ),
       content: {
@@ -417,7 +419,7 @@ private struct ServersSection: View {
         }
         if instances.count > Self.visible {
           Button("\(instances.count - Self.visible) more…") {
-            MainWindowController.show(.running)
+            leavePanel { MainWindowController.show(.running) }
           }
           .buttonStyle(.link)
           .font(.caption)
@@ -434,23 +436,16 @@ private struct ServersSection: View {
   /// pane and leaving the reader to find the row again would be answering a
   /// narrower question than the one they asked by clicking.
   ///
-  /// Plain style with a pointer and a tooltip, which is the panel's own
-  /// convention for its title and its version — a row that grew link colour or
-  /// a hover fill would read as the one thing in the list worth looking at,
-  /// when every row here is equally clickable.
+  /// `MenuBarRow`, the fleet's panel row, rather than a plain button with a link
+  /// pointer: `pointerStyle(.link)` does not show inside a `MenuBarExtra` panel,
+  /// so these rows gave no sign of being clickable until the click. Every row
+  /// takes the same hover fill, so none reads as the one worth looking at.
   private func row(_ instance: Activity.Instance) -> some View {
-    Button {
-      ProfileReveal.present(profileID: instance.id, serverID: instance.server)
+    MenuBarRow(help: "Show \(instance.displayName) in Bastion") {
+      leavePanel { ProfileReveal.present(profileID: instance.id, serverID: instance.server) }
     } label: {
       rowLabel(instance)
     }
-    .buttonStyle(.plain)
-    .pointerStyle(.link)
-    // The whole width, including the gap the count is pushed out by. Without
-    // it, a `Spacer` is not hit-testable and the row would be clickable only on
-    // its name and its number, with a dead stripe between them.
-    .contentShape(.rect)
-    .help("Show \(instance.displayName) in Bastion")
     .accessibilityIdentifier("menubar.server")
   }
 
@@ -578,10 +573,10 @@ private struct LicenseBanner: View {
             onStartTrial()
           }
           .buttonStyle(.glassProminent)
-          Button("Enter a key…") { SettingsWindowController.show(.licence) }
+          Button("Enter a key…") { leavePanel { SettingsWindowController.show(.licence) } }
             .buttonStyle(.glass)
         } else {
-          Button("Enter a licence key…") { SettingsWindowController.show(.licence) }
+          Button("Enter a licence key…") { leavePanel { SettingsWindowController.show(.licence) } }
             .buttonStyle(.glassProminent)
         }
       }
@@ -621,4 +616,17 @@ private struct TrialBanner: View {
       }
     }
   }
+}
+
+/// Close the menu bar panel, then open one of Bastion's own windows.
+///
+/// The panel closes itself only when the app resigns active, and opening one of
+/// its own windows never makes it resign, so every route out of the panel left
+/// it hanging over the window it had just opened. The order matters:
+/// `MenuBarPanelWindow` finds the panel as the key window that cannot become
+/// main, and once the new window is key there is nothing left for it to find.
+@MainActor
+private func leavePanel(then open: () -> Void) {
+  MenuBarPanelWindow.dismiss()
+  open()
 }
