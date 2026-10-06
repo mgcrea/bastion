@@ -1037,7 +1037,7 @@ format-check: format-swift-check ## Fail on unformatted files
 # walk from the parent would reformat build artifacts. BastionBridge is one
 # file and easy to leave out of this list; leaving it out means it silently
 # stops being formatted.
-SWIFT_SRC := apps/apple/Bastion apps/apple/BastionBridge scripts
+SWIFT_SRC := apps/apple/Bastion apps/apple/BastionBridge apps/apple/Shared scripts
 
 # swift-format's behaviour follows whichever Xcode is selected, so a toolchain
 # bump can reformat the whole tree with no change to `.swift-format` and turn the
@@ -1114,7 +1114,8 @@ typecheck: ## tsc the Worker and astro check the website
 	screenshots screenshots-capture screenshots-check screenshots-update \
 	screenshots-seal screenshots-selftest screenshots-appstore \
 	screenshots-website screenshots-compose screenshots-doctor screenshots-clean video site-video \
-	lint format format-check format-swift format-swift-check swift-format-version blame-setup test typecheck
+	lint format format-check format-swift format-swift-check swift-format-version blame-setup test typecheck \
+	dev-clone
 
 # ─── deploy ──────────────────────────────────────────────────────────────────
 # The same two words in every repo: `make deploy`. WHAT it deploys differs — a
@@ -1174,3 +1175,15 @@ deploy: ## Deploy both halves: the API Worker, then the website
 	@$(MAKE) --no-print-directory site-deploy
 
 .PHONY: deploy site-deploy api-deploy
+
+# ─── directory goals ─────────────────────────────────────────────────────────
+# A goal naming an existing directory is a target make considers already built, so
+# `make docs` printed "Nothing to be done" and exited 0 — the silent success a mistyped
+# goal must never have. Every root directory gets a rule that fails instead: phony, or
+# make would still call it up to date, and read from the tree, so a directory added
+# later is covered without editing this file.
+ROOT_DIRS := $(filter-out $(APPLE_TARGETS),$(patsubst %/,%,$(wildcard */)))
+$(ROOT_DIRS):
+	@echo "make: '$@' is a directory, not a target. Try 'make help'." >&2; exit 2
+
+.PHONY: $(ROOT_DIRS)
