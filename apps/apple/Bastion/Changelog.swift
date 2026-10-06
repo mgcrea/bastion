@@ -66,7 +66,31 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_25_0, v1_24_0, v1_23_0, v1_22_0, v1_21_0]
+  static let releases: [Release] = [v1_26_0, v1_25_0, v1_24_0, v1_23_0, v1_22_0]
+
+  // swift-format-ignore
+  private static let v1_26_0: Release = Release(
+    version: "1.26.0",
+    date: "2026-10-06",
+    sections: [
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Yahoo Finance's watchlist tools are writes.",
+            body: [
+              "The server's newer versions add four tools that change a signed-in account's watchlists (create, add, remove and delete), and the catalog still described it as having nothing it could change: on 0.3.0 they ran as reads, without confirmation, and from 0.4.0 no profile could turn them on. They now follow the profile's writes switch, and need the cookie of a signed-in finance.yahoo.com tab; the crumb is derived from that cookie, so it rarely needs setting.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "The menu bar panel closes when it opens a window.",
+            body: [
+              "Settings, Logs, About, What's New, a server's row and the licence notice's key button could each leave the panel open over the window they had just opened, since opening one of the app's own windows never closes it. The server rows also highlight under the pointer, where they used to give no sign of being clickable until the click.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_25_0: Release = Release(
@@ -252,24 +276,6 @@ nonisolated enum Changelog {
             headline: "A window resize could take the app down.",
             body: [
               "AppKit's frame autosave writes from inside the `setFrame` that prompted it, so a resize SwiftUI drives itself meant writing to `UserDefaults` in the middle of the window's own layout pass — and that write was enough to abort the process. Persisting posts `NSUserDefaultsDidChange`, SwiftUI's `@AppStorage` observer reads it as a settings change and dirties the hosting view, and the constraint update that follows lands inside the layout pass still running; AppKit throws rather than re-enter, and nothing catches it. It needed no bad frame and no bad window — one `@AppStorage` anywhere in the app was fuel enough. Window frames are now restored with `setFrameUsingName` and written back on a turn of their own, and only for a resize or a move you performed. A frame remembered by an earlier version still restores.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_21_0: Release = Release(
-    version: "1.21.0",
-    date: "2026-09-18",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Entries Bastion left behind can be cleaned up without unwiring the client.",
-            body: [
-              "An entry Bastion wrote for a profile that no longer exists went on sitting in the config, sending requests the gateway refuses, and it was invisible on the client pane: `isOurs` claimed it, so it was not listed among the servers Bastion did not write, and no profile matched it, so it earned no row either. The only remedy was _Remove Bastion's entries_, which took out the working ones too. A **Stale entries** card now lists each one with the profile it points at, and one button removes all of them in a single write. It stays narrow on purpose: an entry filed under an older key is a rename, one pointing at a stale port is _points elsewhere_ and Configure rewrites it, and a profile whose server is merely switched off still exists — none of the three is touched. Removal is a button rather than something Bastion does on its own, because the instance most likely to misjudge which profiles exist is a second copy of Bastion, which is where these came from — and for that same reason a Debug build, which keeps its own profiles and shares these configs with the installed app, draws the card but refuses the removal.",
             ]),
         ]),
     ])

@@ -4,8 +4,35 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.25.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.26.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
+
+## [1.26.0] - 2026-10-06
+
+**Yahoo Finance watchlists, behind the writes switch.** Yahoo Finance can now change a signed-in
+account's watchlists, and Bastion keeps those tools hidden until a profile turns writes on. The menu
+bar panel now gets out of the way of the window it opens.
+
+### Fixed
+
+- **Yahoo Finance's watchlist tools are writes.** The server's newer versions add four tools that
+  change a signed-in account's watchlists (create, add, remove and delete), and the catalog still
+  described it as having nothing it could change: on 0.3.0 they ran as reads, without confirmation,
+  and from 0.4.0 no profile could turn them on. They now follow the profile's writes switch, and
+  need the cookie of a signed-in finance.yahoo.com tab; the crumb is derived from that cookie, so it
+  rarely needs setting.
+- **The menu bar panel closes when it opens a window.** Settings, Logs, About, What's New, a
+  server's row and the licence notice's key button could each leave the panel open over the window
+  they had just opened, since opening one of the app's own windows never closes it. The server rows
+  also highlight under the pointer, where they used to give no sign of being clickable until the
+  click.
+
+### Internal
+
+- The What's New pane and its unread badge are swift-support-kit's shared ones (1.20), which Armada,
+  Cupertino and Cadence already use; `Changelog.swift` now holds only the generated notes.
+- `make` fails on a goal that names a directory rather than reporting nothing to do, every
+  documented target is phony, and `make format-swift` covers `apps/apple/Shared`.
 
 ## [1.25.0] - 2026-10-04
 
