@@ -2981,9 +2981,12 @@ nonisolated enum ServerCatalog {
     // cannot be claimed over OIDC - and carries no attestation; 0.2.1 went
     // out through the CI trusted publisher with a SLSA v1 one.
     //
-    // WRITEGATE NULL IS MEANT LITERALLY: all nine tools are reads against
-    // Yahoo's public, unofficial JSON endpoints, and none is annotated
-    // otherwise. There is no account, no key and nothing to mutate.
+    // The market-data tools are reads against Yahoo's public, unofficial
+    // JSON endpoints. 0.3.0 added watchlists for a signed-in cookie (one
+    // carrying Yahoo's T login cookie): yahoo_list_watchlists is a read,
+    // and create, add, remove and delete register only with
+    // YAHOO_FINANCE_ALLOW_WRITES. They refuse manual portfolios, whose
+    // positions carry lots and transactions a removal would delete.
     //
     // No credential, but not no state: the server runs Yahoo's cookie + crumb
     // handshake itself and keeps the result in memory, so one supervised
@@ -2997,12 +3000,12 @@ nonisolated enum ServerCatalog {
     // 2026-10-03 from three networks. When it moves again, the repo's
     // weekly `live` CI job is what goes red first.
     //
-    // The cookie and crumb override is marked secret because it is a live
-    // browser session for whoever captured it, not because the server needs it.
+    // The cookie and crumb are marked secret because the cookie is a live
+    // browser session for whoever captured it - signed in, it is the account.
     BastionServer(
       id: "yahoo-finance",
       displayName: "Yahoo Finance",
-      summary: "Yahoo Finance market data: prices, fundamentals, financial statements, holders, options, news and analyst ratings. Needs no credential.",
+      summary: "Yahoo Finance market data: prices, fundamentals, financial statements, holders, options, news and analyst ratings, plus the signed-in account's watchlists. Market data needs no credential.",
       transport: .child(
         .init(
           npmName: "@mgcrea/mcp-yahoo-finance",
@@ -3013,7 +3016,7 @@ nonisolated enum ServerCatalog {
           provenance: true)),
       docsURL: URL(string: "https://github.com/mgcrea/mcp-yahoo-finance"),
       dialect: .v2025_11_25,
-      writeGate: nil,
+      writeGate: "YAHOO_FINANCE_ALLOW_WRITES",
       writeTools: [],
       gateBypass: [],
       authModes: [],
@@ -3024,12 +3027,12 @@ nonisolated enum ServerCatalog {
           name: "YAHOO_FINANCE_COOKIE",
           isRequired: false,
           isSecret: true,
-          summary: "Cookie header from a finance.yahoo.com browser session, to skip the automatic handshake if Yahoo's consent flow changes. Set it together with YAHOO_FINANCE_CRUMB. It does not get past a 429: Yahoo checks the TLS fingerprint on every request."),
+          summary: "Cookie header from a finance.yahoo.com browser session, used instead of the automatic handshake. The A3, T and Y cookies of a signed-in tab add the watchlist tools. It does not get past a 429: Yahoo checks the TLS fingerprint on every request."),
         .init(
           name: "YAHOO_FINANCE_CRUMB",
           isRequired: false,
           isSecret: true,
-          summary: "The crumb paired with that cookie, from query1.finance.yahoo.com/v1/test/getcrumb in the same browser. Useless without the cookie it was issued for."),
+          summary: "Rarely needed: a crumb is derived from the cookie, and replaced if Yahoo rejects it. Useless without the cookie it was issued for."),
         .init(
           name: "YAHOO_FINANCE_CONCURRENCY",
           isRequired: false,
@@ -3045,6 +3048,11 @@ nonisolated enum ServerCatalog {
           isRequired: false,
           isSecret: false,
           summary: "Any non-empty value logs every Yahoo request to stderr."),
+        .init(
+          name: "YAHOO_FINANCE_ALLOW_WRITES",
+          isRequired: false,
+          isSecret: false,
+          summary: "Registers the four watchlist tools that change the account: create, add, remove and delete. Needs a signed-in cookie."),
       ]),
   ]
   // </generated:servers>

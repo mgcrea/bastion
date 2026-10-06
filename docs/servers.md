@@ -250,7 +250,7 @@ asserts both eras against a running build.
 | [iOS Simulator](https://github.com/mgcrea/mcp-ios-simulator) | `ios-simulator` | `ios-simulator-mcp` | `@mgcrea/mcp-ios-simulator` (npm, provenance) | `IOS_SIMULATOR_ALLOW_WRITES` | — |
 | [Xcode](https://developer.apple.com/documentation/xcode/giving-agentic-coding-tools-access-to-xcode) | `xcode` | — | `/usr/bin/xcrun mcpbridge` (system) | `AddEntitlement`, `AddInfoPlist`, `InvokeDebuggerCommand`, `LocalizationPlanner`, `RunCodeSnippet`, `StringCatalogEdit`, `UpdateFileCompilerFlags`, `UpdateTargetBuildSetting`, `XcodeMV`, `XcodeMakeDir`, `XcodeNewProject`, `XcodeNewTarget`, `XcodeRM`, `XcodeUpdate`, `XcodeWrite` (by name) | — |
 | Apple Ads | `apple-ads` | `apple-ads-mcp` | `mcp-apple-ads` (local) | `APPLE_ADS_ALLOW_WRITES` | 1 |
-| [Yahoo Finance](https://github.com/mgcrea/mcp-yahoo-finance) | `yahoo-finance` | `yahoo-finance-mcp` | `@mgcrea/mcp-yahoo-finance` (npm, provenance) | read-only | 2 |
+| [Yahoo Finance](https://github.com/mgcrea/mcp-yahoo-finance) | `yahoo-finance` | `yahoo-finance-mcp` | `@mgcrea/mcp-yahoo-finance` (npm, provenance) | `YAHOO_FINANCE_ALLOW_WRITES` | 2 |
 
 ### App Store Connect
 
@@ -1294,16 +1294,19 @@ Per-profile state: `APPLE_ADS_CONFIG`
 
 ### Yahoo Finance
 
-Yahoo Finance market data: prices, fundamentals, financial statements, holders, options, news and analyst ratings. Needs no credential.
+Yahoo Finance market data: prices, fundamentals, financial statements, holders, options, news and analyst ratings, plus the signed-in account's watchlists. Market data needs no credential.
 
 Published as @mgcrea/mcp-yahoo-finance on 2026-10-03, after the repo
 went public the same day. 0.2.0 went out by hand - a brand-new name
 cannot be claimed over OIDC - and carries no attestation; 0.2.1 went
 out through the CI trusted publisher with a SLSA v1 one.
 
-WRITEGATE NULL IS MEANT LITERALLY: all nine tools are reads against
-Yahoo's public, unofficial JSON endpoints, and none is annotated
-otherwise. There is no account, no key and nothing to mutate.
+The market-data tools are reads against Yahoo's public, unofficial
+JSON endpoints. 0.3.0 added watchlists for a signed-in cookie (one
+carrying Yahoo's T login cookie): yahoo_list_watchlists is a read,
+and create, add, remove and delete register only with
+YAHOO_FINANCE_ALLOW_WRITES. They refuse manual portfolios, whose
+positions carry lots and transactions a removal would delete.
 
 No credential, but not no state: the server runs Yahoo's cookie + crumb
 handshake itself and keeps the result in memory, so one supervised
@@ -1317,14 +1320,15 @@ cipher order, groups and sigalgs over node:https, measured working
 2026-10-03 from three networks. When it moves again, the repo's
 weekly `live` CI job is what goes red first.
 
-The cookie and crumb override is marked secret because it is a live
-browser session for whoever captured it, not because the server needs it.
+The cookie and crumb are marked secret because the cookie is a live
+browser session for whoever captured it - signed in, it is the account.
 
 | Variable | Required | Secret | Meaning |
 | --- | --- | --- | --- |
-| `YAHOO_FINANCE_COOKIE` | — | yes | Cookie header from a finance.yahoo.com browser session, to skip the automatic handshake if Yahoo's consent flow changes. Set it together with YAHOO_FINANCE_CRUMB. It does not get past a 429: Yahoo checks the TLS fingerprint on every request. |
-| `YAHOO_FINANCE_CRUMB` | — | yes | The crumb paired with that cookie, from query1.finance.yahoo.com/v1/test/getcrumb in the same browser. Useless without the cookie it was issued for. |
+| `YAHOO_FINANCE_COOKIE` | — | yes | Cookie header from a finance.yahoo.com browser session, used instead of the automatic handshake. The A3, T and Y cookies of a signed-in tab add the watchlist tools. It does not get past a 429: Yahoo checks the TLS fingerprint on every request. |
+| `YAHOO_FINANCE_CRUMB` | — | yes | Rarely needed: a crumb is derived from the cookie, and replaced if Yahoo rejects it. Useless without the cookie it was issued for. |
 | `YAHOO_FINANCE_CONCURRENCY` | — | — | Max requests in flight to Yahoo, handshake included. Defaults to 4; lower it if a watchlist-sized fan-out trips 429s. |
 | `YAHOO_FINANCE_REQUEST_TIMEOUT_MS` | — | — | Per-request timeout in milliseconds, body included. Defaults to 30000. |
 | `YAHOO_FINANCE_DEBUG` | — | — | Any non-empty value logs every Yahoo request to stderr. |
+| `YAHOO_FINANCE_ALLOW_WRITES` | — | — | Registers the four watchlist tools that change the account: create, add, remove and delete. Needs a signed-in cookie. |
 <!-- </generated:servers> -->

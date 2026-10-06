@@ -464,8 +464,8 @@ export const SERVERS: Server[] = [
   {
     id: "yahoo-finance",
     displayName: "Yahoo Finance",
-    summary: "Yahoo Finance market data: prices, fundamentals, financial statements, holders, options, news and analyst ratings. Needs no credential.",
-    writeGate: null,
+    summary: "Yahoo Finance market data: prices, fundamentals, financial statements, holders, options, news and analyst ratings, plus the signed-in account's watchlists. Market data needs no credential.",
+    writeGate: "YAHOO_FINANCE_ALLOW_WRITES",
     gatesByName: false,
     transport: "child",
     vendor: "mgcrea",
