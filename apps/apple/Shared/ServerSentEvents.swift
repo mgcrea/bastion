@@ -85,9 +85,9 @@ nonisolated enum ServerSentEvents {
     let crlf = body.range(
       of: Data([newline, carriageReturn, newline]), options: .backwards)?.upperBound
     switch (lf, crlf) {
-    case let (first?, second?): return max(first, second)
-    case let (first?, nil): return first
-    case let (nil, second?): return second
+    case (let first?, let second?): return max(first, second)
+    case (let first?, nil): return first
+    case (nil, let second?): return second
     case (nil, nil): return nil
     }
   }
