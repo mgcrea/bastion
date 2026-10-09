@@ -1,3 +1,5 @@
+> Historical assessment. For current positioning, read the [9 October 2026 refresh](competitive-brief-2026-10-09.md).
+
 # Bastion — Competitive Brief
 
 **Research date:** 7 September 2026, **updated 20 September 2026** (see "What changed" below). Web sources as of those dates; GitHub star counts and release dates are point-in-time and several release _years_ had to be inferred (flagged inline).
