@@ -118,8 +118,8 @@ final class ServerHandoff {
     MainWindowController.show(.server(link.id))
   }
 
-  /// The profile a request fills in: the server's own when it already has one, else `local`,
-  /// the name Bastion's own server goes by on this Mac.
+  /// The profile a request fills in, when the server already has one. Nil for a new server,
+  /// and the sheet then offers `local`, the name Bastion's own server goes by on this Mac.
   static func suggestedProfile(for id: String) -> Profile? {
     ProfileStore.shared.profiles.first { $0.serverID == id }
   }
