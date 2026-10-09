@@ -66,7 +66,36 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_26_0, v1_25_0, v1_24_0, v1_23_0, v1_22_0]
+  static let releases: [Release] = [v1_27_0, v1_26_0, v1_25_0, v1_24_0, v1_23_0]
+
+  // swift-format-ignore
+  private static let v1_27_0: Release = Release(
+    version: "1.27.0",
+    date: "2026-10-09",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "A server another app hands over.",
+            body: [
+              "An app serving MCP on this Mac can open a `bastion://add-server` link (swift-mcp-kit 1.2's `BastionLink`) to offer Bastion its endpoint and bearer token. Nothing is added until a sheet shows which app asked, the endpoint, the URL it replaces when the server is already listed, and which of its tools change data; you pick the profile (`local`, or the server's existing one) and whether writes are allowed, off by default. The token goes into the Keychain and is sent as `Authorization: Bearer`. Only `127.0.0.1` and `[::1]` endpoints are accepted, and a link cannot take the name of a catalog server or Bastion's own, or replace a server that runs a package.",
+            ]),
+        ]),
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 1,
+            headline: "Yahoo Finance's writes switch covers portfolios and trades.",
+            body: [
+              "From 0.5.0 the server opens create, add, remove and delete to manual portfolios and adds tools to record, edit and delete trades, all behind the same switch, which the profile editor described as covering watchlists only. Removing a position or a portfolio that holds lots or transactions is refused unless the call asks for that history to go with it.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_26_0: Release = Release(
@@ -241,41 +270,6 @@ nonisolated enum Changelog {
             headline: "Usage stats count what you asked for, not what the client's SDK sent on its own.",
             body: [
               "The handshake and listing methods a client sends by itself on every connect (`initialize`, `tools/list` and the other listings, `ping`, `logging/setLevel`) were recorded as calls, so `tools/list` topped every ranking, the call totals measured how often clients reconnected, and the median latency was mostly that of a cached listing. They are no longer recorded, and days already on disk are filtered when read. The per-client totals have no method to filter on, so they keep counting old handshakes until those days age out of the window.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_22_0: Release = Release(
-    version: "1.22.0",
-    date: "2026-09-18",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Claude Code's other config directories are offered as clients of their own.",
-            body: [
-              "Claude Code reads `CLAUDE_CONFIG_DIR`, so one Mac can run several profiles side by side with separate server lists — and Bastion knew about exactly one of them, `~/.claude.json`. The other was left to be kept in step by hand, which meant copying entries between files and inheriting the first profile's token with them: one revocation signed out both, and nothing on screen said the second had fallen behind. Bastion now finds `~/.claude-<name>` directories and gives each a row with its own gateway token, its own audit trail and its own Configure button. Detection is a switch in Settings, beside a list for a config directory that lives somewhere no scan would look. The default profile's file is deliberately not discovered but named outright, because Claude Code keeps it _outside_ its config directory — `~/.claude.json`, not `~/.claude/.claude.json`, and the latter does exist, holding first-run bookkeeping and no servers at all.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "A config directory Bastion has not written is left alone until you ask.",
-            body: [
-              "Automatic rewiring decides what is wired by looking for entries shaped like Bastion's, and never at the token — so a second Claude profile filled in by copying entries out of the first passes that test without Bastion having touched the file. Such a row is now kept out of automatic updates until Configure has been pressed on it once, and says so. Pressing it renames the entries to the current scheme in place, issues that profile its own token, and leaves a backup beside the file. Clients with a single config file are unaffected.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 2,
-            headline: "A window resize could take the app down.",
-            body: [
-              "AppKit's frame autosave writes from inside the `setFrame` that prompted it, so a resize SwiftUI drives itself meant writing to `UserDefaults` in the middle of the window's own layout pass — and that write was enough to abort the process. Persisting posts `NSUserDefaultsDidChange`, SwiftUI's `@AppStorage` observer reads it as a settings change and dirties the hosting view, and the constraint update that follows lands inside the layout pass still running; AppKit throws rather than re-enter, and nothing catches it. It needed no bad frame and no bad window — one `@AppStorage` anywhere in the app was fuel enough. Window frames are now restored with `setFrameUsingName` and written back on a turn of their own, and only for a resize or a move you performed. A frame remembered by an earlier version still restores.",
             ]),
         ]),
     ])

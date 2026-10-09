@@ -4,8 +4,32 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.26.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.27.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
+
+## [1.27.0] - 2026-10-09
+
+**Other apps can hand their MCP server to Bastion.** An app on this Mac can now offer Bastion the
+MCP server it runs, and Bastion adds it only once you confirm, with its token kept in the Keychain.
+
+### Added
+
+- **A server another app hands over.** An app serving MCP on this Mac can open a
+  `bastion://add-server` link (swift-mcp-kit 1.2's `BastionLink`) to offer Bastion its endpoint and
+  bearer token. Nothing is added until a sheet shows which app asked, the endpoint, the URL it
+  replaces when the server is already listed, and which of its tools change data; you pick the
+  profile (`local`, or the server's existing one) and whether writes are allowed, off by default.
+  The token goes into the Keychain and is sent as `Authorization: Bearer`. Only `127.0.0.1` and
+  `[::1]` endpoints are accepted, and a link cannot take the name of a catalog server or Bastion's
+  own, or replace a server that runs a package.
+
+### Changed
+
+- **Yahoo Finance's writes switch covers portfolios and trades.** From 0.5.0 the server opens
+  create, add, remove and delete to manual portfolios and adds tools to record, edit and delete
+  trades, all behind the same switch, which the profile editor described as covering watchlists
+  only. Removing a position or a portfolio that holds lots or transactions is refused unless the
+  call asks for that history to go with it.
 
 ## [1.26.0] - 2026-10-06
 
