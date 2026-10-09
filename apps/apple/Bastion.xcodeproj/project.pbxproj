@@ -13,6 +13,7 @@
 		0FEEDB0753AAC00000000003 /* SupportKit in Frameworks */ = {isa = PBXBuildFile; productRef = 0FEEDB0753AAC00000000001 /* SupportKit */; };
 		0FEEDB0753AAC00000000004 /* SupportKitUI in Frameworks */ = {isa = PBXBuildFile; productRef = 0FEEDB0753AAC00000000002 /* SupportKitUI */; };
 		EE01ACCB63B7B21E23981D96 /* SupportKitMenuBar in Frameworks */ = {isa = PBXBuildFile; productRef = F6371549246E37AEE54ED883 /* SupportKitMenuBar */; };
+		0FEEDB0753AAD00000000003 /* MCPKitWiring in Frameworks */ = {isa = PBXBuildFile; productRef = 0FEEDB0753AAD00000000001 /* MCPKitWiring */; };
 		057820CED0D2565C68DD558D /* SupportKitSettings in Frameworks */ = {isa = PBXBuildFile; productRef = 0E81A86979BDF42027626A44 /* SupportKitSettings */; };
 /* End PBXBuildFile section */
 
@@ -92,6 +93,7 @@
 				0FEEDB0753AAC00000000004 /* SupportKitUI in Frameworks */,
 				EE01ACCB63B7B21E23981D96 /* SupportKitMenuBar in Frameworks */,
 				057820CED0D2565C68DD558D /* SupportKitSettings in Frameworks */,
+				0FEEDB0753AAD00000000003 /* MCPKitWiring in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -176,6 +178,7 @@
 				0FEEDB0753AAC00000000002 /* SupportKitUI */,
 				F6371549246E37AEE54ED883 /* SupportKitMenuBar */,
 				0E81A86979BDF42027626A44 /* SupportKitSettings */,
+				0FEEDB0753AAD00000000001 /* MCPKitWiring */,
 			);
 			productName = Bastion;
 			productReference = 09D8E51D304323C100C66A5A /* Bastion.app */;
@@ -207,6 +210,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				0FEEDB0753AAC00000000000 /* XCRemoteSwiftPackageReference "swift-support-kit" */,
+				0FEEDB0753AAD00000000000 /* XCRemoteSwiftPackageReference "swift-mcp-kit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 09D8E51E304323C100C66A5A /* Products */;
@@ -520,9 +524,22 @@
 				minimumVersion = 1.20.0;
 			};
 		};
+		0FEEDB0753AAD00000000000 /* XCRemoteSwiftPackageReference "swift-mcp-kit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/mgcrea/swift-mcp-kit.git";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 1.2.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		0FEEDB0753AAD00000000001 /* MCPKitWiring */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0FEEDB0753AAD00000000000 /* XCRemoteSwiftPackageReference "swift-mcp-kit" */;
+			productName = MCPKitWiring;
+		};
 		0FEEDB0753AAC00000000001 /* SupportKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 0FEEDB0753AAC00000000000 /* XCRemoteSwiftPackageReference "swift-support-kit" */;

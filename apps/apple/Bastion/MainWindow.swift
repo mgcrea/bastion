@@ -105,6 +105,7 @@ struct MainView: View {
   /// The add/edit sheet, held in a shared host rather than in `@State` so the
   /// menu bar can open it too. See `ServerEditorHost`.
   @Bindable private var editor = ServerEditorHost.shared
+  @Bindable private var handoff = ServerHandoff.shared
 
   /// The conversation, held here rather than inside `ChatPane`.
   ///
@@ -162,6 +163,13 @@ struct MainView: View {
     .frame(minWidth: 820, minHeight: 520)
     .sheet(item: $editor.subject) { subject in
       ServerEditor(subject: subject)
+    }
+    // A server handed over by another app, waiting to be confirmed. On a background view of
+    // its own, since two sheet presenters on one view race each other.
+    .background {
+      Color.clear.sheet(item: $handoff.pending) { request in
+        ServerHandoffSheet(request: request)
+      }
     }
     // Everything these panes read was seeded synchronously in `DemoSeed.apply()`
     // before this window existed, so the body running IS the content existing —

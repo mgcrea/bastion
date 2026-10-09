@@ -1,3 +1,4 @@
+import MCPKitWiring
 import SupportKitMenuBar
 import SupportKitSettings
 import SupportKitUI
@@ -150,6 +151,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     guard !hasVisibleWindows else { return true }
     MainWindowController.show()
     return true
+  }
+
+  /// A `bastion://add-server` link another app opened, from its MCP settings. Nothing is added
+  /// here: `ServerHandoff` shows what was handed over, and waits for a yes.
+  ///
+  /// The sender is read from the Apple event the link arrived in, while it is still the
+  /// current one, so the sheet can say which app asked. Best effort: an event without a pid
+  /// names nobody, and the sheet says "an app on this Mac".
+  func application(_ application: NSApplication, open urls: [URL]) {
+    let sender = NSAppleEventManager.shared().currentAppleEvent
+      .flatMap { $0.attributeDescriptor(forKeyword: keySenderPIDAttr)?.int32Value }
+      .flatMap { NSRunningApplication(processIdentifier: $0) }
+      .flatMap { app in
+        app.localizedName.map {
+          ServerHandoff.Sender(name: $0, bundleIdentifier: app.bundleIdentifier)
+        }
+      }
+    for url in urls where url.scheme?.lowercased() == BastionLink.scheme {
+      MenuBarPanelWindow.dismiss()
+      ServerHandoff.shared.receive(url, from: sender)
+    }
   }
 
   /// Stop the children before the app goes.
