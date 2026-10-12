@@ -229,8 +229,19 @@ struct WiringCheck {
     if let projects = before["projects"] as? [String: Any],
       let folder = projects.keys.sorted().first
     {
-      let nested = ClientWiringMerge.mergedIntoProject(
-        before, folder: folder, entries: entries { httpReach($0) })
+      // Through `reconciledProjects`, which is what the app writes project
+      // blocks with. Every block keeps the entries of ours it already holds,
+      // so the only change asked for is the new one in `folder`.
+      var desired: [String: [String: [String: Any]]] = [:]
+      for (key, block) in projects {
+        let servers = (block as? [String: Any])?["mcpServers"] as? [String: Any] ?? [:]
+        let ours = servers.compactMapValues { value -> [String: Any]? in
+          ClientWiringMerge.isOurs(value) ? value as? [String: Any] : nil
+        }
+        if !ours.isEmpty { desired[key] = ours }
+      }
+      desired[folder, default: [:]].merge(entries { httpReach($0) }) { _, new in new }
+      let nested = ClientWiringMerge.reconciledProjects(before, desired: desired)
       let afterProjects = nested["projects"] as? [String: Any] ?? [:]
       check(
         "all \(projects.count) project blocks survive a nested write",
@@ -983,8 +994,8 @@ struct WiringCheck {
       "an unknown folder is nil, not empty",
       ClientWiringMerge.projectScopeServers(in: root, folder: "/Users/x/zzz") == nil)
 
-    let out = ClientWiringMerge.mergedIntoProject(
-      root, folder: "/Users/x/a", entries: entries { httpReach($0) })
+    let out = ClientWiringMerge.reconciledProjects(
+      root, desired: ["/Users/x/a": entries { httpReach($0) }])
     let projects = out["projects"] as? [String: Any] ?? [:]
     let a = projects["/Users/x/a"] as? [String: Any] ?? [:]
     let aServers = a["mcpServers"] as? [String: Any] ?? [:]
@@ -1002,8 +1013,8 @@ struct WiringCheck {
     check(
       "writing to a folder that did not exist creates only that folder",
       {
-        let fresh = ClientWiringMerge.mergedIntoProject(
-          root, folder: "/Users/x/new", entries: entries { httpReach($0) })
+        let fresh = ClientWiringMerge.reconciledProjects(
+          root, desired: ["/Users/x/new": entries { httpReach($0) }])
         let all = fresh["projects"] as? [String: Any] ?? [:]
         return all.count == 4 && (all["/Users/x/new"] as? [String: Any]) != nil
       }())

@@ -375,9 +375,10 @@ enum ClientWiringMerge {
 
   /// The same, inside one project block, leaving the other ninety-seven alone.
   ///
-  /// Written as an explicit read-modify-write for the reason `mergedIntoProject`
-  /// spells out: Swift dictionaries are value types, and the obvious nested
-  /// subscript chain edits copies and changes nothing.
+  /// Written as an explicit read-modify-write of two nested dictionaries rather
+  /// than anything clever: Swift dictionaries are value types, and the obvious
+  /// `root["projects"]![folder]!["mcpServers"]` chain edits copies and changes
+  /// nothing, a write that appears to succeed.
   static func removing(
     key: String,
     inProject folder: String,
@@ -672,28 +673,6 @@ enum ClientWiringMerge {
     guard let projects = root["projects"] as? [String: Any] else { return nil }
     guard let entry = projects[folder] as? [String: Any] else { return nil }
     return entry["mcpServers"] as? [String: Any] ?? [:]
-  }
-
-  /// Merge into one folder's project scope, leaving the other ninety-seven
-  /// alone.
-  ///
-  /// Written as an explicit read-modify-write of two nested dictionaries rather
-  /// than anything clever, because Swift dictionaries are value types and the
-  /// obvious `root["projects"]![folder]!["mcpServers"]` chain silently operates
-  /// on copies. The bug that produces is a write that appears to succeed and
-  /// changes nothing.
-  static func mergedIntoProject(
-    _ root: [String: Any],
-    folder: String,
-    entries: [String: [String: Any]]
-  ) -> [String: Any] {
-    var root = root
-    var projects = root["projects"] as? [String: Any] ?? [:]
-    var project = projects[folder] as? [String: Any] ?? [:]
-    project = merged(into: project, rootKey: "mcpServers", entries: entries)
-    projects[folder] = project
-    root["projects"] = projects
-    return root
   }
 
   /// Make Bastion's entries in every project block exactly `desired`.
