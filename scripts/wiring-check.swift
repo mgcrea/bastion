@@ -2555,6 +2555,20 @@ struct WiringCheck {
       spliced("{\"a\":1}", lockdownEdits).flatMap {
         spliced($0, [("disableClaudeAiConnectors", nil), ("allowedMcpServers", nil)])
       } == "{\"a\":1}")
+    func roundTrip(_ text: String) -> String? {
+      spliced(text, lockdownEdits).flatMap {
+        spliced($0, [("disableClaudeAiConnectors", nil), ("allowedMcpServers", nil)])
+      }
+    }
+    check(
+      "an empty object over two lines comes back as {} and a newline", roundTrip("{\n}\n") == "{}\n"
+    )
+    check("an empty object with a space comes back as {}", roundTrip("{ }") == "{}")
+    check("an empty file comes back as {} and a newline", roundTrip("") == "{}\n")
+    check("a newline-only file comes back as {} and a newline", roundTrip("\n") == "{}\n")
+    check(
+      "a non-empty object stays byte-identical",
+      roundTrip("{\n  \"model\": \"opus\"\n}\n") == "{\n  \"model\": \"opus\"\n}\n")
   }
 
   static func spliceKeepsCRLF() {

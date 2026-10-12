@@ -170,8 +170,10 @@ keys what `ClientWiringTOML` does for TOML tables:
   depth.
 
 The invariant, as for TOML: **every byte outside the spans Bastion rewrites is
-unchanged**, and on followed by off returns the original file byte for byte
-when neither key existed before.
+unchanged**, and on followed by off, when neither key existed before, returns a
+non-empty object byte for byte. An empty object, whatever whitespace it held,
+comes back as `{}`, and a file Bastion created (missing, empty or
+whitespace-only) comes back as `{}\n`.
 
 The bytes go through the existing `ClientWiringMerge.write(_ data:…)`
 unchanged: stamp check, `settings.json.bastion-backup`, temp file and swap,

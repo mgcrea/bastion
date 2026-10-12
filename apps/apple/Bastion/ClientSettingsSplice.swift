@@ -250,6 +250,11 @@ enum ClientSettingsSplice {
       return b
     case (let i?, nil):
       let member = doc.members[i]
+      // Removing the only member leaves `{}`. `{}`, `{ }` and `{\n}` all
+      // become the same bytes once a member is inserted, so no splice can
+      // restore which one the user had; an empty object round-trips to `{}`
+      // (and an absent or blank file to `{}\n`). Bastion only removes its own
+      // keys, so this arises only when the user's object was empty.
       if doc.members.count == 1, let braces = doc.braces {
         b.replaceSubrange(braces.open...braces.close, with: Array("{}".utf8))
       } else if i == doc.members.count - 1 {
