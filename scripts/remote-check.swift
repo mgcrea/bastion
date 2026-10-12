@@ -414,6 +414,16 @@ struct RemoteCheck {
     // A refresh response may omit the refresh token, meaning "keep yours".
     // Dropping it would make every such refresh the last one possible.
     check("an omitted refresh token is kept", refreshed?.refreshToken == "keep-me")
+    // The refresh token goes to whichever authorization server the resource
+    // names NOW. A set from another issuer is somebody else's, and sending it
+    // there hands a long-lived credential to a server that never issued it.
+    check("a set is from its own issuer", previous.isFrom(URL(string: "https://as.example")!))
+    check(
+      "a trailing slash is the same issuer",
+      previous.isFrom(URL(string: "https://as.example/")!))
+    check(
+      "and another issuer is not",
+      !previous.isFrom(URL(string: "https://evil.example")!))
     check("the new access token is taken", refreshed?.accessToken == "new")
     check("expiry is derived from expires_in", refreshed?.expiresAt != nil)
     check(

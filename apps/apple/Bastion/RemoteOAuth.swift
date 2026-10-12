@@ -206,8 +206,7 @@ nonisolated enum RemoteOAuth {
       }
 
       let declared = (json["issuer"] as? String) ?? ""
-      let normalise = { (s: String) in s.hasSuffix("/") ? String(s.dropLast()) : s }
-      guard normalise(declared) == normalise(issuer.absoluteString) else {
+      guard sameIssuer(declared, issuer.absoluteString) else {
         throw OAuthError.issuerMismatch(expected: issuer.absoluteString, got: declared)
       }
 
@@ -221,6 +220,13 @@ nonisolated enum RemoteOAuth {
         scopes: (json["scopes_supported"] as? [String]) ?? [],
         supportsS256: methods.contains("S256"))
     }
+  }
+
+  /// Whether two issuer strings name one authorization server: equal but for a
+  /// trailing slash, which servers add and drop inconsistently.
+  static func sameIssuer(_ a: String, _ b: String) -> Bool {
+    let normalise = { (s: String) in s.hasSuffix("/") ? String(s.dropLast()) : s }
+    return normalise(a) == normalise(b)
   }
 
   // MARK: - Step 3, PKCE
@@ -343,6 +349,12 @@ nonisolated enum RemoteOAuth {
     }
 
     var authorizationHeader: String { "Bearer \(accessToken)" }
+
+    /// Whether `issuer` is the authorization server these came from. Asked
+    /// before a refresh or revocation sends anything to one.
+    func isFrom(_ issuer: URL) -> Bool {
+      RemoteOAuth.sameIssuer(self.issuer, issuer.absoluteString)
+    }
   }
 
   /// Build a token set from a token-endpoint response.

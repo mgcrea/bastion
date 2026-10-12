@@ -73,8 +73,11 @@ nonisolated final class RemoteOAuthSession: @unchecked Sendable {
     // Best effort, and deliberately before the local delete: a revocation that
     // fails must not stop the local removal, or "sign out" would leave the
     // token exactly where it was.
+    // Only to the server that issued them: revoking at another one would hand
+    // it the very token being withdrawn.
     if let tokens = CredentialStore.readTokens(profile: profile.name, server: server.id),
-      let metadata = try? discover(for: server), let revocation = metadata.revocation
+      let metadata = try? discover(for: server), tokens.isFrom(metadata.issuer),
+      let revocation = metadata.revocation
     {
       var request = URLRequest(url: revocation)
       request.httpMethod = "POST"
@@ -124,6 +127,21 @@ nonisolated final class RemoteOAuthSession: @unchecked Sendable {
           + "authorized again in Bastion")
     }
     let metadata = try discover(for: server)
+    // The resource names its authorization server on every discovery, so it
+    // can name a different one. These tokens are that first server's, and
+    // sending the refresh token to the new one would give a long-lived
+    // credential to a server that never issued it. Discarded, as `TokenSet`
+    // promises, which leaves the profile to be authorized again.
+    guard known.isFrom(metadata.issuer) else {
+      try? CredentialStore.deleteTokens(profile: profile.name, server: server.id)
+      hostLog(
+        profile.id, .error,
+        "\(server.id) now names \(metadata.issuer.absoluteString) as its authorization server, "
+          + "not \(known.issuer). Its tokens were discarded unsent")
+      throw RemoteOAuth.OAuthError.tokenFailed(
+        "\(server.id) moved to another authorization server, so the \(profile.name) profile "
+          + "has to be authorized again in Bastion")
+    }
     var request = URLRequest(url: metadata.token)
     request.httpMethod = "POST"
     request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
