@@ -758,6 +758,18 @@ enum ClientWiringMerge {
     }
   }
 
+  /// Keys two profiles would both be written under, per project folder, as
+  /// `<folder>: <key>`, sorted. The project-block counterpart to the global
+  /// block's refusal in `ClientWiring.wireOnce`: writing one of the two and
+  /// silently dropping the other is worse than refusing, and here the one
+  /// kept used to be whichever a dictionary yielded first.
+  static func ambiguousKeys(_ keys: [String: [String]]) -> [String] {
+    keys.keys.sorted().flatMap { folder -> [String] in
+      let counts = Dictionary(grouping: keys[folder] ?? [], by: { $0 })
+      return counts.filter { $0.value.count > 1 }.keys.sorted().map { "\(folder): \($0)" }
+    }
+  }
+
   /// Whether any project block holds an entry `isOurs` claims.
   static func hasOurProjectEntries(_ root: [String: Any]) -> Bool {
     guard let projects = root["projects"] as? [String: Any] else { return false }

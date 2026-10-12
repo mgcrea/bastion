@@ -2512,6 +2512,17 @@ struct WiringCheck {
       kept?["disabled"] as? Bool == true && kept?["timeout"] as? Int == 30)
     check("and still writes what Bastion owns", deepEqual(kept?["url"], ovh["url"]))
 
+    // Two scoped profiles reducing to one key in one folder. The global block
+    // refuses that; the project block kept whichever a dictionary iterated
+    // first, which changes from one launch to the next.
+    check(
+      "a key two profiles reduce to is named, per folder",
+      ClientWiringMerge.ambiguousKeys(["/r/api": ["a-b-c", "x", "a-b-c"], "/r/web": ["a-b-c"]])
+        == ["/r/api: a-b-c"])
+    check(
+      "and none when every key is distinct",
+      ClientWiringMerge.ambiguousKeys(["/r/api": ["a", "b"]]).isEmpty)
+
     let taken = ClientWiringMerge.projectCollisions(
       in: root, keys: ["/r/api": ["theirs", "rgis-ovh"], "/nowhere": ["theirs"]])
     check(

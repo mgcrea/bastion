@@ -677,6 +677,8 @@ enum ClientWiring {
     // the other profile silently unwired.
     let duplicates = Dictionary(grouping: keys.values, by: { $0 }).filter { $0.value.count > 1 }
     guard duplicates.isEmpty else { throw WireError.ambiguousKeys(duplicates.keys.sorted()) }
+    let projectDuplicates = ClientWiringMerge.ambiguousKeys(planned.mapValues { Array($0.values) })
+    guard projectDuplicates.isEmpty else { throw WireError.ambiguousKeys(projectDuplicates) }
 
     // One read, whichever format. For TOML the whole document is kept and not
     // just its servers, because the splice quotes the original text back out of
