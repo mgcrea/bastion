@@ -270,13 +270,16 @@ final class ProfileStore {
       // Killing a warm process to flip a switch it cannot observe would cost
       // the next caller a whole spawn and handshake for nothing. See
       // `ServerStore.setLazyTools`, which makes the same call.
+      try save()
+      // After the save, which is what publishes the snapshot the gateway reads.
+      // Stopped first, a request landing in between (or a start that saw this
+      // stop and went back to the store) was spawned from the old profile.
       if previous.values != profile.values || previous.allowWrites != profile.allowWrites {
         Supervisor.shared.stop(profile: profile.name, server: profile.serverID)
         ServerCheck.shared.forget(profile.id)
         ToolCostStore.shared.forget(profile.id)
         CapabilityStore.shared.forget(profile.id)
       }
-      try save()
     } else {
       profiles.append(profile)
       try save()

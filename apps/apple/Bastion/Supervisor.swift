@@ -106,6 +106,16 @@ nonisolated final class Supervisor: @unchecked Sendable {
   /// Per key rather than one global gate: a slow server starting must not hold
   /// up a different profile's first request.
   private let startGates = OSAllocatedUnfairLock<[String: DispatchSemaphore]>(initialState: [:])
+  /// How many times each key has been stopped, so a start can tell whether a
+  /// stop landed while it was spawning.
+  ///
+  /// `instanceFor` spawns and handshakes outside `instances`, which can take
+  /// seconds. A `stop` in that window, from a profile edit turning writes off
+  /// or a rotated credential, found nothing in the table to stop, and the child
+  /// built from the old profile was inserted after it and served until its idle
+  /// stop. Bumped before the removal in `stop`, and compared under the
+  /// `instances` lock before an insert, always in that order of locks.
+  private let generations = OSAllocatedUnfairLock<[String: Int]>(initialState: [:])
   /// The backoff and the breaker, per profile, here rather than on `Instance`.
   /// A dead child's instance is replaced on the next request, and while the
   /// count lived on the instance it went back to zero every time — so a server
@@ -212,6 +222,7 @@ nonisolated final class Supervisor: @unchecked Sendable {
 
   func stop(profile: String, server: String) {
     let key = "\(profile)/\(server)"
+    generations.withLock { $0[key, default: 0] += 1 }
     let instance = instances.withLock { $0.removeValue(forKey: key) }
     instance?.stop(reason: "stopped by request")
     let remote = remotes.withLock { $0.removeValue(forKey: key) }
@@ -299,9 +310,37 @@ nonisolated final class Supervisor: @unchecked Sendable {
     // Spawned outside the instances lock. Starting a child means a fork, an
     // exec and a blocking handshake, and holding that lock across all three
     // would stall every OTHER profile's requests behind one slow startup.
-    let created = try Instance(profile: profile, server: server, backoff: backoff)
-    instances.withLock { $0[key] = created }
-    return created
+    //
+    // Which is also the window a `stop` can land in unseen; see `generations`.
+    // A child started from a profile that has since changed is discarded and
+    // started again from the stores, a bounded number of times.
+    var profile = profile
+    var server = server
+    for _ in 0..<3 {
+      let generation = generations.withLock { $0[key, default: 0] }
+      let created = try Instance(profile: profile, server: server, backoff: backoff)
+      let current = instances.withLock { table -> Bool in
+        guard generations.withLock({ $0[key, default: 0] }) == generation else { return false }
+        table[key] = created
+        return true
+      }
+      if current { return created }
+
+      created.stop(reason: "the profile changed while it was starting")
+      guard let fresh = ProfileStore.lookup(name: profile.name, server: server.id),
+        let freshServer = ServerStore.lookup(server.id)
+      else {
+        throw SupervisorError.unknownProfile(profile: profile.name, server: server.id)
+      }
+      guard freshServer.isEnabled else { throw SupervisorError.serverDisabled(server.id) }
+      let missing = ProfileEnvironment.missing(for: fresh, server: freshServer)
+      guard missing.isEmpty else {
+        throw SupervisorError.notConfigured(profile: fresh.name, missing: missing)
+      }
+      profile = fresh
+      server = freshServer
+    }
+    throw SupervisorError.startFailed("its profile kept changing while it was starting")
   }
 }
 
