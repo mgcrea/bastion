@@ -934,10 +934,12 @@ struct ServerDetail: View {
           + "\(carry) once the list is worth more than the tools that would replace it."
       }
     }
+    let declared = (measured.writeToolCount ?? 0) > 0 ? "four" : "three"
     return "\(scope). \(measured.toolCount) tools, "
       + "\(ToolCost.short(ToolCost.tokens(bytes: measured.bytes)))\(measured.partial ? "+" : "")"
       + " → \(ToolCost.short(ToolCost.tokens(bytes: facade))) tokens on every connect, with "
-      + "everything still reachable through the three." + exempt + unclassifiedClause(measured)
+      + "everything still reachable through the \(declared)." + exempt
+      + unclassifiedClause(measured)
   }
 
   /// The caveat for a server Bastion cannot tell reads from writes on.
@@ -1384,7 +1386,8 @@ private struct ProfileRow: View {
       let facade = facadeBytes
       return (
         "\(ToolCost.short(ToolCost.tokens(bytes: facade))) of \(tokens)\(measured.partial ? "+" : "") tokens",
-        "\(count) tool\(count == 1 ? "" : "s") behind three. Clients are sent "
+        "\(count) tool\(count == 1 ? "" : "s") behind "
+          + "\((measured.writeToolCount ?? 0) > 0 ? "four" : "three"). Clients are sent "
           + ToolCost.phrase(bytes: facade) + " on connect instead of "
           + ToolCost.phrase(bytes: measured.bytes, partial: measured.partial)
           + ", and fetch a schema when they need one." + facadeExemptClause()

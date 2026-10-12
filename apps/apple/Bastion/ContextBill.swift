@@ -30,6 +30,11 @@ enum ContextBill {
     var partial: Bool
     /// The facade stood in front of this listing for this client.
     var isFronted: Bool
+    /// How many Bastion tools the facade declares for it: three, or four when
+    /// Bastion can tell this server's writes apart and dispatches them on their
+    /// own. `ToolFacade.names` holds all four and is the wrong count for a
+    /// caption.
+    var facadeToolCount: Int
     var id: String { profileID }
 
     var savedBytes: Int { Swift.max(0, fullBytes - sentBytes) }
@@ -44,9 +49,10 @@ enum ContextBill {
   static func row(profile: Profile, server: BastionServer, defers: Bool) -> Row? {
     guard let cost = ToolCostStore.shared.current(for: profile, server: server) else { return nil }
 
+    let hasWriteDispatcher = (cost.writeToolCount ?? 0) > 0
     let facade = ToolFacade.declarationBytes(
       displayName: server.displayName, summary: server.summary, toolCount: cost.toolCount,
-      hasWriteDispatcher: (cost.writeToolCount ?? 0) > 0)
+      hasWriteDispatcher: hasWriteDispatcher)
     // Three axes, and the third is measured rather than configured: a listing
     // the declarations would not meaningfully shrink is forwarded whole, so
     // counting the facade for it would understate what this client is sent.
@@ -57,13 +63,13 @@ enum ContextBill {
       && (cost.partial
         || ToolFacade.worthFronting(
           listingBytes: cost.bytes, listingCount: cost.toolCount, facadeBytes: facade,
-          facadeCount: ToolFacade.declarationCount(
-            hasWriteDispatcher: (cost.writeToolCount ?? 0) > 0)))
+          facadeCount: ToolFacade.declarationCount(hasWriteDispatcher: hasWriteDispatcher)))
 
     return Row(
       profileID: profile.id, serverID: server.id, displayName: server.displayName,
       fullBytes: cost.bytes, sentBytes: fronted ? facade : cost.bytes, toolCount: cost.toolCount,
-      partial: cost.partial, isFronted: fronted)
+      partial: cost.partial, isFronted: fronted,
+      facadeToolCount: ToolFacade.declarationCount(hasWriteDispatcher: hasWriteDispatcher))
   }
 
   static func row(profile: Profile, defers: Bool = false) -> Row? {

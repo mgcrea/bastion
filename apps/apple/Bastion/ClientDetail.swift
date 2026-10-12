@@ -493,7 +493,7 @@ struct ClientDetail: View {
                   fraction: Double(row.sentBytes) / Double(heaviest),
                   value: ToolCost.short(ToolCost.tokens(bytes: row.sentBytes)),
                   caption: row.isFronted
-                    ? "\(ToolFacade.names.count) tools instead of \(row.toolCount)"
+                    ? "\(row.facadeToolCount) tools instead of \(row.toolCount)"
                     : "\(row.toolCount) tools",
                   partial: row.partial,
                   help: ToolCost.phrase(bytes: row.sentBytes, partial: row.partial))

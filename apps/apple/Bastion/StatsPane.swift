@@ -171,7 +171,7 @@ struct StatsPane: View {
                 fraction: heaviest > 0 ? Double(row.sentBytes) / Double(heaviest) : 0,
                 value: ToolCost.short(ToolCost.tokens(bytes: row.sentBytes)),
                 caption: row.isFronted
-                  ? "\(ToolFacade.names.count) tools instead of \(row.toolCount)"
+                  ? "\(row.facadeToolCount) tools instead of \(row.toolCount)"
                   : "\(row.toolCount) tools",
                 badge: profiles > 1 ? "\(profiles) profiles wired" : nil,
                 partial: row.partial,
