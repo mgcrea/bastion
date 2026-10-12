@@ -314,6 +314,19 @@ nonisolated extension Supervisor {
     private let profile: Profile
     private let server: BastionServer
 
+    /// The profile's capture mode and the server's lazy-tools choice, as they
+    /// are NOW. Both change from the window without restarting anything, and
+    /// `ServerStore.setLazyTools` and `ProfileStore.upsert` rely on that, so
+    /// they are read per request from the stores' snapshots, as `BuiltinServer`
+    /// does, rather than from the copies taken at spawn. Those copies stand in
+    /// only for a profile or server removed mid-request.
+    private var liveCapture: CallCapture.Mode {
+      ProfileStore.lookup(name: profile.name, server: server.id)?.capture ?? profile.capture
+    }
+    private var liveLazyTools: Bool {
+      ServerStore.lookup(server.id)?.loadsToolsOnDemand ?? server.loadsToolsOnDemand
+    }
+
     private let state = OSAllocatedUnfairLock<State>(initialState: State())
     private let backoff: RestartBackoff
     /// Every connection thread writes to the one stdin; see `FrameWriter`.
@@ -835,7 +848,7 @@ nonisolated extension Supervisor {
       // gateway knows who is asking before it knows what they asked for. Three
       // conjuncts rather than one predicate, each naming its own reason.
       var facade = FacadeOutcome.passThrough
-      if server.loadsToolsOnDemand, !ToolFacade.clientDefersSchemas(client),
+      if liveLazyTools, !ToolFacade.clientDefersSchemas(client),
         client != ServerCheck.client
       {
         facade = try facadeOutcome(for: frame, method: method, clientID: clientID)
@@ -843,7 +856,7 @@ nonisolated extension Supervisor {
       }
 
       let logID = LogStore.record(
-        origin: key, frame: frame, mode: profile.capture, secretKeys: secretKeys)
+        origin: key, frame: frame, mode: liveCapture, secretKeys: secretKeys)
 
       // Answered here, so the record has to be completed here too — `received`
       // is the only other place that attaches a reply and no reply is coming.
@@ -852,7 +865,7 @@ nonisolated extension Supervisor {
           let reply = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         {
           hostCallResult(
-            logID, CallCapture.result(reply, mode: profile.capture, secretKeys: secretKeys),
+            logID, CallCapture.result(reply, mode: liveCapture, secretKeys: secretKeys),
             failed: CallCapture.isFailure(reply))
         }
         return data
@@ -1533,7 +1546,7 @@ nonisolated extension Supervisor {
       if let logID = waiter.logID {
         hostCallResult(
           logID,
-          CallCapture.result(frame, mode: profile.capture, secretKeys: secretKeys),
+          CallCapture.result(frame, mode: liveCapture, secretKeys: secretKeys),
           failed: CallCapture.isFailure(frame))
       }
 

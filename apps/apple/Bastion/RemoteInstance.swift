@@ -46,6 +46,19 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
   private let server: BastionServer
   private let endpoint: URL
 
+  /// The profile's capture mode and the server's lazy-tools choice, as they
+  /// are NOW. Both change from the window without restarting anything, and
+  /// `ServerStore.setLazyTools` and `ProfileStore.upsert` rely on that, so
+  /// they are read per request from the stores' snapshots, as `BuiltinServer`
+  /// does, rather than from the copies taken at spawn. Those copies stand in
+  /// only for a profile or server removed mid-request.
+  private var liveCapture: CallCapture.Mode {
+    ProfileStore.lookup(name: profile.name, server: server.id)?.capture ?? profile.capture
+  }
+  private var liveLazyTools: Bool {
+    ServerStore.lookup(server.id)?.loadsToolsOnDemand ?? server.loadsToolsOnDemand
+  }
+
   /// The manifest variables this server marks secret — the argument names
   /// Bastion can be certain are credentials. See `CallCapture`.
   private var secretKeys: Set<String> {
@@ -210,7 +223,7 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     /// What the catalogue would have weighed, so the saving can be measured
     /// against what actually went out rather than forecast from a stored figure.
     var facadeListedBytes = 0
-    if server.loadsToolsOnDemand, !ToolFacade.clientDefersSchemas(client),
+    if liveLazyTools, !ToolFacade.clientDefersSchemas(client),
       client != ServerCheck.client,
       ToolFacade.handles(method: method, params: frame["params"] as? [String: Any])
     {
@@ -254,7 +267,7 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     }
 
     let logID = LogStore.record(
-      origin: key, frame: frame, mode: profile.capture, secretKeys: secretKeys)
+      origin: key, frame: frame, mode: liveCapture, secretKeys: secretKeys)
 
     // Answered here, so the record is completed here — nothing is going upstream
     // to come back and complete it.
@@ -263,7 +276,7 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
       let reply: [String: Any] = ["jsonrpc": "2.0", "id": clientID, "result": facadeAnswer]
       if let logID {
         hostCallResult(
-          logID, CallCapture.result(reply, mode: profile.capture, secretKeys: secretKeys),
+          logID, CallCapture.result(reply, mode: liveCapture, secretKeys: secretKeys),
           failed: CallCapture.isFailure(reply))
       }
       let encoded = try encode(reply)
@@ -356,7 +369,7 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     if let logID {
       hostCallResult(
         logID,
-        CallCapture.result(object, mode: profile.capture, secretKeys: secretKeys),
+        CallCapture.result(object, mode: liveCapture, secretKeys: secretKeys),
         failed: CallCapture.isFailure(object))
     }
 
