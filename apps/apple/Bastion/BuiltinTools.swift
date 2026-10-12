@@ -34,6 +34,7 @@ enum BuiltinTools {
     case noSuchClient(id: String, known: [String])
     case unknownVariable(variable: String, server: String)
     case wireRefused(String)
+    case lockdownRefused(String)
     case catalogID(String)
     case wouldRedirectCredentials(id: String, profiles: Int)
 
@@ -81,6 +82,8 @@ enum BuiltinTools {
         // would change. This adds the half only a caller of this tool can act
         // on, rather than making the pane's alert talk about arguments.
         return "\(why) To replace them anyway, call wire_client again with force: true."
+      case .lockdownRefused(let why):
+        return "\(why) To do it anyway, call set_client_lockdown again with force: true."
       case .catalogID(let id):
         return
           "'\(id)' is a catalog server, and a custom server cannot take its id. Choose another id."
@@ -520,6 +523,27 @@ enum BuiltinTools {
         + "untouched. A backup is written first.",
       properties: ["client": schema("string", "The client id.")],
       required: ["client"], mutates: true),
+
+    Declaration(
+      "set_client_lockdown", title: "Allow only Bastion",
+      "Turn Only Bastion on or off for a Claude Code client. On writes "
+        + "disableClaudeAiConnectors and an allowedMcpServers list into that profile's "
+        + "settings.json: Bastion's endpoint plus every other server already in its .claude.json, "
+        + "so servers added by plugins, claude.ai connectors and a repository's .mcp.json are "
+        + "blocked. Only those two keys change and a backup is written first. Hygiene, not a "
+        + "security boundary: a project's own settings can widen the list.",
+      properties: [
+        "client": schema(
+          "string", "A Claude Code client id: 'claude-code' or 'claude-code@<name>'."),
+        "on": schema(
+          "boolean",
+          "True to turn it on or bring it up to date, false to remove what Bastion wrote."),
+        "force": schema(
+          "boolean",
+          "Replace values set by hand for those two keys (on), or remove keys edited since "
+            + "Bastion wrote them (off). Off by default."),
+      ],
+      required: ["client", "on"], mutates: true),
   ]
 
   /// What `tools/list` returns.
@@ -579,6 +603,7 @@ enum BuiltinTools {
     case "set_credential": return try setCredential(arguments)
     case "wire_client": return try wireClient(arguments)
     case "unwire_client": return try unwireClient(arguments)
+    case "set_client_lockdown": return try setClientLockdown(arguments)
 
     default: throw ToolError.unknownTool(name)
     }
@@ -1154,6 +1179,10 @@ enum BuiltinTools {
         "defers_tool_schemas": ToolFacade.clientDefersSchemas(client.id),
       ]
       if let caveat = client.caveat { row["note"] = caveat }
+      // Claude Code rows only; nil for every other client.
+      if let lockdown = ClientWiring.lockdown(of: client) {
+        row["lockdown"] = lockdown.state.summary
+      }
       return row
     }
 
@@ -1902,6 +1931,38 @@ enum BuiltinTools {
     if let backup { out["backup"] = backup.path }
     out["note"] =
       "Only Bastion's own entries were removed; everything else in the file is as it was."
+    return out
+  }
+
+  private static func setClientLockdown(_ arguments: [String: Any]) throws -> Any {
+    let id = try string(arguments, "client")
+    guard let client = ClientWiring.all.first(where: { $0.id == id }) else {
+      throw ToolError.noSuchClient(id: id, known: ClientWiring.all.map(\.id))
+    }
+    guard ClientWiring.supportsLockdown(client) else {
+      throw ToolError.badArgument(
+        name: "client", expected: "a Claude Code client id: 'claude-code' or 'claude-code@<name>'")
+    }
+    guard let on = arguments["on"] as? Bool else { throw ToolError.missingArgument("on") }
+    let backup: URL?
+    do {
+      backup = try ClientWiring.setLockdown(
+        client, on: on, force: arguments["force"] as? Bool ?? false)
+    } catch let refusal as ClientLockdown.Refusal {
+      throw ToolError.lockdownRefused(refusal.localizedDescription)
+    }
+    let lockdown = ClientWiring.lockdown(of: client)
+    var out: [String: Any] = [
+      "client": id,
+      "state": lockdown?.state.summary ?? "unknown",
+      "settings_path": ClientWiring.settingsURL(for: client)?.path ?? "",
+    ]
+    if let backup { out["backup"] = backup.path }
+    if let plan = lockdown?.plan {
+      out["allowed"] = plan.kept
+      out["skipped"] = plan.skipped
+    }
+    out["note"] = "Start a new Claude Code session to apply. deniedMcpServers is never touched."
     return out
   }
 

@@ -246,6 +246,11 @@ struct ClientDetail: View {
         if !snapshot.projects.isEmpty { projectsCard(snapshot) }
         if client.id == "claude-desktop" { accountSkillsCard }
         contextCard(snapshot)
+        // Hidden under a capture: it reads settings.json from the real home
+        // directory, which no golden screenshot may depend on.
+        if ClientWiring.supportsLockdown(client), !DemoSeed.isEnabled {
+          ClientLockdownCard(client: client)
+        }
         callsCard
         if let result {
           Text(result)

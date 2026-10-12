@@ -619,7 +619,7 @@ enum ClientWiring {
   /// Twice, not until it succeeds: a file being rewritten faster than this can
   /// read it is not a race to keep entering, and every caller already has
   /// somewhere to put the sentence.
-  private static func retryingIfChanged<T>(_ url: URL, _ body: () throws -> T) throws -> T {
+  static func retryingIfChanged<T>(_ url: URL, _ body: () throws -> T) throws -> T {
     let attempts = 2
     for attempt in 1...attempts {
       do { return try body() } catch ClientWiringMerge.WriteError.changedUnderneath(_)
@@ -851,6 +851,9 @@ enum ClientWiring {
           "\(client.displayName): left unchanged — \(error.localizedDescription)")
       }
     }
+    // After the wiring above, so a profile wired this pass is current before
+    // its allowlist is. Same gate: a Debug build never gets here.
+    refreshLockdowns()
   }
 
   /// Whether this instance may rewrite other applications' configs unasked.
@@ -924,7 +927,23 @@ enum ClientWiring {
 
   @discardableResult
   static func unwire(_ client: Client) throws -> URL? {
-    try retryingIfChanged(client.configURL) { try unwireOnce(client) }
+    // An allowlist naming a Bastion that is no longer wired would block every
+    // server the profile has. A key edited by hand since is no longer ours to
+    // remove: it is dropped from the record and left in place, and the keys
+    // still in Bastion's shape are removed.
+    if supportsLockdown(client), let recorded = ClientLockdown.recorded(client.id) {
+      do {
+        try setLockdown(client, on: false)
+      } catch ClientLockdown.Refusal.drifted(let keys) {
+        ClientLockdown.record(client.id, owned: recorded.subtracting(keys))
+        try setLockdown(client, on: false)
+        hostLog(
+          "wiring", .info,
+          "\(client.displayName): left \(keys.joined(separator: ", ")) in settings.json, "
+            + "edited by hand since Bastion wrote it")
+      }
+    }
+    return try retryingIfChanged(client.configURL) { try unwireOnce(client) }
   }
 
   private static func unwireOnce(_ client: Client) throws -> URL? {

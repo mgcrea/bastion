@@ -96,6 +96,8 @@ struct WiringCheck {
         // `ClientWiring.all`.
         if url.pathExtension == "toml" {
           realTOMLFileSurvives(url)
+        } else if url.lastPathComponent == "settings.json" {
+          realSettingsSurvive(url)
         } else {
           realFileSurvives(url)
         }
@@ -143,6 +145,19 @@ struct WiringCheck {
     tomlDuplicateKeyIsImpossible()
     tomlBackupAtomicityAndMode()
     tomlStaleWriteIsRefused()
+    spliceLeavesEveryOtherByteAlone()
+    spliceRoundTrips()
+    spliceReplacesOnlyTheValue()
+    spliceIntoEmptyShapes()
+    spliceKeepsCRLF()
+    spliceRefusesWhatItCannotRoundTrip()
+    spliceRewriteOnDisk()
+    lockdownPlanIsBastionPlusTheConfig()
+    lockdownRecognisesItsOwnPattern()
+    lockdownStateTable()
+    lockdownEnablingAndDisabling()
+    lockdownRecordRoundTrips()
+    lockdownSplicesIntoARealShape()
 
     workspaceResolution()
     workspaceAssignments()
@@ -1966,6 +1981,44 @@ struct WiringCheck {
       names(try? ClientWiringTOML.read(fresh)) == ["shopify", "stripe"])
   }
 
+  /// Read-only. Parses a real settings.json, turns the switch on in memory
+  /// against an empty config, and asserts every key the user had is
+  /// deep-equal after, and that off returns the original bytes when Bastion
+  /// added every key it wrote.
+  static func realSettingsSurvive(_ url: URL) {
+    print("\n\(url.path)")
+    guard let data = try? Data(contentsOf: url) else {
+      return print("  skip (no file)")
+    }
+    let doc: ClientSettingsSplice.Document
+    do {
+      doc = try ClientSettingsSplice.parse(data)
+    } catch {
+      return check("parses: \(error.localizedDescription)", false)
+    }
+    check("parses", true)
+    let plan = ClientLockdown.plan(claudeConfig: [:], port: port)
+    guard
+      let on = try? ClientLockdown.enabling(
+        current: doc.values, plan: plan, recorded: [], force: true),
+      let written = try? ClientSettingsSplice.applying(on.edits, to: data),
+      let after = try? ClientSettingsSplice.parse(written)
+    else { return check("switches on in memory", false) }
+    for (key, value) in doc.values where !ClientLockdown.managedKeys.contains(key) {
+      check("'\(key)' survives", deepEqual(value, after.values[key]))
+    }
+    check(
+      "reads as on", ClientLockdown.state(settings: after.values, plan: plan, enabled: true) == .on)
+    let addedEverything = on.owned.allSatisfy { doc.values[$0] == nil }
+    if addedEverything,
+      let off = try? ClientLockdown.disabling(
+        current: after.values, recorded: on.owned, force: false),
+      let restored = try? ClientSettingsSplice.applying(off, to: written)
+    {
+      check("on then off is byte-identical", restored == data)
+    }
+  }
+
   /// The `wiring-check-real` half for a TOML config.
   ///
   /// Read-only: scanned, spliced in memory and compared. Fixtures only cover
@@ -2539,5 +2592,602 @@ struct WiringCheck {
     check(
       "a foreign key under a desired key is a collision, named with its folder",
       taken == ["/r/api: theirs"])
+  }
+
+  // MARK: - settings.json splice
+
+  /// Shaped like a hand-written Claude Code settings.json: nested objects, an
+  /// array, escaped quotes, braces inside strings, non-ASCII, and a trailing
+  /// newline.
+  static let settingsFixture = """
+    {
+      "env": { "FOO": "a } b { \\" c", "URL": "https://x.y/z" },
+      "permissions": {
+        "allow": ["Bash(git status)", "Read(//tmp/**)"]
+      },
+      "model": "opus",
+      "statusLine": {"type": "command", "command": "echo é ✓"}
+    }
+
+    """
+
+  static let lockdownEdits: [ClientSettingsSplice.Edit] = [
+    ("disableClaudeAiConnectors", true),
+    ("allowedMcpServers", [["serverUrl": "http://127.0.0.1:8720/s/*"]]),
+  ]
+
+  static func spliced(_ text: String, _ edits: [ClientSettingsSplice.Edit]) -> String? {
+    guard let out = try? ClientSettingsSplice.applying(edits, to: Data(text.utf8)) else {
+      return nil
+    }
+    return String(decoding: out, as: UTF8.self)
+  }
+
+  static func spliceLeavesEveryOtherByteAlone() {
+    print("\nsettings.json: every other byte survives")
+    guard let out = spliced(settingsFixture, lockdownEdits) else {
+      return check("the fixture splices", false)
+    }
+    let anchor = settingsFixture.range(of: "\"echo é ✓\"}")!.upperBound
+    let head = String(settingsFixture[..<anchor])
+    check("everything up to the last value is unchanged", out.hasPrefix(head))
+    check("the closing brace and newline are unchanged", out.hasSuffix("\n}\n"))
+    check(
+      "the members are appended in order, in the file's indentation",
+      out.contains(
+        "\"echo é ✓\"},\n  \"disableClaudeAiConnectors\": true,\n  \"allowedMcpServers\": [\n"
+          + "    {\n      \"serverUrl\": \"http://127.0.0.1:8720/s/*\"\n    }\n  ]\n}"))
+    let before = try? ClientSettingsSplice.parse(Data(settingsFixture.utf8)).values
+    let after = try? ClientSettingsSplice.parse(Data(out.utf8)).values
+    check("the result parses", after != nil)
+    for key in ["env", "permissions", "model", "statusLine"] {
+      check("'\(key)' is deep-equal after", deepEqual(before?[key], after?[key]))
+    }
+    check("the new key reads back", deepEqual(after?["disableClaudeAiConnectors"], true))
+  }
+
+  static func spliceRoundTrips() {
+    print("\nsettings.json: on then off is the original file")
+    let on = spliced(settingsFixture, lockdownEdits)
+    let offInOrder = on.flatMap {
+      spliced($0, [("disableClaudeAiConnectors", nil), ("allowedMcpServers", nil)])
+    }
+    let offReversed = on.flatMap {
+      spliced($0, [("allowedMcpServers", nil), ("disableClaudeAiConnectors", nil)])
+    }
+    check("removing in write order restores every byte", offInOrder == settingsFixture)
+    check("removing in reverse order restores every byte", offReversed == settingsFixture)
+    check(
+      "applying the same edits twice is idempotent", on.flatMap { spliced($0, lockdownEdits) } == on
+    )
+    check(
+      "removing an absent key changes nothing",
+      spliced(settingsFixture, [("nope", nil)]) == settingsFixture)
+  }
+
+  static func spliceReplacesOnlyTheValue() {
+    print("\nsettings.json: replacing a value touches only its span")
+    let out = spliced(settingsFixture, [("model", "sonnet")])
+    check(
+      "only the value moved",
+      out == settingsFixture.replacingOccurrences(of: "\"opus\"", with: "\"sonnet\""))
+  }
+
+  static func spliceIntoEmptyShapes() {
+    print("\nsettings.json: empty file, empty object, one line")
+    check(
+      "an empty file becomes an object holding the key",
+      spliced("", [("disableClaudeAiConnectors", true)])
+        == "{\n  \"disableClaudeAiConnectors\": true\n}\n")
+    check(
+      "a whitespace-only file does too",
+      spliced("  \n", [("disableClaudeAiConnectors", true)])
+        == "{\n  \"disableClaudeAiConnectors\": true\n}\n")
+    let filled = spliced("{}", lockdownEdits)
+    check("{} gains both keys", filled?.contains("\"allowedMcpServers\"") == true)
+    check(
+      "and loses them again to exactly {}",
+      filled.flatMap {
+        spliced($0, [("disableClaudeAiConnectors", nil), ("allowedMcpServers", nil)])
+      } == "{}")
+    check(
+      "a one-line object stays on one line",
+      spliced("{\"a\":1}", [("disableClaudeAiConnectors", true)])
+        == "{\"a\":1, \"disableClaudeAiConnectors\": true}")
+    check(
+      "a one-line round trip is exact",
+      spliced("{\"a\":1}", lockdownEdits).flatMap {
+        spliced($0, [("disableClaudeAiConnectors", nil), ("allowedMcpServers", nil)])
+      } == "{\"a\":1}")
+    func roundTrip(_ text: String) -> String? {
+      spliced(text, lockdownEdits).flatMap {
+        spliced($0, [("disableClaudeAiConnectors", nil), ("allowedMcpServers", nil)])
+      }
+    }
+    check(
+      "an empty object over two lines comes back as {} and a newline", roundTrip("{\n}\n") == "{}\n"
+    )
+    check("an empty object with a space comes back as {}", roundTrip("{ }") == "{}")
+    check("an empty file comes back as {} and a newline", roundTrip("") == "{}\n")
+    check("a newline-only file comes back as {} and a newline", roundTrip("\n") == "{}\n")
+    check(
+      "a non-empty object stays byte-identical",
+      roundTrip("{\n  \"model\": \"opus\"\n}\n") == "{\n  \"model\": \"opus\"\n}\n")
+  }
+
+  static func spliceKeepsCRLF() {
+    print("\nsettings.json: CRLF files stay CRLF")
+    let crlf = "{\r\n  \"model\": \"opus\"\r\n}\r\n"
+    let on = spliced(crlf, lockdownEdits)
+    check(
+      "inserted lines end in CRLF",
+      on?.contains("\"opus\",\r\n  \"disableClaudeAiConnectors\"") == true)
+    check(
+      "no bare LF is introduced",
+      on?.replacingOccurrences(of: "\r\n", with: "").contains("\n") == false)
+    check(
+      "on then off is the original",
+      on.flatMap { spliced($0, [("disableClaudeAiConnectors", nil), ("allowedMcpServers", nil)]) }
+        == crlf)
+  }
+
+  static func spliceRefusesWhatItCannotRoundTrip() {
+    print("\nsettings.json: refusals")
+    func refusal(_ text: String) -> ClientSettingsSplice.ParseError? {
+      do {
+        _ = try ClientSettingsSplice.parse(Data(text.utf8))
+        return nil
+      } catch let error as ClientSettingsSplice.ParseError {
+        return error
+      } catch {
+        return nil
+      }
+    }
+    check("a line comment", refusal("{\n  // hi\n  \"a\": 1\n}") == .comment(offset: 4))
+    check(
+      "a block comment inside a value",
+      { if case .comment = refusal("{\"a\": [1, /* x */ 2]}") { true } else { false } }())
+    check("a top-level trailing comma", refusal("{\"a\": 1,\n}") == .trailingComma(offset: 7))
+    check("a nested trailing comma", refusal("{\"a\": [1, 2,]}") != nil)
+    check("a key set twice", refusal("{\"a\": 1, \"a\": 2}") == .duplicateKey("a"))
+    check("a top-level array", refusal("[1]") == .notAnObject)
+    check("a byte-order mark", refusal("\u{FEFF}{}") == .notAnObject)
+    check("an unterminated string", refusal("{\"a\": \"x}") != nil)
+    check("bytes after the object", refusal("{} {}") != nil)
+    let notUTF8: ClientSettingsSplice.ParseError? = {
+      do {
+        _ = try ClientSettingsSplice.parse(Data([0x7B, 0xFF, 0x7D]))
+        return nil
+      } catch { return error as? ClientSettingsSplice.ParseError }
+    }()
+    check("invalid UTF-8", notUTF8 == .notUTF8)
+  }
+
+  static func spliceRewriteOnDisk() {
+    print("\nsettings.json: rewrite on disk")
+    let fm = FileManager.default
+    let dir = fm.temporaryDirectory.appendingPathComponent("splice-\(UUID().uuidString)")
+    try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: dir) }
+    let edits: ([String: Any]) -> [ClientSettingsSplice.Edit] = { _ in lockdownEdits }
+
+    // A refusal never writes, and leaves no backup.
+    let commented = dir.appendingPathComponent("commented.json")
+    try? Data("{ // x\n}".utf8).write(to: commented)
+    var refused = false
+    do {
+      try ClientSettingsSplice.rewrite(commented, backupSuffix: "bastion-backup", edits: edits)
+    } catch is ClientSettingsSplice.ParseError {
+      refused = true
+    } catch {}
+    check("a file with a comment is refused", refused)
+    check("and left byte-identical", (try? Data(contentsOf: commented)) == Data("{ // x\n}".utf8))
+    check("with no backup", !fm.fileExists(atPath: commented.path + ".bastion-backup"))
+
+    // A missing file is created, with no backup to report.
+    let fresh = dir.appendingPathComponent("fresh/settings.json")
+    let freshBackup = try? ClientSettingsSplice.rewrite(
+      fresh, backupSuffix: "bastion-backup", edits: edits)
+    check("a missing file is created", fm.fileExists(atPath: fresh.path))
+    check("with no backup", freshBackup == nil)
+
+    // An existing file is backed up once; an identical second pass writes nothing.
+    let existing = dir.appendingPathComponent("settings.json")
+    try? Data(settingsFixture.utf8).write(to: existing)
+    let first = try? ClientSettingsSplice.rewrite(
+      existing, backupSuffix: "bastion-backup", edits: edits)
+    check("the first write leaves a backup", first != nil)
+    check(
+      "holding the original",
+      first.flatMap { try? Data(contentsOf: $0) } == Data(settingsFixture.utf8))
+    try? fm.removeItem(at: first ?? existing.appendingPathExtension("bastion-backup"))
+    let second = try? ClientSettingsSplice.rewrite(
+      existing, backupSuffix: "bastion-backup", edits: edits)
+    check("an identical second pass writes nothing", second == nil)
+    check("and makes no new backup", !fm.fileExists(atPath: existing.path + ".bastion-backup"))
+    let litter =
+      (try? fm.contentsOfDirectory(atPath: dir.path))?.filter { $0.hasSuffix(".tmp") } ?? []
+    check("no temp files are left behind", litter.isEmpty)
+
+    // A symlinked settings.json is written through; the link stays a link.
+    let target = dir.appendingPathComponent("dotfiles-settings.json")
+    let link = dir.appendingPathComponent("linked/settings.json")
+    try? fm.createDirectory(at: link.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try? Data("{}\n".utf8).write(to: target)
+    try? fm.createSymbolicLink(at: link, withDestinationURL: target)
+    _ = try? ClientSettingsSplice.rewrite(link, backupSuffix: "bastion-backup", edits: edits)
+    let isLink = (try? fm.destinationOfSymbolicLink(atPath: link.path)) != nil
+    check("the link is still a link", isLink)
+    check(
+      "and its target was written",
+      (try? String(contentsOf: target, encoding: .utf8))?.contains("allowedMcpServers") == true)
+
+    // Claude Code writing between the read and the write: refused, its change kept.
+    let racy = dir.appendingPathComponent("racy.json")
+    try? Data("{\"a\": 1}".utf8).write(to: racy)
+    var raced = false
+    do {
+      try ClientSettingsSplice.rewrite(racy, backupSuffix: "bastion-backup") { _ in
+        try? Data("{\"a\": 1, \"b\": 2}".utf8).write(to: racy)
+        return lockdownEdits
+      }
+    } catch ClientWiringMerge.WriteError.changedUnderneath(_) {
+      raced = true
+    } catch {}
+    check("a write over a file that moved is refused", raced)
+    check(
+      "and the other writer's change survives",
+      (try? String(contentsOf: racy, encoding: .utf8)) == "{\"a\": 1, \"b\": 2}")
+  }
+
+  // MARK: - Only Bastion
+
+  static let cupertino = "/Applications/Cupertino.app/Contents/Helpers/cupertino-bridge"
+
+  /// A profile's `.claude.json`: Bastion's own entries (global and project), a
+  /// stdio bridge, a local HTTP server, an entry with nothing launchable, the
+  /// same URL twice, and a project block holding no servers.
+  static let lockdownConfig: [String: Any] = [
+    "mcpServers": [
+      "prod-stripe": entry(httpReach("stripe")),
+      "cupertino-mail": [
+        "type": "stdio", "command": cupertino,
+        "args": ["--server=mail", "--client=claude-code"], "env": [String: Any](),
+      ],
+      "armada": ["type": "http", "url": "http://127.0.0.1:8790/mcp"],
+      "broken": ["type": "stdio"],
+    ],
+    "projects": [
+      "/r/b": [
+        "mcpServers": ["armada-again": ["type": "http", "url": "http://127.0.0.1:8790/mcp"]]
+      ],
+      "/r/a": [
+        "mcpServers": [
+          "local-db": ["command": "npx", "args": ["-y", "db-mcp"]],
+          "prod-npm": entry(httpReach("npm")),
+        ]
+      ],
+      "/r/empty": ["allowedTools": [String]()],
+    ],
+  ]
+
+  static func lockdownPlanIsBastionPlusTheConfig() {
+    print("\nOnly Bastion: the allowlist")
+    let plan = ClientLockdown.plan(claudeConfig: lockdownConfig, port: 8720)
+    check(
+      "Bastion's wildcard first, then global, then projects by path, sorted, deduplicated",
+      deepEqual(
+        plan.allowed,
+        [
+          ["serverUrl": "http://127.0.0.1:8720/s/*"],
+          ["serverUrl": "http://127.0.0.1:8790/mcp"],
+          ["serverCommand": [cupertino, "--server=mail", "--client=claude-code"]],
+          ["serverCommand": ["npx", "-y", "db-mcp"]],
+        ]))
+    check(
+      "labels name where each rule came from",
+      plan.rules.map(\.label) == ["Bastion", "armada", "cupertino-mail", "local-db"])
+    check(
+      "every kept key is listed, duplicates included",
+      plan.kept == ["armada", "cupertino-mail", "local-db", "armada-again"])
+    check("an entry with no url or command is skipped and named", plan.skipped == ["broken"])
+    check(
+      "Bastion's own entries are never listed one by one",
+      !plan.kept.contains("prod-stripe") && !plan.kept.contains("prod-npm"))
+    check(
+      "an empty config is Bastion alone",
+      deepEqual(
+        ClientLockdown.plan(claudeConfig: [:], port: 9000).allowed,
+        [["serverUrl": "http://127.0.0.1:9000/s/*"]]))
+  }
+
+  static func lockdownRecognisesItsOwnPattern() {
+    print("\nOnly Bastion: recognising Bastion's entry")
+    func ours(_ url: String) -> Bool { ClientLockdown.isBastionPattern(["serverUrl": url]) }
+    check("127.0.0.1", ours("http://127.0.0.1:8720/s/*"))
+    check("localhost, another port", ours("http://localhost:1/s/*"))
+    check("[::1]", ours("http://[::1]:8720/s/*"))
+    check("not one endpoint", !ours("http://127.0.0.1:8720/s/prod/x"))
+    check("not https", !ours("https://127.0.0.1:8720/s/*"))
+    check("not another host", !ours("http://10.0.0.1:8720/s/*"))
+    check("not a command entry", !ClientLockdown.isBastionPattern(["serverCommand": ["x"]]))
+  }
+
+  static func lockdownStateTable() {
+    print("\nOnly Bastion: state")
+    let plan = ClientLockdown.plan(claudeConfig: lockdownConfig, port: 8720)
+    let on: [String: Any] = ["disableClaudeAiConnectors": true, "allowedMcpServers": plan.allowed]
+    func state(_ settings: [String: Any], enabled: Bool = true) -> ClientLockdown.State {
+      ClientLockdown.state(settings: settings, plan: plan, enabled: enabled)
+    }
+    check("nothing, switched off: off", state([:], enabled: false) == .off)
+    check(
+      "our wildcard, switched off: left behind",
+      state(["allowedMcpServers": [["serverUrl": "http://127.0.0.1:9999/s/*"]]], enabled: false)
+        == .leftBehind)
+    check("exactly the plan: on", state(on) == .on)
+    check(
+      "the plan in another order: still on",
+      state([
+        "disableClaudeAiConnectors": true, "allowedMcpServers": Array(plan.allowed.reversed()),
+      ]) == .on)
+    check(
+      "a server missing: stale, named",
+      state([
+        "disableClaudeAiConnectors": true, "allowedMcpServers": Array(plan.allowed.dropLast()),
+      ])
+        == .stale(missing: ["local-db"]))
+    var moved = plan.allowed
+    moved[0] = ["serverUrl": "http://127.0.0.1:9000/s/*"]
+    check(
+      "the port moved: stale, Bastion named",
+      state(["disableClaudeAiConnectors": true, "allowedMcpServers": moved])
+        == .stale(missing: ["Bastion"]))
+    check(
+      "a server since removed: still on, the extra rule is harmless",
+      state([
+        "disableClaudeAiConnectors": true,
+        "allowedMcpServers": plan.allowed + [["serverUrl": "https://gone"]],
+      ]) == .on)
+    check(
+      "a hand entry beside the full plan: on",
+      state([
+        "disableClaudeAiConnectors": true,
+        "allowedMcpServers": plan.allowed + [["serverName": "repo-db"]],
+      ]) == .on)
+    check(
+      "a wildcard on an old port beside a hand entry: stale, Bastion named",
+      state([
+        "disableClaudeAiConnectors": true,
+        "allowedMcpServers": [["serverUrl": "http://127.0.0.1:9000/s/*"]]
+          + Array(plan.allowed.dropFirst()) + [["serverName": "repo-db"]],
+      ]) == .stale(missing: ["Bastion"]))
+    check(
+      "connectors set to 1: drifted, not on",
+      state(["disableClaudeAiConnectors": 1, "allowedMcpServers": plan.allowed])
+        == .drifted(["disableClaudeAiConnectors"]))
+    check(
+      "connectors switched back on: drifted",
+      state(["disableClaudeAiConnectors": false, "allowedMcpServers": plan.allowed])
+        == .drifted(["disableClaudeAiConnectors"]))
+    check(
+      "our wildcard edited out: drifted",
+      state(["disableClaudeAiConnectors": true, "allowedMcpServers": [["serverUrl": "http://x"]]])
+        == .drifted(["allowedMcpServers"]))
+    check(
+      "both gone: drifted, both named",
+      state([:]) == .drifted(["disableClaudeAiConnectors", "allowedMcpServers"]))
+    check(
+      "stale reads as a sentence",
+      ClientLockdown.State.stale(missing: ["local-db"]).summary
+        == "stale — local-db not allowed")
+    check("on reads as on", ClientLockdown.State.on.summary == "on")
+  }
+
+  static func lockdownEnablingAndDisabling() {
+    print("\nOnly Bastion: what is written and removed")
+    let plan = ClientLockdown.plan(claudeConfig: lockdownConfig, port: 8720)
+    func keys(_ edits: [ClientSettingsSplice.Edit]) -> [String] { edits.map(\.key) }
+    func canonical(_ value: Any) -> String { ClientLockdown.canonical(value) }
+    func enabling(_ current: [String: Any], recorded: Set<String> = [], force: Bool = false)
+      -> Result<(edits: [ClientSettingsSplice.Edit], owned: Set<String>), ClientLockdown.Refusal>
+    {
+      do {
+        return .success(
+          try ClientLockdown.enabling(
+            current: current, plan: plan, recorded: recorded, force: force))
+      } catch let refusal as ClientLockdown.Refusal {
+        return .failure(refusal)
+      } catch { fatalError("\(error)") }
+    }
+
+    let fresh = try? enabling([:]).get()
+    check(
+      "an empty file gets both keys, in order",
+      fresh.map { keys($0.edits) } == ["disableClaudeAiConnectors", "allowedMcpServers"])
+    check(
+      "and Bastion owns both", fresh?.owned == ["disableClaudeAiConnectors", "allowedMcpServers"])
+
+    let handSet = try? enabling(["disableClaudeAiConnectors": true]).get()
+    check(
+      "a hand-set true is adopted, not rewritten",
+      handSet.map { keys($0.edits) } == ["allowedMcpServers"])
+    check("and not recorded, so it outlives the switch", handSet?.owned == ["allowedMcpServers"])
+
+    let foreignList: [String: Any] = ["allowedMcpServers": [["serverName": "mine"]]]
+    check("a hand-written allowlist is a collision", (try? enabling(foreignList).get()) == nil)
+    if case .failure(let refusal) = enabling(foreignList) {
+      check("naming the key", refusal == .collision(["allowedMcpServers"]))
+    }
+    check(
+      "force takes it over and records it",
+      (try? enabling(foreignList, force: true).get())?.owned.contains("allowedMcpServers") == true)
+    check(
+      "a hand-set false is a collision",
+      (try? enabling(["disableClaudeAiConnectors": false]).get()) == nil)
+
+    let stale: [String: Any] = [
+      "disableClaudeAiConnectors": true,
+      "allowedMcpServers": [["serverUrl": "http://127.0.0.1:8720/s/*"]],
+    ]
+    let refreshed = try? enabling(
+      stale, recorded: ["disableClaudeAiConnectors", "allowedMcpServers"]
+    ).get()
+    check(
+      "a stale list of ours is rewritten without force",
+      refreshed.map { keys($0.edits) } == ["allowedMcpServers"])
+    check(
+      "keeping the record", refreshed?.owned == ["disableClaudeAiConnectors", "allowedMcpServers"])
+    let current: [String: Any] = [
+      "disableClaudeAiConnectors": true, "allowedMcpServers": plan.allowed,
+    ]
+    check("a current file needs no edits", (try? enabling(current).get())?.edits.isEmpty == true)
+
+    let hand: [String: Any] = ["serverName": "repo-db"]
+    let besideFull = try? enabling([
+      "disableClaudeAiConnectors": true, "allowedMcpServers": plan.allowed + [hand],
+    ]).get()
+    check("a hand entry beside the full plan needs no edits", besideFull?.edits.isEmpty == true)
+    check("and the list is recorded as Bastion's", besideFull?.owned == ["allowedMcpServers"])
+
+    let missingLast: [String: Any] = [
+      "disableClaudeAiConnectors": true,
+      "allowedMcpServers": Array(plan.allowed.dropLast()) + [hand],
+    ]
+    let added = try? enabling(missingLast).get()
+    check(
+      "a hand entry beside a plan missing local-db: the plan, then the entry",
+      added?.edits.count == 1 && added?.edits.first?.key == "allowedMcpServers"
+        && added?.edits.first?.value.map(canonical) == canonical(plan.allowed + [hand]))
+
+    let oldPort: [String: Any] = [
+      "disableClaudeAiConnectors": true,
+      "allowedMcpServers": [["serverUrl": "http://127.0.0.1:9000/s/*"], hand]
+        + Array(plan.allowed.dropFirst()),
+    ]
+    check(
+      "an old-port wildcard beside a hand entry reads stale before the edit",
+      ClientLockdown.state(settings: oldPort, plan: plan, enabled: true)
+        == .stale(missing: ["Bastion"]))
+    let moved = try? enabling(oldPort).get()
+    check(
+      "the edit holds the new wildcard, drops the old one, keeps the hand entry",
+      moved?.edits.first?.value.map(canonical) == canonical(plan.allowed + [hand]))
+
+    let exact: [String: Any] = ["allowedMcpServers": plan.allowed]
+    let adopted = try? enabling(exact).get()
+    check(
+      "an exact allowlist is recorded though nothing is rewritten",
+      adopted?.owned.contains("allowedMcpServers") == true
+        && adopted?.edits.map(\.key) == ["disableClaudeAiConnectors"])
+    if let adopted,
+      let off = try? ClientLockdown.disabling(
+        current: ["disableClaudeAiConnectors": true, "allowedMcpServers": plan.allowed],
+        recorded: adopted.owned, force: false)
+    {
+      check(
+        "so off removes it", off.map(\.key) == ["disableClaudeAiConnectors", "allowedMcpServers"])
+    } else {
+      check("so off removes it", false)
+    }
+
+    check(
+      "connectors set to 1 is a collision, not an adoption",
+      {
+        if case .failure(let refusal) = enabling(["disableClaudeAiConnectors": 1]) {
+          return refusal == .collision(["disableClaudeAiConnectors"])
+        }
+        return false
+      }())
+
+    let both: Set<String> = ["disableClaudeAiConnectors", "allowedMcpServers"]
+    check(
+      "off removes both recorded keys",
+      (try? ClientLockdown.disabling(current: current, recorded: both, force: false)).map(keys) == [
+        "disableClaudeAiConnectors", "allowedMcpServers",
+      ])
+    check(
+      "an unrecorded key stays",
+      (try? ClientLockdown.disabling(
+        current: current, recorded: ["allowedMcpServers"], force: false)).map(keys) == [
+          "allowedMcpServers"
+        ])
+    let edited: [String: Any] = [
+      "disableClaudeAiConnectors": false, "allowedMcpServers": plan.allowed,
+    ]
+    var refused: ClientLockdown.Refusal?
+    do { _ = try ClientLockdown.disabling(current: edited, recorded: both, force: false) } catch let
+      r as ClientLockdown.Refusal
+    { refused = r } catch {}
+    check(
+      "a recorded key edited by hand refuses off",
+      refused == .drifted(["disableClaudeAiConnectors"]))
+    check(
+      "force removes it anyway",
+      (try? ClientLockdown.disabling(current: edited, recorded: both, force: true)).map(keys) == [
+        "disableClaudeAiConnectors", "allowedMcpServers",
+      ])
+    check(
+      "a recorded key already gone is skipped",
+      (try? ClientLockdown.disabling(current: [:], recorded: both, force: false))?.isEmpty == true)
+  }
+
+  static func lockdownRecordRoundTrips() {
+    print("\nOnly Bastion: the record")
+    let suite = "wiring-check-\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suite) else {
+      return check("a scratch defaults suite", false)
+    }
+    defer { defaults.removePersistentDomain(forName: suite) }
+    check(
+      "nothing recorded reads as switched off",
+      ClientLockdown.recorded("claude-code", defaults) == nil)
+    ClientLockdown.record("claude-code", owned: [], defaults)
+    check(
+      "an empty record still reads as switched on",
+      ClientLockdown.recorded("claude-code", defaults) == [])
+    ClientLockdown.record("claude-code@x", owned: ["allowedMcpServers"], defaults)
+    check(
+      "each id keeps its own keys",
+      ClientLockdown.recorded("claude-code@x", defaults) == ["allowedMcpServers"])
+    defaults.set(
+      ["claude-code@x": "garbage", "claude-code": ["allowedMcpServers"]],
+      forKey: ClientLockdown.defaultsKey)
+    check(
+      "a malformed record leaves the other ids readable",
+      ClientLockdown.recorded("claude-code", defaults) == ["allowedMcpServers"]
+        && ClientLockdown.recorded("claude-code@x", defaults) == nil)
+    ClientLockdown.record("claude-code-2", owned: [], defaults)
+    check(
+      "and a later record keeps them",
+      ClientLockdown.recorded("claude-code", defaults) == ["allowedMcpServers"]
+        && ClientLockdown.recorded("claude-code-2", defaults) == [])
+    ClientLockdown.record("claude-code@x", owned: ["allowedMcpServers"], defaults)
+    ClientLockdown.forget("claude-code", defaults)
+    check(
+      "forget removes one id",
+      ClientLockdown.recorded("claude-code", defaults) == nil
+        && ClientLockdown.recorded("claude-code@x", defaults) != nil)
+  }
+
+  static func lockdownSplicesIntoARealShape() {
+    print("\nOnly Bastion: through the splice")
+    let plan = ClientLockdown.plan(claudeConfig: lockdownConfig, port: 8720)
+    let data = Data(settingsFixture.utf8)
+    guard let doc = try? ClientSettingsSplice.parse(data),
+      let on = try? ClientLockdown.enabling(
+        current: doc.values, plan: plan, recorded: [], force: false),
+      let written = try? ClientSettingsSplice.applying(on.edits, to: data),
+      let after = try? ClientSettingsSplice.parse(written)
+    else { return check("enable splices into the fixture", false) }
+    check(
+      "the result is on",
+      ClientLockdown.state(settings: after.values, plan: plan, enabled: true) == .on)
+    guard
+      let off = try? ClientLockdown.disabling(
+        current: after.values, recorded: on.owned, force: false),
+      let restored = try? ClientSettingsSplice.applying(off, to: written)
+    else { return check("disable splices back out", false) }
+    check("on then off is the original file", restored == data)
   }
 }
