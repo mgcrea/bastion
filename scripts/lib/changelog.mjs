@@ -137,7 +137,15 @@ export const parse = (markdown) => {
     const first = paragraphs[0] ?? "";
     const match = HEADLINE.exec(first);
     const rest = match ? first.slice(match[0].length) : first;
-    group?.entries.push({
+    // Refused, not dropped. Every reader of this file renders groups, so a
+    // bullet with none vanished from all four at once, and a release with a
+    // summary still looked complete.
+    if (!group) {
+      throw new Error(
+        `CHANGELOG ${release?.version}: "- ${first.slice(0, 60)}" sits before any ### heading`,
+      );
+    }
+    group.entries.push({
       paragraphs,
       headline: match ? match[1] : null,
       body: [rest, ...paragraphs.slice(1)].filter((p) => p !== ""),

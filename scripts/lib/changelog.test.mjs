@@ -391,3 +391,16 @@ Lead prose with no bold title is prose, not a summary.
     }
   });
 });
+
+describe("a bullet outside any group", () => {
+  // It used to be pushed onto `group?.entries`, which is nothing before the
+  // first `###`, so it vanished from the appcast, the release body, the pane
+  // and the site at once. A summary alone keeps the notes non-empty, so nothing
+  // downstream noticed.
+  it("is refused rather than dropped", () => {
+    assert.throws(
+      () => parse("## [1.0.0] - 2026-01-01\n\n**T.** D.\n\n- **A.** b\n"),
+      /1\.0\.0.*### /,
+    );
+  });
+});
