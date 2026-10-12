@@ -129,6 +129,71 @@ nothing about an existing install changes.
 Detection is a switch in Settings, along with a list of directories to name by
 hand for a config directory that lives somewhere no scan would look.
 
+## Only Bastion
+
+A Claude Code profile picks up MCP servers from four places: its
+`.claude.json`, a repository's `.mcp.json`, every plugin it has installed
+(the ones synced down from the claude.ai account included), and claude.ai's
+connectors. Bastion writes the first. The last two arrive unasked: the
+knowledge-work plugins alone declare about forty hosted servers.
+
+**Only Bastion** is a switch on each Claude Code row, and `set_client_lockdown`
+over MCP. It writes two keys into that profile's `settings.json`:
+
+- `disableClaudeAiConnectors: true`
+- `allowedMcpServers`: `http://127.0.0.1:<port>/s/*`, then one exact rule
+  for every server already in the profile's `.claude.json` that Bastion did
+  not write, a `serverUrl` for one with a URL and a `serverCommand` (command
+  and args) for one that spawns. Global servers come first, then each project
+  folder's by path, keys sorted.
+
+So the servers somebody configured on purpose keep working, and everything a
+plugin or claude.ai adds is filtered out. A repository's `.mcp.json` is
+filtered too. It is hygiene, not a boundary: a project's own settings can
+widen the list, and only `allowManagedMcpServersOnly` in managed settings
+would stop that.
+
+**The file is spliced, not serialised.** `settings.json` is hand-edited, so
+`ClientSettingsSplice` finds the two members and replaces only their bytes,
+the way `ClientWiringTOML` treats Codex. A file it cannot round-trip (a
+comment, a trailing comma, a key set twice) reads as `unreadable`, and nothing
+is written. Foundation accepts a trailing comma; the splice's own lexer does
+not, and its word is the one that counts. A non-empty object comes back byte
+for byte; an empty one round-trips as `{}`, and a file Bastion creates is
+`{}\n`. The write is the same one every client gets: backup, temp and swap,
+`0600`, refused if the file moved since it was read.
+
+**What is Bastion's.** `clientLockdown` in Bastion's defaults records, per
+client, which of the two keys Bastion added. Turning the switch off removes
+those and nothing else, so a `disableClaudeAiConnectors: true` somebody set
+by hand outlives it, and so does a key edited by hand since (left in place and
+logged). A key still in Bastion's shape is removed. `deniedMcpServers` is
+never read or written. Unwiring a client turns its switch off first, since an allowlist naming a Bastion that is
+no longer wired would block every server the profile has.
+
+| State         | Meaning                                                                 |
+| ------------- | ----------------------------------------------------------------------- |
+| `on`          | Both keys are what Bastion would write now.                             |
+| `stale`       | Ours, but `.claude.json` gained or lost a server, or the port moved.    |
+| `drifted`     | A key Bastion wrote was edited by hand; _Update_ asks before replacing. |
+| `left behind` | Switched off, and Bastion's wildcard is still in the file.              |
+| `unreadable`  | The splice refused the file.                                            |
+
+`rewire` refreshes every switched-on profile, so a stale list is rewritten on
+the next launch or profile change; a Debug build never does this unasked.
+
+### Release check
+
+With the switch on for a profile:
+
+    CLAUDE_CONFIG_DIR=<dir> claude mcp list
+
+shows no line starting `plugin:` or `claude.ai`, and every Bastion entry plus
+every server the card lists as allowed. Verified on 2026-10-12 against Claude
+Code 2.1.296: the wildcard matched all 24 Bastion entries, exact rules matched
+an HTTP server and a stdio bridge, and every plugin server, URL-less
+placeholders included, was filtered.
+
 ## What a client pays to be wired at all
 
 Every client wired to a profile is sent every tool definition that profile's
@@ -837,11 +902,12 @@ appears to succeed and changes nothing.
 
 ## What asserts what
 
-|                          |                                                                                                                                                                                                                                                                                                                                                                      |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `make wiring-check`      | The merge, the audit, per-entry state, the foreign listings and single-key removal, against fixtures shaped like the real files. No app, no I/O beyond a temp directory.                                                                                                                                                                                             |
-| `make wiring-check-real` | The same properties against **your actual** Claude Code, Claude Desktop, VS Code and Codex configs, dispatching on the file extension the way `ClientWiring` dispatches on a client's format. Read-only: parsed, merged and pruned in memory, then compared. Fixtures only cover the shapes somebody thought of; this covers the ones nobody would have invented.    |
-| `make facade`            | Load-on-demand end to end against a running Debug build: the listing actually shrinks, search finds a tool and describe returns its schema, a dispatched call is recorded under the **real** tool name, and a write tool is neither indexed nor reachable for a profile with writes off. Scratch profiles of Bastion's own server, so no credentials and no network. |
+|                                |                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `make wiring-check`            | The merge, the audit, per-entry state, the foreign listings and single-key removal, against fixtures shaped like the real files. No app, no I/O beyond a temp directory.                                                                                                                                                                                             |
+| `make wiring-check-real`       | The same properties against **your actual** Claude Code, Claude Desktop, VS Code and Codex configs, dispatching on the file extension the way `ClientWiring` dispatches on a client's format. Read-only: parsed, merged and pruned in memory, then compared. Fixtures only cover the shapes somebody thought of; this covers the ones nobody would have invented.    |
+| `make wiring-check` (settings) | The `settings.json` splice (every other byte unchanged, on then off is the original, CRLF kept, comments and duplicate keys refused, symlinks written through, a moved file refused) and Only Bastion's allowlist, state table and key ownership. `wiring-check-real` runs the splice over your real `settings.json` files, read-only.                               |
+| `make facade`                  | Load-on-demand end to end against a running Debug build: the listing actually shrinks, search finds a tool and describe returns its schema, a dispatched call is recorded under the **real** tool name, and a write tool is neither indexed nor reachable for a profile with writes off. Scratch profiles of Bastion's own server, so no credentials and no network. |
 
 The TOML half adds its own sections, and they are all the same question asked of
 bytes rather than of parsed values: every byte outside our spans is unchanged,
