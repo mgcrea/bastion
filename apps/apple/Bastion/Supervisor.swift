@@ -231,8 +231,15 @@ nonisolated final class Supervisor: @unchecked Sendable {
   }
 
   /// What is running right now, for the Activity window.
+  ///
+  /// Alive only. A crashed child's instance stays in the table until the next
+  /// request replaces it or the reaper takes it, and every reader asks this to
+  /// mean "warm": the profile editor to avoid a spawn, `ServerCheck` for a pid
+  /// and whether the check found it running, and `list_servers` for its count.
   var running: [(id: String, pid: Int32, clients: Int)] {
-    instances.withLock { $0.values.map { ($0.key, $0.pid, $0.clientCount) } }
+    instances.withLock {
+      $0.values.filter(\.isAlive).map { ($0.key, $0.pid, $0.clientCount) }
+    }
   }
 
   /// Requests handed to a child and not yet answered.
@@ -1393,7 +1400,14 @@ nonisolated extension Supervisor {
         semaphore.signal()
       }
       state.withLock { $0.pending[id] = waiter }
-      try write(request)
+      do {
+        try write(request)
+      } catch {
+        // Nothing will ever answer it, and a waiter left behind counts as a
+        // request in flight until the reaper sweeps it.
+        _ = state.withLock { $0.pending.removeValue(forKey: id) }
+        throw error
+      }
 
       guard semaphore.wait(timeout: .now() + 30) == .success else {
         _ = state.withLock { $0.pending.removeValue(forKey: id) }
