@@ -1779,6 +1779,19 @@ struct WiringCheck {
       ((scanned(escaped)?.tables["a"]?.value["http_headers"] as? [String: Any])?["Authorization"]
         as? String) == hostile)
 
+    // A Character is a grapheme, and "\r\n" is ONE, so a switch over
+    // characters matched neither "\n" nor "\r" and wrote a raw line break
+    // into a basic string. TOML also requires DEL escaped.
+    let crlf = "a\r\nb\u{7F}c"
+    let broken = ClientWiringTOML.render(
+      name: "a", entry: ["url": "http://x/", "http_headers": ["Authorization": crlf]],
+      newline: "\n")
+    check(
+      "a CRLF and a DEL in a value round-trip",
+      ((scanned(broken)?.tables["a"]?.value["http_headers"] as? [String: Any])?["Authorization"]
+        as? String) == crlf)
+    check("and DEL is escaped", !broken.unicodeScalars.contains("\u{7F}"))
+
     let odd = ClientWiringTOML.render(name: "my server", entry: ["url": "http://x/"], newline: "\n")
     check("a name needing quotes is quoted", odd.hasPrefix("[mcp_servers.\"my server\"]"))
     check("and comes back unquoted", scanned(odd)?.tables["my server"] != nil)

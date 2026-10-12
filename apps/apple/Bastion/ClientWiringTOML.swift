@@ -345,22 +345,24 @@ enum ClientWiringTOML {
     return bare ? name : quoted(name)
   }
 
+  /// Scalars, not Characters: "\r\n" is one grapheme, and a switch over
+  /// Characters matched neither case and wrote a raw line break into a basic
+  /// string, which is invalid TOML. DEL is a control character TOML requires
+  /// escaped as well.
   private static func quoted(_ value: String) -> String {
     var out = "\""
-    for character in value {
-      switch character {
+    for scalar in value.unicodeScalars {
+      switch scalar {
       case "\\": out += "\\\\"
       case "\"": out += "\\\""
       case "\n": out += "\\n"
       case "\r": out += "\\r"
       case "\t": out += "\\t"
       default:
-        if let scalar = character.unicodeScalars.first, character.unicodeScalars.count == 1,
-          scalar.value < 0x20
-        {
+        if scalar.value < 0x20 || scalar.value == 0x7F {
           out += String(format: "\\u%04X", scalar.value)
         } else {
-          out.append(character)
+          out.unicodeScalars.append(scalar)
         }
       }
     }
