@@ -1,6 +1,23 @@
 {
   "accepts" : [
     {
+      "appshotVersion" : "0.21.0",
+      "argv" : [
+        "/Users/olivier/.local/bin/appshot",
+        "accept",
+        "--source",
+        "apps/apple/Screenshots/source",
+        "--golden",
+        "apps/apple/Screenshots/golden"
+      ],
+      "at" : "2026-10-12T15:29:22Z",
+      "count" : 7,
+      "cwd" : "/Users/olivier/Projects/apps/bastion-code-health",
+      "host" : "oliviermacbookpro.local",
+      "pid" : 35332,
+      "user" : "olivier"
+    },
+    {
       "appshotVersion" : "0.11.1",
       "argv" : [
         "/Users/olivier/.local/bin/appshot",
@@ -152,23 +169,6 @@
       "host" : "oliviermacbookpro.local",
       "pid" : 12111,
       "user" : "olivier"
-    },
-    {
-      "appshotVersion" : "0.9.0",
-      "argv" : [
-        "/Users/olivier/.local/bin/appshot",
-        "accept",
-        "--source",
-        "apps/apple/Screenshots/source",
-        "--golden",
-        "apps/apple/Screenshots/golden"
-      ],
-      "at" : "2026-09-06T10:29:47Z",
-      "count" : 6,
-      "cwd" : "/Users/olivier/Projects/apps/bastion",
-      "host" : "oliviermacbookpro.local",
-      "pid" : 45901,
-      "user" : "olivier"
     }
   ],
   "entries" : {
@@ -209,9 +209,9 @@
       "width" : 2360
     },
     "stats~dark.png" : {
-      "bytes" : 470815,
+      "bytes" : 479236,
       "height" : 1656,
-      "sha256" : "12cec30cca7b6050789635c21f5499b740b459dc6208fa1b825e70bbc3ccdca4",
+      "sha256" : "45c02890c9847edf7e4f5820abc12c1939be2433285e277b75969531e0dab547",
       "width" : 2360
     }
   },
