@@ -101,6 +101,16 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     /// cannot search a list it does not hold; `Supervisor.Instance.toolCatalog`
     /// says the rest, including why it is never written to disk.
     var toolCatalog: SendableJSON<[[String: Any]]>?
+    /// The last figure `facadeCatalog` handed `ToolCostStore`, so an
+    /// unchanged one is not recorded again. See there.
+    var recordedCost: RecordedCost?
+  }
+
+  struct RecordedCost: Equatable {
+    var bytes: Int
+    var count: Int
+    var writes: Int
+    var allowWrites: Bool
   }
 
   private let state = OSAllocatedUnfairLock(initialState: State())
@@ -440,10 +450,24 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     // what the figure beside it describes. For a writes-off profile the gate has
     // already removed them and this is legitimately zero.
     let writes = facadeWriteTools(in: visible).count
-    Task { @MainActor in
-      ToolCostStore.shared.record(
-        profileID: profileID, bytes: bytes, toolCount: count, partial: false, version: nil,
-        allowWrites: allowWrites, writeToolCount: writes)
+    // Recorded when the figure moves, not on every call. This runs for each
+    // search, describe and call the facade answers, and every record is a hop
+    // to the main actor and a write of the store to disk for a number that
+    // has not changed since the session's catalog was fetched. The child path
+    // records once per spawn; this is the same, plus a change in what the gate
+    // lets through.
+    let figure = RecordedCost(bytes: bytes, count: count, writes: writes, allowWrites: allowWrites)
+    let changed = state.withLock { current -> Bool in
+      guard current.recordedCost != figure else { return false }
+      current.recordedCost = figure
+      return true
+    }
+    if changed {
+      Task { @MainActor in
+        ToolCostStore.shared.record(
+          profileID: profileID, bytes: bytes, toolCount: count, partial: false, version: nil,
+          allowWrites: allowWrites, writeToolCount: writes)
+      }
     }
     return visible
   }
