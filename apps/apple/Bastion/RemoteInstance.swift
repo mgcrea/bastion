@@ -328,37 +328,7 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
       $0.inFlight += 1
     }
     defer { state.withLock { $0.inFlight -= 1 } }
-    var response = try post(frame)
-
-    // A 401 on an OAuth profile is the ordinary end of a token's life, not a
-    // failure. Refresh and retry exactly once: twice would be a loop against a
-    // server that answers 401 to everything, and the second answer is the one
-    // worth showing the user.
-    if response.status == 401,
-      let known = CredentialStore.readTokens(profile: profile.name, server: server.id)
-    {
-      hostLog(key, .info, "upstream 401 — refreshing the token and retrying once")
-      _ = try RemoteOAuthSession.shared.refresh(profile: profile, server: server, known: known)
-      response = try post(frame, hasRetriedAuth: true)
-    }
-
-    // A stale session is the one upstream failure with an unambiguous recovery,
-    // and the spec names it: 404 to a request carrying `Mcp-Session-Id` means
-    // start a new session. Once, never in a loop — a server answering 404 to
-    // everything would otherwise turn one request into an infinite handshake.
-    if response.status == 404, state.withLock({ $0.session != nil }) {
-      hostLog(key, .info, "session expired upstream, handshaking again")
-      state.withLock {
-        $0.session = nil
-        $0.handshake = nil
-        // Beside the handshake, for the child case's reason: a new session may
-        // be a different tool surface, and a stale catalog would deny a tool
-        // that now exists.
-        $0.toolCatalog = nil
-      }
-      _ = try ensureHandshake()
-      response = try post(frame)
-    }
+    let response = try postRecovering(frame)
 
     guard let object = try response.jsonRPC() else {
       throw Supervisor.SupervisorError.childDied("no response")
@@ -407,7 +377,7 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
         "jsonrpc": "2.0", "id": "bastion-catalog-\(pages)", "method": "tools/list",
         "params": params,
       ]
-      guard let object = try post(request).jsonRPC(),
+      guard let object = try postRecovering(request).jsonRPC(),
         let payload = object["result"] as? [String: Any],
         let entries = payload["tools"] as? [[String: Any]]
       else {
@@ -500,7 +470,7 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
       ],
     ]
 
-    let response = try post(request, isHandshake: true)
+    let response = try postRecovering(request, isHandshake: true)
     guard let object = try response.jsonRPC() else {
       throw Supervisor.SupervisorError.startFailed("the server did not answer initialize")
     }
@@ -640,6 +610,50 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
 
   }
 
+  /// `post`, and the two upstream answers with an unambiguous recovery.
+  ///
+  /// Every request Bastion makes upstream goes through this: a client's, the
+  /// handshake and the catalog walk. Only a client's used to, so a session that
+  /// expired before the first `tools/call` failed the catalog fetch that call
+  /// triggers, and on a writes-off profile that failure reads as "writes are
+  /// off" for a read tool, every time, until something else went upstream.
+  private func postRecovering(_ frame: [String: Any], isHandshake: Bool = false) throws
+    -> Response
+  {
+    var response = try post(frame, isHandshake: isHandshake)
+
+    // A 401 on an OAuth profile is the ordinary end of a token's life, not a
+    // failure. Refresh and retry exactly once: twice would be a loop against a
+    // server that answers 401 to everything, and the second answer is the one
+    // worth showing the user.
+    if response.status == 401,
+      let known = CredentialStore.readTokens(profile: profile.name, server: server.id)
+    {
+      hostLog(key, .info, "upstream 401 — refreshing the token and retrying once")
+      _ = try RemoteOAuthSession.shared.refresh(profile: profile, server: server, known: known)
+      response = try post(frame, isHandshake: isHandshake, hasRetriedAuth: true)
+    }
+
+    // A stale session is the one upstream failure with an unambiguous recovery,
+    // and the spec names it: 404 to a request carrying `Mcp-Session-Id` means
+    // start a new session. Once, never in a loop — a server answering 404 to
+    // everything would otherwise turn one request into an infinite handshake.
+    if !isHandshake, response.status == 404, state.withLock({ $0.session != nil }) {
+      hostLog(key, .info, "session expired upstream, handshaking again")
+      state.withLock {
+        $0.session = nil
+        $0.handshake = nil
+        // Beside the handshake, for the child case's reason: a new session may
+        // be a different tool surface, and a stale catalog would deny a tool
+        // that now exists.
+        $0.toolCatalog = nil
+      }
+      _ = try ensureHandshake()
+      response = try post(frame)
+    }
+    return response
+  }
+
   /// One request, sent and waited for on this thread.
   ///
   /// Blocking on purpose. `Supervisor.call` runs on the connection's own
@@ -748,12 +762,14 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
 
     // 202 is the spec's answer to a notification, and it carries no body.
     if response.status == 202 { return response }
-    // 404 on a session, and 401 on an OAuth profile, are both handled by the
-    // caller — it is the only place that knows whether there is a session to
-    // retire or a token to refresh. Returned rather than thrown so the retry
-    // can happen; a second 401 comes back through here and is thrown properly.
+    // 404 on a session, and 401 on an OAuth profile, are both handled by
+    // `postRecovering`, the only place that knows whether there is a session
+    // to retire or a token to refresh. Returned rather than thrown so the
+    // retry can happen; a second 401 comes back through here and is thrown
+    // properly. A handshake has no session to retire, but its token can have
+    // died as surely as any other request's.
     if response.status == 404, !isHandshake { return response }
-    if response.status == 401, !isHandshake, !hasRetriedAuth,
+    if response.status == 401, !hasRetriedAuth,
       CredentialStore.readTokens(profile: profile.name, server: server.id) != nil
     {
       return response
