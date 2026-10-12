@@ -394,11 +394,17 @@ struct ServerEditor: View {
               Spacer()
             }
 
-            Field(
-              "Write gate", text: $draft.writeGate, placeholder: "ACME_ALLOW_WRITES",
-              help: "The variable that turns destructive tools on, if there is one. Bastion sets "
-                + "it per profile — to \"0\" when the profile's toggle is off, never leaving it unset."
-            )
+            // A child's only. A remote server has no environment to set it in,
+            // and `saveCustom` drops it for one, so offering it there took a
+            // value and threw it away while the help text promised otherwise.
+            if draft.kind == .child {
+              Field(
+                "Write gate", text: $draft.writeGate, placeholder: "ACME_ALLOW_WRITES",
+                help: "The variable that turns destructive tools on, if there is one. Bastion sets "
+                  + "it per profile — to \"0\" when the profile's toggle is off, never leaving it "
+                  + "unset."
+              )
+            }
           }
         }
       }
