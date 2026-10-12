@@ -24,7 +24,7 @@ import SupportKitSettings
 /// typealiases let the generated literals keep their short names. Every string
 /// below is **raw markdown**, which `ReleaseNotes.markdown(_:_:)` renders.
 ///
-/// The list is capped — see `Changelog.shown` in `scripts/generate-changelog.mjs`
+/// The list is capped — see `SHOWN` in `scripts/generate-changelog.mjs`
 /// — because this is the pane you open after updating, not an archive. The full
 /// history is a link away, and `CHANGELOG.md` remains the source of truth.
 nonisolated enum Changelog {

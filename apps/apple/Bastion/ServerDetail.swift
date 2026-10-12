@@ -660,23 +660,6 @@ struct ServerDetail: View {
     }
   }
 
-  // MARK: - Load on demand
-
-  /// Where the facade switch actually lives.
-  ///
-  /// It used to be stored per profile, with this control writing through to
-  /// every row of the server — which is why it needed a "Mixed" position at
-  /// all. Mixed was never a state anybody meant to reach; it was the shape of
-  /// the storage showing through the UI.
-  ///
-  /// The question this answers is "is this listing big enough to be worth the
-  /// trade", and that is a property of the SERVER: `appstore-connect` is 85
-  /// tools and 26.2k tokens, `reddit` is 14 and 3.3k, and nobody wants the same
-  /// answer for both. Two profiles of one server differ in credentials and in
-  /// `allowWrites`, not in whether eighty-five is a lot. The disagreement that
-  /// used to justify a per-profile override — "this profile feeds Claude Code,
-  /// which defers by itself" — is now `ToolFacade.clientDefersSchemas`, per
-  /// client, where a profile feeding two of them can be answered honestly.
   // MARK: - Usage
 
   /// What this server actually did, as opposed to what it costs to have around.
@@ -835,6 +818,22 @@ struct ServerDetail: View {
   /// those rows are sent — and the same three positions the rest of the app
   /// uses, because a control that means one thing in one place and another
   /// somewhere else is worse than one more click.
+  ///
+  /// Where the facade switch actually lives.
+  ///
+  /// It used to be stored per profile, with this control writing through to
+  /// every row of the server — which is why it needed a "Mixed" position at
+  /// all. Mixed was never a state anybody meant to reach; it was the shape of
+  /// the storage showing through the UI.
+  ///
+  /// The question this answers is "is this listing big enough to be worth the
+  /// trade", and that is a property of the SERVER: `appstore-connect` is 85
+  /// tools and 26.2k tokens, `reddit` is 14 and 3.3k, and nobody wants the same
+  /// answer for both. Two profiles of one server differ in credentials and in
+  /// `allowWrites`, not in whether eighty-five is a lot. The disagreement that
+  /// used to justify a per-profile override — "this profile feeds Claude Code,
+  /// which defers by itself" — is now `ToolFacade.clientDefersSchemas`, per
+  /// client, where a profile feeding two of them can be answered honestly.
   @ViewBuilder private var lazyToolsControl: some View {
     let selection = lazyToolsSelection
     VStack(alignment: .leading, spacing: 6) {

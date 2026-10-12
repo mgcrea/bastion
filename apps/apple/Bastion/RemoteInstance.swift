@@ -410,12 +410,6 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     return catalog
   }
 
-  /// The catalog as this profile is allowed to see it, and the measurement of
-  /// it.
-  ///
-  /// After the gate rather than before, which is the rule
-  /// `filteredForWriteGate` already states: the figure has to be the list this
-  /// profile's gate produces, not the one upstream sent.
   /// The catalog entries Bastion has positive evidence will change something.
   ///
   /// Both of `WriteGate`'s sources, ORed, then intersected with what is actually
@@ -434,6 +428,12 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
       .intersection(present)
   }
 
+  /// The catalog as this profile is allowed to see it, and the measurement of
+  /// it.
+  ///
+  /// After the gate rather than before, which is the rule
+  /// `filteredForWriteGate` already states: the figure has to be the list this
+  /// profile's gate produces, not the one upstream sent.
   private func facadeCatalog() throws -> [[String: Any]] {
     let catalog = try ensureCatalog()
     let learned = WriteGate.annotatedWriteTools(in: catalog)

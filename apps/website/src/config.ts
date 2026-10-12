@@ -332,7 +332,8 @@ export const TRIAL = {
  * Hand-kept against `MARKETING_VERSION` in apps/apple/Bastion.xcodeproj and the
  * top of CHANGELOG.md. It appears in the JSON-LD beside `downloadUrl`, and it
  * is a claim about a build that exists — so it moves in the release commit, not
- * before it. Nothing enforces the mirror.
+ * before it. CI holds it to the pbxproj's MARKETING_VERSION, and
+ * `src/data/changelog.ts` to a released section of CHANGELOG.md.
  */
 export const APP_VERSION = "1.27.0";
 

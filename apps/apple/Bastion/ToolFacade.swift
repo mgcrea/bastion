@@ -352,7 +352,8 @@ nonisolated enum ToolFacade {
   /// Computed rather than stored: the declarations are a pure function of three
   /// values the caller already has, so there is nothing here that can go stale
   /// the way `ToolCostStore`'s measurement can.
-  /// What the declarations cost, taking the FLAG rather than the set: a view
+  ///
+  /// It takes the FLAG rather than the set: a view
   /// asking this has a stored measurement, not a catalog, and the fourth
   /// declaration's text names no tool of the server's, so its size does not
   /// depend on which tools are in the set.
