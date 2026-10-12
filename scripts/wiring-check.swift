@@ -2258,6 +2258,9 @@ struct WiringCheck {
   struct FakeFS: WorkspaceFileSystem {
     var directories: Set<String>
     var files: [String: String] = [:]
+    /// Symlinked directories, link to target, applied by `canonical` the way
+    /// `realpath` would.
+    var links: [String: String] = [:]
 
     func isDirectory(_ path: String) -> Bool { directories.contains(path) }
     func isFile(_ path: String) -> Bool { files[path] != nil }
@@ -2273,7 +2276,11 @@ struct WiringCheck {
       return names.sorted()
     }
     func canonical(_ path: String) -> String {
-      path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
+      let trimmed = path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
+      for (link, target) in links where trimmed == link || trimmed.hasPrefix(link + "/") {
+        return target + trimmed.dropFirst(link.count)
+      }
+      return trimmed
     }
   }
 
@@ -2365,6 +2372,21 @@ struct WiringCheck {
     check(
       "the local filesystem keeps /private, as Claude Code does",
       LocalWorkspaceFileSystem().canonical("/tmp") == "/private/tmp")
+
+    // A repository the scan finds through a symlink. Claude Code keys a project
+    // by the physical path its process runs in, so a block filed under the
+    // link's spelling is one it never reads.
+    var linked = tree(["/w/links/api/.git", "/real/api/.git", "/real/main/.git/worktrees/wt"])
+    linked.links = ["/w/links/api": "/real/api", "/w/links/wt": "/real/wt"]
+    linked.directories.insert("/w/links/wt")
+    linked.files["/w/links/wt/.git"] = "gitdir: /w/links/main/.git/worktrees/wt\n"
+    linked.links["/w/links/main"] = "/real/main"
+    let resolved = WorkspaceScope.projectKeys(for: ["/w/links"], fs: linked)
+    check("a symlinked repository is keyed by its real path", resolved.contains("/real/api"))
+    check("not by the link", !resolved.contains("/w/links/api"))
+    check(
+      "and a worktree reached through one names its real main repository",
+      resolved.contains("/real/main") && !resolved.contains("/w/links/main"))
   }
 
   static func workspaceAssignments() {

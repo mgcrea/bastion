@@ -148,10 +148,17 @@ nonisolated enum WorkspaceScope {
   // MARK: - Private
 
   /// The key for a directory that holds `.git` itself, or nil.
+  ///
+  /// Canonical, like the folders `projectKeys` is handed: a repository the
+  /// scan reaches through a symlink, or a worktree's main repository named by
+  /// a `gitdir:` that runs through one, is filed by Claude Code under the
+  /// physical path, and a block under the link's spelling is never read.
   private static func repositoryKey(at directory: String, fs: WorkspaceFileSystem) -> String? {
     let git = (directory as NSString).appendingPathComponent(".git")
-    if fs.isDirectory(git) { return directory }
-    if fs.isFile(git) { return mainRepository(gitFile: git, holder: directory, fs: fs) }
+    if fs.isDirectory(git) { return fs.canonical(directory) }
+    if fs.isFile(git) {
+      return fs.canonical(mainRepository(gitFile: git, holder: directory, fs: fs))
+    }
     return nil
   }
 
