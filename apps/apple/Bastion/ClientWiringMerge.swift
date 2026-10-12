@@ -716,7 +716,17 @@ enum ClientWiringMerge {
       for (key, entry) in servers where isOurs(entry) && wanted[key] == nil {
         servers.removeValue(forKey: key)
       }
-      for (key, entry) in wanted { servers[key] = entry }
+      for (key, entry) in wanted {
+        // `merged`'s rule: over an entry already ours, only what Bastion owns
+        // is replaced, so `disabled` or a timeout the user set survives.
+        guard let existing = servers[key] as? [String: Any], isOurs(existing) else {
+          servers[key] = entry
+          continue
+        }
+        servers[key] = existing.filter { !ownedKeys.contains($0.key) }.merging(entry) { _, new in
+          new
+        }
+      }
       project["mcpServers"] = servers
       projects[folder] = project
     }

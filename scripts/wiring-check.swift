@@ -2449,6 +2449,23 @@ struct WiringCheck {
       "and not a foreign one",
       !ClientWiringMerge.hasOurProjectEntries(["projects": ["/x": ["mcpServers": ["x": foreign]]]]))
 
+    // The global block's rule, d4e003c: over an entry already ours, only what
+    // Bastion owns is replaced, so a server the user switched off in their
+    // client stays off across an unattended rewire.
+    var tuned = ovh
+    tuned["disabled"] = true
+    tuned["timeout"] = 30
+    let rewired = ClientWiringMerge.reconciledProjects(
+      ["projects": ["/r/api": ["mcpServers": ["rgis-ovh": tuned]]]],
+      desired: ["/r/api": ["rgis-ovh": ovh]])
+    let kept =
+      ((rewired["projects"] as? [String: Any])?["/r/api"] as? [String: Any])
+      .flatMap { $0["mcpServers"] as? [String: Any] }?["rgis-ovh"] as? [String: Any]
+    check(
+      "a rewire keeps the user's own keys on an entry of ours",
+      kept?["disabled"] as? Bool == true && kept?["timeout"] as? Int == 30)
+    check("and still writes what Bastion owns", deepEqual(kept?["url"], ovh["url"]))
+
     let taken = ClientWiringMerge.projectCollisions(
       in: root, keys: ["/r/api": ["theirs", "rgis-ovh"], "/nowhere": ["theirs"]])
     check(
