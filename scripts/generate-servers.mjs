@@ -26,6 +26,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { swiftString } from "./lib/swift-string.mjs";
+
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const CHECK = process.argv.includes("--check");
 
@@ -519,7 +521,6 @@ const target = (path, next) => targets.push({ path, next });
 
 // ─── 1. ServerCatalog.swift ──────────────────────────────────────────────────
 
-const swiftString = (v) => JSON.stringify(v);
 const swiftOptionalURL = (v) => (v === null ? "nil" : `URL(string: ${swiftString(v)})`);
 const swiftOptionalString = (v) => (v === null ? "nil" : swiftString(v));
 const swiftStringList = (xs) => (xs.length === 0 ? "[]" : `[${xs.map(swiftString).join(", ")}]`);
