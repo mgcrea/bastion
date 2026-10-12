@@ -148,7 +148,9 @@ nonisolated enum CallStatsRollup {
         if upper == Int.max { return (lower, true) }
         let position = Double(rank - seen) / Double(count)
         let span = Double(upper - lower) * position
-        return (lower + Int(span.rounded()), false)
+        // Capped at the exact maximum: the bound is where the bucket ends, not
+        // a duration any call reached.
+        return (Swift.min(lower + Int(span.rounded()), maxMilliseconds), false)
       }
       // Only reachable when the histogram disagrees with `calls`, which a
       // hand-edited file can produce. The exact maximum is still true.

@@ -1652,6 +1652,16 @@ struct UnitCheck {
     check("the maximum survives a coarse histogram exactly", coarse.latency.max == 8_111)
     check("while the median stays in the fast bucket", (coarse.latency.p50 ?? .max) <= 1)
 
+    // Interpolation runs towards the bucket's upper bound, which no call may
+    // have reached. Twenty calls at 30 ms used to report a p95 of 49 beside a
+    // maximum of 30, and a lone 260 ms call a p50 of 500.
+    var uniform = Bucket()
+    for _ in 0..<20 { uniform.record(milliseconds: 30, bytes: 1, failed: false) }
+    check("no percentile exceeds the maximum", (uniform.latency.p95 ?? .max) <= 30)
+    var lone = Bucket()
+    lone.record(milliseconds: 260, bytes: 1, failed: false)
+    check("a single call's median is that call", lone.latency.p50 == 260)
+
     print("\nUsage rollup: merging, which the lock design rests on")
 
     // `CallStats` accumulates under a plain lock with no ordering preserved,
