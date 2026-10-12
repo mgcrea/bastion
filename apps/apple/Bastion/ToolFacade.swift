@@ -478,14 +478,6 @@ nonisolated enum ToolFacade {
       facadeCount: declarationCount(hasWriteDispatcher: hasWriteDispatcher))
   }
 
-  static func worthFronting(
-    catalog: [[String: Any]], displayName: String, summary: String, hasWriteDispatcher: Bool
-  ) -> Bool {
-    floor(
-      catalog: catalog, displayName: displayName, summary: summary,
-      hasWriteDispatcher: hasWriteDispatcher) == nil
-  }
-
   // MARK: - Search
 
   /// One row of the index.
