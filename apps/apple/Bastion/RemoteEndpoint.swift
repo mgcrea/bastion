@@ -193,11 +193,22 @@ nonisolated enum RemoteEndpoint {
   /// asserts against the same number the app listens on.
   static let gatewayDefaultPort: UInt16 = 8720
 
+  /// The port a stored `gatewayPort` setting means. Read by `Gateway.start()`
+  /// and here, so the two cannot disagree about it.
+  ///
+  /// Settings' field is a bare integer with no range, so anything that is not a
+  /// port reads as unset rather than reaching `UInt16(_:)`, which traps and
+  /// would crash every launch until the setting was deleted by hand.
+  nonisolated static func gatewayPort(stored: Int) -> UInt16 {
+    guard stored != 0, let port = UInt16(exactly: stored) else { return gatewayDefaultPort }
+    return port
+  }
+
   /// The port the gateway listens on now, and the default, in case the setting
   /// changed without a restart.
   private static var gatewayPorts: Set<Int> {
     let stored = UserDefaults.standard.integer(forKey: "gatewayPort")
-    return [Int(gatewayDefaultPort), stored == 0 ? Int(gatewayDefaultPort) : stored]
+    return [Int(gatewayDefaultPort), Int(gatewayPort(stored: stored))]
   }
 
   // MARK: - Judging one address

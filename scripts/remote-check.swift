@@ -98,6 +98,15 @@ struct RemoteCheck {
     check("127.0.0.2 is refused", refusesShape("https://127.0.0.2"))
     check("an IPv4-mapped loopback is refused", refusesShape("https://[::ffff:127.0.0.1]"))
 
+    print("\nThe stored gateway port")
+    // Settings' port field is a bare integer with no range, and `UInt16(_:)`
+    // traps outside one, so a typed 87200 crashed every launch after it.
+    check("unset is the default", RemoteEndpoint.gatewayPort(stored: 0) == 8720)
+    check("a valid port is kept", RemoteEndpoint.gatewayPort(stored: 8799) == 8799)
+    check("65535 is kept", RemoteEndpoint.gatewayPort(stored: 65535) == 65535)
+    check("past 65535 is the default", RemoteEndpoint.gatewayPort(stored: 87200) == 8720)
+    check("a negative port is the default", RemoteEndpoint.gatewayPort(stored: -1) == 8720)
+
     print("\nThis network")
     check("10/8 is refused", refusesShape("https://10.0.0.1"))
     check("172.16/12 is refused", refusesShape("https://172.16.5.4"))
