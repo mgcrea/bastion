@@ -520,6 +520,41 @@ struct RemoteCheck {
       check("the loopback listener works — \(error.localizedDescription)", false)
     }
 
+    // Browsers open speculative connections and send nothing on them. Each one
+    // used to be read until the FLOW's deadline, so one accepted ahead of the
+    // real redirect held it in the backlog until the authorization timed out.
+    do {
+      let callback = try RemoteOAuthCallback()
+      final class Box: @unchecked Sendable { var url: URL? }
+      let box = Box()
+      let finished = DispatchSemaphore(value: 0)
+      Thread.detachNewThread {
+        box.url = try? callback.waitForCallback(timeout: 30, expecting: "st4te")
+        finished.signal()
+      }
+      let idle = socket(AF_INET, SOCK_STREAM, 0)
+      var address = sockaddr_in()
+      address.sin_family = sa_family_t(AF_INET)
+      address.sin_port = in_port_t(callback.port).bigEndian
+      address.sin_addr.s_addr = inet_addr("127.0.0.1")
+      let connected = withUnsafePointer(to: &address) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+          connect(idle, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+        }
+      }
+      check("an idle connection is open", connected == 0)
+      Thread.sleep(forTimeInterval: 0.2)
+      let redirect = "http://127.0.0.1:\(callback.port)/oauth/callback?code=oac_y&state=st4te"
+      URLSession(configuration: .ephemeral).dataTask(with: URL(string: redirect)!).resume()
+      _ = finished.wait(timeout: .now() + 12)
+      close(idle)
+      check(
+        "an idle connection does not hold up the redirect behind it",
+        box.url?.absoluteString.contains("code=oac_y") == true)
+    } catch {
+      check("the second listener works — \(error.localizedDescription)", false)
+    }
+
     print("\nThe write gate: what a client is allowed to see")
     // The rule that decides whether `stripe_api_write` reaches a model. It had
     // no test until a bug in which the gate itself was right and every consumer

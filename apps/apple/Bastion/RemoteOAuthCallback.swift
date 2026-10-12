@@ -146,7 +146,13 @@ nonisolated final class RemoteOAuthCallback: Sendable {
       guard client >= 0 else { continue }
       defer { close(client) }
 
-      guard let line = Self.readRequestLine(client, until: deadline) else { continue }
+      // Each connection gets a few seconds, not the rest of the flow. A
+      // browser's speculative connection sends nothing, and read until the
+      // flow's own deadline it held the real redirect in the backlog behind it
+      // until the authorization timed out. A redirect's request line arrives
+      // with the connection.
+      let connectionDeadline = min(deadline, Date().addingTimeInterval(Self.connectionTimeout))
+      guard let line = Self.readRequestLine(client, until: connectionDeadline) else { continue }
       // `GET /oauth/callback?code=…&state=… HTTP/1.1`
       let parts = line.split(separator: " ")
       guard parts.count >= 2 else { continue }
@@ -179,6 +185,9 @@ nonisolated final class RemoteOAuthCallback: Sendable {
     }
     throw CallbackError.timedOut(seconds: Int(timeout))
   }
+
+  /// How long one accepted connection may take to send its request line.
+  private static let connectionTimeout: TimeInterval = 5
 
   // MARK: - The smallest HTTP that will do
 
