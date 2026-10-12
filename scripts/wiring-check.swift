@@ -143,6 +143,13 @@ struct WiringCheck {
     tomlDuplicateKeyIsImpossible()
     tomlBackupAtomicityAndMode()
     tomlStaleWriteIsRefused()
+    spliceLeavesEveryOtherByteAlone()
+    spliceRoundTrips()
+    spliceReplacesOnlyTheValue()
+    spliceIntoEmptyShapes()
+    spliceKeepsCRLF()
+    spliceRefusesWhatItCannotRoundTrip()
+    spliceRewriteOnDisk()
 
     workspaceResolution()
     workspaceAssignments()
@@ -2441,5 +2448,237 @@ struct WiringCheck {
     check(
       "a foreign key under a desired key is a collision, named with its folder",
       taken == ["/r/api: theirs"])
+  }
+
+  // MARK: - settings.json splice
+
+  /// Shaped like a hand-written Claude Code settings.json: nested objects, an
+  /// array, escaped quotes, braces inside strings, non-ASCII, and a trailing
+  /// newline.
+  static let settingsFixture = """
+    {
+      "env": { "FOO": "a } b { \\" c", "URL": "https://x.y/z" },
+      "permissions": {
+        "allow": ["Bash(git status)", "Read(//tmp/**)"]
+      },
+      "model": "opus",
+      "statusLine": {"type": "command", "command": "echo é ✓"}
+    }
+
+    """
+
+  static let lockdownEdits: [ClientSettingsSplice.Edit] = [
+    ("disableClaudeAiConnectors", true),
+    ("allowedMcpServers", [["serverUrl": "http://127.0.0.1:8720/s/*"]]),
+  ]
+
+  static func spliced(_ text: String, _ edits: [ClientSettingsSplice.Edit]) -> String? {
+    guard let out = try? ClientSettingsSplice.applying(edits, to: Data(text.utf8)) else {
+      return nil
+    }
+    return String(decoding: out, as: UTF8.self)
+  }
+
+  static func spliceLeavesEveryOtherByteAlone() {
+    print("\nsettings.json: every other byte survives")
+    guard let out = spliced(settingsFixture, lockdownEdits) else {
+      return check("the fixture splices", false)
+    }
+    let anchor = settingsFixture.range(of: "\"echo é ✓\"}")!.upperBound
+    let head = String(settingsFixture[..<anchor])
+    check("everything up to the last value is unchanged", out.hasPrefix(head))
+    check("the closing brace and newline are unchanged", out.hasSuffix("\n}\n"))
+    check(
+      "the members are appended in order, in the file's indentation",
+      out.contains(
+        "\"echo é ✓\"},\n  \"disableClaudeAiConnectors\": true,\n  \"allowedMcpServers\": [\n"
+          + "    {\n      \"serverUrl\": \"http://127.0.0.1:8720/s/*\"\n    }\n  ]\n}"))
+    let before = try? ClientSettingsSplice.parse(Data(settingsFixture.utf8)).values
+    let after = try? ClientSettingsSplice.parse(Data(out.utf8)).values
+    check("the result parses", after != nil)
+    for key in ["env", "permissions", "model", "statusLine"] {
+      check("'\(key)' is deep-equal after", deepEqual(before?[key], after?[key]))
+    }
+    check("the new key reads back", deepEqual(after?["disableClaudeAiConnectors"], true))
+  }
+
+  static func spliceRoundTrips() {
+    print("\nsettings.json: on then off is the original file")
+    let on = spliced(settingsFixture, lockdownEdits)
+    let offInOrder = on.flatMap {
+      spliced($0, [("disableClaudeAiConnectors", nil), ("allowedMcpServers", nil)])
+    }
+    let offReversed = on.flatMap {
+      spliced($0, [("allowedMcpServers", nil), ("disableClaudeAiConnectors", nil)])
+    }
+    check("removing in write order restores every byte", offInOrder == settingsFixture)
+    check("removing in reverse order restores every byte", offReversed == settingsFixture)
+    check(
+      "applying the same edits twice is idempotent", on.flatMap { spliced($0, lockdownEdits) } == on
+    )
+    check(
+      "removing an absent key changes nothing",
+      spliced(settingsFixture, [("nope", nil)]) == settingsFixture)
+  }
+
+  static func spliceReplacesOnlyTheValue() {
+    print("\nsettings.json: replacing a value touches only its span")
+    let out = spliced(settingsFixture, [("model", "sonnet")])
+    check(
+      "only the value moved",
+      out == settingsFixture.replacingOccurrences(of: "\"opus\"", with: "\"sonnet\""))
+  }
+
+  static func spliceIntoEmptyShapes() {
+    print("\nsettings.json: empty file, empty object, one line")
+    check(
+      "an empty file becomes an object holding the key",
+      spliced("", [("disableClaudeAiConnectors", true)])
+        == "{\n  \"disableClaudeAiConnectors\": true\n}\n")
+    check(
+      "a whitespace-only file does too",
+      spliced("  \n", [("disableClaudeAiConnectors", true)])
+        == "{\n  \"disableClaudeAiConnectors\": true\n}\n")
+    let filled = spliced("{}", lockdownEdits)
+    check("{} gains both keys", filled?.contains("\"allowedMcpServers\"") == true)
+    check(
+      "and loses them again to exactly {}",
+      filled.flatMap {
+        spliced($0, [("disableClaudeAiConnectors", nil), ("allowedMcpServers", nil)])
+      } == "{}")
+    check(
+      "a one-line object stays on one line",
+      spliced("{\"a\":1}", [("disableClaudeAiConnectors", true)])
+        == "{\"a\":1, \"disableClaudeAiConnectors\": true}")
+    check(
+      "a one-line round trip is exact",
+      spliced("{\"a\":1}", lockdownEdits).flatMap {
+        spliced($0, [("disableClaudeAiConnectors", nil), ("allowedMcpServers", nil)])
+      } == "{\"a\":1}")
+  }
+
+  static func spliceKeepsCRLF() {
+    print("\nsettings.json: CRLF files stay CRLF")
+    let crlf = "{\r\n  \"model\": \"opus\"\r\n}\r\n"
+    let on = spliced(crlf, lockdownEdits)
+    check(
+      "inserted lines end in CRLF",
+      on?.contains("\"opus\",\r\n  \"disableClaudeAiConnectors\"") == true)
+    check(
+      "no bare LF is introduced",
+      on?.replacingOccurrences(of: "\r\n", with: "").contains("\n") == false)
+    check(
+      "on then off is the original",
+      on.flatMap { spliced($0, [("disableClaudeAiConnectors", nil), ("allowedMcpServers", nil)]) }
+        == crlf)
+  }
+
+  static func spliceRefusesWhatItCannotRoundTrip() {
+    print("\nsettings.json: refusals")
+    func refusal(_ text: String) -> ClientSettingsSplice.ParseError? {
+      do {
+        _ = try ClientSettingsSplice.parse(Data(text.utf8))
+        return nil
+      } catch let error as ClientSettingsSplice.ParseError {
+        return error
+      } catch {
+        return nil
+      }
+    }
+    check("a line comment", refusal("{\n  // hi\n  \"a\": 1\n}") == .comment(offset: 4))
+    check(
+      "a block comment inside a value",
+      { if case .comment = refusal("{\"a\": [1, /* x */ 2]}") { true } else { false } }())
+    check("a top-level trailing comma", refusal("{\"a\": 1,\n}") == .trailingComma(offset: 7))
+    check("a nested trailing comma", refusal("{\"a\": [1, 2,]}") != nil)
+    check("a key set twice", refusal("{\"a\": 1, \"a\": 2}") == .duplicateKey("a"))
+    check("a top-level array", refusal("[1]") == .notAnObject)
+    check("a byte-order mark", refusal("\u{FEFF}{}") == .notAnObject)
+    check("an unterminated string", refusal("{\"a\": \"x}") != nil)
+    check("bytes after the object", refusal("{} {}") != nil)
+    let notUTF8: ClientSettingsSplice.ParseError? = {
+      do {
+        _ = try ClientSettingsSplice.parse(Data([0x7B, 0xFF, 0x7D]))
+        return nil
+      } catch { return error as? ClientSettingsSplice.ParseError }
+    }()
+    check("invalid UTF-8", notUTF8 == .notUTF8)
+  }
+
+  static func spliceRewriteOnDisk() {
+    print("\nsettings.json: rewrite on disk")
+    let fm = FileManager.default
+    let dir = fm.temporaryDirectory.appendingPathComponent("splice-\(UUID().uuidString)")
+    try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: dir) }
+    let edits: ([String: Any]) -> [ClientSettingsSplice.Edit] = { _ in lockdownEdits }
+
+    // A refusal never writes, and leaves no backup.
+    let commented = dir.appendingPathComponent("commented.json")
+    try? Data("{ // x\n}".utf8).write(to: commented)
+    var refused = false
+    do {
+      try ClientSettingsSplice.rewrite(commented, backupSuffix: "bastion-backup", edits: edits)
+    } catch is ClientSettingsSplice.ParseError {
+      refused = true
+    } catch {}
+    check("a file with a comment is refused", refused)
+    check("and left byte-identical", (try? Data(contentsOf: commented)) == Data("{ // x\n}".utf8))
+    check("with no backup", !fm.fileExists(atPath: commented.path + ".bastion-backup"))
+
+    // A missing file is created, with no backup to report.
+    let fresh = dir.appendingPathComponent("fresh/settings.json")
+    let freshBackup = try? ClientSettingsSplice.rewrite(
+      fresh, backupSuffix: "bastion-backup", edits: edits)
+    check("a missing file is created", fm.fileExists(atPath: fresh.path))
+    check("with no backup", freshBackup == nil)
+
+    // An existing file is backed up once; an identical second pass writes nothing.
+    let existing = dir.appendingPathComponent("settings.json")
+    try? Data(settingsFixture.utf8).write(to: existing)
+    let first = try? ClientSettingsSplice.rewrite(
+      existing, backupSuffix: "bastion-backup", edits: edits)
+    check("the first write leaves a backup", first != nil)
+    check(
+      "holding the original",
+      first.flatMap { try? Data(contentsOf: $0) } == Data(settingsFixture.utf8))
+    try? fm.removeItem(at: first ?? existing.appendingPathExtension("bastion-backup"))
+    let second = try? ClientSettingsSplice.rewrite(
+      existing, backupSuffix: "bastion-backup", edits: edits)
+    check("an identical second pass writes nothing", second == nil)
+    check("and makes no new backup", !fm.fileExists(atPath: existing.path + ".bastion-backup"))
+    let litter =
+      (try? fm.contentsOfDirectory(atPath: dir.path))?.filter { $0.hasSuffix(".tmp") } ?? []
+    check("no temp files are left behind", litter.isEmpty)
+
+    // A symlinked settings.json is written through; the link stays a link.
+    let target = dir.appendingPathComponent("dotfiles-settings.json")
+    let link = dir.appendingPathComponent("linked/settings.json")
+    try? fm.createDirectory(at: link.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try? Data("{}\n".utf8).write(to: target)
+    try? fm.createSymbolicLink(at: link, withDestinationURL: target)
+    _ = try? ClientSettingsSplice.rewrite(link, backupSuffix: "bastion-backup", edits: edits)
+    let isLink = (try? fm.destinationOfSymbolicLink(atPath: link.path)) != nil
+    check("the link is still a link", isLink)
+    check(
+      "and its target was written",
+      (try? String(contentsOf: target, encoding: .utf8))?.contains("allowedMcpServers") == true)
+
+    // Claude Code writing between the read and the write: refused, its change kept.
+    let racy = dir.appendingPathComponent("racy.json")
+    try? Data("{\"a\": 1}".utf8).write(to: racy)
+    var raced = false
+    do {
+      try ClientSettingsSplice.rewrite(racy, backupSuffix: "bastion-backup") { _ in
+        try? Data("{\"a\": 1, \"b\": 2}".utf8).write(to: racy)
+        return lockdownEdits
+      }
+    } catch ClientWiringMerge.WriteError.changedUnderneath(_) {
+      raced = true
+    } catch {}
+    check("a write over a file that moved is refused", raced)
+    check(
+      "and the other writer's change survives",
+      (try? String(contentsOf: racy, encoding: .utf8)) == "{\"a\": 1, \"b\": 2}")
   }
 }
