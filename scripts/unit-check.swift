@@ -726,6 +726,25 @@ struct UnitCheck {
     check(
       "a gate that is not in env removes nothing",
       gated("A_ALLOW_WRITES", ["A_HOST"]).editableEnv.map(\.name) == ["A_HOST"])
+
+    // `list_profiles` returns a profile's stored values. A variable typed while
+    // it was not secret keeps its plaintext there after the server marks it
+    // secret, so the listing has to ask the server, not the file.
+    let flipped = BastionServer(
+      id: "x", displayName: "X", summary: "",
+      transport: .child(
+        .init(
+          npmName: "@a/b", binName: "b", distribution: .npm, localPath: "b", vendor: .mgcrea,
+          provenance: false)),
+      docsURL: nil, dialect: .v2025_11_25, writeGate: nil, writeTools: [], gateBypass: [],
+      authModes: [], stateEnv: [], callbackEnv: [],
+      env: [
+        .init(name: "A_HOST", isRequired: false, isSecret: false, summary: ""),
+        .init(name: "A_TOKEN", isRequired: false, isSecret: true, summary: ""),
+      ])
+    let shown = flipped.shareableValues(["A_HOST": "h", "A_TOKEN": "plaintext"])
+    check("a value the server now calls secret is not shared", shown["A_TOKEN"] == nil)
+    check("and the rest are", shown == ["A_HOST": "h"])
     // Remote servers have no environment at all, so there is nothing for the
     // filter to be wrong about — but `hasWritePath` is true for them, and the
     // two properties are read side by side in the editor.

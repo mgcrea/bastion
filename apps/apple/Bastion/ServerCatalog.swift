@@ -257,6 +257,17 @@ nonisolated struct BastionServer: Identifiable, Hashable {
     return env.filter { $0.name != gate }
   }
 
+  /// A profile's stored values without any this server declares secret.
+  ///
+  /// Secrets live in the Keychain, but a value typed while its variable was not
+  /// secret stays in `profiles.json` after the variable becomes one, through a
+  /// catalog update or an edit, until the profile is next saved. Whatever reads
+  /// values out to somebody asks this, not the file.
+  func shareableValues(_ values: [String: String]) -> [String: String] {
+    let secret = Set(env.filter(\.isSecret).map(\.name))
+    return values.filter { !secret.contains($0.key) }
+  }
+
   /// Which list a definition was born in.
   ///
   /// Only the UI and `ServerStore`'s persistence care. Everything downstream —

@@ -896,7 +896,8 @@ enum BuiltinTools {
           "allow_writes": profile.allowWrites,
           "lazy_tools": ServerStore.shared.server(id: profile.serverID)?.loadsToolsOnDemand
             ?? ToolFacade.globalDefault,
-          "values": profile.values,
+          "values": ServerStore.shared.server(id: profile.serverID)?.shareableValues(
+            profile.values) ?? [:],
         ]
         // `lazy_tools` is the server's resolved answer, and it is not the whole
         // one: the facade applies only where the client cannot defer by itself.
