@@ -927,12 +927,18 @@ enum ClientWiring {
   static func unwire(_ client: Client) throws -> URL? {
     // An allowlist naming a Bastion that is no longer wired would block every
     // server the profile has. A key edited by hand since is no longer ours to
-    // remove, so a drifted refusal just drops the record.
-    if supportsLockdown(client), ClientLockdown.recorded(client.id) != nil {
+    // remove: it is dropped from the record and left in place, and the keys
+    // still in Bastion's shape are removed.
+    if supportsLockdown(client), let recorded = ClientLockdown.recorded(client.id) {
       do {
         try setLockdown(client, on: false)
-      } catch ClientLockdown.Refusal.drifted(_) {
-        ClientLockdown.forget(client.id)
+      } catch ClientLockdown.Refusal.drifted(let keys) {
+        ClientLockdown.record(client.id, owned: recorded.subtracting(keys))
+        try setLockdown(client, on: false)
+        hostLog(
+          "wiring", .info,
+          "\(client.displayName): left \(keys.joined(separator: ", ")) in settings.json, "
+            + "edited by hand since Bastion wrote it")
       }
     }
     return try retryingIfChanged(client.configURL) { try unwireOnce(client) }
