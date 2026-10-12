@@ -414,6 +414,12 @@ struct RemoteCheck {
     // A refresh response may omit the refresh token, meaning "keep yours".
     // Dropping it would make every such refresh the last one possible.
     check("an omitted refresh token is kept", refreshed?.refreshToken == "keep-me")
+    // RFC 6749 says a number. Some providers send "3600", and read as no expiry
+    // at all the token was only ever refreshed after it had already failed.
+    let quoted = try? RemoteOAuth.tokenSet(
+      from: ["access_token": "a", "expires_in": "3600"], clientID: "cid",
+      issuer: URL(string: "https://as.example")!, previous: nil)
+    check("an expires_in sent as a string still sets the expiry", quoted?.expiresAt != nil)
     // The refresh token goes to whichever authorization server the resource
     // names NOW. A set from another issuer is somebody else's, and sending it
     // there hands a long-lived credential to a server that never issued it.

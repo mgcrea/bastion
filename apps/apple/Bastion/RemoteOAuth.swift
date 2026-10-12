@@ -372,6 +372,10 @@ nonisolated enum RemoteOAuth {
       expires = Date().addingTimeInterval(seconds)
     } else if let seconds = json["expires_in"] as? Int {
       expires = Date().addingTimeInterval(Double(seconds))
+    } else if let text = json["expires_in"] as? String, let seconds = Double(text) {
+      // RFC 6749 says a number, and some providers send "3600". Read as no
+      // expiry, the token was only refreshed after a request had failed on it.
+      expires = Date().addingTimeInterval(seconds)
     }
     return TokenSet(
       accessToken: access,
