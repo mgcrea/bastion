@@ -151,7 +151,9 @@ So the servers somebody configured on purpose keep working, and everything a
 plugin or claude.ai adds is filtered out. A repository's `.mcp.json` is
 filtered too. It is hygiene, not a boundary: a project's own settings can
 widen the list, and only `allowManagedMcpServersOnly` in managed settings
-would stop that.
+would stop that. The switch writes Claude Code's `settings.json` only, so
+Claude Desktop's chat and Cowork keep their own connectors, which are managed in
+claude.ai's settings.
 
 **The file is spliced, not serialised.** `settings.json` is hand-edited, so
 `ClientSettingsSplice` finds the two members and replaces only their bytes,
@@ -159,17 +161,21 @@ the way `ClientWiringTOML` treats Codex. A file it cannot round-trip (a
 comment, a trailing comma, a key set twice) reads as `unreadable`, and nothing
 is written. Foundation accepts a trailing comma; the splice's own lexer does
 not, and its word is the one that counts. A non-empty object comes back byte
-for byte; an empty one round-trips as `{}`, and a file Bastion creates is
-`{}\n`. The write is the same one every client gets: backup, temp and swap,
+for byte; an empty one round-trips as `{}`, and a file Bastion created returns
+to `{}\n`. The write is the same one every client gets: backup, temp and swap,
 `0600`, refused if the file moved since it was read.
 
 **What is Bastion's.** `clientLockdown` in Bastion's defaults records, per
 client, which of the two keys Bastion added. Turning the switch off removes
 those and nothing else, so a `disableClaudeAiConnectors: true` somebody set
-by hand outlives it, and so does a key edited by hand since (left in place and
-logged). A key still in Bastion's shape is removed. `deniedMcpServers` is
-never read or written. Unwiring a client turns its switch off first, since an allowlist naming a Bastion that is
-no longer wired would block every server the profile has.
+by hand outlives it. If a recorded key has been edited out of Bastion's shape
+since, turning the switch off refuses (`drifted`) rather than discard the edit:
+the card asks before replacing, and over MCP the caller passes `force: true`.
+`deniedMcpServers` is never read or written. Unwiring a client turns its switch
+off first, since an allowlist naming a Bastion that is no longer wired would
+block every server the profile has. Unwiring does not stop at a hand edit: it
+drops the edited keys from the record, removes the keys still in Bastion's
+shape, and logs the ones it left.
 
 | State         | Meaning                                                                 |
 | ------------- | ----------------------------------------------------------------------- |
