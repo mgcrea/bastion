@@ -523,6 +523,16 @@ if (settingsToWrite.length + settingsToClear.length > 0) {
 // secret still pointing at a keychain the Debug build cannot read.
 if (existsSync(join(DEBUG, "profiles.json"))) rmSync(join(DEBUG, "profiles.json"));
 
+// The profiles, as the document `DevSeed` already knows how to consume. Written
+// straight after the delete above and before the tree copy below, so nothing
+// that can fail sits between losing profiles.json and having its replacement.
+const document = { gatewayTokens, profiles: rows };
+const out = join(DEBUG, "import.json");
+writeFileSync(out, `${JSON.stringify(document, null, 2)}\n`, { mode: 0o600 });
+say(
+  `Wrote ${rows.length} profile(s) and ${adopted.length} gateway token(s) to import.json (mode 600)`,
+);
+
 // The downloaded npm trees. `/bin/cp` by absolute path deliberately: `-c` is
 // BSD cp's clonefile flag, and a GNU coreutils cp earlier on PATH — which is the
 // normal arrangement on a Homebrew Mac — has no such flag and would fail.
@@ -536,6 +546,9 @@ if (!NO_INSTALLS && existsSync(join(RELEASE, "servers"))) {
     const count = readdirSync(target).filter((n) => !n.startsWith(".")).length;
     say(`Copied ${count} installed server tree(s) (cloned on APFS, so near-zero disk)`);
   } catch (error) {
+    // A copy that failed part way leaves a partial tree behind, and renaming the
+    // old one back over it threw ENOTEMPTY out of the script.
+    rmSync(target, { recursive: true, force: true });
     if (moved) renameSync(moved, target);
     say(`Could not clone the server trees (${error.message.trim()}).`);
     say("The Debug app will download what it needs instead.");
@@ -543,14 +556,6 @@ if (!NO_INSTALLS && existsSync(join(RELEASE, "servers"))) {
 } else if (NO_INSTALLS) {
   say("Skipped the installed server trees (--no-installs)");
 }
-
-// The profiles, as the document `DevSeed` already knows how to consume.
-const document = { gatewayTokens, profiles: rows };
-const out = join(DEBUG, "import.json");
-writeFileSync(out, `${JSON.stringify(document, null, 2)}\n`, { mode: 0o600 });
-say(
-  `Wrote ${rows.length} profile(s) and ${adopted.length} gateway token(s) to import.json (mode 600)`,
-);
 
 say("");
 say("Next: launch the Debug build. It consumes import.json on startup, moves every");
