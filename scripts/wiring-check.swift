@@ -150,6 +150,12 @@ struct WiringCheck {
     spliceKeepsCRLF()
     spliceRefusesWhatItCannotRoundTrip()
     spliceRewriteOnDisk()
+    lockdownPlanIsBastionPlusTheConfig()
+    lockdownRecognisesItsOwnPattern()
+    lockdownStateTable()
+    lockdownEnablingAndDisabling()
+    lockdownRecordRoundTrips()
+    lockdownSplicesIntoARealShape()
 
     workspaceResolution()
     workspaceAssignments()
@@ -2694,5 +2700,269 @@ struct WiringCheck {
     check(
       "and the other writer's change survives",
       (try? String(contentsOf: racy, encoding: .utf8)) == "{\"a\": 1, \"b\": 2}")
+  }
+
+  // MARK: - Only Bastion
+
+  static let cupertino = "/Applications/Cupertino.app/Contents/Helpers/cupertino-bridge"
+
+  /// A profile's `.claude.json`: Bastion's own entries (global and project), a
+  /// stdio bridge, a local HTTP server, an entry with nothing launchable, the
+  /// same URL twice, and a project block holding no servers.
+  static let lockdownConfig: [String: Any] = [
+    "mcpServers": [
+      "prod-stripe": entry(httpReach("stripe")),
+      "cupertino-mail": [
+        "type": "stdio", "command": cupertino,
+        "args": ["--server=mail", "--client=claude-code"], "env": [String: Any](),
+      ],
+      "armada": ["type": "http", "url": "http://127.0.0.1:8790/mcp"],
+      "broken": ["type": "stdio"],
+    ],
+    "projects": [
+      "/r/b": [
+        "mcpServers": ["armada-again": ["type": "http", "url": "http://127.0.0.1:8790/mcp"]]
+      ],
+      "/r/a": [
+        "mcpServers": [
+          "local-db": ["command": "npx", "args": ["-y", "db-mcp"]],
+          "prod-npm": entry(httpReach("npm")),
+        ]
+      ],
+      "/r/empty": ["allowedTools": [String]()],
+    ],
+  ]
+
+  static func lockdownPlanIsBastionPlusTheConfig() {
+    print("\nOnly Bastion: the allowlist")
+    let plan = ClientLockdown.plan(claudeConfig: lockdownConfig, port: 8720)
+    check(
+      "Bastion's wildcard first, then global, then projects by path, sorted, deduplicated",
+      deepEqual(
+        plan.allowed,
+        [
+          ["serverUrl": "http://127.0.0.1:8720/s/*"],
+          ["serverUrl": "http://127.0.0.1:8790/mcp"],
+          ["serverCommand": [cupertino, "--server=mail", "--client=claude-code"]],
+          ["serverCommand": ["npx", "-y", "db-mcp"]],
+        ]))
+    check(
+      "labels name where each rule came from",
+      plan.rules.map(\.label) == ["Bastion", "armada", "cupertino-mail", "local-db"])
+    check(
+      "every kept key is listed, duplicates included",
+      plan.kept == ["armada", "cupertino-mail", "local-db", "armada-again"])
+    check("an entry with no url or command is skipped and named", plan.skipped == ["broken"])
+    check(
+      "Bastion's own entries are never listed one by one",
+      !plan.kept.contains("prod-stripe") && !plan.kept.contains("prod-npm"))
+    check(
+      "an empty config is Bastion alone",
+      deepEqual(
+        ClientLockdown.plan(claudeConfig: [:], port: 9000).allowed,
+        [["serverUrl": "http://127.0.0.1:9000/s/*"]]))
+  }
+
+  static func lockdownRecognisesItsOwnPattern() {
+    print("\nOnly Bastion: recognising Bastion's entry")
+    func ours(_ url: String) -> Bool { ClientLockdown.isBastionPattern(["serverUrl": url]) }
+    check("127.0.0.1", ours("http://127.0.0.1:8720/s/*"))
+    check("localhost, another port", ours("http://localhost:1/s/*"))
+    check("[::1]", ours("http://[::1]:8720/s/*"))
+    check("not one endpoint", !ours("http://127.0.0.1:8720/s/prod/x"))
+    check("not https", !ours("https://127.0.0.1:8720/s/*"))
+    check("not another host", !ours("http://10.0.0.1:8720/s/*"))
+    check("not a command entry", !ClientLockdown.isBastionPattern(["serverCommand": ["x"]]))
+  }
+
+  static func lockdownStateTable() {
+    print("\nOnly Bastion: state")
+    let plan = ClientLockdown.plan(claudeConfig: lockdownConfig, port: 8720)
+    let on: [String: Any] = ["disableClaudeAiConnectors": true, "allowedMcpServers": plan.allowed]
+    func state(_ settings: [String: Any], enabled: Bool = true) -> ClientLockdown.State {
+      ClientLockdown.state(settings: settings, plan: plan, enabled: enabled)
+    }
+    check("nothing, switched off: off", state([:], enabled: false) == .off)
+    check(
+      "our wildcard, switched off: left behind",
+      state(["allowedMcpServers": [["serverUrl": "http://127.0.0.1:9999/s/*"]]], enabled: false)
+        == .leftBehind)
+    check("exactly the plan: on", state(on) == .on)
+    check(
+      "the plan in another order: still on",
+      state([
+        "disableClaudeAiConnectors": true, "allowedMcpServers": Array(plan.allowed.reversed()),
+      ]) == .on)
+    check(
+      "a server missing: stale, named",
+      state([
+        "disableClaudeAiConnectors": true, "allowedMcpServers": Array(plan.allowed.dropLast()),
+      ])
+        == .stale(missing: ["local-db"], extra: 0))
+    var moved = plan.allowed
+    moved[0] = ["serverUrl": "http://127.0.0.1:9000/s/*"]
+    check(
+      "the port moved: stale, Bastion named",
+      state(["disableClaudeAiConnectors": true, "allowedMcpServers": moved])
+        == .stale(missing: ["Bastion"], extra: 1))
+    check(
+      "a server since removed: stale, counted",
+      state([
+        "disableClaudeAiConnectors": true,
+        "allowedMcpServers": plan.allowed + [["serverUrl": "https://gone"]],
+      ])
+        == .stale(missing: [], extra: 1))
+    check(
+      "connectors switched back on: drifted",
+      state(["disableClaudeAiConnectors": false, "allowedMcpServers": plan.allowed])
+        == .drifted(["disableClaudeAiConnectors"]))
+    check(
+      "our wildcard edited out: drifted",
+      state(["disableClaudeAiConnectors": true, "allowedMcpServers": [["serverUrl": "http://x"]]])
+        == .drifted(["allowedMcpServers"]))
+    check(
+      "both gone: drifted, both named",
+      state([:]) == .drifted(["disableClaudeAiConnectors", "allowedMcpServers"]))
+    check(
+      "stale reads as a sentence",
+      ClientLockdown.State.stale(missing: ["local-db"], extra: 0).summary
+        == "stale — local-db not allowed")
+    check("on reads as on", ClientLockdown.State.on.summary == "on")
+  }
+
+  static func lockdownEnablingAndDisabling() {
+    print("\nOnly Bastion: what is written and removed")
+    let plan = ClientLockdown.plan(claudeConfig: lockdownConfig, port: 8720)
+    func keys(_ edits: [ClientSettingsSplice.Edit]) -> [String] { edits.map(\.key) }
+    func enabling(_ current: [String: Any], recorded: Set<String> = [], force: Bool = false)
+      -> Result<(edits: [ClientSettingsSplice.Edit], owned: Set<String>), ClientLockdown.Refusal>
+    {
+      do {
+        return .success(
+          try ClientLockdown.enabling(
+            current: current, plan: plan, recorded: recorded, force: force))
+      } catch let refusal as ClientLockdown.Refusal {
+        return .failure(refusal)
+      } catch { fatalError("\(error)") }
+    }
+
+    let fresh = try? enabling([:]).get()
+    check(
+      "an empty file gets both keys, in order",
+      fresh.map { keys($0.edits) } == ["disableClaudeAiConnectors", "allowedMcpServers"])
+    check(
+      "and Bastion owns both", fresh?.owned == ["disableClaudeAiConnectors", "allowedMcpServers"])
+
+    let handSet = try? enabling(["disableClaudeAiConnectors": true]).get()
+    check(
+      "a hand-set true is adopted, not rewritten",
+      handSet.map { keys($0.edits) } == ["allowedMcpServers"])
+    check("and not recorded, so it outlives the switch", handSet?.owned == ["allowedMcpServers"])
+
+    let foreignList: [String: Any] = ["allowedMcpServers": [["serverName": "mine"]]]
+    check("a hand-written allowlist is a collision", (try? enabling(foreignList).get()) == nil)
+    if case .failure(let refusal) = enabling(foreignList) {
+      check("naming the key", refusal == .collision(["allowedMcpServers"]))
+    }
+    check(
+      "force takes it over and records it",
+      (try? enabling(foreignList, force: true).get())?.owned.contains("allowedMcpServers") == true)
+    check(
+      "a hand-set false is a collision",
+      (try? enabling(["disableClaudeAiConnectors": false]).get()) == nil)
+
+    let stale: [String: Any] = [
+      "disableClaudeAiConnectors": true,
+      "allowedMcpServers": [["serverUrl": "http://127.0.0.1:8720/s/*"]],
+    ]
+    let refreshed = try? enabling(
+      stale, recorded: ["disableClaudeAiConnectors", "allowedMcpServers"]
+    ).get()
+    check(
+      "a stale list of ours is rewritten without force",
+      refreshed.map { keys($0.edits) } == ["allowedMcpServers"])
+    check(
+      "keeping the record", refreshed?.owned == ["disableClaudeAiConnectors", "allowedMcpServers"])
+    let current: [String: Any] = [
+      "disableClaudeAiConnectors": true, "allowedMcpServers": plan.allowed,
+    ]
+    check("a current file needs no edits", (try? enabling(current).get())?.edits.isEmpty == true)
+
+    let both: Set<String> = ["disableClaudeAiConnectors", "allowedMcpServers"]
+    check(
+      "off removes both recorded keys",
+      (try? ClientLockdown.disabling(current: current, recorded: both, force: false)).map(keys) == [
+        "disableClaudeAiConnectors", "allowedMcpServers",
+      ])
+    check(
+      "an unrecorded key stays",
+      (try? ClientLockdown.disabling(
+        current: current, recorded: ["allowedMcpServers"], force: false)).map(keys) == [
+          "allowedMcpServers"
+        ])
+    let edited: [String: Any] = [
+      "disableClaudeAiConnectors": false, "allowedMcpServers": plan.allowed,
+    ]
+    var refused: ClientLockdown.Refusal?
+    do { _ = try ClientLockdown.disabling(current: edited, recorded: both, force: false) } catch let
+      r as ClientLockdown.Refusal
+    { refused = r } catch {}
+    check(
+      "a recorded key edited by hand refuses off",
+      refused == .drifted(["disableClaudeAiConnectors"]))
+    check(
+      "force removes it anyway",
+      (try? ClientLockdown.disabling(current: edited, recorded: both, force: true)).map(keys) == [
+        "disableClaudeAiConnectors", "allowedMcpServers",
+      ])
+    check(
+      "a recorded key already gone is skipped",
+      (try? ClientLockdown.disabling(current: [:], recorded: both, force: false))?.isEmpty == true)
+  }
+
+  static func lockdownRecordRoundTrips() {
+    print("\nOnly Bastion: the record")
+    let suite = "wiring-check-\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suite) else {
+      return check("a scratch defaults suite", false)
+    }
+    defer { defaults.removePersistentDomain(forName: suite) }
+    check(
+      "nothing recorded reads as switched off",
+      ClientLockdown.recorded("claude-code", defaults) == nil)
+    ClientLockdown.record("claude-code", owned: [], defaults)
+    check(
+      "an empty record still reads as switched on",
+      ClientLockdown.recorded("claude-code", defaults) == [])
+    ClientLockdown.record("claude-code@x", owned: ["allowedMcpServers"], defaults)
+    check(
+      "each id keeps its own keys",
+      ClientLockdown.recorded("claude-code@x", defaults) == ["allowedMcpServers"])
+    ClientLockdown.forget("claude-code", defaults)
+    check(
+      "forget removes one id",
+      ClientLockdown.recorded("claude-code", defaults) == nil
+        && ClientLockdown.recorded("claude-code@x", defaults) != nil)
+  }
+
+  static func lockdownSplicesIntoARealShape() {
+    print("\nOnly Bastion: through the splice")
+    let plan = ClientLockdown.plan(claudeConfig: lockdownConfig, port: 8720)
+    let data = Data(settingsFixture.utf8)
+    guard let doc = try? ClientSettingsSplice.parse(data),
+      let on = try? ClientLockdown.enabling(
+        current: doc.values, plan: plan, recorded: [], force: false),
+      let written = try? ClientSettingsSplice.applying(on.edits, to: data),
+      let after = try? ClientSettingsSplice.parse(written)
+    else { return check("enable splices into the fixture", false) }
+    check(
+      "the result is on",
+      ClientLockdown.state(settings: after.values, plan: plan, enabled: true) == .on)
+    guard
+      let off = try? ClientLockdown.disabling(
+        current: after.values, recorded: on.owned, force: false),
+      let restored = try? ClientSettingsSplice.applying(off, to: written)
+    else { return check("disable splices back out", false) }
+    check("on then off is the original file", restored == data)
   }
 }
