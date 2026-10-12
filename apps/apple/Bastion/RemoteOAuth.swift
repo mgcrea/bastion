@@ -131,7 +131,8 @@ nonisolated enum RemoteOAuth {
     // parameter order is not fixed.
     for part in splitOutsideQuotes(header, on: ",") {
       let trimmed = part.trimmingCharacters(in: .whitespaces)
-      let body = trimmed.hasPrefix("Bearer ") ? String(trimmed.dropFirst(7)) : trimmed
+      // The scheme is case-insensitive (RFC 7235 §2.1).
+      let body = trimmed.lowercased().hasPrefix("bearer ") ? String(trimmed.dropFirst(7)) : trimmed
       guard let equals = body.firstIndex(of: "=") else { continue }
       let key = body[body.startIndex..<equals].trimmingCharacters(in: .whitespaces)
       guard key.lowercased() == "resource_metadata" else { continue }

@@ -287,6 +287,11 @@ struct RemoteCheck {
       meta("Bearer error=\"invalid_token\", resource_metadata=https://x.example/m")
         == "https://x.example/m")
     check("a challenge naming nothing yields nil", meta("Bearer realm=\"x\"") == nil)
+    // RFC 7235 §2.1: the auth-scheme is case-insensitive.
+    check(
+      "the scheme is read in any case",
+      meta("bearer resource_metadata=https://x.example/m") == "https://x.example/m"
+        && meta("BEARER resource_metadata=https://x.example/m") == "https://x.example/m")
     // A comma inside a quoted value is legal and used to cut the header in half,
     // truncating the URL and sending discovery to the well-known path against a
     // server that had just named its metadata.
