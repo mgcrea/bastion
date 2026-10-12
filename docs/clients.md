@@ -147,6 +147,10 @@ over MCP. It writes two keys into that profile's `settings.json`:
   and args) for one that spawns. Global servers come first, then each project
   folder's by path, keys sorted.
 
+The list is additive. Bastion adds the rules that are missing and rewrites its
+own wildcard when the port moves, but never removes an entry it did not write:
+a `{"serverName": "repo-db"}` you added by hand stays through every refresh.
+
 So the servers somebody configured on purpose keep working, and everything a
 plugin or claude.ai adds is filtered out. A repository's `.mcp.json` is
 filtered too. It is hygiene, not a boundary: a project's own settings can
@@ -168,7 +172,9 @@ to `{}\n`. The write is the same one every client gets: backup, temp and swap,
 **What is Bastion's.** `clientLockdown` in Bastion's defaults records, per
 client, which of the two keys Bastion added. Turning the switch off removes
 those and nothing else, so a `disableClaudeAiConnectors: true` somebody set
-by hand outlives it. If a recorded key has been edited out of Bastion's shape
+by hand outlives it. An `allowedMcpServers` already in Bastion's shape is
+recorded too, even when it needed no rewrite, and turning off removes the whole
+list, hand-added entries included, because the key is Bastion's. If a recorded key has been edited out of Bastion's shape
 since, turning the switch off refuses (`drifted`) rather than discard the edit:
 the card asks before replacing, and over MCP the caller passes `force: true`.
 `deniedMcpServers` is never read or written. Unwiring a client turns its switch
@@ -177,16 +183,17 @@ block every server the profile has. Unwiring does not stop at a hand edit: it
 drops the edited keys from the record, removes the keys still in Bastion's
 shape, and logs the ones it left.
 
-| State         | Meaning                                                                 |
-| ------------- | ----------------------------------------------------------------------- |
-| `on`          | Both keys are what Bastion would write now.                             |
-| `stale`       | Ours, but `.claude.json` gained or lost a server, or the port moved.    |
-| `drifted`     | A key Bastion wrote was edited by hand; _Update_ asks before replacing. |
-| `left behind` | Switched off, and Bastion's wildcard is still in the file.              |
-| `unreadable`  | The splice refused the file.                                            |
+| State         | Meaning                                                                                                                                               |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `on`          | Both keys are what Bastion would write now.                                                                                                           |
+| `stale`       | Ours, but a planned rule is missing: a server was added, or the port moved. Entries Bastion doesn't recognise don't count.                            |
+| `drifted`     | A key Bastion wrote was edited out of its shape (`disableClaudeAiConnectors` anything but `true`, the wildcard gone); _Update_ asks before replacing. |
+| `left behind` | Switched off, and Bastion's wildcard is still in the file.                                                                                            |
+| `unreadable`  | The splice refused the file.                                                                                                                          |
 
-`rewire` refreshes every switched-on profile, so a stale list is rewritten on
-the next launch or profile change; a Debug build never does this unasked.
+`rewire` refreshes every switched-on profile, so a stale list gains its missing
+rules on the next launch or profile change, and nothing in it is removed except
+an old Bastion wildcard; a Debug build never does this unasked.
 
 ### Release check
 

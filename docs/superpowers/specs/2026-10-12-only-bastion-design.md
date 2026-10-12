@@ -137,6 +137,13 @@ Exactly two top-level keys, which Bastion owns while the switch is on:
    which keeps no order, and a stable list is what keeps a rewrite from moving
    bytes for nothing. Bastion's own entries are never listed one by one: the wildcard already covers them.
 
+The list is **additive**. When Bastion writes it, the value is the plan above,
+followed by every entry already in the file that is neither in the plan (compared
+canonically) nor a Bastion wildcard, in its current order. A wildcard on another
+port is Bastion's and is dropped. Entries a person added by hand, such as
+`{ "serverName": "repo-db" }`, survive every refresh. A list that already holds
+every planned rule and no stale wildcard needs no edit.
+
 Servers from a repository's `.mcp.json` are not in `.claude.json` and are
 **blocked**. The pane says so in one line beside the switch. Allowing them would
 mean scanning repositories, which is the Workspaces feature's business, not
@@ -184,7 +191,10 @@ unchanged: stamp check, `settings.json.bastion-backup`, temp file and swap,
 - **On.** Read `settings.json` and `.claude.json`, build the allowlist, splice.
   If either key already exists with a value other than the one about to be
   written, refuse with `collision` naming the key, unless `force`. A forced
-  write leaves the previous value in the backup.
+  write leaves the previous value in the backup. An `allowedMcpServers` already
+  in Bastion's shape (equal to the plan or not) is Bastion's: it is recorded in
+  `clientLockdown`, so a later off removes it. `disableClaudeAiConnectors`
+  already `true` is adopted unrecorded.
 - **Rewrite.** The existing `rewire` pass also re-runs the splice for every id
   in `clientLockdown`, under the same rules: never in a Debug build without
   `-autoWireClients YES`, failures logged rather than raised. A write that
@@ -193,7 +203,8 @@ unchanged: stamp check, `settings.json.bastion-backup`, temp file and swap,
   Settings triggers it too.
 - **Off.** Remove each recorded key whose value is still Bastion-shaped
   (`allowedMcpServers` holding the wildcard entry, `disableClaudeAiConnectors`
-  true). A `stale` list is still Bastion-shaped and goes without ceremony. A
+  true). A `stale` list is still Bastion-shaped and goes without ceremony,
+  hand-added entries included, because the key is Bastion's. A
   recorded key edited out of that shape (`drifted`) is refused unless `force`,
   so a hand edit is not silently dropped. Unrecorded keys stay. Remove the id
   from `clientLockdown`.
@@ -206,14 +217,14 @@ unchanged: stamp check, `settings.json.bastion-backup`, temp file and swap,
 A second line in the client's audit, computed from one read of each file per
 redraw, never cached:
 
-| State                         | Meaning                                                                | Remedy                   |
-| ----------------------------- | ---------------------------------------------------------------------- | ------------------------ |
-| `off`                         | Not in `clientLockdown`, and neither key is Bastion-shaped.            | —                        |
-| `on`                          | Both keys equal what Bastion would write now.                          | —                        |
-| `stale — <names> not allowed` | Ours, but `.claude.json` gained a server, or the port changed.         | _Configure_ rewrites it. |
-| `drifted`                     | In `clientLockdown`, but a key was edited, removed, or set to `false`. | _Configure_ with force.  |
-| `left behind`                 | Not in `clientLockdown`, but the file holds Bastion's wildcard entry.  | _Turn off_ removes it.   |
-| `unreadable`                  | The splice lexer refused `settings.json`.                              | A person edits the file. |
+| State                         | Meaning                                                                                                                  | Remedy                      |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------- |
+| `off`                         | Not in `clientLockdown`, and neither key is Bastion-shaped.                                                              | —                           |
+| `on`                          | Both keys equal what Bastion would write now.                                                                            | —                           |
+| `stale — <names> not allowed` | Ours, but a planned rule is missing: a server was added, or the port changed. Unrecognised entries do not make it stale. | _Configure_ adds the rules. |
+| `drifted`                     | In `clientLockdown`, but a key was edited, removed, or set to anything but `true` (`1` included).                        | _Configure_ with force.     |
+| `left behind`                 | Not in `clientLockdown`, but the file holds Bastion's wildcard entry.                                                    | _Turn off_ removes it.      |
+| `unreadable`                  | The splice lexer refused `settings.json`.                                                                                | A person edits the file.    |
 
 "Bastion-shaped" means `allowedMcpServers` contains
 `http://127.0.0.1:<any port>/s/*`, the same loopback test `isOurs` applies to

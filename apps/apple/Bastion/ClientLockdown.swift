@@ -37,7 +37,10 @@ enum ClientLockdown {
   /// Whether a value of one of the two keys is the shape Bastion writes.
   static func isBastionShaped(_ key: String, _ value: Any?) -> Bool {
     switch key {
-    case connectorsKey: return (value as? Bool) == true
+    case connectorsKey:
+      // Through the NSNumber bridge `1` reads as `true`; only the literal counts.
+      guard let value else { return false }
+      return canonical(value) == "true"
     case allowedKey: return (value as? [Any])?.contains(where: isBastionPattern) == true
     default: return false
     }
@@ -113,9 +116,9 @@ enum ClientLockdown {
   enum State: Equatable {
     case off
     case on
-    /// Ours, but the config gained a server (`missing`) or lost one (`extra`),
-    /// or the port moved.
-    case stale(missing: [String], extra: Int)
+    /// Ours, but rules the plan now wants are absent: the config gained a
+    /// server, or the port moved. Entries a person added by hand are not stale.
+    case stale(missing: [String])
     /// Switched on, and these keys are no longer the shape Bastion writes.
     case drifted([String])
     /// Switched off, and the file still holds Bastion's wildcard.
@@ -126,12 +129,10 @@ enum ClientLockdown {
       switch self {
       case .off: return "off"
       case .on: return "on"
-      case .stale(let missing, _) where !missing.isEmpty:
+      case .stale(let missing):
         let shown = missing.prefix(4).joined(separator: ", ")
         let more = missing.count > 4 ? " and \(missing.count - 4) more" : ""
         return "stale — \(shown)\(more) not allowed"
-      case .stale(_, let extra):
-        return "stale — allows \(extra) server\(extra == 1 ? "" : "s") no longer configured"
       case .drifted(let keys):
         return "drifted — \(keys.joined(separator: ", ")) edited by hand"
       case .leftBehind:
@@ -156,8 +157,7 @@ enum ClientLockdown {
     let current = Set((allowed as? [Any] ?? []).map(canonical))
     let wanted = plan.rules.map { canonical($0.entry) }
     let missing = zip(plan.rules, wanted).filter { !current.contains($0.1) }.map(\.0.label)
-    let extra = current.subtracting(wanted).count
-    return missing.isEmpty && extra == 0 ? .on : .stale(missing: missing, extra: extra)
+    return missing.isEmpty ? .on : .stale(missing: missing)
   }
 
   // MARK: - Writing and removing
@@ -183,10 +183,13 @@ enum ClientLockdown {
   /// The edits that turn the switch on or bring it current, and the keys
   /// Bastion owns afterwards.
   ///
-  /// A key already holding exactly the wanted value is adopted, not recorded,
-  /// so it outlives the switch. An allowlist of Bastion's shape is Bastion's
-  /// (stale, or left behind) and is rewritten without `force`. Anything else
-  /// already there is a collision unless `force`.
+  /// `disableClaudeAiConnectors` already `true` is adopted, not recorded, so it
+  /// outlives the switch. An allowlist of Bastion's shape is Bastion's (equal,
+  /// stale, or left behind): always recorded, and rewritten without `force`
+  /// when it lacks a planned rule or holds an old Bastion wildcard. The
+  /// rewrite is additive: the plan, then every entry already there that is
+  /// neither planned nor a Bastion wildcard. Anything else already there is a
+  /// collision unless `force`.
   static func enabling(
     current: [String: Any], plan: Plan, recorded: Set<String>, force: Bool
   ) throws -> (edits: [ClientSettingsSplice.Edit], owned: Set<String>) {
@@ -200,8 +203,20 @@ enum ClientLockdown {
         owned.insert(key)
         continue
       }
+      if key == allowedKey {
+        let shaped = isBastionShaped(key, existing)
+        if shaped || force {
+          owned.insert(key)
+          if !covers(existing, plan: plan) {
+            edits.append((key, additive(existing: existing, plan: plan)))
+          }
+          continue
+        }
+        collisions.append(key)
+        continue
+      }
       if canonical(existing) == canonical(value) { continue }
-      if (key == allowedKey && isBastionShaped(key, existing)) || force {
+      if force {
         edits.append((key, value))
         owned.insert(key)
         continue
@@ -210,6 +225,25 @@ enum ClientLockdown {
     }
     if !collisions.isEmpty { throw Refusal.collision(collisions) }
     return (edits, owned)
+  }
+
+  /// The plan, then every current entry that is neither planned nor a Bastion
+  /// wildcard (an old port's is Bastion's), in its current order.
+  private static func additive(existing: Any, plan: Plan) -> [Any] {
+    let planned = Set(plan.allowed.map(canonical))
+    let kept = (existing as? [Any] ?? []).filter {
+      !planned.contains(canonical($0)) && !isBastionPattern($0)
+    }
+    return plan.allowed + kept
+  }
+
+  /// Whether the list holds every planned rule and no other Bastion wildcard.
+  private static func covers(_ existing: Any, plan: Plan) -> Bool {
+    let current = existing as? [Any] ?? []
+    let have = Set(current.map(canonical))
+    let planned = Set(plan.allowed.map(canonical))
+    return planned.isSubset(of: have)
+      && !current.contains { isBastionPattern($0) && !planned.contains(canonical($0)) }
   }
 
   /// The edits that turn the switch off: each recorded key still in Bastion's
@@ -234,7 +268,7 @@ enum ClientLockdown {
   // MARK: - The record
 
   static func records(_ defaults: UserDefaults = .standard) -> [String: [String]] {
-    defaults.dictionary(forKey: defaultsKey) as? [String: [String]] ?? [:]
+    (defaults.dictionary(forKey: defaultsKey) ?? [:]).compactMapValues { $0 as? [String] }
   }
 
   /// The keys Bastion added for this client, or nil when the switch is off.
