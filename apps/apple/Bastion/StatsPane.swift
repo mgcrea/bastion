@@ -246,7 +246,7 @@ struct StatsPane: View {
     guard !fronted.isEmpty else {
       return
         "None of these load their tools on demand. Turning it on for a large listing replaces "
-        + "it with \(ToolFacade.names.count) Bastion tools, and the schemas are fetched when the "
+        + "it with three Bastion tools, and the schemas are fetched when the "
         + "model reaches for one."
     }
     let saved = fronted.reduce(0) { $0 + $1.savedBytes }
