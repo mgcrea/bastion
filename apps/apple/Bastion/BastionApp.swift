@@ -58,10 +58,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Nothing else on this path touches the store, so nothing else would
     // construct it.
     //
-    // Servers first, then profiles: `ProfileStore.load` drops a profile naming
-    // a server that is not installed, so a profile store built against an empty
-    // server snapshot would drop every profile there is — and then save the
-    // result over `profiles.json` at the first edit.
+    // Servers first, then profiles: `ProfileStore.load` sets aside a profile
+    // naming a server that is not installed, so a profile store built against
+    // an empty server snapshot would set aside every profile there is, and the
+    // app would start with none until something reloaded it.
     _ = ServerStore.shared
     _ = ProfileStore.shared
     #if DEBUG

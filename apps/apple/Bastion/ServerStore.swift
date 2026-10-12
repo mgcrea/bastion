@@ -604,13 +604,15 @@ final class ServerStore {
 
   /// Remove a server, its profiles, its credentials and its installed code.
   ///
-  /// All four together, and that is deliberate. `ProfileStore.load` already
-  /// drops a profile naming a server it cannot resolve, so leaving the profiles
-  /// behind would not preserve them — it would delete them on the next launch,
-  /// silently, without the Keychain sweep that `ProfileStore.remove` does. A
-  /// removal that quietly leaks credentials for servers you removed months ago
-  /// is the worst version of this, so it happens here, at once, behind a
-  /// confirmation that says so.
+  /// All four together, and that is deliberate. Left behind, the profiles would
+  /// not stay usable: `ProfileStore.load` sets a profile whose server is gone
+  /// aside as orphaned, out of every list, with its row kept in
+  /// `profiles.json` and its credentials kept in the Keychain until a server of
+  /// that id comes back. That is right for a server that is merely not
+  /// installed yet, and wrong for one somebody removed on purpose: a removal
+  /// that quietly keeps credentials for servers you removed months ago is the
+  /// worst version of this, so it happens here, at once, with the Keychain
+  /// sweep `ProfileStore.remove` does, behind a confirmation that says so.
   func remove(_ server: BastionServer) throws {
     guard server.origin != .builtin else { throw StoreError.cannotRemoveBuiltin }
     for profile in ProfileStore.shared.profiles where profile.serverID == server.id {
