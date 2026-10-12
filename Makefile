@@ -613,7 +613,9 @@ wiring-check-real: wiring-check ## Prove the merge against the real client confi
 		"$(HOME)/Library/Application Support/Claude/claude_desktop_config.json" \
 		"$(HOME)/Library/Application Support/Code/User/mcp.json" \
 		"$(HOME)/.codex/config.toml" \
-		"$(HOME)/.claude-skitrust/.claude.json"
+		"$(HOME)/.claude-skitrust/.claude.json" \
+		"$(HOME)/.claude/settings.json" \
+		"$(HOME)/.claude-skitrust/settings.json"
 
 # The skills half of the same trade `wiring-check` makes: the rules are pure
 # functions of a folder tree, so a fake tree drives them, and the applier runs

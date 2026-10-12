@@ -96,6 +96,8 @@ struct WiringCheck {
         // `ClientWiring.all`.
         if url.pathExtension == "toml" {
           realTOMLFileSurvives(url)
+        } else if url.lastPathComponent == "settings.json" {
+          realSettingsSurvive(url)
         } else {
           realFileSurvives(url)
         }
@@ -1929,6 +1931,41 @@ struct WiringCheck {
     check(
       "and the new file is exactly our blocks",
       names(try? ClientWiringTOML.read(fresh)) == ["shopify", "stripe"])
+  }
+
+  /// Read-only. Parses a real settings.json, turns the switch on in memory
+  /// against an empty config, and asserts every key the user had is
+  /// deep-equal after, and that off returns the original bytes when Bastion
+  /// added every key it wrote.
+  static func realSettingsSurvive(_ url: URL) {
+    print("\n\(url.path)")
+    guard let data = try? Data(contentsOf: url) else {
+      return print("  skip (no file)")
+    }
+    let doc: ClientSettingsSplice.Document
+    do {
+      doc = try ClientSettingsSplice.parse(data)
+    } catch {
+      return check("parses: \(error.localizedDescription)", false)
+    }
+    check("parses", true)
+    let plan = ClientLockdown.plan(claudeConfig: [:], port: port)
+    guard
+      let on = try? ClientLockdown.enabling(current: doc.values, plan: plan, recorded: [], force: true),
+      let written = try? ClientSettingsSplice.applying(on.edits, to: data),
+      let after = try? ClientSettingsSplice.parse(written)
+    else { return check("switches on in memory", false) }
+    for (key, value) in doc.values where !ClientLockdown.managedKeys.contains(key) {
+      check("'\(key)' survives", deepEqual(value, after.values[key]))
+    }
+    check("reads as on", ClientLockdown.state(settings: after.values, plan: plan, enabled: true) == .on)
+    let addedEverything = on.owned.allSatisfy { doc.values[$0] == nil }
+    if addedEverything,
+      let off = try? ClientLockdown.disabling(current: after.values, recorded: on.owned, force: false),
+      let restored = try? ClientSettingsSplice.applying(off, to: written)
+    {
+      check("on then off is byte-identical", restored == data)
+    }
   }
 
   /// The `wiring-check-real` half for a TOML config.
