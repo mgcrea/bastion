@@ -687,6 +687,30 @@ struct WiringCheck {
 
     let left = (try? fm.contentsOfDirectory(atPath: directory.path)) ?? []
     check("still exactly config + one backup", left.count == 2)
+
+    // The file as its client last wrote it, which is never byte-for-byte what
+    // JSONSerialization produces: Claude Code writes `"key": value` in
+    // insertion order. Unchanged content must still be no write, or every
+    // launch's rewire reformats ~/.claude.json and replaces its backup.
+    let foreign = directory.appendingPathComponent("claude.json")
+    let theirs = """
+      {
+        "numStartups": 3,
+        "mcpServers": {
+          "github": {
+            "url": "https://x"
+          }
+        }
+      }
+
+      """
+    try? theirs.write(to: foreign, atomically: true, encoding: .utf8)
+    let unchanged = (try? ClientWiringMerge.readJSON(foreign)) ?? [:]
+    let noop = try? ClientWiringMerge.write(unchanged, to: foreign, backupSuffix: "bastion-backup")
+    check("a client-formatted file with nothing to change makes no backup", noop == nil)
+    check(
+      "and keeps the client's formatting",
+      (try? String(contentsOf: foreign, encoding: .utf8)) == theirs)
   }
 
   /// What an entry reaches, which is what makes a rename recognisable.

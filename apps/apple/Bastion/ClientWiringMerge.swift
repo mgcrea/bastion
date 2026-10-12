@@ -573,7 +573,8 @@ enum ClientWiringMerge {
     _ data: Data,
     to url: URL,
     backupSuffix: String,
-    expecting: Stamp? = nil
+    expecting: Stamp? = nil,
+    sameContent: ((Data) -> Bool)? = nil
   ) throws -> URL? {
     let fm = FileManager.default
     var backup: URL?
@@ -597,7 +598,9 @@ enum ClientWiringMerge {
     // backup, a new mtime and a client told to restart for no reason — and the
     // JSON half wanted the same guard the moment anything started rewiring on
     // its own rather than only when somebody pressed Configure.
-    if let current = try? Data(contentsOf: url), current == data { return nil }
+    if let current = try? Data(contentsOf: url), current == data || sameContent?(current) == true {
+      return nil
+    }
 
     if fm.fileExists(atPath: url.path) {
       backup = configured.appendingPathExtension(backupSuffix)
@@ -642,10 +645,19 @@ enum ClientWiringMerge {
     backupSuffix: String,
     expecting: Stamp? = nil
   ) throws -> URL? {
-    try write(
-      JSONSerialization.data(
-        withJSONObject: root, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]),
-      to: url, backupSuffix: backupSuffix, expecting: expecting)
+    let options: JSONSerialization.WritingOptions = [
+      .prettyPrinted, .sortedKeys, .withoutEscapingSlashes,
+    ]
+    let data = try JSONSerialization.data(withJSONObject: root, options: options)
+    // The file on disk was last written by its client, in its own formatting,
+    // so its bytes never equal these even when nothing changed. Compared as
+    // this would write it instead.
+    return try write(
+      data, to: url, backupSuffix: backupSuffix, expecting: expecting,
+      sameContent: { current in
+        (try? JSONSerialization.jsonObject(with: current))
+          .flatMap { try? JSONSerialization.data(withJSONObject: $0, options: options) } == data
+      })
   }
 
   /// The servers a Claude Code **project**-scope entry holds for one folder.
