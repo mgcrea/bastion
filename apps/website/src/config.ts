@@ -192,7 +192,6 @@ export const DIALECT = {
   modern: "2026-07-28",
   legacy: "initialize",
   children: "2025-11-25",
-  conformanceChecks: 24,
 } as const;
 
 /**
@@ -359,12 +358,6 @@ export const CLIENTS = [
   { name: "Windsurf", config: "windsurf/mcp_config.json", viaBridge: true },
   { name: "ChatGPT & Codex", config: "~/.codex/config.toml" },
 ] as const;
-
-/** "Claude Code, Claude Desktop, VS Code, Cursor, LM Studio, Windsurf and ChatGPT & Codex". */
-export const clientList = (() => {
-  const names = CLIENTS.map((c) => c.name);
-  return names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
-})();
 
 /** macOS 26 or later: the icon is an Icon Composer bundle, which nothing older renders. */
 export const REQUIRES = "macOS 26 or later";
