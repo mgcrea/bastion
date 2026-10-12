@@ -1394,8 +1394,8 @@ nonisolated extension Supervisor {
     ///
     /// Once per process rather than per connect. The write gate is applied to a
     /// child at spawn, so this list cannot change under a running one, and
-    /// `ProfileStore.upsert` and `ServerInstaller` both stop the child when
-    /// anything that would move it changes.
+    /// `ProfileStore.upsert`, `ServerStore.upsert` and `ServerInstaller` all stop
+    /// the child when anything that would move it changes.
     ///
     /// Bastion's own request, like the handshake above, so it takes no log row
     /// and no client id: this is not traffic anybody asked for, and the

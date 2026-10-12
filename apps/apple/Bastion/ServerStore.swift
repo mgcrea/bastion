@@ -571,14 +571,11 @@ final class ServerStore {
       }
     }
 
-    var made = Self.make(id: id, from: definition)
+    let made = Self.make(id: id, from: definition)
+    var edited: String?
     if let original, let index = servers.firstIndex(where: { $0.id == original }) {
-      // Carried across the edit. `make` builds a fresh definition from the
-      // stored fields, and the switch is not one of them — so without this,
-      // opening the editor on a disabled server and pressing Save would quietly
-      // turn it back on.
-      made.isEnabled = servers[index].isEnabled
-      servers[index] = made
+      servers[index] = made.carryingSwitches(from: servers[index])
+      edited = original
       // The old id's install is now unreachable — nothing resolves through it —
       // so it goes with the name rather than sitting in Application Support as
       // a directory no code can name.
@@ -588,6 +585,19 @@ final class ServerStore {
     }
     sort()
     try save()
+    // A running child or remote session holds the definition it was started
+    // from: its command line, or its URL, headers and `writeTools`. Left
+    // running, an edit would not reach it until a relaunch, so a tool newly
+    // listed as a write stayed callable with writes off. Stopped
+    // unconditionally, as `ServerInstaller` does after an install: a stop with
+    // nothing running is a no-op, and the next call pays one spawn. A rename
+    // has no profiles to stop, because one that would strand them is refused
+    // above.
+    if let edited {
+      for profile in ProfileStore.shared.profiles where profile.serverID == edited {
+        Supervisor.shared.stop(profile: profile.name, server: edited)
+      }
+    }
     reclaimProfiles()
     hostLog("servers", .info, "saved custom server '\(id)'")
   }

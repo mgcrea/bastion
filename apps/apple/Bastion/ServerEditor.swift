@@ -608,6 +608,12 @@ struct ServerEditor: View {
     }
   }
 
+  /// The write tools of the server being edited, which this form does not show.
+  private var editedWriteTools: [String]? {
+    guard case .editing(let server) = subject, !server.writeTools.isEmpty else { return nil }
+    return server.writeTools
+  }
+
   private func saveCustom() {
     let variables = draft.variables.filter { !$0.name.trimmed.isEmpty }
     let gate = draft.writeGate.trimmed
@@ -627,7 +633,10 @@ struct ServerEditor: View {
       docsUrl: draft.docsUrl.trimmed.isEmpty ? nil : draft.docsUrl.trimmed,
       dialect: draft.dialect.rawValue,
       writeGate: isRemote || gate.isEmpty ? nil : gate,
-      writeTools: nil,
+      // Not on this form, so carried rather than cleared: a server handed
+      // over by `bastion://add-server` lists the tools its write gate hides,
+      // and saving an unrelated edit used to forward them with writes off.
+      writeTools: isRemote ? editedWriteTools : nil,
       stateEnv: isRemote ? [] : variables.filter(\.isState).map { $0.name.trimmed },
       env: variables.map { variable in
         .init(

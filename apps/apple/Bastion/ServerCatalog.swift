@@ -170,6 +170,19 @@ nonisolated struct BastionServer: Identifiable, Hashable {
   /// cannot be mistaken for one that said no.
   var loadsToolsOnDemand: Bool { lazyTools ?? ToolFacade.globalDefault }
 
+  /// This definition with `previous`'s per-install switches, for an edit.
+  ///
+  /// `ServerStore.upsert` rebuilds a custom server from the definition the
+  /// editor saved, and neither switch is part of one. Without this, opening the
+  /// editor on a disabled server and pressing Save turned it back on, and a
+  /// server set to load its tools on demand went back to Default.
+  func carryingSwitches(from previous: BastionServer) -> BastionServer {
+    var carried = self
+    carried.isEnabled = previous.isEnabled
+    carried.lazyTools = previous.lazyTools
+    return carried
+  }
+
   /// The package, or `nil` when there is nothing to install.
   ///
   /// The one unwrap a child-only path needs, so that "what does this do for a
