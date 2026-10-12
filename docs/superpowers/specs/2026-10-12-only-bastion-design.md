@@ -132,8 +132,10 @@ Exactly two top-level keys, which Bastion owns while the switch is on:
    - anything else (no `url`, no `command`) is skipped and reported, since
      Claude Code could not launch it either.
 
-   Duplicates collapse; order follows the file, global entries first. Bastion's
-   own entries are never listed one by one: the wildcard already covers them.
+   Duplicates collapse. Global entries come first, then each project folder in
+   path order, keys sorted within each: `.claude.json` is read into a dictionary,
+   which keeps no order, and a stable list is what keeps a rewrite from moving
+   bytes for nothing. Bastion's own entries are never listed one by one: the wildcard already covers them.
 
 Servers from a repository's `.mcp.json` are not in `.claude.json` and are
 **blocked**. The pane says so in one line beside the switch. Allowing them would
@@ -262,7 +264,9 @@ No test target exists; the checks follow the repo's pattern.
   - collision without `force`, takeover with it, backup written once;
   - an equal pre-existing key is adopted unrecorded and survives off; a
     recorded key edited out of shape refuses off without `force`.
-- **`make unit`**: allowlist generation from `.claude.json`-shaped fixtures
+- **`make wiring-check`**, in a new `ClientLockdown.swift` beside the splice
+  (it uses `ClientWiringMerge.isOurs`, which that check already compiles):
+  allowlist generation from `.claude.json`-shaped fixtures
   (global and project servers, URL and command, Bastion entries excluded,
   duplicates collapsed, unlaunchable entries skipped), and the state table,
   row by row.
