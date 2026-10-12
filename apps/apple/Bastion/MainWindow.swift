@@ -476,8 +476,13 @@ struct MainView: View {
   private var detail: some View {
     switch current {
     case .server(let id):
+      // `.id`, so another server gets another pane. As one branch of this
+      // switch the pane was reused across servers with its `@State`: a profile
+      // editor open on one server stayed up for the next and saved its fields
+      // under that server's id, and an error or a pending removal carried over.
       if let server = ServerStore.shared.server(id: id) {
         ServerDetail(server: server, edit: { editor.subject = .editing(server) })
+          .id(id)
       } else {
         // Reachable, and now routinely: a pane remembered in `@AppStorage`
         // outlives the server it named the moment somebody removes one.
@@ -486,6 +491,7 @@ struct MainView: View {
     case .client(let id):
       if let client = ClientWiring.all.first(where: { $0.id == id }) {
         ClientDetail(client: client)
+          .id(id)
       } else {
         UnknownPane(what: "client", id: id)
       }

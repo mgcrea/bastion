@@ -509,10 +509,9 @@ struct ClientDetail: View {
       }
     }
     // `initial: true` and keyed on the CLIENT, not just on appearing. The pane
-    // is one branch of a switch in `MainWindow`, so moving from Claude Code to
-    // Cursor reuses this view and its `@State` — an `onAppear` would not fire
-    // again and the picker would sit there showing the previous client's
-    // answer, which is the one kind of wrong a settings control must not be.
+    // used to be reused from Claude Code to Cursor with its `@State`, which left
+    // the picker showing the previous client's answer. `MainWindow` now gives
+    // each client its own pane; this stays keyed so it cannot come back.
     .onChange(of: client.id, initial: true) {
       let stored = UserDefaults.standard.string(forKey: ToolFacade.clientOverrideKey(client.id))
       defersOverride = stored ?? ""
