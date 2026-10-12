@@ -889,6 +889,15 @@ SHOT_ARGS := -ScreenshotMode YES \
 # the body running IS the content existing, and the app says so.
 SHOT_SETTLE := 0.3
 
+# Wallpaper tinting off for the run, and put back exactly as it was after it.
+# macOS 26 tints a dark window's translucent background with the wallpaper
+# behind it, so a golden held one Mac's desktop: a new wallpaper, a dynamic one
+# at another hour, or another Mac failed the dark plates on a uniform shift of a
+# few levels with no code change (the licence plate's sidebar, +4, on
+# 2026-10-12). No launch argument reaches it, which is why it is a capture flag
+# and not one of SHOT_ARGS.
+SHOT_TINT := --no-wallpaper-tint
+
 SHOT_DIR      := apps/apple/Screenshots
 SHOT_SOURCE   := $(SHOT_DIR)/source
 SHOT_GOLDEN   := $(SHOT_DIR)/golden
@@ -925,6 +934,7 @@ screenshots: app ## Capture, gate against the goldens, and compose both sets
 		--extra-args="$(SHOT_ARGS)" \
 		--settle $(SHOT_SETTLE) \
 		--ready-file \
+		$(SHOT_TINT) \
 		--wait
 
 screenshots-capture: app ## Capture only (no gate, no compose)
@@ -942,6 +952,7 @@ screenshots-capture: app ## Capture only (no gate, no compose)
 		--extra-args="$(SHOT_ARGS)" \
 		--settle $(SHOT_SETTLE) \
 		--ready-file \
+		$(SHOT_TINT) \
 		--wait
 
 screenshots-check: ## Fail if the captures drifted from the goldens
