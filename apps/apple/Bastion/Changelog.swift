@@ -66,7 +66,101 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_27_0, v1_26_0, v1_25_0, v1_24_0, v1_23_0]
+  static let releases: [Release] = [v1_28_0, v1_27_0, v1_26_0, v1_25_0, v1_24_0]
+
+  // swift-format-ignore
+  private static let v1_28_0: Release = Release(
+    version: "1.28.0",
+    date: "2026-10-13",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Only Bastion.",
+            body: [
+              "Each Claude Code client's pane has a switch that writes `disableClaudeAiConnectors` and an `allowedMcpServers` list into that profile's `settings.json`: Bastion's endpoint, plus every server already in its `.claude.json` that Bastion did not write. Servers added by plugins (the ones synced from a claude.ai account included), claude.ai connectors and a repository's `.mcp.json` are then filtered out. Only those two keys change, the rest of the file is kept byte for byte, a backup is written first, and a file with comments or a trailing comma is left alone. Entries you add to the list by hand stay. The list is refreshed when a server is added or the port moves, and lifted when the client is unwired; turning it off removes only what Bastion added, and asks before discarding a hand edit. It is hygiene rather than a boundary: a project's own settings can widen the list. `set_client_lockdown` on Bastion's own server does the same, and `list_clients` reports each Claude Code row's state.",
+            ]),
+        ]),
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 1,
+            headline: nil,
+            body: [
+              "\"Measured …\" in a remote server's pane dates from when its context figure last changed, as it already did for a server Bastion runs, rather than from the last call.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 2,
+            headline: "A first call can no longer outrun turning writes off.",
+            body: [
+              "A call racing the edit could start the server from the old profile and keep writes on for up to 30 minutes. Turning a profile's capture off, or a server's _Load tools on demand_, likewise reaches a server that is already running instead of waiting for its idle stop, so a running server no longer goes on logging arguments and results.",
+            ]),
+          Entry(
+            ordinal: 3,
+            headline: "Editing a custom server keeps what the form does not show.",
+            body: [
+              "A server handed over by `bastion://add-server` lost its list of write tools, so those were forwarded with writes off; a server set to load its tools on demand went back to Default; and the edit reached a running server only after a relaunch. The _Write gate_ field is now offered only for a server Bastion runs, since a remote one has nowhere to put it.",
+            ]),
+          Entry(
+            ordinal: 4,
+            headline: "Remote servers recover from an expired session or token on every request.",
+            body: [
+              "After an upstream session expired, every read on a writes-off profile was refused with \"writes are off\", and a token revoked before its expiry broke the profile even with a refresh token held. A refresh token is now sent only to the authorization server that issued it, a token whose `expires_in` arrives as a string is refreshed before it expires, a lowercase `bearer` challenge is read, and an OAuth sign-in no longer times out behind a browser's idle speculative connection.",
+            ]),
+          Entry(
+            ordinal: 5,
+            headline: "Client wiring.",
+            body: [
+              "`~/.claude.json` is no longer reformatted, and its backup replaced, on every launch. A workspace-scoped profile's rewire keeps a server you disabled disabled and keeps your timeout, as the global block already did. A repository reached through a symlink is filed under its real path, where Claude Code reads it. Two workspace-scoped profiles that would share a key in a folder are refused rather than taking turns. A string with a CRLF or DEL no longer writes an invalid Codex `config.toml`.",
+            ]),
+          Entry(
+            ordinal: 6,
+            headline: "Moving between two servers or two clients builds a fresh pane.",
+            body: [
+              "A profile editor open on one server could survive a menu bar reveal of another and save its fields there.",
+            ]),
+          Entry(
+            ordinal: 7,
+            headline: "A crashed server is no longer counted as running.",
+            body: [
+              "Opening its profile editor restarted it, `list_servers` reported it running, and a failed handshake could hold off an update's relaunch.",
+            ]),
+          Entry(
+            ordinal: 8,
+            headline: nil,
+            body: [
+              "`list_profiles` no longer returns a value typed before its variable became secret.",
+            ]),
+          Entry(
+            ordinal: 9,
+            headline: nil,
+            body: [
+              "A gateway port outside 0–65535 in Settings is read as unset; it crashed every launch.",
+            ]),
+          Entry(
+            ordinal: 10,
+            headline: nil,
+            body: [
+              "A latency percentile is never reported above the maximum beside it.",
+            ]),
+          Entry(
+            ordinal: 11,
+            headline: nil,
+            body: [
+              "Stats and a server's pane say three Bastion tools, or four where a server's writes can be told apart, rather than always four.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_27_0: Release = Release(
@@ -241,35 +335,6 @@ nonisolated enum Changelog {
             headline: "The website no longer lists Playwright, Supabase, Netlify and Apify as read-only.",
             body: [
               "They gate writes by tool name, which the site's copy of the rule did not count. The server detail pane now describes that gate for them too, where it used to only for remote servers.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_23_0: Release = Release(
-    version: "1.23.0",
-    date: "2026-09-22",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Workspaces scope profiles to folders.",
-            body: [
-              "A workspace is a set of folders and the profiles that belong there. A profile in one is left out of every client's global list and written into Claude Code's per-folder project blocks instead, so a session in an `rgis` repository sees the `rgis` servers and nothing from another account. A folder inside a git repository means the whole repository, its subfolders and its worktrees, which is how Claude Code itself files project blocks; a parent folder is expanded to every repository below it. Managed in Settings → Workspaces, or with the new `list_workspaces`, `upsert_workspace` and `remove_workspace` tools. Claude Code only for now.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 1,
-            headline: "Usage stats count what you asked for, not what the client's SDK sent on its own.",
-            body: [
-              "The handshake and listing methods a client sends by itself on every connect (`initialize`, `tools/list` and the other listings, `ping`, `logging/setLevel`) were recorded as calls, so `tools/list` topped every ranking, the call totals measured how often clients reconnected, and the median latency was mostly that of a cached listing. They are no longer recorded, and days already on disk are filtered when read. The per-client totals have no method to filter on, so they keep counting old handshakes until those days age out of the window.",
             ]),
         ]),
     ])

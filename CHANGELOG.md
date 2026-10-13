@@ -4,8 +4,78 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.27.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.28.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
+
+## [1.28.0] - 2026-10-13
+
+**Claude Code can be held to Bastion's servers.** A switch on each Claude Code profile blocks the
+MCP servers that plugins and claude.ai connectors add, and keeps Bastion and the ones you set up.
+Remote servers and client wiring are sturdier too.
+
+### Added
+
+- **Only Bastion.** Each Claude Code client's pane has a switch that writes
+  `disableClaudeAiConnectors` and an `allowedMcpServers` list into that profile's `settings.json`:
+  Bastion's endpoint, plus every server already in its `.claude.json` that Bastion did not write.
+  Servers added by plugins (the ones synced from a claude.ai account included), claude.ai connectors
+  and a repository's `.mcp.json` are then filtered out. Only those two keys change, the rest of the
+  file is kept byte for byte, a backup is written first, and a file with comments or a trailing
+  comma is left alone. Entries you add to the list by hand stay. The list is refreshed when a
+  server is added or the port moves, and lifted when the client is unwired; turning it off removes
+  only what Bastion added, and asks before discarding a hand edit. It is hygiene rather than a
+  boundary: a project's own settings can widen the list. `set_client_lockdown` on Bastion's own
+  server does the same, and `list_clients` reports each Claude Code row's state.
+
+### Changed
+
+- "Measured …" in a remote server's pane dates from when its context figure last changed, as it
+  already did for a server Bastion runs, rather than from the last call.
+
+### Fixed
+
+- **A first call can no longer outrun turning writes off.** A call racing the edit could start the
+  server from the old profile and keep writes on for up to 30 minutes. Turning a profile's capture
+  off, or a server's _Load tools on demand_, likewise reaches a server that is already running
+  instead of waiting for its idle stop, so a running server no longer goes on logging arguments and
+  results.
+- **Editing a custom server keeps what the form does not show.** A server handed over by
+  `bastion://add-server` lost its list of write tools, so those were forwarded with writes off; a
+  server set to load its tools on demand went back to Default; and the edit reached a running
+  server only after a relaunch. The _Write gate_ field is now offered only for a server Bastion
+  runs, since a remote one has nowhere to put it.
+- **Remote servers recover from an expired session or token on every request.** After an upstream
+  session expired, every read on a writes-off profile was refused with "writes are off", and a
+  token revoked before its expiry broke the profile even with a refresh token held. A refresh token
+  is now sent only to the authorization server that issued it, a token whose `expires_in` arrives
+  as a string is refreshed before it expires, a lowercase `bearer` challenge is read, and an OAuth
+  sign-in no longer times out behind a browser's idle speculative connection.
+- **Client wiring.** `~/.claude.json` is no longer reformatted, and its backup replaced, on every
+  launch. A workspace-scoped profile's rewire keeps a server you disabled disabled and keeps your
+  timeout, as the global block already did. A repository reached through a symlink is filed under
+  its real path, where Claude Code reads it. Two workspace-scoped profiles that would share a key
+  in a folder are refused rather than taking turns. A string with a CRLF or DEL no longer writes an
+  invalid Codex `config.toml`.
+- **Moving between two servers or two clients builds a fresh pane.** A profile editor open on one
+  server could survive a menu bar reveal of another and save its fields there.
+- **A crashed server is no longer counted as running.** Opening its profile editor restarted it,
+  `list_servers` reported it running, and a failed handshake could hold off an update's relaunch.
+- `list_profiles` no longer returns a value typed before its variable became secret.
+- A gateway port outside 0–65535 in Settings is read as unset; it crashed every launch.
+- A latency percentile is never reported above the maximum beside it.
+- Stats and a server's pane say three Bastion tools, or four where a server's writes can be told
+  apart, rather than always four.
+
+### Internal
+
+- Screenshots are captured with wallpaper tinting off, so the goldens no longer carry one Mac's
+  desktop; every plate was re-accepted, and the licence plate gained the Skills row it predated.
+- The Swift generators spell control characters as Swift does, and the changelog parser refuses a
+  bullet written before any `###` heading instead of dropping it from every rendering.
+- `make dev-clone` keeps the Debug profiles when a tree copy fails part way, and
+  `wiring-check-real` tests project blocks through the function the app actually calls.
+- The website no longer calls every remote server's dialect a seed, and drops two config exports
+  nothing read.
 
 ## [1.27.0] - 2026-10-09
 
