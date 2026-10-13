@@ -164,10 +164,11 @@
       ]
     },
     {
-      "//": "The website's loop, built by `make site-video` into apps/website/public/video and played under the hero. No hook and no card, because the hero has just said both; the captions are the hero's own three claims plus the wiring one, and it ends back on `running` at home so the loop does not jump. Same rects as `intro` where the screens are shared. Calm rather than kinetic, which suits X but not a page someone is reading: each screen holds 6.5 s, the camera eases in once per screen, and a soft spotlight stands in for the pops.",
+      "//": "The website's loop, built by `make site-video` into apps/website/public/video and played under the hero. No hook and no card, because the hero has just said both; the captions are the hero's own three claims plus the wiring one, and it ends back on `running` at home so the loop does not jump. Calm, because kinetic suits X but not a page someone is reading. Every screen is one move in and one out: it cuts in on the whole window, glides in about 1.35x on what the caption names, which the spotlight marks, and glides back out before the next cut, so a crossfade never runs under a moving camera. The focus rects are 1500 wide with fill 0.66 on purpose: on a row nearly the window's width the zoom is only 1.08x, a nudge that reads as a wiggle, and without the fill the wide frame lets it run to calm's 1.7x cap, which crops the sidebar away. `loop` keeps the window on screen at frame 0 so the restart does not blink.",
       "id": "tour",
       "duration": 28,
-      "poster": 4,
+      "poster": 3.5,
+      "loop": true,
       "outputs": { "promo": [[1920, 1080]], "website": false },
       "motion": "calm",
       "beats": [
@@ -176,34 +177,35 @@
           "screen": "running",
           "caption": "One process per profile, *shared by every client*."
         },
-        { "at": 1.8, "focus": { "rect": [460, 170, 1880, 360] } },
-        { "at": 2.6, "spotlight": { "rect": [470, 175, 1860, 90], "until": 5.6 } },
+        { "at": 1, "focus": { "rect": [460, 150, 1500, 450], "fill": 0.66 } },
+        { "at": 2, "spotlight": { "rect": [470, 175, 1860, 90], "until": 4.6 } },
+        { "at": 4.8, "focus": "home" },
         {
           "at": 6.5,
           "screen": "server",
-          "caption": "Credentials in the Keychain, *never in your config*.",
-          "focus": "home"
+          "caption": "Credentials in the Keychain, *never in your config*."
         },
-        { "at": 8.3, "focus": { "rect": [460, 1100, 1880, 450] } },
-        { "at": 9.1, "spotlight": { "rect": [470, 1374, 960, 82], "until": 12.1 } },
+        { "at": 7.5, "focus": { "rect": [460, 1080, 1500, 500], "fill": 0.66 } },
+        { "at": 8.5, "spotlight": { "rect": [470, 1374, 960, 82], "until": 11.1 } },
+        { "at": 11.3, "focus": "home" },
         {
           "at": 13,
           "screen": "log",
-          "caption": "Every call recorded, *secrets redacted*.",
-          "focus": "home"
+          "caption": "Every call recorded, *secrets redacted*."
         },
-        { "at": 14.8, "focus": { "rect": [460, 520, 1880, 420] } },
-        { "at": 15.6, "spotlight": { "rect": [470, 728, 960, 90], "until": 18.6 } },
+        { "at": 14, "focus": { "rect": [460, 560, 1500, 450], "fill": 0.66 } },
+        { "at": 15, "spotlight": { "rect": [470, 728, 960, 90], "until": 17.6 } },
+        { "at": 17.8, "focus": "home" },
         {
           "at": 19.5,
           "screen": "client",
           "caption": "Wired into your editor, *not living inside it*.",
-          "focus": "home",
-          "until": 25.2
+          "until": 25.6
         },
-        { "at": 21.3, "focus": { "rect": [460, 500, 1880, 560] } },
-        { "at": 22.1, "spotlight": { "rect": [472, 519, 1853, 525], "until": 24.8 } },
-        { "at": 26, "screen": "running", "focus": "home" }
+        { "at": 20.5, "focus": { "rect": [460, 480, 1500, 600], "fill": 0.66 } },
+        { "at": 21.5, "spotlight": { "rect": [472, 519, 1853, 525], "until": 24.1 } },
+        { "at": 24.3, "focus": "home" },
+        { "at": 26, "screen": "running" }
       ]
     }
   ]
