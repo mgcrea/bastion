@@ -477,8 +477,9 @@ echo
 echo "Cleanup"
 check "remove_server takes the profile with it" \
   "$(tool checkrw remove_server '{"id":"checkscratch"}')" '"removed":true'
-absent "and the profile is gone" \
-  "$(tool checkrw list_profiles '{"server":"checkscratch"}')" '"name":"one"'
+GONE="$(tool checkrw list_profiles '{"server":"checkscratch"}')"
+absent "and the renamed profile is gone" "$GONE" '"name":"two"'
+absent "and so is the one made beside it"  "$GONE" '"name":"three"'
 
 echo
 if [ "$fail" -eq 0 ]; then
