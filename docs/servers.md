@@ -221,7 +221,7 @@ asserts both eras against a running build.
 | [UniFi Protect](https://github.com/mgcrea/mcp-unifi-protect) | `unifi-protect` | `unifi-protect-mcp` | `@mgcrea/mcp-unifi-protect` (npm, provenance) | `UNIFI_PROTECT_ALLOW_WRITES` | 3 |
 | [UniFi Network](https://github.com/mgcrea/mcp-unifi-network) | `unifi-network` | `unifi-network-mcp` | `@mgcrea/mcp-unifi-network` (npm, provenance) | `UNIFI_ALLOW_WRITES` | 2 |
 | [Stripe](https://docs.stripe.com/mcp) | `stripe` | — | `https://mcp.stripe.com` (remote) | `stripe_api_write`, `create_refund`, `stripe_report` (by name) | 1 |
-| [Shopify](https://github.com/mgcrea/mcp-shopify) | `shopify` | `shopify-mcp` | `@mgcrea/mcp-shopify` (npm, provenance) | read-only | 1 |
+| [Shopify](https://github.com/mgcrea/mcp-shopify) | `shopify` | `shopify-mcp` | `@mgcrea/mcp-shopify` (npm, provenance) | `SHOPIFY_ALLOW_WRITES` | 1 |
 | [OVHcloud](https://github.com/mgcrea/mcp-ovh) | `ovh` | `ovh-mcp` | `@mgcrea/mcp-ovh` (npm) | `OVH_ALLOW_WRITES` | 4 |
 | [Keycloak](https://github.com/mgcrea/mcp-keycloak) | `keycloak` | `keycloak-mcp` | `@mgcrea/mcp-keycloak` (npm, provenance) | `KEYCLOAK_ALLOW_WRITES` | 2 |
 | [npm](https://github.com/mgcrea/mcp-npm) | `npm` | `npm-mcp` | `@mgcrea/mcp-npm` (npm, provenance) | `NPM_ALLOW_WRITES` | 3 |
@@ -483,11 +483,31 @@ Satisfy exactly one of: **Sign in with Stripe** (no variables — Bastion holds 
 
 ### Shopify
 
-Shopify Admin GraphQL API: products, variants, collections, metafields, locations.
+Shopify Admin GraphQL API: products, variants, collections, metafields, locations, and opt-in writes to metafields, product content and inventory.
 
-No write gate because there is no write path: every tool is a read.
-That is why the build order takes this one end-to-end first — a bug in
-the supervisor or the dialect layer cannot cost anybody data here.
+Read-only until 0.6.0 added writes; the gate is 0.7.0's, which renamed
+0.6.0's three-level SHOPIFY_WRITES to the *_ALLOW_WRITES shape so this
+entry can drive it. A profile on 0.6.0 ignores SHOPIFY_ALLOW_WRITES and
+stays read-only, so the gate fails closed until the server updates.
+
+Two switches, not one, the same split as X: SHOPIFY_ALLOW_WRITES is the
+gate and registers six curated write tools (metafields set/delete,
+product update, variant bulk update, inventory adjust/set), none of
+which deletes a product. SHOPIFY_ALLOW_RAW_MUTATIONS adds
+shopify_graphql_mutation, which runs any mutation the app's scopes
+allow, deletes and refunds included. It is an ordinary env entry a
+profile sets deliberately, and the server ignores it with the gate off,
+so it is not a gateBypass.
+
+SAY THE LIMIT OUT LOUD. The gate decides which tools the server
+registers; the app's access scopes in the Shopify Dev Dashboard decide
+what the credential can do. With the gate off and write_* scopes
+granted, anyone holding the client secret can still write through the
+API directly. Grant write_products / write_inventory only to an app
+whose profile is meant to write.
+
+shopify_graphql stays read-only with the gate on: it rejects mutation
+and subscription operations before any network call.
 
 | Variable | Required | Secret | Meaning |
 | --- | --- | --- | --- |
@@ -495,6 +515,8 @@ the supervisor or the dialect layer cannot cost anybody data here.
 | `SHOPIFY_CLIENT_ID` | yes | — | Custom app client id. |
 | `SHOPIFY_CLIENT_SECRET` | yes | yes | Custom app client secret. Used as the Admin API access token. |
 | `SHOPIFY_API_VERSION` | — | — | Admin API version, e.g. 2026-04. Defaults to the server's pinned version. |
+| `SHOPIFY_ALLOW_WRITES` | — | — | Registers the write tools: metafields, product and variant content, inventory. |
+| `SHOPIFY_ALLOW_RAW_MUTATIONS` | — | — | Adds shopify_graphql_mutation, which runs any mutation the app's scopes allow. No effect without SHOPIFY_ALLOW_WRITES. Boolean — unset means off. |
 
 ### OVHcloud
 

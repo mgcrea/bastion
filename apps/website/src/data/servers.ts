@@ -145,8 +145,8 @@ export const SERVERS: Server[] = [
   {
     id: "shopify",
     displayName: "Shopify",
-    summary: "Shopify Admin GraphQL API: products, variants, collections, metafields, locations.",
-    writeGate: null,
+    summary: "Shopify Admin GraphQL API: products, variants, collections, metafields, locations, and opt-in writes to metafields, product content and inventory.",
+    writeGate: "SHOPIFY_ALLOW_WRITES",
     gatesByName: false,
     transport: "child",
     vendor: "mgcrea",

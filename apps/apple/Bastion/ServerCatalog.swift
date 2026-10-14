@@ -1298,13 +1298,33 @@ nonisolated enum ServerCatalog {
           summary: "Pin the API version instead of using the account default, sent as Stripe-Version.",
           header: .init(name: "Stripe-Version", format: "{value}")),
       ]),
-    // No write gate because there is no write path: every tool is a read.
-    // That is why the build order takes this one end-to-end first — a bug in
-    // the supervisor or the dialect layer cannot cost anybody data here.
+    // Read-only until 0.6.0 added writes; the gate is 0.7.0's, which renamed
+    // 0.6.0's three-level SHOPIFY_WRITES to the *_ALLOW_WRITES shape so this
+    // entry can drive it. A profile on 0.6.0 ignores SHOPIFY_ALLOW_WRITES and
+    // stays read-only, so the gate fails closed until the server updates.
+    //
+    // Two switches, not one, the same split as X: SHOPIFY_ALLOW_WRITES is the
+    // gate and registers six curated write tools (metafields set/delete,
+    // product update, variant bulk update, inventory adjust/set), none of
+    // which deletes a product. SHOPIFY_ALLOW_RAW_MUTATIONS adds
+    // shopify_graphql_mutation, which runs any mutation the app's scopes
+    // allow, deletes and refunds included. It is an ordinary env entry a
+    // profile sets deliberately, and the server ignores it with the gate off,
+    // so it is not a gateBypass.
+    //
+    // SAY THE LIMIT OUT LOUD. The gate decides which tools the server
+    // registers; the app's access scopes in the Shopify Dev Dashboard decide
+    // what the credential can do. With the gate off and write_* scopes
+    // granted, anyone holding the client secret can still write through the
+    // API directly. Grant write_products / write_inventory only to an app
+    // whose profile is meant to write.
+    //
+    // shopify_graphql stays read-only with the gate on: it rejects mutation
+    // and subscription operations before any network call.
     BastionServer(
       id: "shopify",
       displayName: "Shopify",
-      summary: "Shopify Admin GraphQL API: products, variants, collections, metafields, locations.",
+      summary: "Shopify Admin GraphQL API: products, variants, collections, metafields, locations, and opt-in writes to metafields, product content and inventory.",
       transport: .child(
         .init(
           npmName: "@mgcrea/mcp-shopify",
@@ -1315,7 +1335,7 @@ nonisolated enum ServerCatalog {
           provenance: true)),
       docsURL: URL(string: "https://github.com/mgcrea/mcp-shopify"),
       dialect: .v2025_11_25,
-      writeGate: nil,
+      writeGate: "SHOPIFY_ALLOW_WRITES",
       writeTools: [],
       gateBypass: [],
       authModes: [],
@@ -1342,6 +1362,17 @@ nonisolated enum ServerCatalog {
           isRequired: false,
           isSecret: false,
           summary: "Admin API version, e.g. 2026-04. Defaults to the server's pinned version."),
+        .init(
+          name: "SHOPIFY_ALLOW_WRITES",
+          isRequired: false,
+          isSecret: false,
+          summary: "Registers the write tools: metafields, product and variant content, inventory."),
+        .init(
+          name: "SHOPIFY_ALLOW_RAW_MUTATIONS",
+          isRequired: false,
+          isSecret: false,
+          summary: "Adds shopify_graphql_mutation, which runs any mutation the app's scopes allow. No effect without SHOPIFY_ALLOW_WRITES.",
+          booleanDefault: false),
       ]),
     // Three auth modes, inferred from what is set. The signature triplet is
     // the only one of the three where every part is a secret, which is

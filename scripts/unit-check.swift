@@ -683,8 +683,11 @@ struct UnitCheck {
       "the catalog's stripe entry has a write path",
       ServerCatalog.all.first { $0.id == "stripe" }?.hasWritePath == true)
     check(
-      "and shopify, which really is read-only, does not",
-      ServerCatalog.all.first { $0.id == "shopify" }?.hasWritePath == false)
+      "and so does shopify, gated by SHOPIFY_ALLOW_WRITES since 0.7.0",
+      ServerCatalog.all.first { $0.id == "shopify" }?.hasWritePath == true)
+    check(
+      "and context7, which really is read-only, does not",
+      ServerCatalog.all.first { $0.id == "context7" }?.hasWritePath == false)
 
     print("\nWhat an edit to a custom server keeps")
     // `ServerStore.upsert` rebuilds the server from the definition, and the
@@ -938,7 +941,7 @@ struct UnitCheck {
     let booleans = ServerCatalog.all.flatMap { server in
       server.env.filter { $0.booleanDefault != nil }.map { (server.id, $0) }
     }
-    check("six of them are typed", booleans.count == 6)
+    check("seven of them are typed", booleans.count == 7)
     // The ones that are not false, and the reason the control has three
     // positions: a two-way toggle would have to start somewhere, and starting
     // it off writes "0" over a default of true — silently ending certificate
