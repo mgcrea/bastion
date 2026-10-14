@@ -105,8 +105,8 @@ the id resolves against the list the _user_ installed, or it 404s. Nothing arriv
 can name a package, a path or an argv, and a custom entry supplies a package and a bin name rather
 than a command line.
 
-Bastion curates lightly, and only to fill the first screen. The catalog seeds thirty-six entries —
-thirteen servers written here, eleven somebody else publishes, eleven endpoints their own vendors
+Bastion curates lightly, and only to fill the first screen. The catalog seeds thirty-eight entries —
+fourteen servers written here, twelve somebody else publishes, eleven endpoints their own vendors
 operate, and one command that ships with a developer tool on the Mac — because a catalog that opens with nothing recognisable in it teaches nobody what the app
 is for. The middle group is named rather than folded into the first: Bastion installs those from
 npm and runs them on your machine with a profile's credentials in their environment, and what it
@@ -320,10 +320,10 @@ live handshake was actually run against one; that was Bastion's own pin masquera
 the servers. A server you add yourself is fronted the same way, and declares its own dialect when
 you add it.
 
-**The eleven third-party children were measured, not seeded**, and measuring them took asking the
+**The twelve third-party children were measured, not seeded**, and measuring them took asking the
 right question. A handshake that requests `2025-06-18` gets `2025-06-18` back from every one of
 them, which measures nothing; asking for `2026-07-28`, a revision none of them supports, makes each
-one answer with its own newest instead. All eleven say `2025-11-25`. Two of them, DBHub and
+one answer with its own newest instead. All twelve say `2025-11-25`. Two of them, DBHub and
 Context7, build on the 2.0 SDK that _knows_ `2026-07-28` and still negotiate legacy — the newest
 revision an SDK knows is not the one a server speaks, which is the whole reason this is measured
 rather than read off a dependency.

@@ -472,6 +472,17 @@ export const SERVERS: Server[] = [
     provenance: true,
     dialect: "2025-11-25",
   },
+  {
+    id: "shopify-dev",
+    displayName: "Shopify Dev",
+    summary: "Shopify's developer docs, API schemas and code validators, from the AI Toolkit's Dev MCP server. Needs no credential.",
+    writeGate: null,
+    gatesByName: false,
+    transport: "child",
+    vendor: "third-party",
+    provenance: false,
+    dialect: "2025-11-25",
+  },
 ];
 // </generated:servers>
 

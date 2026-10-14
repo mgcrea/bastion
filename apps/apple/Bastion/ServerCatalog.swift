@@ -3081,6 +3081,66 @@ nonisolated enum ServerCatalog {
           isSecret: false,
           summary: "Registers the tools that change the account: watchlist and portfolio create, add, remove and delete, and recording, editing and deleting portfolio trades. Needs a signed-in cookie."),
       ]),
+    // The Dev MCP half of Shopify's AI Toolkit, and a different server from
+    // `shopify`: that one reads a store's Admin API with a custom app's
+    // credentials, this one reads shopify.dev and holds no credential at all.
+    // The two sit side by side rather than one replacing the other.
+    //
+    // No write gate because there is no write path, measured on 1.16.0 from
+    // a live `tools/list`: learn_shopify_api, search_docs_chunks, validate,
+    // validate_theme and feedback. None carries an annotation, so the claim
+    // rests on what each one does. validate_theme reads a theme directory
+    // the model names by absolute path and writes nothing. feedback sends a
+    // scorecard of the turn to Shopify, which is telemetry rather than a
+    // change to anything the user owns, and stops with the opt-out below.
+    //
+    // TELEMETRY IS ON BY DEFAULT. The server reports tool usage to Shopify
+    // unless OPT_OUT_INSTRUMENTATION is "true", DO_NOT_TRACK is "1" or
+    // "true", or an opt-out file exists. It looks for that file in every
+    // candidate location, ~/.config/shopify-ai-toolkit/opt-out and
+    // ~/Library/Application Support/shopify-ai-toolkit/opt-out among them,
+    // so a user's own opt-out file still counts after Bastion redirects
+    // XDG_CONFIG_HOME into the profile. Only the variable is declared here,
+    // as a plain value rather than a boolean, because a third-party entry
+    // cannot state a default nobody here can read off a schema.
+    //
+    // Left out: LIQUID_VALIDATION_MODE, STOREFRONT_WEB_COMPONENTS and
+    // USE_LEGACY_SEARCH tune validation and search. The *_SESSION_ID
+    // variables it also reads are set by the editors it expects to run
+    // under, and one supervised process shared by every client has none.
+    //
+    // No provenance: 1.16.0 carries no attestation and names no repository,
+    // and the source is not public, so docsUrl is Shopify's page for it.
+    //
+    // DIALECT MEASURED 2026-10-14. A live `initialize` asking for 2026-07-28
+    // is answered 2025-11-25, serverInfo shopify-dev-mcp 1.16.0.
+    BastionServer(
+      id: "shopify-dev",
+      displayName: "Shopify Dev",
+      summary: "Shopify's developer docs, API schemas and code validators, from the AI Toolkit's Dev MCP server. Needs no credential.",
+      transport: .child(
+        .init(
+          npmName: "@shopify/dev-mcp",
+          binName: "shopify-dev-mcp",
+          distribution: .npm,
+          localPath: "shopify-dev-mcp",
+          vendor: .thirdParty,
+          provenance: false)),
+      docsURL: URL(string: "https://shopify.dev/docs/apps/build/devmcp"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: [],
+      gateBypass: [],
+      authModes: [],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "OPT_OUT_INSTRUMENTATION",
+          isRequired: false,
+          isSecret: false,
+          summary: "Set to true to stop the usage reports this server sends to Shopify by default, the feedback tool's scorecards included."),
+      ]),
   ]
   // </generated:servers>
 

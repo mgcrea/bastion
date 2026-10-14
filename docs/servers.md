@@ -74,7 +74,7 @@ sets no variable in it: a system command takes no credentials, and its write
 gate is a filter over tool names.
 
 Bastion curates lightly, and only to fill the first screen. The catalog seeds
-thirty-seven entries — fourteen servers written here, eleven somebody else
+thirty-eight entries — fourteen servers written here, twelve somebody else
 publishes, eleven endpoints their own vendors operate, and one command that
 ships with a developer tool on the Mac — because a catalog
 that opens with nothing recognisable in it teaches nobody what the app is for.
@@ -171,7 +171,7 @@ clients with it.
 None of the catalog entries below are modern. The fourteen children written here
 run an SDK whose newest protocol is `2025-11-25`, and `server/discover` against
 one returns `-32601` — the exact signal the spec names for recognising a legacy
-server. The eleven third-party children were measured at the same revision, and
+server. The twelve third-party children were measured at the same revision, and
 measuring them meant asking the right question: a handshake requesting
 `2025-06-18` gets `2025-06-18` back from all of them, which measures nothing,
 while requesting `2026-07-28` — a revision none of them supports — makes each
@@ -251,6 +251,7 @@ asserts both eras against a running build.
 | [Xcode](https://developer.apple.com/documentation/xcode/giving-agentic-coding-tools-access-to-xcode) | `xcode` | — | `/usr/bin/xcrun mcpbridge` (system) | `AddEntitlement`, `AddInfoPlist`, `InvokeDebuggerCommand`, `LocalizationPlanner`, `RunCodeSnippet`, `StringCatalogEdit`, `UpdateFileCompilerFlags`, `UpdateTargetBuildSetting`, `XcodeMV`, `XcodeMakeDir`, `XcodeNewProject`, `XcodeNewTarget`, `XcodeRM`, `XcodeUpdate`, `XcodeWrite` (by name) | — |
 | Apple Ads | `apple-ads` | `apple-ads-mcp` | `mcp-apple-ads` (local) | `APPLE_ADS_ALLOW_WRITES` | 1 |
 | [Yahoo Finance](https://github.com/mgcrea/mcp-yahoo-finance) | `yahoo-finance` | `yahoo-finance-mcp` | `@mgcrea/mcp-yahoo-finance` (npm, provenance) | `YAHOO_FINANCE_ALLOW_WRITES` | 2 |
+| [Shopify Dev](https://shopify.dev/docs/apps/build/devmcp) | `shopify-dev` | `shopify-dev-mcp` | `@shopify/dev-mcp` (npm) | read-only | — |
 
 ### App Store Connect
 
@@ -1334,4 +1335,46 @@ browser session for whoever captured it - signed in, it is the account.
 | `YAHOO_FINANCE_REQUEST_TIMEOUT_MS` | — | — | Per-request timeout in milliseconds, body included. Defaults to 30000. |
 | `YAHOO_FINANCE_DEBUG` | — | — | Any non-empty value logs every Yahoo request to stderr. |
 | `YAHOO_FINANCE_ALLOW_WRITES` | — | — | Registers the tools that change the account: watchlist and portfolio create, add, remove and delete, and recording, editing and deleting portfolio trades. Needs a signed-in cookie. |
+
+### Shopify Dev
+
+Shopify's developer docs, API schemas and code validators, from the AI Toolkit's Dev MCP server. Needs no credential.
+
+The Dev MCP half of Shopify's AI Toolkit, and a different server from
+`shopify`: that one reads a store's Admin API with a custom app's
+credentials, this one reads shopify.dev and holds no credential at all.
+The two sit side by side rather than one replacing the other.
+
+No write gate because there is no write path, measured on 1.16.0 from
+a live `tools/list`: learn_shopify_api, search_docs_chunks, validate,
+validate_theme and feedback. None carries an annotation, so the claim
+rests on what each one does. validate_theme reads a theme directory
+the model names by absolute path and writes nothing. feedback sends a
+scorecard of the turn to Shopify, which is telemetry rather than a
+change to anything the user owns, and stops with the opt-out below.
+
+TELEMETRY IS ON BY DEFAULT. The server reports tool usage to Shopify
+unless OPT_OUT_INSTRUMENTATION is "true", DO_NOT_TRACK is "1" or
+"true", or an opt-out file exists. It looks for that file in every
+candidate location, ~/.config/shopify-ai-toolkit/opt-out and
+~/Library/Application Support/shopify-ai-toolkit/opt-out among them,
+so a user's own opt-out file still counts after Bastion redirects
+XDG_CONFIG_HOME into the profile. Only the variable is declared here,
+as a plain value rather than a boolean, because a third-party entry
+cannot state a default nobody here can read off a schema.
+
+Left out: LIQUID_VALIDATION_MODE, STOREFRONT_WEB_COMPONENTS and
+USE_LEGACY_SEARCH tune validation and search. The *_SESSION_ID
+variables it also reads are set by the editors it expects to run
+under, and one supervised process shared by every client has none.
+
+No provenance: 1.16.0 carries no attestation and names no repository,
+and the source is not public, so docsUrl is Shopify's page for it.
+
+DIALECT MEASURED 2026-10-14. A live `initialize` asking for 2026-07-28
+is answered 2025-11-25, serverInfo shopify-dev-mcp 1.16.0.
+
+| Variable | Required | Secret | Meaning |
+| --- | --- | --- | --- |
+| `OPT_OUT_INSTRUMENTATION` | — | — | Set to true to stop the usage reports this server sends to Shopify by default, the feedback tool's scorecards included. |
 <!-- </generated:servers> -->
