@@ -98,7 +98,7 @@ json.dump(servers, open(os.path.join(support, "servers.json"), "w"), indent=2)
 
 profiles = [
     p for p in load("profiles.json", [])
-    if not (p.get("server") == "bastion" and p.get("name") in ("checkro", "checkrw", "checknosy"))
+    if not (p.get("server") == "bastion" and p.get("name") in ("checkro", "checkrw", "checknosy", "checkmove", "checkmoved"))
 ]
 # Two profiles of one server, which is also a check that the write gate is per
 # profile rather than per server: same tools, same install, different answer.
@@ -436,6 +436,42 @@ absent "get_server claims no update state before a check has run" \
   "$(tool checkrw get_server '{"id":"checkscratch"}')" '"state":"up-to-date"'
 absent "and list_servers advertises no version to update to" \
   "$(tool checkrw list_servers '{}')" 'update_available'
+
+echo
+echo "Renaming a profile"
+SCRATCH_STATE="$SUPPORT/profiles/checkscratch"
+mkdir -p "$SCRATCH_STATE/one" "$SCRATCH_STATE/two"
+echo kept > "$SCRATCH_STATE/one/marker"
+# A removed profile's leftover under the name being taken: it must not be inherited.
+echo dead > "$SCRATCH_STATE/two/leftover"
+check "rename_profile is refused with writes off" \
+  "$(tool checkro rename_profile '{"name":"one","server":"checkscratch","new_name":"two"}')" \
+  'write gate is off'
+RENAMED="$(tool checkrw rename_profile '{"name":"one","server":"checkscratch","new_name":"two"}')"
+check "rename_profile answers with the new endpoint" "$RENAMED" '/s/two/checkscratch'
+AFTER="$(tool checkrw list_profiles '{"server":"checkscratch"}')"
+check  "the profile is listed under its new name" "$AFTER" '"name":"two"'
+absent "and not under its old one"                "$AFTER" '"name":"one"'
+check  "its secret moved with it"                 "$AFTER" '"secrets_set":["CHECK_TOKEN"]'
+absent "and nothing is reported missing"          "$AFTER" '"missing"'
+check  "its state directory moved with it" "$(cat "$SCRATCH_STATE/two/marker" 2>&1)" 'kept'
+absent "a leftover under the new name is not inherited" \
+  "$(ls "$SCRATCH_STATE/two")" 'leftover'
+tool checkrw upsert_profile '{"name":"three","server":"checkscratch"}' >/dev/null
+check "renaming onto an existing name is refused" \
+  "$(tool checkrw rename_profile '{"name":"two","server":"checkscratch","new_name":"three"}')" \
+  'already exists'
+check "an unusable name is refused" \
+  "$(tool checkrw rename_profile '{"name":"two","server":"checkscratch","new_name":"Two Words"}')" \
+  'cannot be a profile name'
+# The old endpoint, on a profile the gateway can actually serve.
+tool checkrw upsert_profile '{"name":"checkmove","server":"bastion"}' >/dev/null
+tool checkrw rename_profile '{"name":"checkmove","server":"bastion","new_name":"checkmoved"}' >/dev/null
+check "the old endpoint answers with a sentence, not a stale server" \
+  "$(rpc checkmove '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')" "no profile 'checkmove'"
+check "and the new one serves" \
+  "$(rpc checkmoved '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')" '"tools"'
+tool checkrw remove_profile '{"name":"checkmoved","server":"bastion"}' >/dev/null
 
 echo
 echo "Cleanup"

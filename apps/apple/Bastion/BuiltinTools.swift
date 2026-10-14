@@ -415,6 +415,19 @@ enum BuiltinTools {
       required: ["name", "server"], mutates: true),
 
     Declaration(
+      "rename_profile", title: "Rename a profile",
+      "Give a profile a new name. Its credentials, sign-ins, workspaces and usage history move "
+        + "with it, and every client Bastion configured is rewired to the new endpoint. The "
+        + "client's entry key and tool names change with it, so permission rules naming the old "
+        + "ones stop matching, and a client configured by hand keeps the old endpoint.",
+      properties: [
+        "name": schema("string", "The profile's current name."),
+        "server": schema("string", "The server id."),
+        "new_name": schema("string", "Kebab-case, unique within the server."),
+      ],
+      required: ["name", "server", "new_name"], mutates: true),
+
+    Declaration(
       "upsert_workspace", title: "Create or update a workspace",
       "Create a workspace or replace one by name, then rewire every configured client. A folder "
         + "inside a git repository means the whole repository. Any other folder means itself "
@@ -595,6 +608,7 @@ enum BuiltinTools {
     case "remove_server": return try removeServer(arguments)
     case "upsert_profile": return try upsertProfile(arguments)
     case "remove_profile": return try removeProfile(arguments)
+    case "rename_profile": return try renameProfile(arguments)
     case "upsert_workspace": return try upsertWorkspace(arguments)
     case "remove_workspace": return try removeWorkspace(arguments)
     case "update_skill": return try updateSkill(arguments)
@@ -1828,6 +1842,22 @@ enum BuiltinTools {
       "name": name, "server": serverID, "removed": true,
       "note": "The profile and every credential it owned in the Keychain are gone. Any client "
         + "still pointing at it will stop working.",
+    ]
+  }
+
+  private static func renameProfile(_ arguments: [String: Any]) throws -> Any {
+    let name = try string(arguments, "name")
+    let serverID = try string(arguments, "server")
+    let newName = try string(arguments, "new_name")
+    guard let profile = ProfileStore.shared.profile(named: name, server: serverID) else {
+      throw ToolError.noSuchProfile(profile: name, server: serverID)
+    }
+    let renamed = try ProfileStore.shared.rename(profile, to: newName)
+    return [
+      "name": renamed.name, "previous_name": name, "server": serverID,
+      "endpoint": "http://127.0.0.1:\(Gateway.shared.port)/s/\(renamed.name)/\(serverID)",
+      "note": "Clients Bastion configured now point at the new endpoint. A client configured by "
+        + "hand still points at the old one, which no longer answers.",
     ]
   }
 
