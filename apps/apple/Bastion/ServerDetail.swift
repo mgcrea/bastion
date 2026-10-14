@@ -32,6 +32,7 @@ struct ServerDetail: View {
   /// The profile whose capability listing is open, owned here for the reason
   /// `checking` is.
   @State private var browsing: Profile?
+  @State private var renaming: Profile?
   @State private var lastError: String?
   @State private var confirmingServerRemoval = false
   /// The profile the menu bar just pointed at, lit for a beat and then not.
@@ -78,6 +79,12 @@ struct ServerDetail: View {
     }
     .sheet(item: $browsing) { profile in
       CapabilitiesSheet(server: server, profile: profile)
+    }
+    // On the pane, not the row: the row's identity is the profile id, which is
+    // exactly what a rename changes, so a sheet hung on the row would be torn
+    // down with it.
+    .sheet(item: $renaming) { profile in
+      RenameProfileSheet(profile: profile, server: server, report: { lastError = $0 })
     }
 
   }
@@ -1006,6 +1013,7 @@ struct ServerDetail: View {
               ProfileRow(
                 server: server, profile: profile,
                 edit: { editing = .existing(profile) },
+                rename: { renaming = profile },
                 check: {
                   ServerCheck.shared.start(profile: profile, server: server)
                   checking = profile
@@ -1221,6 +1229,7 @@ private struct ProfileRow: View {
   let server: BastionServer
   let profile: Profile
   let edit: () -> Void
+  let rename: () -> Void
   let check: () -> Void
   let browse: () -> Void
   let chat: () -> Void
@@ -1274,9 +1283,9 @@ private struct ProfileRow: View {
 
       Spacer()
 
-      // One row rather than a column of four. Stacked, the verbs pushed the row
+      // One row rather than a column. Stacked, the verbs pushed the row
       // taller than the text beside them and read as a menu; side by side they
-      // read as what they are, four things you can do to this profile.
+      // read as what they are, things you can do to this profile.
       HStack(spacing: 8) {
         Button {
           check()
@@ -1320,6 +1329,12 @@ private struct ProfileRow: View {
         } label: {
           Label("Edit…", systemImage: "pencil")
         }
+        Button {
+          rename()
+        } label: {
+          Label("Rename…", systemImage: "character.cursor.ibeam")
+        }
+        .help("Give this profile a new name. Its credentials and history move with it.")
         Button {
           confirmingRemoval = true
         } label: {
