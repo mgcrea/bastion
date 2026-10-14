@@ -390,8 +390,10 @@ final class ProfileStore {
       name: newName, serverID: server, values: profile.values,
       allowWrites: profile.allowWrites, captureMode: profile.captureMode)
 
-    // Nothing may hold the old directory or the old credentials while they move.
-    Supervisor.shared.stop(profile: profile.name, server: server)
+    // Nothing may hold the old directory or the old credentials while they move,
+    // and a child still writing its tokens on its way out would write them to
+    // the old path, so this waits for the process to be gone.
+    Supervisor.shared.stopAndWait(profile: profile.name, server: server)
     ServerCheck.shared.forget(oldID)
     CapabilityStore.shared.forget(oldID)
 
@@ -416,6 +418,14 @@ final class ProfileStore {
 
     // Committed. Everything below finishes the move and none of it can undo
     // the rename, so a failure is logged rather than thrown.
+    // Stopped again after the save, for the reason `upsert` gives: the snapshot
+    // the gateway resolves from only changes at the save, so a request for the
+    // old endpoint arriving before it could spawn a fresh child from the old
+    // profile. It would hold swept credentials and could repopulate the check
+    // and capability caches under the old id.
+    Supervisor.shared.stop(profile: profile.name, server: server)
+    ServerCheck.shared.forget(oldID)
+    CapabilityStore.shared.forget(oldID)
     ProfileRename.sweepSecrets(profile: profile.name, server: server)
     ToolCostStore.shared.move(from: oldID, to: renamed.id)
     CallStats.shared.renameProfile(from: profile.name, to: newName, server: server)
