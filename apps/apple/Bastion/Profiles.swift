@@ -386,9 +386,12 @@ final class ProfileStore {
     if let unreadable { throw unreadable }
 
     let oldID = profile.id
+    // From the stored row, not the caller's copy: a sheet holds its copy while
+    // open, and an agent may have changed the values or the writes gate since.
+    let current = profiles[index]
     let renamed = Profile(
-      name: newName, serverID: server, values: profile.values,
-      allowWrites: profile.allowWrites, captureMode: profile.captureMode)
+      name: newName, serverID: server, values: current.values,
+      allowWrites: current.allowWrites, captureMode: current.captureMode)
 
     // Nothing may hold the old directory or the old credentials while they move,
     // and a child still writing its tokens on its way out would write them to
@@ -409,9 +412,16 @@ final class ProfileStore {
     do {
       try save()
     } catch {
-      profiles[index] = profile
+      profiles[index] = current
       refreshSnapshot()
-      try? ProfileRename.moveState(from: newName, to: profile.name, server: server)
+      do {
+        try ProfileRename.moveState(from: newName, to: profile.name, server: server)
+      } catch let moveError {
+        hostLog(
+          "profiles", .error,
+          "could not move the state of \(newName) back to \(profile.name) after a failed rename: "
+            + moveError.localizedDescription)
+      }
       ProfileRename.delete(copied)
       throw error
     }

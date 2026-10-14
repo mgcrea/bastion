@@ -16,7 +16,7 @@ are taken from this file, which is the curated summary.
   child's own login, its callback port), its workspaces and its usage history move with it, and
   every client Bastion configured is rewired to the new endpoint. The client's tool names change
   with the entry, so permission rules naming the old ones stop matching. The audit log keeps the
-  old name, since its lines are signed.
+  old name, since its lines are hash-chained.
 
 ## [1.28.0] - 2026-10-13
 

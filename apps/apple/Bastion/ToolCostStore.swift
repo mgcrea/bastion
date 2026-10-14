@@ -90,9 +90,13 @@ final class ToolCostStore {
   }
 
   /// Carry a profile's figure to its new id. A rename changes nothing the
-  /// figure was measured from, so dropping it would only cost a re-measure.
+  /// figure was measured from, so dropping it would only cost a re-measure; with
+  /// no figure to carry, one filed under the new id is a dead profile's and goes.
   func move(from oldID: String, to newID: String) {
-    guard let measurement = measurements.removeValue(forKey: oldID) else { return }
+    guard let measurement = measurements.removeValue(forKey: oldID) else {
+      forget(newID)
+      return
+    }
     measurements[newID] = measurement
     save()
   }

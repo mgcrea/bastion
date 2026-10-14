@@ -51,8 +51,8 @@ nonisolated enum ProfileRename {
 
   /// Delete every item under the old name, once the new one is saved.
   ///
-  /// Logged, not thrown: the rename has happened by now, and an item left
-  /// under a name nothing serves is inert.
+  /// Logged, not thrown, because the rename has already happened. A profile
+  /// created later under the old name could inherit whatever is left over.
   static func sweepSecrets(profile: String, server: String) {
     let prefix = "\(profile)/\(server)/"
     for scope in [CredentialStore.Scope.profile, .oauth] {

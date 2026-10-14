@@ -419,7 +419,9 @@ enum BuiltinTools {
       "Give a profile a new name. Its credentials, sign-ins, workspaces and usage history move "
         + "with it, and every client Bastion configured is rewired to the new endpoint. The "
         + "client's entry key and tool names change with it, so permission rules naming the old "
-        + "ones stop matching, and a client configured by hand keeps the old endpoint.",
+        + "ones stop matching, and a client configured by hand keeps the old endpoint. Renaming the profile this call "
+        + "came through answers, then every later call on that session finds no profile, and "
+        + "some clients only pick up the new entry after a restart.",
       properties: [
         "name": schema("string", "The profile's current name."),
         "server": schema("string", "The server id."),
