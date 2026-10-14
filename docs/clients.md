@@ -833,14 +833,14 @@ the entry would throw away a working one:
 | A profile whose **server is switched off**           | The profile still exists. The row says `server off`, and the entry is correct                                             |
 | Anything `isOurs` does not claim                     | Somebody else's, permanently                                                                                              |
 
+The third is the one with teeth. `serving` is built from **every** profile and
+not from `onEnabledServers` the way `rewire` reads it, because otherwise
+flipping a server off would turn its correct entries into deletable ones.
+
 A renamed profile is the other kind of rename, and `merged` cannot see it: the endpoint changes
 along with the key. `ProfileStore.rename` names the old id in `retiring`, so each client ends up
 with one entry. Fields set by hand on the old entry (`disabled`, a timeout) do not carry over,
 because they survive a rewrite only under an unchanged key.
-
-The third is the one with teeth. `serving` is built from **every** profile and
-not from `onEnabledServers` the way `rewire` reads it, because otherwise
-flipping a server off would turn its correct entries into deletable ones.
 
 An entry of ours that names no endpoint at all — a bridge entry whose
 `--profile=`/`--server=` args cannot be read — is stale too, and listed saying
