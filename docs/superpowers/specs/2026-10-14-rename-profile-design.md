@@ -19,21 +19,21 @@ endpoint and its client entry key change.
 
 ## What holds the name
 
-| Where | Keyed by | Storage | On rename |
-| --- | --- | --- | --- |
-| `profiles.json` (`ProfileStore`) | name + server | disk | rewritten |
-| Keychain `.profile` scope | `<name>/<server>/<VAR>` | Keychain | copied, then old deleted |
-| Keychain `.oauth` scope | `<name>/<server>/oauth` | Keychain | copied, then old deleted |
-| State directory `profiles/<server>/<name>` (child logins, `callback-port`, cache) | name | disk | moved |
-| `workspaces.json` `profiles` | id | disk | id substituted |
-| `tool-costs.json` (`ToolCostStore`) | id | disk | measurement moved |
-| `call-stats.json` (`CallStats`) | profile + server | disk | rows re-keyed, merged on collision |
-| Client configs | entry key `<prefix><name>-<server>`, URL `/s/<name>/<server>` | other apps' files | rewired with `retiring: [oldID]` |
-| `Supervisor`, `ChildLifecycle`, `RemoteOAuthSession` gates | id | memory | child stopped; state rebuilt on next start |
-| `ServerCheck`, `CapabilityStore` | id | memory | forgotten |
-| Audit chain `origin` | id, inside hashed lines | disk | **not moved**: rewriting breaks the chain |
-| `LogStore` origin | id | memory | not moved: lines record what happened |
-| OAuth dynamic registration `client_name` | id | upstream | not moved: cosmetic |
+| Where                                                                             | Keyed by                                                      | Storage           | On rename                                  |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------- | ----------------- | ------------------------------------------ |
+| `profiles.json` (`ProfileStore`)                                                  | name + server                                                 | disk              | rewritten                                  |
+| Keychain `.profile` scope                                                         | `<name>/<server>/<VAR>`                                       | Keychain          | copied, then old deleted                   |
+| Keychain `.oauth` scope                                                           | `<name>/<server>/oauth`                                       | Keychain          | copied, then old deleted                   |
+| State directory `profiles/<server>/<name>` (child logins, `callback-port`, cache) | name                                                          | disk              | moved                                      |
+| `workspaces.json` `profiles`                                                      | id                                                            | disk              | id substituted                             |
+| `tool-costs.json` (`ToolCostStore`)                                               | id                                                            | disk              | measurement moved                          |
+| `call-stats.json` (`CallStats`)                                                   | profile + server                                              | disk              | rows re-keyed, merged on collision         |
+| Client configs                                                                    | entry key `<prefix><name>-<server>`, URL `/s/<name>/<server>` | other apps' files | rewired with `retiring: [oldID]`           |
+| `Supervisor`, `ChildLifecycle`, `RemoteOAuthSession` gates                        | id                                                            | memory            | child stopped; state rebuilt on next start |
+| `ServerCheck`, `CapabilityStore`                                                  | id                                                            | memory            | forgotten                                  |
+| Audit chain `origin`                                                              | id, inside hashed lines                                       | disk              | **not moved**: rewriting breaks the chain  |
+| `LogStore` origin                                                                 | id                                                            | memory            | not moved: lines record what happened      |
+| OAuth dynamic registration `client_name`                                          | id                                                            | upstream          | not moved: cosmetic                        |
 
 `ClientLockdown` (`/s/*` wildcard, keyed by client), `ClientProfiles` (Claude
 Code config dirs), `ToolFacade` overrides (keyed by client) and skills do not
@@ -48,7 +48,7 @@ both call `upsert` and `remove`. The steps are ordered so that a failure
 before step 5 leaves the old profile exactly as it was.
 
 1. **Validate.** `Profile.isValidName(newName)`, `newName != profile.name`, and
-   no profile `newName/<server>` in `profiles` *or* `orphaned`: an orphaned
+   no profile `newName/<server>` in `profiles` _or_ `orphaned`: an orphaned
    row's Keychain entries are live and would be overwritten. Throws a typed
    error with a sentence for each case.
 2. **Quiesce.** `Supervisor.shared.stop(profile:server:)` on the old name, so

@@ -18,8 +18,8 @@
 - Nothing before the `profiles.json` save may leave a half-renamed profile. Every step before it undoes its own work when it fails.
 - Audit chain lines are never rewritten.
 - Never touch the real Keychain or Application Support under `DemoSeed.isEnabled` (screenshot captures).
-- The user-facing consequence sentence, used verbatim in the sheet and paraphrased in the tool description: *"Its credentials, sign-ins, workspaces and history move with it. Clients Bastion configured are updated, and their tools appear under the new name, so permission rules that name the old one stop matching. A client set up by hand keeps pointing at the old address."*
-- Comment style: match the files you touch. Comments explain *why*, in full sentences. No em dashes in new user-facing copy.
+- The user-facing consequence sentence, used verbatim in the sheet and paraphrased in the tool description: _"Its credentials, sign-ins, workspaces and history move with it. Clients Bastion configured are updated, and their tools appear under the new name, so permission rules that name the old one stop matching. A client set up by hand keeps pointing at the old address."_
+- Comment style: match the files you touch. Comments explain _why_, in full sentences. No em dashes in new user-facing copy.
 - Commit style: `feat(profiles): …`, `docs(profiles): …`, `test(profiles): …`.
 
 ## Review Focus
@@ -34,33 +34,35 @@
 
 ## File Structure
 
-| File | Change | Responsibility |
-| --- | --- | --- |
-| `apps/apple/Bastion/CallStatsRollup.swift` | modify | `renamingProfile(_:from:to:server:)`, pure, merges collisions |
-| `apps/apple/Bastion/WorkspaceScope.swift` | modify | `WorkspaceScope.renamingProfile(_:from:to:)`, pure |
-| `apps/apple/Bastion/CallStats.swift` | modify | `renameProfile(from:to:server:)` re-keys live tables via the helper |
-| `apps/apple/Bastion/ToolCostStore.swift` | modify | `move(from:to:)` |
-| `apps/apple/Bastion/Workspaces.swift` | modify | `WorkspaceStore.renameProfile(from:to:)` |
-| `apps/apple/Bastion/ProfileRename.swift` | **create** | Keychain copy and sweep, state-directory move |
-| `apps/apple/Bastion/Profiles.swift` | modify | `Profile.nameProblem(_:)`, `ProfileStore.RenameError`, `ProfileStore.rename(_:to:)` |
-| `apps/apple/Bastion/RenameProfileSheet.swift` | **create** | The rename sheet |
-| `apps/apple/Bastion/ServerDetail.swift` | modify | Rename… button in `ProfileRow`, sheet on the pane |
-| `apps/apple/Bastion/ProfileEditor.swift` | modify | Captions; use `Profile.nameProblem` |
-| `apps/apple/Bastion/BuiltinTools.swift` | modify | `rename_profile` declaration, dispatch, implementation |
-| `scripts/unit-check.swift` | modify | Stats re-key checks |
-| `scripts/wiring-check.swift` | modify | Workspace substitution and retire-on-rename checks |
-| `scripts/builtin-check.sh` | modify | End-to-end rename checks |
-| `docs/keychain.md`, `docs/clients.md`, `CHANGELOG.md` | modify | Docs |
+| File                                                  | Change     | Responsibility                                                                      |
+| ----------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------- |
+| `apps/apple/Bastion/CallStatsRollup.swift`            | modify     | `renamingProfile(_:from:to:server:)`, pure, merges collisions                       |
+| `apps/apple/Bastion/WorkspaceScope.swift`             | modify     | `WorkspaceScope.renamingProfile(_:from:to:)`, pure                                  |
+| `apps/apple/Bastion/CallStats.swift`                  | modify     | `renameProfile(from:to:server:)` re-keys live tables via the helper                 |
+| `apps/apple/Bastion/ToolCostStore.swift`              | modify     | `move(from:to:)`                                                                    |
+| `apps/apple/Bastion/Workspaces.swift`                 | modify     | `WorkspaceStore.renameProfile(from:to:)`                                            |
+| `apps/apple/Bastion/ProfileRename.swift`              | **create** | Keychain copy and sweep, state-directory move                                       |
+| `apps/apple/Bastion/Profiles.swift`                   | modify     | `Profile.nameProblem(_:)`, `ProfileStore.RenameError`, `ProfileStore.rename(_:to:)` |
+| `apps/apple/Bastion/RenameProfileSheet.swift`         | **create** | The rename sheet                                                                    |
+| `apps/apple/Bastion/ServerDetail.swift`               | modify     | Rename… button in `ProfileRow`, sheet on the pane                                   |
+| `apps/apple/Bastion/ProfileEditor.swift`              | modify     | Captions; use `Profile.nameProblem`                                                 |
+| `apps/apple/Bastion/BuiltinTools.swift`               | modify     | `rename_profile` declaration, dispatch, implementation                              |
+| `scripts/unit-check.swift`                            | modify     | Stats re-key checks                                                                 |
+| `scripts/wiring-check.swift`                          | modify     | Workspace substitution and retire-on-rename checks                                  |
+| `scripts/builtin-check.sh`                            | modify     | End-to-end rename checks                                                            |
+| `docs/keychain.md`, `docs/clients.md`, `CHANGELOG.md` | modify     | Docs                                                                                |
 
 ---
 
 ### Task 1: Stats re-key helper
 
 **Files:**
+
 - Modify: `apps/apple/Bastion/CallStatsRollup.swift` (add after `prune`, around line 401)
 - Test: `scripts/unit-check.swift` (new section between the `"Usage rollup: retention"` and `"Usage rollup: the file"` sections, around line 1795)
 
 **Interfaces:**
+
 - Produces: `CallStatsRollup.renamingProfile(_ days: [Day], from old: String, to new: String, server: String) -> [Day]`. Every `CallRow`, `ClientRow` and `LifeRow` whose `(profile, server)` is `(old, server)` is filed under `new`. A row that then shares its full key with another row in the same day is merged into it (`Bucket.merge` / `LifeRow.merge`). The first occurrence's position is kept.
 
 - [ ] **Step 1: Write the failing checks.** In `scripts/unit-check.swift`, directly before `print("\nUsage rollup: the file")`, insert:
@@ -191,10 +193,12 @@ git commit -m "feat(profiles): re-key a renamed profile's usage rows, merging co
 ### Task 2: Workspace substitution and the retire-on-rename merge
 
 **Files:**
+
 - Modify: `apps/apple/Bastion/WorkspaceScope.swift` (in `enum WorkspaceScope`, after `scopedIDs`, around line 146)
 - Test: `scripts/wiring-check.swift` (two new `static func`s, registered in `main` next to `retiredProfileEntryIsRemoved()` at line 117 and `workspaceAssignments()` at line 163)
 
 **Interfaces:**
+
 - Produces: `WorkspaceScope.renamingProfile(_ workspaces: [Workspace], from oldID: String, to newID: String) -> [Workspace]`. A workspace holding `oldID` ends up holding `newID` exactly once, and its `profiles` are sorted (as `WorkspaceStore.upsert` stores them). A workspace without `oldID` is returned unchanged.
 
 - [ ] **Step 1: Write the failing checks.** In `scripts/wiring-check.swift`, add these two functions after `workspaceAssignments()`:
@@ -279,6 +283,7 @@ git commit -m "feat(profiles): swap a renamed profile's id in workspaces"
 This task has no offline harness: `ProfileStore` is not compiled by any check program. It is verified by building here and end to end in Task 5.
 
 **Files:**
+
 - Create: `apps/apple/Bastion/ProfileRename.swift`
 - Modify: `apps/apple/Bastion/CallStats.swift` (new method after `noteExited`, around line 254)
 - Modify: `apps/apple/Bastion/ToolCostStore.swift` (new method after `forget`, around line 90)
@@ -286,6 +291,7 @@ This task has no offline harness: `ProfileStore` is not compiled by any check pr
 - Modify: `apps/apple/Bastion/Profiles.swift` (`Profile.nameProblem` after `isValidName`, around line 43; `RenameError` and `rename` after `remove`, around line 331)
 
 **Interfaces:**
+
 - Consumes: `CallStatsRollup.renamingProfile` (Task 1), `WorkspaceScope.renamingProfile` (Task 2).
 - Produces:
   - `Profile.nameProblem(_ name: String) -> String?`: nil when `isValidName`, otherwise the sentence the UI shows.
@@ -571,11 +577,13 @@ git commit -m "feat(profiles): rename a profile, moving its secrets, state, stat
 ### Task 4: The rename sheet
 
 **Files:**
+
 - Create: `apps/apple/Bastion/RenameProfileSheet.swift`
 - Modify: `apps/apple/Bastion/ServerDetail.swift`. State at line ~34, sheets at ~73-82, the `ProfileRow(...)` call at ~1008-1017, `ProfileRow` properties at ~1220-1228, and its button row at ~1318-1324.
 - Modify: `apps/apple/Bastion/ProfileEditor.swift`. `nameProblem` at ~97-101, captions at ~117-130.
 
 **Interfaces:**
+
 - Consumes: `ProfileStore.rename(_:to:)` and `Profile.nameProblem(_:)` (Task 3).
 - Produces: `RenameProfileSheet(profile: Profile, server: BastionServer, report: @escaping (String?) -> Void)`.
 
@@ -751,10 +759,12 @@ git commit -m "feat(profiles): Rename… on a profile's row"
 ### Task 5: `rename_profile` tool and its end-to-end check
 
 **Files:**
+
 - Modify: `apps/apple/Bastion/BuiltinTools.swift`. Declaration after `remove_profile` (~line 415), dispatch after `case "remove_profile"` (~597), implementation after `removeProfile` (~1832).
 - Test: `scripts/builtin-check.sh` (new section before `echo "Cleanup"`, ~line 437)
 
 **Interfaces:**
+
 - Consumes: `ProfileStore.rename(_:to:)` (Task 3).
 - Produces: tool `rename_profile {name, server, new_name}`. It is a mutating tool, so the write gate applies. Its reply is `{name, previous_name, server, endpoint, note}`.
 
@@ -859,6 +869,7 @@ git commit -m "feat(profiles): rename_profile on Bastion's own server"
 ### Task 6: Docs and changelog
 
 **Files:**
+
 - Modify: `docs/keychain.md` (after the scope table, ~line 17)
 - Modify: `docs/clients.md` (the "Not stale" table, ~line 830)
 - Modify: `CHANGELOG.md` (new `## [Unreleased]` above `## [1.28.0]`)
