@@ -4,10 +4,14 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.28.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.29.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.29.0] - 2026-10-15
+
+**Rename a profile, and let Shopify write.** A profile can take a new name and keep its credentials,
+sign-ins, workspaces and history, with every wired client following. Shopify can now write behind
+the writes switch, and Shopify Dev joins the catalog.
 
 ### Added
 
@@ -17,6 +21,21 @@ are taken from this file, which is the curated summary.
   every client Bastion configured is rewired to the new endpoint. The client's tool names change
   with the entry, so permission rules naming the old ones stop matching. The audit log keeps the
   old name, since its lines are hash-chained.
+- **Shopify can write, behind the writes switch.** From mcp-shopify 0.7.0, a profile with writes on
+  can set and delete metafields, update a product's and its variants' content, and adjust or set
+  inventory. None of these deletes a product. `SHOPIFY_ALLOW_RAW_MUTATIONS` adds
+  `shopify_graphql_mutation`, which runs any mutation the app's access scopes allow, deletes and
+  refunds included. The switch decides which tools the server offers, not what the credential can
+  do, so grant `write_*` scopes only to an app whose profile is meant to write. A server still on
+  0.6.0 stays read-only.
+- **Shopify Dev is in the catalog**: the server from Shopify's AI Toolkit that searches shopify.dev
+  and validates generated GraphQL, Liquid and UI code, with no credential. It reports usage to
+  Shopify by default, and its profile offers `OPT_OUT_INSTRUMENTATION` to stop that.
+
+### Internal
+
+- The website's tour video plays at a calm pace, gliding in on what each caption names and back
+  out before the next cut, and loops without a blink.
 
 ## [1.28.0] - 2026-10-13
 

@@ -66,7 +66,37 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_28_0, v1_27_0, v1_26_0, v1_25_0, v1_24_0]
+  static let releases: [Release] = [v1_29_0, v1_28_0, v1_27_0, v1_26_0, v1_25_0]
+
+  // swift-format-ignore
+  private static let v1_29_0: Release = Release(
+    version: "1.29.0",
+    date: "2026-10-15",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Rename a profile.",
+            body: [
+              "Rename… on a profile's row, and `rename_profile` on Bastion's own server, give a profile a new name. Its credentials and OAuth sign-in, the state its server keeps (a child's own login, its callback port), its workspaces and its usage history move with it, and every client Bastion configured is rewired to the new endpoint. The client's tool names change with the entry, so permission rules naming the old ones stop matching. The audit log keeps the old name, since its lines are hash-chained.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "Shopify can write, behind the writes switch.",
+            body: [
+              "From mcp-shopify 0.7.0, a profile with writes on can set and delete metafields, update a product's and its variants' content, and adjust or set inventory. None of these deletes a product. `SHOPIFY_ALLOW_RAW_MUTATIONS` adds `shopify_graphql_mutation`, which runs any mutation the app's access scopes allow, deletes and refunds included. The switch decides which tools the server offers, not what the credential can do, so grant `write_*` scopes only to an app whose profile is meant to write. A server still on 0.6.0 stays read-only.",
+            ]),
+          Entry(
+            ordinal: 2,
+            headline: "Shopify Dev is in the catalog",
+            body: [
+              ": the server from Shopify's AI Toolkit that searches shopify.dev and validates generated GraphQL, Liquid and UI code, with no credential. It reports usage to Shopify by default, and its profile offers `OPT_OUT_INSTRUMENTATION` to stop that.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_28_0: Release = Release(
@@ -300,41 +330,6 @@ nonisolated enum Changelog {
             headline: nil,
             body: [
               "A licence key a mail client wrapped across lines is accepted, an OAuth sign-in keeps waiting when a stray request reaches its callback, the Log pane follows new entries, the chat drops whole turns when it trims its history, a stuck update check clears, and relaunching to update stops the gateway first.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_24_0: Release = Release(
-    version: "1.24.0",
-    date: "2026-09-26",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Xcode is in the catalog.",
-            body: [
-              "Xcode 26.3 and later ship their own MCP server, `xcrun mcpbridge`: read and edit a project, build, run and test it, render previews, and drive a simulator or device. Bastion runs and supervises it like any other server, with nothing to download. Xcode asks you to approve the agent the first time it opens a project, and behind Bastion that agent is Bastion itself, so one approval covers every client. With a profile's writes off, the tools that change a project on disk or run arbitrary code (`RunCodeSnippet`, `InvokeDebuggerCommand`) are hidden; building, running and testing stay available.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "A third kind of server: a command that ships with the Mac.",
-            body: [
-              "Catalog entries can now name a program directly under `/usr/bin`, with fixed plain-word arguments. Only the catalog can: a custom server is still an npm package or a URL, so nothing a person types and nothing a client sends can name a command line.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 2,
-            headline: "The website no longer lists Playwright, Supabase, Netlify and Apify as read-only.",
-            body: [
-              "They gate writes by tool name, which the site's copy of the rule did not count. The server detail pane now describes that gate for them too, where it used to only for remote servers.",
             ]),
         ]),
     ])
