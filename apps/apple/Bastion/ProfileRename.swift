@@ -60,7 +60,9 @@ nonisolated enum ProfileRename {
         do {
           try CredentialStore.delete(scope, account: account)
         } catch {
-          hostLog("profiles", .error, "could not delete \(account) after a rename: \(error.localizedDescription)")
+          hostLog(
+            "profiles", .error,
+            "could not delete \(account) after a rename: \(error.localizedDescription)")
         }
       }
     }

@@ -1815,8 +1815,10 @@ struct UnitCheck {
             profile: "prod", server: "stripe", label: "get_order", isTool: true, bucket: one),
         ],
         clients: [
-          CallStatsRollup.ClientRow(client: "code", profile: "prod", server: "shopify", bucket: one),
-          CallStatsRollup.ClientRow(client: "code", profile: "live", server: "shopify", bucket: two),
+          CallStatsRollup.ClientRow(
+            client: "code", profile: "prod", server: "shopify", bucket: one),
+          CallStatsRollup.ClientRow(
+            client: "code", profile: "live", server: "shopify", bucket: two),
         ],
         life: [
           CallStatsRollup.LifeRow(profile: "prod", server: "shopify", starts: 2, exits: 1),
@@ -1827,7 +1829,9 @@ struct UnitCheck {
       beforeRename, from: "prod", to: "live", server: "shopify")
     let renamedDay = renamedDays.first!
     let shopifyRows = renamedDay.rows.filter { $0.server == "shopify" }
-    check("the renamed profile's rows carry the new name", shopifyRows.allSatisfy { $0.profile == "live" })
+    check(
+      "the renamed profile's rows carry the new name",
+      shopifyRows.allSatisfy { $0.profile == "live" })
     check("and land on a leftover row as one row, not two", shopifyRows.count == 1)
     check("merged rather than overwritten", shopifyRows.first?.bucket == one.merged(with: two))
     check(
