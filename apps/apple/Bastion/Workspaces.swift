@@ -120,6 +120,17 @@ final class WorkspaceStore {
     ClientWiring.rewire()
   }
 
+  /// Swap a renamed profile's id in every workspace that holds it.
+  ///
+  /// No rewire, unlike `upsert`: `ProfileStore.rename` rewires once, retiring
+  /// the old id, after everything has moved.
+  func renameProfile(from oldID: String, to newID: String) throws {
+    let next = WorkspaceScope.renamingProfile(workspaces, from: oldID, to: newID)
+    guard next != workspaces else { return }
+    workspaces = next
+    try save()
+  }
+
   /// Workspace name → skill ids, the shape `SkillLinks.desired` takes.
   var skillScopes: [String: [String]] {
     Dictionary(

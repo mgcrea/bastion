@@ -95,9 +95,8 @@ struct ProfileEditor: View {
   /// Why the typed name cannot be used, or nil. An empty field is not a
   /// complaint: a name not yet typed is not yet a mistake.
   private var nameProblem: String? {
-    guard !trimmedName.isEmpty, !Profile.isValidName(trimmedName) else { return nil }
-    if trimmedName.count > 64 { return "A name is at most 64 characters." }
-    return "A name must be lower case letters, digits and hyphens, and start with one."
+    guard !trimmedName.isEmpty else { return nil }
+    return Profile.nameProblem(trimmedName)
   }
 
   /// Which secrets are already held, asked by **account name only**.
@@ -119,14 +118,14 @@ struct ProfileEditor: View {
               .textFieldStyle(.roundedBorder)
             Text(
               "Lower case, digits and hyphens. It becomes a URL path segment, a Keychain account "
-                + "and a directory name, which is why it is fixed once created."
+                + "and a directory name. Rename it later from the profile's row."
             )
             .font(.caption).foregroundStyle(.secondary)
           } else {
             LabeledContent("Name", value: name)
             Text(
-              "A profile cannot be renamed: its name is written into every client config that "
-                + "points at it. Remove it and add another instead."
+              "To change the name, close this and choose Rename… on the profile's row. Its "
+                + "credentials and history move with it."
             )
             .font(.caption).foregroundStyle(.secondary)
           }

@@ -115,6 +115,7 @@ struct WiringCheck {
     targetReadsBothShapes()
     renamedKeysMigrateOnlyWhenOurs()
     retiredProfileEntryIsRemoved()
+    renamedProfileLeavesOneEntry()
     jsonWriteIsIdempotent()
     prefixChangeLeavesOneEntry()
     collisionsAreNamedNotOverwritten()
@@ -161,6 +162,7 @@ struct WiringCheck {
 
     workspaceResolution()
     workspaceAssignments()
+    workspaceProfileRename()
     projectReconcile()
 
     print("\n\(checks - failures)/\(checks) passed")
@@ -2487,6 +2489,44 @@ struct WiringCheck {
     check(
       "scoped ids are every id listed, live or not",
       WorkspaceScope.scopedIDs(workspaces) == ["rgis/ovh", "prod/npm", "mgcrea/x", "gone/x"])
+  }
+
+  static func workspaceProfileRename() {
+    print("\nWorkspaces: a renamed profile")
+    let workspaces = [
+      Workspace(name: "rgis", folders: ["A"], profiles: ["prod/npm", "rgis/ovh"]),
+      // Already holds the new id: a dead profile's id kept by design.
+      Workspace(name: "both", folders: ["B"], profiles: ["live/ovh", "rgis/ovh"]),
+      Workspace(name: "other", folders: ["C"], profiles: ["prod/npm"]),
+    ]
+    let out = WorkspaceScope.renamingProfile(workspaces, from: "rgis/ovh", to: "live/ovh")
+    check("the id is swapped", out[0].profiles == ["live/ovh", "prod/npm"])
+    check("a workspace already holding the new id keeps one", out[1].profiles == ["live/ovh"])
+    check("a workspace without the old id is untouched", out[2] == workspaces[2])
+    check("nothing else about a workspace moves", out[0].folders == ["A"] && out[0].name == "rgis")
+  }
+
+  /// A renamed profile changes its endpoint, so the merge cannot recognise the
+  /// old entry as the one it is replacing. `ProfileStore.rename` names it.
+  static func renamedProfileLeavesOneEntry() {
+    print("\nRenamed profiles")
+    let before: [String: Any] = [
+      "mcpServers": [
+        "prod-shopify": ["type": "http", "url": "http://127.0.0.1:8720/s/prod/shopify"]
+      ]
+    ]
+    let entries = ["live-shopify": entry(httpReach("shopify", profile: "live"))]
+
+    let untold = ClientWiringMerge.merged(into: before, rootKey: "mcpServers", entries: entries)
+    check(
+      "without being told, the old entry survives beside the new one",
+      (untold["mcpServers"] as? [String: Any])?.count == 2)
+
+    let out = ClientWiringMerge.merged(
+      into: before, rootKey: "mcpServers", entries: entries, retiring: ["prod/shopify"])
+    let after = out["mcpServers"] as? [String: Any] ?? [:]
+    check("retiring the old id leaves exactly one entry", after.count == 1)
+    check("and it is the new one", after["live-shopify"] != nil)
   }
 
   // MARK: - Workspaces: project blocks

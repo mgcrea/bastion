@@ -247,6 +247,25 @@ nonisolated final class CallStats: Sendable {
     mutateLife(profile: profile, server: server) { $0.exits += 1 }
   }
 
+  /// File a renamed profile's history under its new name.
+  ///
+  /// Through the rows rather than key by key: `CallStatsRollup.renamingProfile`
+  /// holds the rule where `make unit` can check it, and `absorb` already
+  /// rebuilds every table from rows, label counts included.
+  func renameProfile(from old: String, to new: String, server: String) {
+    state.withLock { table in
+      guard table.writable, table.loaded else { return }
+      let days = CallStatsRollup.renamingProfile(
+        Self.materialise(table), from: old, to: new, server: server)
+      table.calls = [:]
+      table.clients = [:]
+      table.life = [:]
+      table.labels = [:]
+      Self.absorb(days, into: &table)
+      table.dirty = true
+    }
+  }
+
   private func mutateLife(
     profile: String, server: String, _ body: @Sendable (inout CallStatsRollup.LifeRow) -> Void
   ) {

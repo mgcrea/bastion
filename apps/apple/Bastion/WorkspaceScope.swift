@@ -145,6 +145,22 @@ nonisolated enum WorkspaceScope {
     Set(workspaces.flatMap(\.profiles))
   }
 
+  /// `workspaces` with one profile id swapped for another, for a rename.
+  ///
+  /// A workspace that already holds the new id (a dead profile's id is kept by
+  /// design, see `Workspace`) ends up with it once. Sorted, the way
+  /// `WorkspaceStore.upsert` stores them.
+  static func renamingProfile(_ workspaces: [Workspace], from oldID: String, to newID: String)
+    -> [Workspace]
+  {
+    workspaces.map { workspace in
+      guard workspace.profiles.contains(oldID) else { return workspace }
+      var next = workspace
+      next.profiles = (next.profiles.filter { $0 != oldID && $0 != newID } + [newID]).sorted()
+      return next
+    }
+  }
+
   // MARK: - Private
 
   /// The key for a directory that holds `.git` itself, or nil.

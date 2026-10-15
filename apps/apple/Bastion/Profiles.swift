@@ -41,6 +41,14 @@ nonisolated struct Profile: Identifiable, Hashable {
     !name.isEmpty && name.count <= 64
       && name.range(of: "^[a-z0-9][a-z0-9-]*$", options: .regularExpression) != nil
   }
+
+  /// Why `name` cannot be a profile name, or nil when it can. The sentences
+  /// the editor and the rename sheet show, kept beside the rule they explain.
+  static func nameProblem(_ name: String) -> String? {
+    guard !isValidName(name) else { return nil }
+    if name.count > 64 { return "A name is at most 64 characters." }
+    return "A name must be lower case letters, digits and hyphens, and start with one."
+  }
 }
 
 /// The profiles on disk, and the environment they produce.
@@ -328,6 +336,124 @@ final class ProfileStore {
     // with. Left out, its key would survive in every config as an entry
     // pointing at an endpoint the gateway no longer serves.
     ClientWiring.rewire(retiring: [profile.id])
+  }
+
+  enum RenameError: LocalizedError {
+    case invalidName(String)
+    case unchanged(String)
+    case taken(name: String, server: String)
+    case noSuchProfile(String)
+
+    var errorDescription: String? {
+      switch self {
+      case .invalidName(let name):
+        "'\(name)' cannot be a profile name. \(Profile.nameProblem(name) ?? "")"
+      case .unchanged(let name): "The profile is already called '\(name)'."
+      case .taken(let name, let server): "A profile named '\(name)' already exists for \(server)."
+      case .noSuchProfile(let id): "There is no profile '\(id)' to rename."
+      }
+    }
+  }
+
+  /// Give a profile a new name, and move everything that is keyed by it.
+  ///
+  /// The name is the profile id, the endpoint path, the Keychain account
+  /// prefix and the state directory, so a rename is a move of each. Ordered so
+  /// that nothing is lost on the way: the Keychain items are copied and the
+  /// directory moved BEFORE `profiles.json` is saved, each undone if a later
+  /// step fails, and the old items are deleted only after. From the save on,
+  /// the gateway serves the new endpoint and answers the old one with "no
+  /// profile".
+  ///
+  /// Here rather than in the sheet, for the reason `upsert` gives: the tool
+  /// `rename_profile` is the other caller.
+  @discardableResult
+  func rename(_ profile: Profile, to newName: String) throws -> Profile {
+    let server = profile.serverID
+    guard Profile.isValidName(newName) else { throw RenameError.invalidName(newName) }
+    guard newName != profile.name else { throw RenameError.unchanged(newName) }
+    // The set-aside rows too: an orphan's Keychain items are live, and the
+    // copy below would write over them.
+    guard self.profile(named: newName, server: server) == nil,
+      !orphaned.contains(where: { $0.name == newName && $0.server == server })
+    else { throw RenameError.taken(name: newName, server: server) }
+    guard let index = profiles.firstIndex(where: { $0.id == profile.id }) else {
+      throw RenameError.noSuchProfile(profile.id)
+    }
+    // Before anything moves, not at the save: `save()` refuses an unreadable
+    // file, and finding that out after the Keychain copy is a rollback for
+    // nothing.
+    if let unreadable { throw unreadable }
+
+    let oldID = profile.id
+    // From the stored row, not the caller's copy: a sheet holds its copy while
+    // open, and an agent may have changed the values or the writes gate since.
+    let current = profiles[index]
+    let renamed = Profile(
+      name: newName, serverID: server, values: current.values,
+      allowWrites: current.allowWrites, captureMode: current.captureMode)
+
+    // Nothing may hold the old directory or the old credentials while they move,
+    // and a child still writing its tokens on its way out would write them to
+    // the old path, so this waits for the process to be gone.
+    Supervisor.shared.stopAndWait(profile: profile.name, server: server)
+    ServerCheck.shared.forget(oldID)
+    CapabilityStore.shared.forget(oldID)
+
+    let copied = try ProfileRename.copySecrets(from: profile.name, to: newName, server: server)
+    do {
+      try ProfileRename.moveState(from: profile.name, to: newName, server: server)
+    } catch {
+      ProfileRename.delete(copied)
+      throw error
+    }
+
+    profiles[index] = renamed
+    do {
+      try save()
+    } catch {
+      profiles[index] = current
+      refreshSnapshot()
+      do {
+        try ProfileRename.moveState(from: newName, to: profile.name, server: server)
+      } catch let moveError {
+        hostLog(
+          "profiles", .error,
+          "could not move the state of \(newName) back to \(profile.name) after a failed rename: "
+            + moveError.localizedDescription)
+      }
+      ProfileRename.delete(copied)
+      throw error
+    }
+
+    // Committed. Everything below finishes the move and none of it can undo
+    // the rename, so a failure is logged rather than thrown.
+    // Stopped again after the save, for the reason `upsert` gives: the snapshot
+    // the gateway resolves from only changes at the save, so a request for the
+    // old endpoint arriving before it could spawn a fresh child from the old
+    // profile. It would hold swept credentials and could repopulate the check
+    // and capability caches under the old id.
+    Supervisor.shared.stop(profile: profile.name, server: server)
+    ServerCheck.shared.forget(oldID)
+    CapabilityStore.shared.forget(oldID)
+    ProfileRename.sweepSecrets(profile: profile.name, server: server)
+    ToolCostStore.shared.move(from: oldID, to: renamed.id)
+    CallStats.shared.renameProfile(from: profile.name, to: newName, server: server)
+    do {
+      try WorkspaceStore.shared.renameProfile(from: oldID, to: renamed.id)
+    } catch {
+      // Only when `workspaces.json` is unreadable, which the Workspaces pane
+      // already reports and which refuses every workspace save alike.
+      hostLog(
+        "profiles", .error,
+        "renamed \(oldID) to \(renamed.id) but could not update workspaces: "
+          + error.localizedDescription)
+    }
+    // Named, because the endpoint changed: `merged` recognises an entry it is
+    // replacing only by endpoint, so without this every client keeps the old
+    // entry beside the new one.
+    ClientWiring.rewire(retiring: [oldID])
+    return renamed
   }
 }
 

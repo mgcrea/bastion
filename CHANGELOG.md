@@ -7,6 +7,17 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.28.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Added
+
+- **Rename a profile.** Rename… on a profile's row, and `rename_profile` on Bastion's own server,
+  give a profile a new name. Its credentials and OAuth sign-in, the state its server keeps (a
+  child's own login, its callback port), its workspaces and its usage history move with it, and
+  every client Bastion configured is rewired to the new endpoint. The client's tool names change
+  with the entry, so permission rules naming the old ones stop matching. The audit log keeps the
+  old name, since its lines are hash-chained.
+
 ## [1.28.0] - 2026-10-13
 
 **Claude Code can be held to Bastion's servers.** A switch on each Claude Code profile blocks the

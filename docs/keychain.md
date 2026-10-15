@@ -19,6 +19,10 @@ keys everything by service + account, across three scopes:
 The service string derives from the bundle identifier, so a Debug build addresses a
 different namespace than the release. That suffix is load-bearing, not cosmetic.
 
+Renaming a profile moves its `.profile` and `.oauth` items: each is copied to the new
+`<profile>/<server>/` prefix before the new name is saved, and the old ones are deleted after.
+A refused read stops the rename rather than skipping the item.
+
 ## The prompt problem, and what it actually was
 
 The symptom: _"Bastion wants to use your confidential information"_, repeatedly, with

@@ -230,6 +230,24 @@ nonisolated final class Supervisor: @unchecked Sendable {
     Task(priority: Activity.priority) { @MainActor in Activity.shared.stopped(id: key) }
   }
 
+  /// `stop`, then wait for the child to be gone, SIGKILLed if it outlasts
+  /// `grace`.
+  ///
+  /// For a caller about to move the child's state directory, which a plain
+  /// `stop` does not allow: it closes stdin and SIGTERMs, and the child may
+  /// still be writing its tokens for a moment after. A remote instance has no
+  /// process, so it is only stopped.
+  func stopAndWait(profile: String, server: String, grace: TimeInterval = 3) {
+    let key = "\(profile)/\(server)"
+    generations.withLock { $0[key, default: 0] += 1 }
+    let instance = instances.withLock { $0.removeValue(forKey: key) }
+    let process = instance?.stop(reason: "stopped by request", escalate: false)
+    let remote = remotes.withLock { $0.removeValue(forKey: key) }
+    remote?.stop(reason: "stopped by request")
+    Task(priority: Activity.priority) { @MainActor in Activity.shared.stopped(id: key) }
+    if let process { ChildTermination.terminateAll([process], grace: grace) }
+  }
+
   /// What is running right now, for the Activity window.
   ///
   /// Alive only. A crashed child's instance stays in the table until the next

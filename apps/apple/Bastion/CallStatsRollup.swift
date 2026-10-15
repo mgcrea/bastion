@@ -400,6 +400,58 @@ nonisolated enum CallStatsRollup {
     return kept
   }
 
+  /// `days` with every row of `old` on `server` filed under `new`.
+  ///
+  /// Merged into a row already filed there, never written over it:
+  /// `ProfileStore.remove` leaves a profile's history behind, so the name being
+  /// taken can already hold rows of a profile that was deleted under it, or of
+  /// this one, renamed away and back. Rows keep the order they had, which is
+  /// the order `absorb` and the panes have always seen.
+  static func renamingProfile(_ days: [Day], from old: String, to new: String, server: String)
+    -> [Day]
+  {
+    func moved(_ profile: String, _ rowServer: String) -> String {
+      profile == old && rowServer == server ? new : profile
+    }
+    return days.map { day in
+      var out = Day(day: day.day)
+      var calls: [[String]: Int] = [:]
+      for var row in day.rows {
+        row.profile = moved(row.profile, row.server)
+        let key = [row.profile, row.server, row.label, row.isTool ? "tool" : "method"]
+        if let at = calls[key] {
+          out.rows[at].bucket.merge(row.bucket)
+        } else {
+          calls[key] = out.rows.count
+          out.rows.append(row)
+        }
+      }
+      var clients: [[String]: Int] = [:]
+      for var row in day.clients {
+        row.profile = moved(row.profile, row.server)
+        let key = [row.client, row.profile, row.server]
+        if let at = clients[key] {
+          out.clients[at].bucket.merge(row.bucket)
+        } else {
+          clients[key] = out.clients.count
+          out.clients.append(row)
+        }
+      }
+      var life: [[String]: Int] = [:]
+      for var row in day.life {
+        row.profile = moved(row.profile, row.server)
+        let key = [row.profile, row.server]
+        if let at = life[key] {
+          out.life[at].merge(row)
+        } else {
+          life[key] = out.life.count
+          out.life.append(row)
+        }
+      }
+      return out
+    }
+  }
+
   /// What these days occupy on disk, in the encoding `CallStats` writes.
   static func encodedSize(of days: [Day]) -> Int {
     (try? encoder().encode(File(days: days)).count) ?? 0

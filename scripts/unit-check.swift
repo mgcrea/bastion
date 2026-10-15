@@ -1795,6 +1795,58 @@ struct UnitCheck {
       "a budget smaller than one day still keeps one",
       CallStatsRollup.prune(fat, today: 20, maxDays: 90, maxBytes: 1).count == 1)
 
+    print("\nUsage rollup: a renamed profile")
+
+    var one = Bucket()
+    one.record(milliseconds: 40, bytes: 100, failed: false)
+    var two = Bucket()
+    two.record(milliseconds: 900, bytes: 50, failed: true)
+    let beforeRename = [
+      CallStatsRollup.Day(
+        day: 10,
+        rows: [
+          CallStatsRollup.CallRow(
+            profile: "prod", server: "shopify", label: "get_order", isTool: true, bucket: one),
+          // A removed profile's leftover under the name being taken.
+          CallStatsRollup.CallRow(
+            profile: "live", server: "shopify", label: "get_order", isTool: true, bucket: two),
+          // Same profile name, another server: not this profile.
+          CallStatsRollup.CallRow(
+            profile: "prod", server: "stripe", label: "get_order", isTool: true, bucket: one),
+        ],
+        clients: [
+          CallStatsRollup.ClientRow(client: "code", profile: "prod", server: "shopify", bucket: one),
+          CallStatsRollup.ClientRow(client: "code", profile: "live", server: "shopify", bucket: two),
+        ],
+        life: [
+          CallStatsRollup.LifeRow(profile: "prod", server: "shopify", starts: 2, exits: 1),
+          CallStatsRollup.LifeRow(profile: "live", server: "shopify", starts: 1, restarts: 1),
+        ])
+    ]
+    let renamedDays = CallStatsRollup.renamingProfile(
+      beforeRename, from: "prod", to: "live", server: "shopify")
+    let renamedDay = renamedDays.first!
+    let shopifyRows = renamedDay.rows.filter { $0.server == "shopify" }
+    check("the renamed profile's rows carry the new name", shopifyRows.allSatisfy { $0.profile == "live" })
+    check("and land on a leftover row as one row, not two", shopifyRows.count == 1)
+    check("merged rather than overwritten", shopifyRows.first?.bucket == one.merged(with: two))
+    check(
+      "the same name on another server is left alone",
+      renamedDay.rows.contains { $0.server == "stripe" && $0.profile == "prod" })
+    check(
+      "client rows move and merge too",
+      renamedDay.clients.count == 1 && renamedDay.clients.first?.bucket == one.merged(with: two)
+        && renamedDay.clients.first?.profile == "live")
+    let movedLife = renamedDay.life.first
+    check(
+      "life rows move and merge too",
+      renamedDay.life.count == 1 && movedLife?.profile == "live" && movedLife?.starts == 3
+        && movedLife?.restarts == 1 && movedLife?.exits == 1)
+    check(
+      "a rename that matches nothing changes nothing",
+      CallStatsRollup.renamingProfile(beforeRename, from: "nope", to: "x", server: "shopify")
+        .first?.rows.count == 3)
+
     print("\nUsage rollup: the file")
 
     var round = CallStatsRollup.File()
