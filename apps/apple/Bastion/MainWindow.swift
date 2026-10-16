@@ -126,6 +126,12 @@ struct MainView: View {
   /// is affected.
   @State private var chat = DemoSeed.isEnabled ? DemoSeed.chatSession() : ChatSession()
 
+  /// The server a sidebar right-click asked to remove, waiting on the
+  /// confirmation. Held here, not in `ServerDetail`, because the row it came
+  /// from need not be the one selected.
+  @State private var pendingRemoval: BastionServer?
+  @State private var sidebarError: String?
+
   /// `List(selection:)` drives an `Optional` for a single selection, and the
   /// stored value is a `String` because that is what `@AppStorage` can hold.
   /// Bridging here rather than mirroring into `@State` keeps one source of
@@ -208,6 +214,7 @@ struct MainView: View {
           // is to say it will not answer, not to hide it until it does.
           .foregroundStyle(server.isEnabled ? .primary : .secondary)
           .tag(MainPane.server(server.id))
+          .contextMenu { serverMenu(server) }
         }
 
         // The empty state is the first thing a new install shows, and Bastion
@@ -332,6 +339,27 @@ struct MainView: View {
     }
     .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
     .safeAreaInset(edge: .bottom) { sidebarStatus }
+    .confirmationDialog(
+      "Remove \(pendingRemoval?.displayName ?? "")?",
+      isPresented: Binding(
+        get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } }),
+      titleVisibility: .visible, presenting: pendingRemoval
+    ) { server in
+      Button("Remove", role: .destructive) { remove(server) }
+      Button("Cancel", role: .cancel) {}
+    } message: { server in
+      Text(
+        server.removalWarning(
+          profiles: ProfileStore.shared.profiles.filter { $0.serverID == server.id }.count))
+    }
+    .alert(
+      "Could not change the server",
+      isPresented: Binding(get: { sidebarError != nil }, set: { if !$0 { sidebarError = nil } })
+    ) {
+      Button("OK", role: .cancel) {}
+    } message: {
+      Text(sidebarError ?? "")
+    }
   }
 
   /// The MCP clients this Mac actually has. Recomputed per redraw, because
@@ -343,6 +371,32 @@ struct MainView: View {
   /// `@AppStorage` for a client since uninstalled still renders, and says so.
   private var installedClients: [ClientWiring.Client] {
     ClientWiring.all.filter(\.isInstalled)
+  }
+
+  /// The right-click on a server row: the detail pane's actions, reachable
+  /// without opening the pane first. Each one is offered only where that pane
+  /// offers it, so the menu never holds an item the pane would refuse.
+  @ViewBuilder private func serverMenu(_ server: BastionServer) -> some View {
+    if server.origin == .custom {
+      Button("Edit…") { editor.subject = .editing(server) }
+    }
+    Button(server.isEnabled ? "Disable" : "Enable") {
+      do { try ServerStore.shared.setEnabled(!server.isEnabled, for: server.id) } catch {
+        sidebarError = error.localizedDescription
+      }
+    }
+    if server.origin != .builtin {
+      Divider()
+      Button("Remove Server…", role: .destructive) { pendingRemoval = server }
+    }
+  }
+
+  private func remove(_ server: BastionServer) {
+    do {
+      try ServerStore.shared.remove(server)
+    } catch {
+      sidebarError = "Could not remove '\(server.id)': \(error.localizedDescription)"
+    }
   }
 
   /// The add button, under the list where macOS puts one.
