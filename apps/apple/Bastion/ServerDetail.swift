@@ -277,14 +277,7 @@ struct ServerDetail: View {
       Button("Remove", role: .destructive) { removeServer() }
       Button("Cancel", role: .cancel) {}
     } message: {
-      // Nothing was downloaded, so nothing is deleted from disk; the command
-      // stays where it shipped.
-      Text(
-        profiles.isEmpty
-          ? "Bastion forgets it. The command itself stays where it shipped."
-          : "Its \(profiles.count) profile\(profiles.count == 1 ? "" : "s") are deleted, and "
-            + "any client pointing at them will stop working. The command itself stays where "
-            + "it shipped.")
+      Text(server.removalWarning(profiles: profiles.count))
     }
   }
 
@@ -392,15 +385,7 @@ struct ServerDetail: View {
       Button("Remove", role: .destructive) { removeServer() }
       Button("Cancel", role: .cancel) {}
     } message: {
-      // Deliberately not the package card's sentence. No code is deleted here
-      // because none was ever downloaded, and claiming otherwise would overstate
-      // what removing this undoes.
-      Text(
-        profiles.isEmpty
-          ? "Bastion forgets the address. Nothing is deleted anywhere else."
-          : "Its \(profiles.count) profile\(profiles.count == 1 ? "" : "s") and their credentials "
-            + "in the Keychain are deleted. Any client pointing at them will stop working. "
-            + "Nothing changes at \(endpoint.host() ?? "the server itself").")
+      Text(server.removalWarning(profiles: profiles.count))
     }
   }
 
@@ -519,14 +504,7 @@ struct ServerDetail: View {
       Button("Remove", role: .destructive) { removeServer() }
       Button("Cancel", role: .cancel) {}
     } message: {
-      // Every consequence, said before it happens. The profile sweep is the
-      // part nobody expects, and finding out afterwards is finding out too late.
-      Text(
-        profiles.isEmpty
-          ? "Its downloaded code is deleted. Nothing else is affected."
-          : "Its \(profiles.count) profile\(profiles.count == 1 ? "" : "s"), their credentials in "
-            + "the Keychain, and its downloaded code are all deleted. Any client pointing at them "
-            + "will stop working.")
+      Text(server.removalWarning(profiles: profiles.count))
     }
   }
 
@@ -1469,6 +1447,40 @@ private struct ProfileRow: View {
       report(nil)
     } catch {
       report("Could not remove '\(profile.name)': \(error.localizedDescription)")
+    }
+  }
+}
+
+extension BastionServer {
+  /// What removing this server takes with it, said before it happens: the
+  /// profile sweep is the part nobody expects, and finding out afterwards is
+  /// finding out too late. One sentence per transport, because each removes a
+  /// different amount. Shared by the detail pane and the sidebar's context
+  /// menu, which confirm the same removal and must not describe it differently.
+  func removalWarning(profiles count: Int) -> String {
+    let profiles = "\(count) profile\(count == 1 ? "" : "s")"
+    switch transport {
+    case .remote(let endpoint):
+      // Deliberately not the package sentence. No code is deleted here because
+      // none was ever downloaded, and claiming otherwise would overstate what
+      // removing this undoes.
+      return count == 0
+        ? "Bastion forgets the address. Nothing is deleted anywhere else."
+        : "Its \(profiles) and their credentials in the Keychain are deleted. Any client "
+          + "pointing at them will stop working. Nothing changes at "
+          + "\(endpoint.host() ?? "the server itself")."
+    case .system, .inProcess:
+      // Nothing was downloaded, so nothing is deleted from disk; the command
+      // stays where it shipped.
+      return count == 0
+        ? "Bastion forgets it. The command itself stays where it shipped."
+        : "Its \(profiles) are deleted, and any client pointing at them will stop working. "
+          + "The command itself stays where it shipped."
+    case .child:
+      return count == 0
+        ? "Its downloaded code is deleted. Nothing else is affected."
+        : "Its \(profiles), their credentials in the Keychain, and its downloaded code are all "
+          + "deleted. Any client pointing at them will stop working."
     }
   }
 }
