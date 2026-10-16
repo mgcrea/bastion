@@ -4,8 +4,21 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.29.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.30.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
+
+## [1.30.0] - 2026-10-16
+
+**Manage a server from the sidebar.** Right-click any server in the sidebar to edit it, switch it
+off or remove it, without opening its page first.
+
+### Added
+
+- **A right-click menu on each server in the sidebar**, with Edit…, Enable or Disable, and Remove
+  Server…. Each item appears only where the server's own page offers it: Edit… on a server you
+  added yourself, Remove Server… on anything but Bastion's own server. Removing still asks first,
+  and says what goes with the server: its profiles, their credentials in the Keychain and its
+  downloaded code.
 
 ## [1.29.0] - 2026-10-15
 
