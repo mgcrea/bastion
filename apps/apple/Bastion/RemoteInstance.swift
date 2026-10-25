@@ -271,7 +271,7 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
         case .answer(let result):
           facadeAnswer = result
           if method == "tools/list" {
-            facadeListedBytes = catalog.reduce(0) { $0 + ToolCost.bytes(of: $1) }
+            facadeListedBytes = ToolFacade.listingBytes(catalog)
           }
         case .rewrite(let params): frame["params"] = params
         case .passThrough: break
@@ -427,7 +427,7 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
       in: catalog, declared: server.writeTools,
       annotated: state.withLock { $0.annotatedWriteTools }, allowWrites: profile.allowWrites)
 
-    let bytes = visible.reduce(0) { $0 + ToolCost.bytes(of: $1) }
+    let bytes = ToolFacade.listingBytes(visible)
     let profileID = profile.id
     let allowWrites = profile.allowWrites
     let count = visible.count
@@ -565,7 +565,7 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     if method == "tools/list", let result = response["result"] as? [String: Any],
       let entries = result["tools"] as? [[String: Any]]
     {
-      let bytes = entries.reduce(0) { $0 + ToolCost.bytes(of: $1) }
+      let bytes = ToolFacade.listingBytes(entries)
       let partial = result["nextCursor"] != nil
       let profileID = profile.id
       let allowWrites = profile.allowWrites

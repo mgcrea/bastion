@@ -1270,7 +1270,7 @@ nonisolated extension Supervisor {
         // declarations still cost something, so what was kept out is the
         // catalogue minus what went in its place.
         if method == "tools/list" {
-          let listed = catalog.reduce(0) { $0 + ToolCost.bytes(of: $1) }
+          let listed = ToolFacade.listingBytes(catalog)
           if listed > answer.count {
             CallStats.shared.noteSaved(
               profile: profile.name, server: server.id, facade: listed - answer.count)
@@ -1501,7 +1501,7 @@ nonisolated extension Supervisor {
         if !learned.isEmpty {
           self?.state.withLock { $0.annotatedWriteTools.formUnion(learned) }
         }
-        let bytes = entries.reduce(0) { $0 + ToolCost.bytes(of: $1) }
+        let bytes = ToolFacade.listingBytes(entries)
         // Both of `WriteGate`'s sources, so a view can later tell "no writes
         // here" from "Bastion cannot tell" — see `ToolCostStore.Measurement`.
         let writes = Set(declaredWrites).union(learned).count

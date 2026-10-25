@@ -313,7 +313,7 @@ final class CapabilityStore {
       // and marked as such — the walk above followed every page, so `partial`
       // is only true when a server would not stop paginating.
       if !entries.isEmpty {
-        let bytes = entries.reduce(0) { $0 + ToolCost.bytes(of: $1) }
+        let bytes = ToolFacade.listingBytes(entries)
         let (profileID, allowWrites) = (profile.id, profile.allowWrites)
         let (count, writes) = (entries.count, snapshot.writeTools.count)
         Task { @MainActor in
