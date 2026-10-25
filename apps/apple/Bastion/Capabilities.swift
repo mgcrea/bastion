@@ -147,9 +147,8 @@ final class CapabilityStore {
 
     /// Tool names Bastion has positive evidence will change something: the
     /// manifest's list and the server's own annotations, ORed, intersected with
-    /// what is actually in the listing. The same computation
-    /// `Supervisor.facadeWriteTools` makes, and for the same reason it makes
-    /// it — a name that is not in the listing cannot be marked in it.
+    /// what is actually in the listing: `WriteGate.knownWriteTools`, the same
+    /// computation the facade makes.
     var writeTools: Set<String> = []
     /// Tool names the manifest declares as writes that are NOT in the listing.
     ///
@@ -300,11 +299,8 @@ final class CapabilityStore {
       // Off the raw entries, not the parsed tools: `WriteGate` reads the
       // annotations as they arrived, which is the same bytes the gateway sees,
       // and `MCPTool` keeps only one of the two hints it looks at.
+      snapshot.writeTools = WriteGate.knownWriteTools(declared: server.writeTools, in: entries)
       let present = Set(entries.compactMap { $0["name"] as? String })
-      snapshot.writeTools =
-        Set(server.writeTools)
-        .union(WriteGate.annotatedWriteTools(in: entries))
-        .intersection(present)
       // What the gate took away, and only when it is Bastion that took it. A
       // child's gate is an environment variable and the tool was never
       // registered; there is nothing to name.

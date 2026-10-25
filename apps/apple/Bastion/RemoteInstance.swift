@@ -242,7 +242,7 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     {
       _ = try ensureHandshake()
       let catalog = try facadeCatalog()
-      let writeTools = facadeWriteTools(in: catalog)
+      let writeTools = WriteGate.knownWriteTools(declared: server.writeTools, in: catalog)
       // The floor, and only on `tools/list`, exactly as in
       // `Supervisor.Instance.facadeOutcome` — a listing the declarations would
       // not meaningfully shrink is forwarded whole. It earns its keep here more
@@ -413,24 +413,6 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     return catalog
   }
 
-  /// The catalog entries Bastion has positive evidence will change something.
-  ///
-  /// Both of `WriteGate`'s sources, ORed, then intersected with what is actually
-  /// in the catalog — which is what makes a writes-off profile come out empty
-  /// and get no write dispatcher at all: `facadeCatalog` has already removed
-  /// those tools, so there is nothing left to dispatch to.
-  ///
-  /// Empty also when Bastion simply does not know. A server with no `writeTools`
-  /// in the manifest and no annotations of its own classifies nothing, so it
-  /// keeps exactly the three tools it had before the split rather than gaining a
-  /// fourth that would be a guess.
-  private func facadeWriteTools(in catalog: [[String: Any]]) -> Set<String> {
-    let present = Set(catalog.compactMap { $0["name"] as? String })
-    return Set(server.writeTools)
-      .union(WriteGate.annotatedWriteTools(in: catalog))
-      .intersection(present)
-  }
-
   /// The catalog as this profile is allowed to see it, and the measurement of
   /// it.
   ///
@@ -452,7 +434,7 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     // Counted over what is VISIBLE, which is what the client is served and so
     // what the figure beside it describes. For a writes-off profile the gate has
     // already removed them and this is legitimately zero.
-    let writes = facadeWriteTools(in: visible).count
+    let writes = WriteGate.knownWriteTools(declared: server.writeTools, in: visible).count
     // Recorded when the figure moves, not on every call. This runs for each
     // search, describe and call the facade answers, and every record is a hop
     // to the main actor and a write of the store to disk for a number that
@@ -587,7 +569,7 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
       let partial = result["nextCursor"] != nil
       let profileID = profile.id
       let allowWrites = profile.allowWrites
-      let writes = facadeWriteTools(in: entries).count
+      let writes = WriteGate.knownWriteTools(declared: server.writeTools, in: entries).count
       // Counted here: the task runs on the main actor, and `entries` is not
       // Sendable, so it may not follow.
       let count = entries.count

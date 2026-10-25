@@ -1219,24 +1219,6 @@ nonisolated extension Supervisor {
         allowWrites: profile.allowWrites)
     }
 
-    /// The catalog entries Bastion has positive evidence will change something.
-    ///
-    /// Both of `WriteGate`'s sources, ORed, then intersected with what is
-    /// actually in the catalog — which is what makes a writes-off profile come
-    /// out empty and get no write dispatcher at all: `facadeCatalog` has already
-    /// removed those tools, so there is nothing left to dispatch to.
-    ///
-    /// Empty also when Bastion simply does not know. A server with no
-    /// `writeTools` in the manifest and no annotations of its own classifies
-    /// nothing, so it keeps exactly the three tools it had before the split
-    /// rather than gaining a fourth that would be a guess.
-    private func facadeWriteTools(in catalog: [[String: Any]]) -> Set<String> {
-      let present = Set(catalog.compactMap { $0["name"] as? String })
-      return Set(server.writeTools)
-        .union(WriteGate.annotatedWriteTools(in: catalog))
-        .intersection(present)
-    }
-
     /// `ToolFacade.route`, wired to this child.
     ///
     /// The fetch is behind `handles` so the catalog walk happens on the frames
@@ -1249,7 +1231,7 @@ nonisolated extension Supervisor {
       guard ToolFacade.handles(method: method, params: params) else { return .passThrough }
 
       let catalog = try facadeCatalog()
-      let writeTools = facadeWriteTools(in: catalog)
+      let writeTools = WriteGate.knownWriteTools(declared: server.writeTools, in: catalog)
 
       // The floor, and only on `tools/list`. A listing the declarations would
       // not meaningfully shrink is forwarded whole — see `ToolFacade`.

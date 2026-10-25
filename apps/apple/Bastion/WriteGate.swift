@@ -42,6 +42,23 @@ nonisolated enum WriteGate {
       })
   }
 
+  /// The tools Bastion has positive evidence will change something.
+  ///
+  /// Both sources, the manifest's `declared` list and the server's own
+  /// annotations, ORed, then intersected with what is actually in `tools`: a
+  /// name that is not in the listing cannot be marked in it. That is also what
+  /// makes a writes-off profile's facade come out empty and get no write
+  /// dispatcher at all, because the gate has already removed those tools.
+  ///
+  /// Empty also when Bastion simply does not know. A server with no
+  /// `writeTools` in the manifest and no annotations of its own classifies
+  /// nothing, so its facade keeps exactly the three tools it had before the
+  /// split rather than gaining a fourth that would be a guess.
+  static func knownWriteTools(declared: [String], in tools: [[String: Any]]) -> Set<String> {
+    let present = Set(tools.compactMap { $0["name"] as? String })
+    return Set(declared).union(annotatedWriteTools(in: tools)).intersection(present)
+  }
+
   /// Whether a call to `name` is gated, given the manifest's list and whatever
   /// annotations have been learned so far.
   static func isWriteTool(_ name: String, declared: [String], annotated: Set<String>) -> Bool {

@@ -2713,6 +2713,14 @@ struct UnitCheck {
     // `bastion_call_tool` is safe to do.
     let writes = WriteGate.annotatedWriteTools(in: tools)
     check("the fixture classifies exactly one write", writes == ["update_app"])
+    check(
+      "the manifest's writes are ORed with the annotations, within the listing",
+      WriteGate.knownWriteTools(declared: ["list_apps", "gone"], in: tools)
+        == ["list_apps", "update_app"])
+    check(
+      "and a server that classifies nothing gets no writes",
+      WriteGate.knownWriteTools(declared: [], in: tools.filter { $0["annotations"] == nil })
+        .isEmpty)
 
     func viaFacade(_ dispatcher: String, _ tool: String) -> ToolFacade.Routing {
       ToolFacade.route(
