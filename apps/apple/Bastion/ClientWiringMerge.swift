@@ -278,22 +278,24 @@ enum ClientWiringMerge {
     }
 
     for (key, entry) in entries {
-      // Over an entry that is already ours, only what Bastion owns is
-      // replaced. Rewires run unattended on every profile save, and replacing
-      // the whole entry switched a server the user had turned off in their
-      // client (`disabled`, `enabled = false`) back on and dropped any timeout
-      // they had set. Anything else at this key — somebody's own server — is
-      // replaced whole, as before; `wire` has already refused that unless the
-      // user forced it.
-      guard let existing = servers[key] as? [String: Any], isOurs(existing) else {
-        servers[key] = entry
-        continue
-      }
-      servers[key] = existing.filter { !ownedKeys.contains($0.key) }.merging(entry) { _, new in new
-      }
+      servers[key] = overlaid(entry, on: servers[key])
     }
     root[rootKey] = servers
     return root
+  }
+
+  /// `entry`, written at a key that currently holds `existing`.
+  ///
+  /// Over an entry that is already ours, only what Bastion owns is replaced.
+  /// Rewires run unattended on every profile save, and replacing the whole
+  /// entry switched a server the user had turned off in their client
+  /// (`disabled`, `enabled = false`) back on and dropped any timeout they had
+  /// set. Anything else at this key — somebody's own server — is replaced
+  /// whole, as before; `wire` has already refused that unless the user forced
+  /// it. `merged` and `reconciledProjects` both write through here.
+  private static func overlaid(_ entry: [String: Any], on existing: Any?) -> [String: Any] {
+    guard let existing = existing as? [String: Any], isOurs(existing) else { return entry }
+    return existing.filter { !ownedKeys.contains($0.key) }.merging(entry) { _, new in new }
   }
 
   /// Every key Bastion writes into an entry, across the three shapes `entry`
@@ -708,15 +710,8 @@ enum ClientWiringMerge {
         servers.removeValue(forKey: key)
       }
       for (key, entry) in wanted {
-        // `merged`'s rule: over an entry already ours, only what Bastion owns
-        // is replaced, so `disabled` or a timeout the user set survives.
-        guard let existing = servers[key] as? [String: Any], isOurs(existing) else {
-          servers[key] = entry
-          continue
-        }
-        servers[key] = existing.filter { !ownedKeys.contains($0.key) }.merging(entry) { _, new in
-          new
-        }
+        // `merged`'s rule, so `disabled` or a timeout the user set survives.
+        servers[key] = overlaid(entry, on: servers[key])
       }
       project["mcpServers"] = servers
       projects[folder] = project
