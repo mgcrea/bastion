@@ -21,8 +21,10 @@ TEAM_ID := 75QE9PRT3V
 # and answered a perfectly good `~/.npmrc` with `Unknown user config`, applying
 # the bare age filter and failing a same-day publish as `ENOVERSIONS: No
 # versions available` — a sentence that reads as if the package does not exist.
-# 24.20.0 is the first v24 carrying npm 11.19.0, which honours it.
-NODE_VERSION ?= 24.20.0
+# 24.20.0 is the first v24 carrying npm 11.19.0, which honours it. 24.22.1 is
+# the October 2026 security release (Brotli RCE, TLS hostname-check bypasses,
+# undici and the CA bundle) and carries npm 11.19.1, so the floor still holds.
+NODE_VERSION ?= 24.22.1
 # arm64 ONLY, and this is not a size optimisation dressed up as one. The app
 # itself has no x86_64 slice — a Release build of Bastion and bastion-bridge is
 # arm64, measured, so an Intel Mac cannot launch the process that would spawn
@@ -210,7 +212,7 @@ $(SPARKLE_STAMP):
 # rather than going unpinned.
 NODE_SUMS := apps/apple/.build/node-cache/SHASUMS256-v$(NODE_VERSION).txt
 NODE_PINS ?= \
-	24.20.0-arm64:40e5607e5ecb3db9192723776da2d75d966260fc74a7a9e731c1bd67dda96bc8
+	24.22.1-arm64:89c682593d76cd44233fa53b1563264e7de9cbb189cad169135c5b4fadfbc0a7
 
 node: ## Download, verify and stage the embedded node runtime and npm
 	@mkdir -p $(STAGED) apps/apple/.build/node-cache
