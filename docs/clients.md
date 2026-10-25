@@ -410,6 +410,19 @@ Verified against Anthropic's help centre on 2026-08-31:
 [getting started with custom connectors](https://support.anthropic.com/en/articles/11175166-getting-started-with-custom-connectors-using-remote-mcp),
 [building custom connectors](https://support.anthropic.com/en/articles/11503834-building-custom-connectors-via-remote-mcp-servers).
 
+**A third door exists, but not for a subscriber's Desktop.** Claude Desktop in
+_third-party mode_ (inference through an organisation's LLM gateway, set up by
+an applied configuration document or MDM) takes remote servers from that
+document's `managedMcpServers` key, entries shaped
+`{name, transport: "http", url, oauth: true}`, and "connects to each entry
+directly" with its own OAuth sign-in. Without the inference settings Desktop
+ignores the key, and an MDM profile overrides a local document. Source:
+ToolHive's `thv client connector` (stacklok/toolhive#6840, merged 2026-10-16),
+read 2026-10-21, not tried here. Unverified: whether that mode accepts a
+loopback URL, and whether a static `Authorization` header can stand in for OAuth
+(the PR mentions a `headers` field it chose not to write). It changes nothing for
+the ordinary Claude subscriber, who has no applied document.
+
 The bridge itself is thin, and `apps/apple/BastionBridge/main.swift` opens with
 why. It holds no credential beyond the token it is handed, opens no protected
 path, and makes exactly one kind of network call: a POST to `127.0.0.1`. The
