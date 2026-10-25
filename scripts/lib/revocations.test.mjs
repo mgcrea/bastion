@@ -42,6 +42,8 @@ describe("renderRevocations", () => {
 
   it("escapes an id rather than emitting Swift that does not compile", () => {
     assert.match(renderRevocations(source, ['a"b\\c']), /"a\\"b\\\\c",/);
+    // Swift has no `\b`, and spells a scalar `\u{XX}`, not `\u00XX`.
+    assert.match(renderRevocations(source, ["a\bb\u0001c"]), /"a\\u\{8\}b\\u\{1\}c",/);
   });
 
   it("throws on a file with no declaration rather than appending one", () => {

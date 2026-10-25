@@ -9,14 +9,15 @@
 //
 // Dependency-free, like everything else under scripts/lib.
 
-const DECLARATION = /^((?:[a-z]+ +)*)enum Revocations \{[\s\S]*?^\}\n?/m;
-
-// `JSON.stringify`, not string interpolation — the same escaper
+// `swiftString`, not string interpolation — the same escaper
 // `generate-servers.mjs` uses for every value it writes into Swift. These ids
 // come from a DATABASE rather than from servers.json, which makes this the one
-// string in the release path nobody in this repo chose, and a quote or a
-// backslash in one would emit Swift that does not compile.
-const swiftString = (value) => JSON.stringify(value);
+// string in the release path nobody in this repo chose, and a quote, a
+// backslash or a control character in one would emit Swift that does not
+// compile.
+import { swiftString } from "./swift-string.mjs";
+
+const DECLARATION = /^((?:[a-z]+ +)*)enum Revocations \{[\s\S]*?^\}\n?/m;
 
 /**
  * `source` with the `Revocations` declaration's set replaced by `ids`, sorted.
