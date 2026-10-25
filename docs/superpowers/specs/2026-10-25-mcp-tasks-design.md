@@ -114,7 +114,7 @@ today, including streaming progress. If not, the gateway:
 
 1. calls `TaskStore.create(owner:)` and gets back a `taskId`;
 2. answers `{resultType: "task", taskId, status: "working", createdAt,
-   lastUpdatedAt, ttlMs, pollIntervalMs: 5000}`, and then
+lastUpdatedAt, ttlMs, pollIntervalMs: 5000}`, and then
 3. closes the connection, which releases its slot in the 64-connection budget
    (`Gateway.swift:68`).
 
@@ -181,15 +181,15 @@ A new file holding a `nonisolated final class TaskStore: Sendable` with an
 It must import nothing app-specific, so `scripts/unit-check.swift` can
 compile it alone.
 
-| Field                      | Notes                                                                         |
-| -------------------------- | ----------------------------------------------------------------------------- |
-| `taskId`                   | `bt-` + 32 hex chars from `SecRandomCopyBytes`; spec limit 128 ASCII, no spaces |
-| owner                      | `(client, profile, server)`                                                    |
-| `internalID`, child key    | for cancel                                                                    |
-| `status`                   | `working` → `completed` / `failed` / `cancelled`; never `input_required`       |
-| `statusMessage`            | latest progress message, see below                                            |
-| `createdAt`, `lastUpdatedAt` | ISO 8601                                                                    |
-| `result` or `error`        | the already-modernised JSON, held as `SendableJSON`                           |
+| Field                        | Notes                                                                           |
+| ---------------------------- | ------------------------------------------------------------------------------- |
+| `taskId`                     | `bt-` + 32 hex chars from `SecRandomCopyBytes`; spec limit 128 ASCII, no spaces |
+| owner                        | `(client, profile, server)`                                                     |
+| `internalID`, child key      | for cancel                                                                      |
+| `status`                     | `working` → `completed` / `failed` / `cancelled`; never `input_required`        |
+| `statusMessage`              | latest progress message, see below                                              |
+| `createdAt`, `lastUpdatedAt` | ISO 8601                                                                        |
+| `result` or `error`          | the already-modernised JSON, held as `SendableJSON`                             |
 
 **Retention.** A terminal task is kept for 15 minutes after it settles, then
 evicted by a sweep. The store has its own timer at the reaper's 10 s cadence.
@@ -275,6 +275,7 @@ and `.system` servers. `Dialect.discoverResult` stays shared with
   No catalog server has a tool that sleeps on demand. The builder chooses
   between a fixture child added with `add_custom_server` for the run, and
   driving a real slow tool.
+
 - **Manual check:** Claude Code 2.1.310 CLI against `system/xcode` running
   `RunAllTests` on a suite slower than 10 s:
   - `/tasks` lists it;
