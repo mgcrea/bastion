@@ -348,6 +348,8 @@ Lead prose with no bold title is prose, not a summary.
       plain("**Bold** with `code`, a [link](https://x.y) and *emphasis*."),
       "Bold with code, a link and emphasis.",
     );
+    assert.equal(plain("Use `*.json` and `*.md` files"), "Use *.json and *.md files");
+    assert.equal(plain("set `_meta` and `x_` here"), "set _meta and x_ here");
     assert.equal(
       postText(withSummary.summary),
       "One line for the card. Two sentences for the post, wrapped across lines the way the file " +

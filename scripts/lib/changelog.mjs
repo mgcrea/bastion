@@ -241,14 +241,22 @@ const summarise = (paragraph) => {
  * @param {string} text
  * @returns {string}
  */
-export const plain = (text) =>
-  text
-    .replace(/`([^`]+)`/g, "$1")
+export const plain = (text) => {
+  // Lifted out first, as `inline` does, or a `*` or `_` inside one reads as
+  // emphasis: `*.json` came out as `.json`.
+  const codes = [];
+  return text
+    .replace(/`([^`]+)`/g, (_, code) => {
+      codes.push(code);
+      return `\0${codes.length - 1}\0`;
+    })
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/(^|\W)[*_]([^*_]+)[*_](?=\W|$)/g, "$1$2")
+    .replace(/\0(\d+)\0/g, (_, index) => codes[Number(index)])
     .replace(/\s+/g, " ")
     .trim();
+};
 
 /**
  * The text to post with a release's link: its title, then its description.
