@@ -104,6 +104,9 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     /// The last figure `facadeCatalog` handed `ToolCostStore`, so an
     /// unchanged one is not recorded again. See there.
     var recordedCost: RecordedCost?
+    /// What `Activity` was last told about upstream, so it hears only of a
+    /// change rather than of every call. See `noteUpstream`.
+    var upstreamFailure: String?
   }
 
   struct RecordedCost: Equatable {
@@ -641,9 +644,41 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
   /// expired before the first `tools/call` failed the catalog fetch that call
   /// triggers, and on a writes-off profile that failure reads as "writes are
   /// off" for a read tool, every time, until something else went upstream.
+  ///
+  /// It is also the one place that knows whether upstream answered, so it is
+  /// what tells `Activity`. A refused refresh, a second 401 or a 500 all throw
+  /// out of here, and the row stops claiming the server will answer.
   private func postRecovering(_ frame: [String: Any], isHandshake: Bool = false) throws
     -> Response
   {
+    do {
+      let response = try recovering(frame, isHandshake: isHandshake)
+      noteUpstream(failure: nil)
+      return response
+    } catch {
+      noteUpstream(failure: error.localizedDescription)
+      throw error
+    }
+  }
+
+  /// Tells `Activity` when upstream starts or stops answering. Only on a
+  /// change: this runs on every request, and each report is a hop to the main
+  /// actor.
+  private func noteUpstream(failure: String?) {
+    let changed = state.withLock { current -> Bool in
+      guard current.upstreamFailure != failure else { return false }
+      current.upstreamFailure = failure
+      return true
+    }
+    guard changed else { return }
+    if let failure { hostLog(key, .error, "upstream failing: \(failure)") }
+    let id = key
+    Task(priority: Activity.priority) { @MainActor in
+      Activity.shared.upstream(id: id, failure: failure)
+    }
+  }
+
+  private func recovering(_ frame: [String: Any], isHandshake: Bool) throws -> Response {
     var response = try post(frame, isHandshake: isHandshake)
 
     // A 401 on an OAuth profile is the ordinary end of a token's life, not a

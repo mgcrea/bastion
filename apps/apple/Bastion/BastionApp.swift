@@ -479,7 +479,8 @@ private struct ServersSection: View {
       // worse than no row at all.
       Image(systemName: "circle.fill")
         .font(.system(size: 6))
-        .foregroundStyle(instance.isLive ? Color.green : Color.secondary)
+        .foregroundStyle(
+          instance.upstreamFailure != nil ? Color.red : instance.isLive ? Color.green : .secondary)
       Text(instance.displayName)
         .lineLimit(1)
         .truncationMode(.middle)

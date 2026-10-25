@@ -607,6 +607,9 @@ private struct ServerBadge: View {
 
   @ViewBuilder private var ladder: some View {
     let live = Activity.shared.instances.filter { $0.server == server.id && $0.isLive }.count
+    let failing = Activity.shared.instances.filter {
+      $0.server == server.id && $0.upstreamFailure != nil
+    }
     let profiles = ProfileStore.shared.profiles.filter { $0.serverID == server.id }.count
 
     // First in the ladder, because it outranks everything below it: a disabled
@@ -617,6 +620,17 @@ private struct ServerBadge: View {
         .font(.caption2)
         .foregroundStyle(.secondary)
         .help("Disabled")
+    } else if let first = failing.first {
+      // Ahead of a live sibling: one profile answering does not help the
+      // client wired to the one that is not, and this is the row it has to
+      // be found from.
+      Image(systemName: "exclamationmark.circle.fill")
+        .font(.caption2)
+        .foregroundStyle(.red)
+        .help(
+          failing.count == 1
+            ? "\(first.profile): \(first.upstreamFailure ?? "")"
+            : "\(failing.count) profiles failing")
     } else if live > 0 {
       HStack(spacing: 3) {
         Circle().fill(Color.green).frame(width: 7, height: 7)

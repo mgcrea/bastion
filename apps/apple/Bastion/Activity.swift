@@ -63,6 +63,11 @@ final class Activity {
     /// number that turns "it feels flaky" into a fact.
     var restarts: Int
     var lastExit: String?
+    /// Why the last exchange with a remote server failed, or nil once one has
+    /// succeeded since. A remote row has no exit to report, so without this a
+    /// profile whose refresh token Stripe had revoked read green while every
+    /// call through it failed.
+    var upstreamFailure: String? = nil
 
     var displayName: String { "\(profile) / \(server)" }
 
@@ -70,8 +75,9 @@ final class Activity {
     ///
     /// A child says so with a live pid. A remote server has none and cannot
     /// die, so what stands in for "running" is that Bastion still holds a
-    /// session with it — `stopped` removes the row when it does not.
-    var isLive: Bool { (pid ?? 0) > 0 || remoteHost != nil }
+    /// session with it — `stopped` removes the row when it does not — and that
+    /// the last thing sent over it was answered.
+    var isLive: Bool { (pid ?? 0) > 0 || (remoteHost != nil && upstreamFailure == nil) }
   }
 
   private(set) var instances: [Instance] = []
@@ -91,6 +97,7 @@ final class Activity {
       instances[index].startedAt = Date()
       instances[index].restarts += 1
       instances[index].dialect = nil
+      instances[index].upstreamFailure = nil
       return
     }
     instances.append(
@@ -129,6 +136,12 @@ final class Activity {
     instances[index].lastExit = detail
   }
 
+  /// A remote exchange failed, or — with nil — one has succeeded since.
+  func upstream(id: String, failure: String?) {
+    guard let index = instances.firstIndex(where: { $0.id == id }) else { return }
+    instances[index].upstreamFailure = failure
+  }
+
   /// Removed entirely — the supervisor has let go of it, so there is nothing
   /// left to be the state of.
   func stopped(id: String) {
@@ -159,11 +172,10 @@ final class Activity {
 
   // MARK: - Derived
 
-  /// A child with a live pid, or a remote server Bastion holds a session with.
-  /// "Running" means "will answer", which is the question the menu is asking.
-  var runningCount: Int {
-    instances.filter { ($0.pid ?? 0) > 0 || $0.remoteHost != nil }.count
-  }
+  /// A child with a live pid, or a remote server Bastion holds a working
+  /// session with. "Running" means "will answer", which is the question the
+  /// menu is asking.
+  var runningCount: Int { instances.filter(\.isLive).count }
   var totalCalls: Int { instances.reduce(0) { $0 + $1.calls } }
 
   /// Every client currently attached to anything, deduplicated.

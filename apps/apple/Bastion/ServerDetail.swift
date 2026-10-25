@@ -1410,12 +1410,14 @@ private struct ProfileRow: View {
   }
 
   private var dotTint: Color {
+    if instance?.upstreamFailure != nil { return .red }
     if let instance, instance.isLive { return .green }
     if !missing.isEmpty { return .orange }
     return .secondary
   }
 
   private var subtitle: String {
+    if let failure = instance?.upstreamFailure { return "failing — \(failure)" }
     if let instance, instance.isLive {
       let clients = instance.clients.count
       // "connected" rather than "running" for a remote server: nothing here is

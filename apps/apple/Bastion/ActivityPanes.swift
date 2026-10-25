@@ -48,7 +48,9 @@ struct InstanceRow: View {
   var body: some View {
     HStack(alignment: .firstTextBaseline, spacing: 10) {
       Circle()
-        .fill(instance.isLive ? Color.green : Color.secondary)
+        .fill(
+          instance.upstreamFailure != nil ? Color.red : instance.isLive ? Color.green : .secondary
+        )
         .frame(width: 7, height: 7)
 
       VStack(alignment: .leading, spacing: 3) {
@@ -83,6 +85,7 @@ struct InstanceRow: View {
   }
 
   private var subtitle: String {
+    if let failure = instance.upstreamFailure { return "failing — \(failure)" }
     guard instance.isLive else {
       return instance.lastExit.map { "stopped — \($0)" } ?? "stopped"
     }
