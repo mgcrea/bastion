@@ -55,7 +55,18 @@ struct ServerDetail: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
           header
+          // Once, here, rather than on each card: whichever card the
+          // transport picks, its "Remove server" asks the same question.
           packageCard
+            .confirmationDialog(
+              "Remove \(server.displayName)?",
+              isPresented: $confirmingServerRemoval, titleVisibility: .visible
+            ) {
+              Button("Remove", role: .destructive) { removeServer() }
+              Button("Cancel", role: .cancel) {}
+            } message: {
+              Text(server.removalWarning(profiles: profiles.count))
+            }
           profilesCard
           environmentCard
           usageCard
@@ -270,15 +281,6 @@ struct ServerDetail: View {
         }
       }
     }
-    .confirmationDialog(
-      "Remove \(server.displayName)?",
-      isPresented: $confirmingServerRemoval, titleVisibility: .visible
-    ) {
-      Button("Remove", role: .destructive) { removeServer() }
-      Button("Cancel", role: .cancel) {}
-    } message: {
-      Text(server.removalWarning(profiles: profiles.count))
-    }
   }
 
   /// What stands in for the package card on the one server that has no package.
@@ -377,15 +379,6 @@ struct ServerDetail: View {
             .foregroundStyle(.red)
         }
       }
-    }
-    .confirmationDialog(
-      "Remove \(server.displayName)?",
-      isPresented: $confirmingServerRemoval, titleVisibility: .visible
-    ) {
-      Button("Remove", role: .destructive) { removeServer() }
-      Button("Cancel", role: .cancel) {}
-    } message: {
-      Text(server.removalWarning(profiles: profiles.count))
     }
   }
 
@@ -496,15 +489,6 @@ struct ServerDetail: View {
         .font(.caption2).foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
       }
-    }
-    .confirmationDialog(
-      "Remove \(server.displayName)?",
-      isPresented: $confirmingServerRemoval, titleVisibility: .visible
-    ) {
-      Button("Remove", role: .destructive) { removeServer() }
-      Button("Cancel", role: .cancel) {}
-    } message: {
-      Text(server.removalWarning(profiles: profiles.count))
     }
   }
 
