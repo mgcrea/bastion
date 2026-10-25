@@ -4,8 +4,47 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.30.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.31.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
+
+## [1.31.0] - 2026-10-25
+
+**A failing remote server now shows red.** When calls to a remote server start failing, the
+sidebar, the menu bar and the Activity pane turn red and say why. Bastion's embedded Node runtime
+also moves to 24.22.1 for October's security fixes.
+
+### Added
+
+- **A server on this Mac looks like one.** A remote server at `127.0.0.1` or `::1` shows a computer
+  in the sidebar, labelled "Endpoint on this Mac", rather than the cloud of a server somebody else
+  runs.
+
+### Fixed
+
+- **A remote server whose calls fail no longer shows green.** Bastion counted a remote server as
+  running for as long as it held a session with it, so a profile whose refresh token the vendor had
+  revoked read green while every call through it failed. A failed exchange now turns the server's
+  sidebar row, its profile, its Activity row and its dot in the menu bar red, with the reason, and
+  the next call that is answered turns them back.
+
+### Security
+
+- **The embedded Node runtime is 24.22.1**, up from 24.20.0, for Node's October 2026 security
+  release: an out-of-bounds write in the Brotli decoder, three ways around TLS hostname and IP
+  checks, and HTTP keep-alive response confusion, with undici, OpenSSL and the CA bundle updated.
+  Every server Bastion downloads runs on this runtime, holding its profile's credentials. npm moves
+  to 11.19.1.
+
+### Internal
+
+- The release pages, cards and share text keep a `*` or `_` inside a code span, where `*.json` had
+  come out as `.json`.
+- `make revocations` writes revoked licence ids with the same Swift escaper as the other generators,
+  so a control character in one can no longer produce Swift that does not compile.
+- The rule for which listed tools are writes, the tool-listing size and the client-config overlay
+  each live in one place, and the server page has one removal dialog instead of three.
+- A design for answering long calls as MCP tasks, a competitive brief, and a note that Claude
+  Desktop's third-party mode takes remote servers directly.
 
 ## [1.30.0] - 2026-10-16
 

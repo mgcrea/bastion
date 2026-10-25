@@ -66,7 +66,47 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_30_0, v1_29_0, v1_28_0, v1_27_0, v1_26_0]
+  static let releases: [Release] = [v1_31_0, v1_30_0, v1_29_0, v1_28_0, v1_27_0]
+
+  // swift-format-ignore
+  private static let v1_31_0: Release = Release(
+    version: "1.31.0",
+    date: "2026-10-25",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "A server on this Mac looks like one.",
+            body: [
+              "A remote server at `127.0.0.1` or `::1` shows a computer in the sidebar, labelled \"Endpoint on this Mac\", rather than the cloud of a server somebody else runs.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 1,
+            headline: "A remote server whose calls fail no longer shows green.",
+            body: [
+              "Bastion counted a remote server as running for as long as it held a session with it, so a profile whose refresh token the vendor had revoked read green while every call through it failed. A failed exchange now turns the server's sidebar row, its profile, its Activity row and its dot in the menu bar red, with the reason, and the next call that is answered turns them back.",
+            ]),
+        ]),
+      Section(
+        name: "Security",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 2,
+            headline: "The embedded Node runtime is 24.22.1",
+            body: [
+              ", up from 24.20.0, for Node's October 2026 security release: an out-of-bounds write in the Brotli decoder, three ways around TLS hostname and IP checks, and HTTP keep-alive response confusion, with undici, OpenSSL and the CA bundle updated. Every server Bastion downloads runs on this runtime, holding its profile's credentials. npm moves to 11.19.1.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_30_0: Release = Release(
@@ -235,30 +275,6 @@ nonisolated enum Changelog {
             headline: "Yahoo Finance's writes switch covers portfolios and trades.",
             body: [
               "From 0.5.0 the server opens create, add, remove and delete to manual portfolios and adds tools to record, edit and delete trades, all behind the same switch, which the profile editor described as covering watchlists only. Removing a position or a portfolio that holds lots or transactions is refused unless the call asks for that history to go with it.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_26_0: Release = Release(
-    version: "1.26.0",
-    date: "2026-10-06",
-    sections: [
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Yahoo Finance's watchlist tools are writes.",
-            body: [
-              "The server's newer versions add four tools that change a signed-in account's watchlists (create, add, remove and delete), and the catalog still described it as having nothing it could change: on 0.3.0 they ran as reads, without confirmation, and from 0.4.0 no profile could turn them on. They now follow the profile's writes switch, and need the cookie of a signed-in finance.yahoo.com tab; the crumb is derived from that cookie, so it rarely needs setting.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "The menu bar panel closes when it opens a window.",
-            body: [
-              "Settings, Logs, About, What's New, a server's row and the licence notice's key button could each leave the panel open over the window they had just opened, since opening one of the app's own windows never closes it. The server rows also highlight under the pointer, where they used to give no sign of being clickable until the click.",
             ]),
         ]),
     ])
