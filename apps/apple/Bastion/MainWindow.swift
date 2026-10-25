@@ -201,9 +201,10 @@ struct MainView: View {
               ServerBadge(server: server)
             }
           } icon: {
-            // Three glyphs for three transports: gears for Bastion's own
-            // server, a box for a package it downloaded, a cloud for an
-            // endpoint somebody else operates. It is the only thing on the row
+            // One glyph per transport: gears for Bastion's own server, a box
+            // for a package it downloaded, a terminal for a system command, a
+            // cloud for an endpoint somebody else operates and a computer for
+            // one on 127.0.0.1. It is the only thing on the row
             // that says which, and the sidebar is where a reader decides what
             // a server is before opening it.
             Image(systemName: server.transport.symbolName)

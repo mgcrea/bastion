@@ -335,25 +335,36 @@ nonisolated struct BastionServer: Identifiable, Hashable {
     /// question the row is answering is whether this server runs on the
     /// reader's machine or on somebody else's, and that is the question
     /// `transport` is, so it is the one asked here.
+    ///
+    /// A remote endpoint at `127.0.0.1` or `::1` is the exception that proves
+    /// it: same transport, but it runs on the reader's machine, so a cloud
+    /// would answer that question wrongly.
     var symbolName: String {
       switch self {
       case .child: "shippingbox"
-      case .remote: "cloud"
+      case .remote: isOnThisMac ? "desktopcomputer" : "cloud"
       case .inProcess: "gearshape.2"
       case .system: "apple.terminal"
       }
     }
 
-    /// What that glyph means, spelled out. A four-way icon nobody has seen
+    /// What that glyph means, spelled out. A five-way icon nobody has seen
     /// before is a quiz until something answers it, and the badges beside it
     /// already take this shape.
     var summaryLabel: String {
       switch self {
       case .child: "Local package"
-      case .remote: "Remote endpoint"
+      case .remote: isOnThisMac ? "Endpoint on this Mac" : "Remote endpoint"
       case .inProcess: "Built in"
       case .system: "System command"
       }
+    }
+
+    /// A remote endpoint typed as a loopback literal — the one http exception
+    /// `RemoteEndpoint.isLoopbackLiteral` allows, so the same rule decides both.
+    var isOnThisMac: Bool {
+      guard let host = endpoint?.host() else { return false }
+      return RemoteEndpoint.isLoopbackLiteral(host)
     }
 
     /// The endpoint, or nil for a child. Named rather than pattern-matched at

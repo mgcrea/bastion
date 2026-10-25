@@ -670,6 +670,7 @@ unit: ## Assert the translation, the parser, call capture, the audit chain, the 
 	@swiftc -O -o apps/apple/.build/unit-check \
 		apps/apple/Bastion/Dialect.swift \
 		apps/apple/Bastion/ServerCatalog.swift \
+		apps/apple/Bastion/RemoteEndpoint.swift \
 		apps/apple/Bastion/HTTP.swift \
 		apps/apple/Bastion/EventStream.swift \
 		apps/apple/Shared/ServerSentEvents.swift \
