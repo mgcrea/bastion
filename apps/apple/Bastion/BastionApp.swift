@@ -321,8 +321,8 @@ private struct GatewayMenu: View {
       onOpenApp: { leavePanel { MainWindowController.show() } },
       // The version opens About, which is the pane that says what the number
       // means — build, machine, the copy-for-a-bug-report button. `SettingsPane`
-      // puts it first of three for the same reason: which build is this, what
-      // did it change, is there a newer one.
+      // keeps it in one section with What's New and Updates for the same
+      // reason: which build is this, what did it change, is there a newer one.
       onShowAbout: { leavePanel { SettingsWindowController.show(.about) } },
       footer: MenuBarFooter(
         // Logs is the one destination that earns a standing place beside

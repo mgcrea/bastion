@@ -16,7 +16,7 @@ import SwiftUI
 /// outgrew sitting on the end of the configuration list, and what Cupertino
 /// took from it.
 ///
-/// The first is what Bastion does: General and Activity.
+/// The first is what Bastion does: General, Activity, Workspaces and Skills.
 ///
 /// The second is the fleet's two pairs. What's New and Updates are the version
 /// pair: what did this build change, and is there a newer one. Updates is a pane
@@ -535,7 +535,7 @@ private struct AboutPane: View {
 /// Am I current — asked about the app, and about the servers it runs.
 ///
 /// Its own pane rather than a Section in General for the reason
-/// `SettingsPane.application` gives: these are the only manual checks Bastion
+/// `SettingsPane`'s own doc gives: these are the only manual checks Bastion
 /// has, automatic checking is off until asked for, and a build with the toggle
 /// off had no way to look that anyone could find. The pane also has room to say
 /// what the check sends in plain terms, which is a claim the rest of the app's

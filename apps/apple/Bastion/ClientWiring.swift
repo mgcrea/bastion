@@ -1,18 +1,6 @@
 import AppKit
 import Foundation
 
-/// Which MCP clients Bastion knows how to configure, and what to write into
-/// each one.
-///
-/// Everything that touches the file itself lives in `ClientWiringMerge`, which
-/// imports nothing but Foundation so `make wiring-check` can compile and
-/// exercise it directly. This half is policy: paths, keys, transports.
-///
-/// Two facts shape the whole design. Clients disagree about where MCP servers
-/// live — `mcpServers` here, `servers` there, nested under a folder in a third
-/// — and they disagree about whether they can reach a URL at all. Claude
-/// Desktop cannot, so it gets the bridge; everything else gets an HTTP entry
-/// and no child process of its own.
 /// Bumped whenever Bastion writes a client config.
 ///
 /// Every reader of a client's status goes to the file on every redraw and caches
@@ -44,6 +32,18 @@ final class ClientConfigRevision {
   func bump() { value += 1 }
 }
 
+/// Which MCP clients Bastion knows how to configure, and what to write into
+/// each one.
+///
+/// Everything that touches the file itself lives in `ClientWiringMerge`, which
+/// imports nothing but Foundation so `make wiring-check` can compile and
+/// exercise it directly. This half is policy: paths, keys, transports.
+///
+/// Two facts shape the whole design. Clients disagree about where MCP servers
+/// live — `mcpServers` here, `servers` there, nested under a folder in a third
+/// — and they disagree about whether they can reach a URL at all. Claude
+/// Desktop cannot, so it gets the bridge; everything else gets an HTTP entry
+/// and no child process of its own.
 @MainActor
 enum ClientWiring {
   enum Transport {
