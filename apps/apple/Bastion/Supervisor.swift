@@ -221,13 +221,7 @@ nonisolated final class Supervisor: @unchecked Sendable {
   }
 
   func stop(profile: String, server: String) {
-    let key = "\(profile)/\(server)"
-    generations.withLock { $0[key, default: 0] += 1 }
-    let instance = instances.withLock { $0.removeValue(forKey: key) }
-    instance?.stop(reason: "stopped by request")
-    let remote = remotes.withLock { $0.removeValue(forKey: key) }
-    remote?.stop(reason: "stopped by request")
-    Task(priority: Activity.priority) { @MainActor in Activity.shared.stopped(id: key) }
+    retire(profile: profile, server: server, escalate: true)
   }
 
   /// `stop`, then wait for the child to be gone, SIGKILLed if it outlasts
@@ -238,14 +232,23 @@ nonisolated final class Supervisor: @unchecked Sendable {
   /// still be writing its tokens for a moment after. A remote instance has no
   /// process, so it is only stopped.
   func stopAndWait(profile: String, server: String, grace: TimeInterval = 3) {
+    let process = retire(profile: profile, server: server, escalate: false)
+    if let process { ChildTermination.terminateAll([process], grace: grace) }
+  }
+
+  /// `stop` and `stopAndWait`'s shared half: bump the generation, take both
+  /// kinds of instance out of the table and stop them. Returns the child's
+  /// process when `escalate` is false, for the caller that waits on it.
+  @discardableResult
+  private func retire(profile: String, server: String, escalate: Bool) -> Process? {
     let key = "\(profile)/\(server)"
     generations.withLock { $0[key, default: 0] += 1 }
     let instance = instances.withLock { $0.removeValue(forKey: key) }
-    let process = instance?.stop(reason: "stopped by request", escalate: false)
+    let process = instance?.stop(reason: "stopped by request", escalate: escalate)
     let remote = remotes.withLock { $0.removeValue(forKey: key) }
     remote?.stop(reason: "stopped by request")
     Task(priority: Activity.priority) { @MainActor in Activity.shared.stopped(id: key) }
-    if let process { ChildTermination.terminateAll([process], grace: grace) }
+    return process
   }
 
   /// What is running right now, for the Activity window.
