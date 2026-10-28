@@ -209,10 +209,10 @@ export const DIALECT = {
  * number than the one printed beside it stops believing both. The ratio is
  * computed from the unrounded totals, so it is quoted, not recomputed here.
  *
- * `off` is the fact this section is likeliest to get wrong first. The switch is
- * off by default because it is the one setting in the app that trades rather
- * than tightens, and `ToolFacade.defaultsKey` is the authority — if that ever
- * ships defaulting on, the sentence on the page has to move with it.
+ * `off` is the fact this section is likeliest to get wrong first. The switch
+ * shipped off until 1.32 and is on by default since, with Bastion deciding per
+ * server from the listing's size; `ToolFacade.isOn` is the authority, and the
+ * sentence on the page has to move with it.
  *
  * `skips` is the second. Every figure above is what a client that takes the
  * whole listing pays, and the page has to say so out loud, because the reader
@@ -229,7 +229,7 @@ export const CONTEXT = {
   facadeTokens: "0.4k",
   indexTokens: "3.2k",
   cut: "67×",
-  off: true,
+  off: false,
   /**
    * Clients that load a schema on demand themselves, and so are never fronted.
    *

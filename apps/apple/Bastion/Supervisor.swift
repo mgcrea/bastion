@@ -381,18 +381,16 @@ nonisolated extension Supervisor {
     private let profile: Profile
     private let server: BastionServer
 
-    /// The profile's capture mode and the server's lazy-tools choice, as they
+    /// The profile's capture mode and the app-wide lazy-tools switch, as they
     /// are NOW. Both change from the window without restarting anything, and
-    /// `ServerStore.setLazyTools` and `ProfileStore.upsert` rely on that, so
-    /// they are read per request from the stores' snapshots, as `BuiltinServer`
-    /// does, rather than from the copies taken at spawn. Those copies stand in
-    /// only for a profile or server removed mid-request.
+    /// `ProfileStore.upsert` relies on that, so they are read per request — the
+    /// capture from the store's snapshot, as `BuiltinServer` does, rather than
+    /// from the copy taken at spawn, which stands in only for a profile removed
+    /// mid-request.
     private var liveCapture: CallCapture.Mode {
       ProfileStore.lookup(name: profile.name, server: server.id)?.capture ?? profile.capture
     }
-    private var liveLazyTools: Bool {
-      ServerStore.lookup(server.id)?.loadsToolsOnDemand ?? server.loadsToolsOnDemand
-    }
+    private var liveLazyTools: Bool { ToolFacade.isOn }
 
     private let state = OSAllocatedUnfairLock<State>(initialState: State())
     private let backoff: RestartBackoff

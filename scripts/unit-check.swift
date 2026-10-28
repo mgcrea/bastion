@@ -691,14 +691,11 @@ struct UnitCheck {
 
     print("\nWhat an edit to a custom server keeps")
     // `ServerStore.upsert` rebuilds the server from the definition, and the
-    // per-install switches are not part of a definition. `isEnabled` alone was
-    // carried, so saving the editor reset "Load tools on demand" to Default.
+    // per-install switch is not part of a definition.
     var before = server(transport: remote)
     before.isEnabled = false
-    before.lazyTools = true
     let after = server(transport: remote).carryingSwitches(from: before)
     check("a disabled server stays disabled", !after.isEnabled)
-    check("and its own lazy-tools choice survives", after.lazyTools == true)
 
     print("\nWhich variables a profile fills in")
     // The gate is required to be in `env` — the manifest generator refuses a

@@ -105,11 +105,12 @@ table and the app's Swift catalog are both generated from it and CI fails on dri
 
 ## Loading tools on demand
 
-Off by default, per server or app-wide. Instead of the full listing, a client is served three
+On by default, one switch in Settings. Instead of the full listing, a client is served three
 Bastion tools that search, describe and call the real ones, plus `bastion_call_write_tool` when the
 server's writes are classified, so an editor's allowlist on the ordinary dispatcher cannot run a
 write. Measured on `prod/appstore-connect`: 85 tools at 26.2k tokens become 0.4k, a 67× cut.
-Clients that already load schemas on demand, Claude Code and Claude Desktop, are never fronted.
+Clients that already load schemas on demand, Claude Code and Claude Desktop, are never fronted, and
+a server with too few tools to be worth searching keeps its own listing.
 
 ## Also in the app
 

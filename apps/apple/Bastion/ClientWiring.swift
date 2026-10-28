@@ -768,20 +768,6 @@ enum ClientWiring {
     return backup
   }
 
-  /// The client families the tool facade will not apply to, deduplicated.
-  ///
-  /// Families rather than ids, because this answers "which clients defer
-  /// schemas themselves", and a second config directory is the same client
-  /// twice rather than a second one. Sorted so a tool's output does not depend
-  /// on the order the home directory happened to be read in.
-  static func exemptFamilies() -> [String] {
-    var seen: Set<String> = []
-    for client in all where ToolFacade.clientDefersSchemas(client.id) {
-      seen.insert(client.family)
-    }
-    return seen.sorted()
-  }
-
   /// Whether `rewire` will keep this client's config current by itself.
   ///
   /// True for every client with one config file. For a discovered Claude Code

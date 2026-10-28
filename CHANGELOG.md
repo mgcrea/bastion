@@ -7,6 +7,31 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.31.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Changed
+
+- **Loading tools on demand is on by default, and Bastion decides which servers it applies to.**
+  The per-server Default/On/Off picker is gone. Every server goes through the size check that
+  already existed: a listing is replaced by Bastion's search, describe and call tools only when it
+  has at least twice as many tools as they are, and costs at least twice as many tokens. So App
+  Store Connect's listing is replaced and Context7's two tools are not, and a server that grows
+  past the bar starts being fronted with nobody touching anything. The one switch left is in Settings ›
+  General.
+
+  On a Mac where that switch was never touched, it is now on. Claude Code and Claude Desktop are
+  unaffected, because they load tool schemas on demand themselves and Bastion never fronts them.
+  Cursor, VS Code, Codex and LM Studio are, and the trade is the one the switch has always carried:
+  their per-tool approval rules then see `bastion_call_tool` for a server's reads and
+  `bastion_call_write_tool` for its writes, rather than each tool. Turn the switch off in Settings ›
+  General, or set a client to "defers schemas" in its own pane, to keep the full listings there.
+  Anybody who had turned the switch off keeps it off.
+
+  A choice made per server before this release is dropped, on or off. Bastion's own MCP server
+  follows: `list_servers`, `get_server` and `list_profiles` no longer report `lazy_tools`,
+  `status` reports the switch instead, and `upsert_profile` refuses a `lazy_tools` argument and
+  says where the switch is rather than ignoring it.
+
 ## [1.31.0] - 2026-10-25
 
 **A failing remote server now shows red.** When calls to a remote server start failing, the

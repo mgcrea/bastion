@@ -75,8 +75,11 @@ restore() {
   for c in "$PLAINCLIENT" "$LAZYCLIENT"; do
     security delete-generic-password -s "$BUNDLE.gateway" -a "$c" >/dev/null 2>&1 || true
   done
-  defaults delete "$BUNDLE" lazyToolsDefault 2>/dev/null || true
-  defaults delete "$BUNDLE" lazyToolsMovedToServers 2>/dev/null || true
+  case "$LAZY_DEFAULT" in
+    1) defaults write "$BUNDLE" lazyToolsDefault -bool true ;;
+    0) defaults write "$BUNDLE" lazyToolsDefault -bool false ;;
+    *) defaults delete "$BUNDLE" lazyToolsDefault 2>/dev/null || true ;;
+  esac
   defaults delete "$BUNDLE" "lazyToolsClient.$LAZYCLIENT" 2>/dev/null || true
   if [ -n "$CAPTURE" ]; then
     defaults write "$BUNDLE" callCaptureMode -string "$CAPTURE"
@@ -101,16 +104,12 @@ ALL_PROFILES="$(defaults read "$BUNDLE" recentActivityAllProfiles 2>/dev/null ||
 defaults delete "$BUNDLE" callCaptureMode 2>/dev/null || true
 defaults write "$BUNDLE" recentActivityAllProfiles -bool false
 
-# The app-wide switch ON, and the scratch server below carries NO override, so
-# every assertion about the facade is also an assertion that the app-wide
-# default actually reaches a server. A setting whose default nothing reads is a
-# setting that silently does nothing.
-defaults write "$BUNDLE" lazyToolsDefault -bool YES
-
-# The one-shot has to be able to run. It is guarded by its own flag rather than
-# by "the server has no value yet", so a previous run of this script would
-# otherwise leave it permanently done.
-defaults delete "$BUNDLE" lazyToolsMovedToServers 2>/dev/null || true
+# The app-wide switch UNSET, not written on, so every assertion about the
+# facade is also an assertion that it defaults on. An absent key read as
+# `false` is exactly the mistake `ToolFacade.isOn` exists to avoid, and a
+# check that wrote YES first could never see it. Put back as it was found.
+LAZY_DEFAULT="$(defaults read "$BUNDLE" lazyToolsDefault 2>/dev/null || true)"
+defaults delete "$BUNDLE" lazyToolsDefault 2>/dev/null || true
 
 # One of the two clients loads schemas on demand. Set through the per-client
 # override rather than by naming a client in `ToolFacade`'s table, so this stays
@@ -135,9 +134,8 @@ def load(name, default):
     except Exception:
         return default
 
-# No `lazyTools` key: the server expresses no preference, so it follows the
-# app-wide switch set above. THE SERVER is where the override lives now, and
-# THE SERVER below moves it through `upsert_profile` and reads the effect.
+# Nothing about the facade on the server row: there is no per-server setting
+# any more, and THE SWITCH below asserts that the old argument is refused.
 servers = [r for r in load("servers.json", []) if r.get("id") != "bastion"]
 servers.insert(0, {"id": "bastion", "enabled": True})
 json.dump(servers, open(os.path.join(support, "servers.json"), "w"), indent=2)
@@ -147,19 +145,15 @@ profiles = [
     p for p in load("profiles.json", [])
     if not (p.get("server") == "bastion" and p.get("name") in scratch)
 ]
-# Two profiles of one server, differing only in the write gate. There used to
-# be three, one per position of a per-profile tri-state; that setting moved to
-# the server, so the third had nothing left to say. What replaces it as the
-# source of an UNFRONTED listing is the deferring client, which is the path
-# that now matters most anyway.
+# Two profiles of one server, differing only in the write gate. The source of
+# an UNFRONTED listing is the deferring client, or the switch turned off.
 #
-# `facadero` carries the RETIRED `lazyTools` key, which is the migration's only
-# input: THE SERVER below asserts it was carried onto the server row. A
-# migration that silently does nothing loses a setting somebody turned on, and
-# the symptom is a listing that quietly grew back.
+# `facadero` carries the RETIRED `lazyTools` key, set to false, so the facade
+# showing up on it at all is the assertion that a leftover override is ignored
+# rather than honoured — and that the file still loads with the key in it.
 profiles.append({"name": "facadeon", "server": "bastion", "values": {}, "allowWrites": True})
 profiles.append({"name": "facadero", "server": "bastion", "values": {}, "allowWrites": False,
-                 "lazyTools": True})
+                 "lazyTools": False})
 json.dump(profiles, open(os.path.join(support, "profiles.json"), "w"), indent=2)
 PY
 
@@ -317,42 +311,37 @@ GATED="$(rpc facadero '{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{
 absent "and the dispatcher will not run it" "$GATED" '"removed"'
 
 echo
-echo "The server"
+echo "The switch"
 
-# Read off disk rather than inferred from a listing. The app-wide default is
-# also on, so a migrated `true` and a missing value produce the same three
-# tools — the file is the only place the two differ.
-MIGRATED="$(python3 -c 'import json,sys; rows=json.load(open(sys.argv[1])); print(next((r.get("lazyTools") for r in rows if r.get("id")=="bastion"), None))' "$SUPPORT/servers.json" 2>/dev/null)"
-[ "$MIGRATED" = "True" ] \
-  && ok "a lazyTools left on a profile was carried onto its server" \
-  || bad "the migration did not reach servers.json — got '$MIGRATED'"
+STATUS="$(rpc facadeon '{"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"status","arguments":{}}}')"
+check "status reports the switch, on by default" "$STATUS" '\"lazy_tools\":true'
 
-# The tier the setting moved to, moved through the surface an agent actually
-# has. `upsert_profile` still accepts `lazy_tools` — an argument that started
-# being silently ignored would be worse than one that was renamed — and it now
-# writes through to the server, so this asserts the write-through and the tier
-# in one call.
-# Through the WRITE dispatcher: `upsert_profile` mutates, and the read one now
-# refuses it. That refusal is the subject of THE WRITES below.
-OFF="$(rpc facadeon '{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"bastion_call_write_tool","arguments":{"name":"upsert_profile","arguments":{"name":"facadeon","server":"bastion","lazy_tools":false}}}}')"
-check "upsert_profile still takes lazy_tools" "$OFF" 'lazy_tools'
+# The per-server setting is gone, and the argument that used to move it is
+# REFUSED rather than ignored: an agent passing it would otherwise believe it
+# had changed something. Through the WRITE dispatcher, because `upsert_profile`
+# mutates and the read one refuses it; that refusal is THE WRITES below.
+RETIRED="$(rpc facadeon '{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"bastion_call_write_tool","arguments":{"name":"upsert_profile","arguments":{"name":"facadeon","server":"bastion","lazy_tools":false}}}}')"
+check "upsert_profile refuses lazy_tools" "$RETIRED" '"isError"'
+check "and says where the switch is" "$RETIRED" "Settings"
 
+# Off in Settings reaches every profile without a restart. Written the way the
+# toggle writes it, and read by the running app through cfprefsd.
+defaults write "$BUNDLE" lazyToolsDefault -bool NO
+sleep 1
 AFTER="$(rpc facadeon '{"jsonrpc":"2.0","id":21,"method":"tools/list"}')"
 AFTER_N=$(printf '%s' "$AFTER" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["result"]["tools"]))')
 [ "$AFTER_N" = "$PLAIN_N" ] \
-  && ok "turning it off on the server gives every client all $AFTER_N" \
-  || bad "the server override did not reach the listing — got $AFTER_N, expected $PLAIN_N"
-
-# And the other profile of that server moves with it, which is the whole
-# difference between a server setting and the per-profile one it replaced.
+  && ok "turning it off gives every client all $AFTER_N" \
+  || bad "turning it off did not reach the listing — got $AFTER_N, expected $PLAIN_N"
 RO_AFTER="$(rpc facadero '{"jsonrpc":"2.0","id":22,"method":"tools/list"}')"
-absent "and the server's OTHER profile moved with it" "$RO_AFTER" "bastion_search_tools"
+absent "on every profile" "$RO_AFTER" "bastion_search_tools"
 
-BACK="$(rpc facadeon '{"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"upsert_profile","arguments":{"name":"facadeon","server":"bastion","lazy_tools":true}}}')"
+defaults delete "$BUNDLE" lazyToolsDefault 2>/dev/null || true
+sleep 1
 RESTORED="$(rpc facadeon '{"jsonrpc":"2.0","id":24,"method":"tools/list"}')"
 RESTORED_N=$(printf '%s' "$RESTORED" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["result"]["tools"]))')
-[ "$RESTORED_N" = "4" ] && ok "and turning it back on restores the facade" \
-  || bad "turning it back on restores the facade — got $RESTORED_N"
+[ "$RESTORED_N" = "4" ] && ok "and back at its default the facade returns" \
+  || bad "back at its default the facade returns — got $RESTORED_N"
 
 echo
 echo "The client"

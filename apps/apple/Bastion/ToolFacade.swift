@@ -28,6 +28,15 @@ import Foundation
 /// shape of caveat as `WriteGate`'s "this filters Bastion, not the server", and
 /// it is why the switch is off by default.
 ///
+/// It was, until 1.32. It is ON by default now, and with no per-server
+/// override, because the other two terms below turned out to carry the whole
+/// decision: the clients that would lose by it are exempt by name, a listing
+/// too small to be worth searching is exempt by measurement, and what was left
+/// for a person to decide server by server was the same answer the floor
+/// already computes. The write dispatcher is what made the approval cost
+/// survivable enough to default: allowlisting `bastion_call_tool` cannot run a
+/// write where Bastion can classify one.
+///
 /// And why it is not the whole decision. A client that defers schemas ITSELF
 /// gains almost nothing here and pays all of that: Claude Code has fetched a
 /// tool's schema on demand since 2.1.191, so fronting it buys back the names and
@@ -35,9 +44,10 @@ import Foundation
 /// indexes these three generic entries instead of the server's eighty-five, so
 /// `bastion_search_tools` stays findable by "app store connect" while
 /// `app_store_connect_list_builds` stops being findable by "testflight build".
-/// `clientDefersSchemas` is that second term, and the gate is the `and` of the
-/// two: the profile answers whether the listing is big enough to be worth the
-/// trade, the client answers whether it needs the help at all.
+/// `clientDefersSchemas` is that second term, and the gate is the `and` of
+/// three: the switch answers whether anybody wants this at all, the client
+/// whether it needs the help, and `floor` whether the listing is big enough to
+/// be worth the trade.
 ///
 /// Pure, and taking strings rather than a `BastionServer`, so `make unit` can
 /// compile it alone. The argument is `WriteGate`'s, for `WriteGate`'s reason: a
@@ -75,21 +85,22 @@ nonisolated enum ToolFacade {
 
   // MARK: - Settings
 
-  /// The app-wide default, for every profile that has expressed no preference.
+  /// The one switch, in Settings › General.
   ///
-  /// A global switch with a per-profile override, which is `CallCapture`'s shape
-  /// and is here for a reason that took a round of review to see: a setting that
-  /// exists ONLY inside a profile sheet is a setting nobody finds. The saving is
-  /// the whole point of this feature and it was reachable only by editing every
-  /// profile one at a time, which is the same as not shipping it.
+  /// App-wide and nothing narrower. It had a per-server override until 1.32,
+  /// and a per-profile one before that, and both were asking a person a
+  /// question `floor` answers better: whether THIS listing is big enough to be
+  /// worth searching. The answer that genuinely varies is per client, and that
+  /// is `clientDefersSchemas`, with its own override in the client's pane.
   ///
-  /// Off, still. This is the one switch in the app that trades rather than
-  /// tightens — it spends the client's own per-tool approval rules — so turning
-  /// it on has to be somebody's decision. What changed is where the decision is
-  /// made, not that it is made.
+  /// On when nobody has touched it. An absent key is not a `false` here, which
+  /// is why this reads `object(forKey:)` rather than `bool(forKey:)`: somebody
+  /// who turned it off keeps it off across the change of default, and only a
+  /// machine that never expressed a preference moves. The key keeps its old
+  /// name for the same reason — renaming it would forget every explicit off.
   static let defaultsKey = "lazyToolsDefault"
 
-  static var globalDefault: Bool { UserDefaults.standard.bool(forKey: defaultsKey) }
+  static var isOn: Bool { UserDefaults.standard.object(forKey: defaultsKey) as? Bool ?? true }
 
   // MARK: - Which clients need this
 
@@ -160,7 +171,7 @@ nonisolated enum ToolFacade {
   ///
   /// The pure half, taking the override as an argument rather than reading it,
   /// so `make unit` can pin the table and both directions of the override
-  /// without a defaults domain. Same split as `globalDefault` being a thin read
+  /// without a defaults domain. Same split as `isOn` being a thin read
   /// over a constant, and the same reason: the rule is the thing worth testing.
   ///
   /// An unrecognised client does NOT defer, so the facade applies to it. This

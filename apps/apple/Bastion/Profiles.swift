@@ -151,23 +151,9 @@ final class ProfileStore {
     /// additive rule `ServerStore.Stored.enabled` follows. Never make this
     /// required and never rename it.
     var captureMode: CallCapture.Mode?
-    /// Optional for the same additive reason, with nil meaning "follow the
-    /// app-wide default": a `profiles.json` written before the facade existed
-    /// describes profiles that expressed no preference, which is exactly what
-    /// nil says.
-    /// Retired from the runtime `Profile` — the answer lives on the server now,
-    /// as `BastionServer.lazyTools`, and `ServerStore.adoptLegacyLazyTools`
-    /// carries a value written here onto the server once, reading this file
-    /// directly rather than through this type.
-    ///
-    /// Kept HERE, in the stored shape, so the file still DECODES — a field
-    /// this struct does not know about is a decode failure, and that would lose
-    /// every profile on the machine rather than one setting. It is not written
-    /// back: `save()` builds a row from a `Profile`, which no longer carries
-    /// it, so the key leaves the file on the first save after the migration.
-    /// That is the intended one-way move, not an oversight. Never make it
-    /// required and never rename it.
-    var lazyTools: Bool?
+    // `lazyTools` lived here until 1.11 and on the server until 1.32. A file
+    // still carrying it decodes — the synthesized decoder skips keys it does
+    // not know — and `save()` never writes it back.
   }
 
   func load() {
@@ -272,12 +258,10 @@ final class ProfileStore {
     if let index = profiles.firstIndex(where: { $0.id == profile.id }) {
       let previous = profiles[index]
       profiles[index] = profile
-      // `captureMode` is deliberately not in this condition, and neither was
-      // `lazyTools` before it moved to the server: both change what a reply
-      // looks like on its way out, not anything the child was spawned with.
-      // Killing a warm process to flip a switch it cannot observe would cost
-      // the next caller a whole spawn and handshake for nothing. See
-      // `ServerStore.setLazyTools`, which makes the same call.
+      // `captureMode` is deliberately not in this condition: it changes what a
+      // reply looks like on its way out, not anything the child was spawned
+      // with. Killing a warm process to flip a switch it cannot observe would
+      // cost the next caller a whole spawn and handshake for nothing.
       try save()
       // After the save, which is what publishes the snapshot the gateway reads.
       // Stopped first, a request landing in between (or a start that saw this

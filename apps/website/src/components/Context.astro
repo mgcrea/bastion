@@ -16,9 +16,9 @@ import SectionHeader from "./SectionHeader.astro";
  * the next thing that happens on that connection. Put after `Audit` it would
  * separate the record from the window that shows it.
  *
- * The honest half is not an afterthought paragraph, it is the reason the switch
- * ships off: a saving whose cost is only in the CHANGELOG is a saving somebody
- * turns on and then discovers.
+ * The honest half is not an afterthought paragraph. The switch ships on, so the
+ * cost has to be on the page beside the saving: a saving whose cost is only in
+ * the CHANGELOG is a saving somebody gets and then discovers.
  */
 
 /**
@@ -61,15 +61,15 @@ const share = (parseFloat(CONTEXT.facadeTokens) / parseFloat(CONTEXT.tokens)) * 
       </p>
 
       {/* The trade, in the same accent-rule treatment `HowItWorks` gives the
-          thing it admits to giving up. It is not a caveat in small print for
-          the same reason it is off by default. */}
+          thing it admits to giving up. It is not a caveat in small print
+          because the switch ships on, and this is what that costs. */}
       <p class="m-0 border-l-2 border-accent pl-4 text-[14.5px] leading-[1.6] text-fg/70 text-pretty">
         What it costs is on the client's side, and the switch says so: every call reaches the editor
-        as <code class="font-mono text-[13.5px]">bastion_call_tool</code>, so one approval rule there
-        now covers every tool on that server. Bastion's own write gate is unaffected — a write tool
-        is still absent from the index and still refused by the dispatcher. The editor's gate is the
-        coarser one, which is why this ships off and why a profile can disagree with the app-wide
-        answer.
+        as <code class="font-mono text-[13.5px]">bastion_call_tool</code>, or
+        <code class="font-mono text-[13.5px]">bastion_call_write_tool</code> for a write, so the
+        editor's approval rules cover a server's reads and its writes rather than each tool. Bastion's
+        own write gate is unaffected — a write tool is still absent from the index and still refused by
+        the dispatcher. If you rely on per-tool approval in an editor, turn it off in Settings.
       </p>
       {/* Named on the page and not only in the app, because the reader likeliest
           to be reading this is running the one client the figures above do not
@@ -167,9 +167,9 @@ const share = (parseFloat(CONTEXT.facadeTokens) / parseFloat(CONTEXT.tokens)) * 
           }
         </dl>
         <p class="m-0 text-[13px] leading-[1.6] text-fg/45 text-pretty">
-          One switch in Settings moves every profile at once; a profile that disagrees — one wired to
-          a client that already defers tool schemas by itself, and so gains nothing here — overrides
-          it in its own sheet.
+          On by default, and one switch in Settings. Bastion decides per server: a listing with too
+          few tools to be worth searching keeps its own, and it checks again every time the server
+          lists them.
         </p>
       </div>
     </div>

@@ -875,6 +875,11 @@ SHOT_APPEARANCES := dark
 # outer ScrollView, ClientDetail has that plus a nested 240pt project scroller,
 # and `Always` bakes a bar into every one of them.
 #
+# -lazyToolsDefault NO is pinned against the product's default, which has been
+# on since 1.32: the stats plate's card says none of the fixture's servers load
+# on demand yet, and `CallStats`'s fixture is written to match. Moving it means
+# re-reading that card and recapturing every plate that shows a cost.
+#
 # The accent is deliberately NOT pinned. Assets.xcassets/AccentColor.colorset
 # names Bastion's own ramp, so there is nothing ambient left to pin and a
 # -AppleAccentColor here would be a flag that does nothing.

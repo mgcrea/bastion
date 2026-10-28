@@ -539,10 +539,9 @@ nonisolated final class CallStats: Sendable {
           // The write gate hides tools when writes are OFF, so the saving
           // belongs to `home` and not to `lab`, whose gate is open. Nothing here
           // saves anything through the facade, because the capture pins
-          // `lazyToolsDefault` to the product's own default of off and no
-          // fixture server overrides it — so a facade figure would contradict
-          // the card above it, which says in so many words that none of these
-          // load on demand yet.
+          // `lazyToolsDefault` off (`SHOT_ARGS` in the Makefile) — so a facade
+          // figure would contradict the card above it, which says in so many
+          // words that none of these load on demand yet.
           if entry.profile == "home" { life.savedByGate += 2_900 }
           table.life[day, default: [:]][serverKey] = life
         }

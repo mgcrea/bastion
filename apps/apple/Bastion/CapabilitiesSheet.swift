@@ -298,7 +298,7 @@ struct CapabilitiesSheet: View {
   /// and the floor cleared, an editor is sent three declarations and would
   /// report three tools.
   private var facadeNote: String? {
-    guard server.loadsToolsOnDemand, let snapshot, !snapshot.tools.isEmpty else { return nil }
+    guard ToolFacade.isOn, let snapshot, !snapshot.tools.isEmpty else { return nil }
     let hasWriteDispatcher = !snapshot.writeTools.isEmpty
     let count = ToolFacade.declarationCount(hasWriteDispatcher: hasWriteDispatcher)
     guard

@@ -37,6 +37,7 @@ enum BuiltinTools {
     case lockdownRefused(String)
     case catalogID(String)
     case wouldRedirectCredentials(id: String, profiles: Int)
+    case retiredLazyTools
 
     var errorDescription: String? {
       switch self {
@@ -92,6 +93,13 @@ enum BuiltinTools {
           "'\(id)' has \(profiles) profile\(profiles == 1 ? "" : "s"), and the credentials they "
           + "hold go wherever '\(id)' points. Redefining it from a tool could send them somewhere "
           + "else, so it is done in the Bastion window, or after its profiles are removed."
+      case .retiredLazyTools:
+        // Refused rather than ignored: an agent that learned to pass this would
+        // otherwise go on believing it had changed something.
+        return
+          "'lazy_tools' is no longer a per-server setting, so nothing was changed. Loading tools "
+          + "on demand is one switch in Bastion's Settings › General, and Bastion decides per "
+          + "server whether a listing is big enough to be worth it. Call again without it."
       case .unknownVariable(let variable, let server):
         return
           "'\(server)' does not read a variable called '\(variable)'. Bastion passes only the "
@@ -226,8 +234,9 @@ enum BuiltinTools {
 
     Declaration(
       "status", title: "Bastion status",
-      "The gateway's port and version, the licence state, and every supervised instance running "
-        + "right now with its pid, uptime, attached clients and call count."),
+      "The gateway's port and version, the licence state, whether loading tools on demand is "
+        + "on, and every supervised instance running right now with its pid, uptime, attached "
+        + "clients and call count."),
 
     Declaration(
       "server_stats", title: "Usage statistics",
@@ -394,14 +403,6 @@ enum BuiltinTools {
           "boolean",
           "Whether this profile may use the server's destructive tools. Per profile, never "
             + "global."),
-        "lazy_tools": schema(
-          "boolean",
-          "Whether clients get three Bastion tools — search, describe, call — instead of every "
-            + "tool this server exposes. Saves the listing's context at the cost of the client's "
-            + "own per-tool approval rules. This is a SERVER-WIDE setting: it moves every "
-            + "profile of this server, not just this one. Overrides the app-wide setting; omit "
-            + "to leave it as it is. Clients that load schemas on demand themselves are never "
-            + "fronted whatever this says — see list_clients."),
       ],
       required: ["name", "server"], mutates: true),
 
@@ -637,7 +638,6 @@ enum BuiltinTools {
         "summary": server.summary,
         "origin": describe(server.origin),
         "enabled": server.isEnabled,
-        "lazy_tools": server.loadsToolsOnDemand,
         "profiles": profiles.filter { $0.serverID == server.id }.count,
         "running": running.filter { $0.id.hasSuffix("/\(server.id)") }.count,
       ]
@@ -673,7 +673,6 @@ enum BuiltinTools {
       "summary": server.summary,
       "origin": describe(server.origin),
       "enabled": server.isEnabled,
-      "lazy_tools": server.loadsToolsOnDemand,
       "dialect": server.dialect.rawValue,
       "env": server.env.map {
         [
@@ -741,13 +740,13 @@ enum BuiltinTools {
       }
     }
     // The third axis of the facade, and the only one an agent cannot work out
-    // from `lazy_tools`: a listing the three declarations would not
-    // meaningfully shrink is forwarded whole however the switch is set. Said
-    // only when something has been measured and the floor actually holds, so
-    // the common case adds no key — and taken from the first measured profile,
-    // which is `ServerDetail`'s rule and its reason: a server can vary its
-    // tools by auth mode, so there is no single figure to claim.
-    if server.loadsToolsOnDemand,
+    // from `status`: a listing the three declarations would not meaningfully
+    // shrink is forwarded whole however the switch is set. Said only when
+    // something has been measured and the floor actually holds, so the common
+    // case adds no key — and taken from the first measured profile, which is
+    // `ServerDetail`'s rule and its reason: a server can vary its tools by
+    // auth mode, so there is no single figure to claim.
+    if ToolFacade.isOn,
       let measured = ProfileStore.shared.profiles.filter({ $0.serverID == server.id })
         .compactMap({ ToolCostStore.shared.current(for: $0, server: server) }).first,
       !measured.partial,
@@ -759,10 +758,10 @@ enum BuiltinTools {
         facadeCount: ToolFacade.declarationCount(
           hasWriteDispatcher: (measured.writeToolCount ?? 0) > 0))
     {
-      // "Not applied yet", and then the condition, because an agent reading
-      // this is deciding whether to change the setting. The floor is recomputed
-      // from the catalog on every `tools/list`, so On here is armed rather than
-      // ignored and telling it otherwise invites a pointless `update_server`.
+      // "Not applied yet", and then the condition. The floor is recomputed
+      // from the catalog on every `tools/list`, so the switch is armed here
+      // rather than ignored, and an agent told otherwise would go looking for
+      // a per-server setting that no longer exists.
       let needed = ToolFacade.toolsWorthFronting(
         hasWriteDispatcher: (measured.writeToolCount ?? 0) > 0)
       out["lazy_tools_note"] =
@@ -935,23 +934,9 @@ enum BuiltinTools {
           "server": profile.serverID,
           "endpoint": "/s/\(profile.name)/\(profile.serverID)",
           "allow_writes": profile.allowWrites,
-          "lazy_tools": ServerStore.shared.server(id: profile.serverID)?.loadsToolsOnDemand
-            ?? ToolFacade.globalDefault,
           "values": ServerStore.shared.server(id: profile.serverID)?.shareableValues(
             profile.values) ?? [:],
         ]
-        // `lazy_tools` is the server's resolved answer, and it is not the whole
-        // one: the facade applies only where the client cannot defer by itself.
-        // An array rather than a sentence, because the consumer is a model, and
-        // absent rather than empty so the common case adds nothing.
-        if row["lazy_tools"] as? Bool == true {
-          // Families, not ids. An agent asking which clients the facade skips does
-          // not need to learn that this Mac has two Claude Code config
-          // directories, and `claude-code@skitrust` in that list would read as a
-          // separate product rather than as the same client twice.
-          let exempt = ClientWiring.exemptFamilies()
-          if !exempt.isEmpty { row["lazy_tools_exempt_clients"] = exempt }
-        }
         guard let server = ServerStore.shared.server(id: profile.serverID) else { return row }
         let stored = CredentialStore.storedVariables(
           in: accounts, profile: profile.name, server: profile.serverID)
@@ -1189,7 +1174,7 @@ enum BuiltinTools {
         // JSON and finds TOML.
         "format": client.format == .toml ? "toml" : "json",
         // Whether this client loads a tool's schema when it needs one. A client
-        // that does is never fronted with the tool facade, whatever a profile's
+        // that does is never fronted with the tool facade, whatever `status`'s
         // lazy_tools says. Its own key rather than folded into `note`, which
         // already carries `client.caveat`.
         "defers_tool_schemas": ToolFacade.clientDefersSchemas(client.id),
@@ -1233,6 +1218,11 @@ enum BuiltinTools {
       // About forty bytes, and it is how an agent discovers `server_stats`
       // exists and whether enough history stands behind it to be worth asking.
       "stats": statsAvailability(),
+      // The one switch, now that there is no per-server answer to report. The
+      // other two terms are elsewhere: `defers_tool_schemas` on each
+      // `list_clients` row, and `lazy_tools_note` on a `get_server` whose
+      // listing is too small to be fronted.
+      "lazy_tools": ToolFacade.isOn,
       "running": Activity.shared.instances.map { instance in
         var row: [String: Any] = [
           "id": instance.id, "profile": instance.profile, "server": instance.server,
@@ -1732,6 +1722,8 @@ enum BuiltinTools {
   }
 
   private static func upsertProfile(_ arguments: [String: Any]) throws -> Any {
+    // Before anything is written, so a refusal leaves nothing half-done.
+    guard arguments["lazy_tools"] == nil else { throw ToolError.retiredLazyTools }
     let name = try string(arguments, "name")
     let serverID = try string(arguments, "server")
     guard Profile.isValidName(name) else {
@@ -1789,39 +1781,12 @@ enum BuiltinTools {
       captureMode: existing?.captureMode)
     try ProfileStore.shared.upsert(profile)
 
-    // The setting moved to the server, and this argument did not move with it:
-    // an agent that learned to pass `lazy_tools` here would otherwise start
-    // being silently ignored, which is worse than a rename. So it is still
-    // accepted and written THROUGH — and it now moves the answer for every
-    // profile of the server, which the schema says out loud.
-    //
-    // Absent means "leave it alone", never "set it to the app-wide default":
-    // the same carry-over `captureMode` gets above, and the same hazard, an
-    // agent editing a credential resetting a decision somebody made in the
-    // window.
-    if let wanted = arguments["lazy_tools"] as? Bool {
-      try ServerStore.shared.setLazyTools(wanted, for: serverID)
-    }
-    let lazyServer = ServerStore.shared.server(id: serverID) ?? server
-
     var out: [String: Any] = [
       "name": name, "server": serverID,
       "created": existing == nil,
       "endpoint": "http://127.0.0.1:\(Gateway.shared.port)/s/\(name)/\(serverID)",
       "allow_writes": profile.allowWrites,
-      // The resolved answer, not the override: an agent asking what this
-      // profile does needs what it DOES, and nil is not an answer to that.
-      // The SERVER's answer now, and reported on a profile anyway because that
-      // is where an agent is standing when it asks. Resolved against the
-      // app-wide default only — the client axis is the sibling below, because
-      // it varies per caller and this key does not.
-      "lazy_tools": lazyServer.loadsToolsOnDemand,
     ]
-    if lazyServer.loadsToolsOnDemand {
-      // Families, not ids. See the sibling in `listProfiles`.
-      let exempt = ClientWiring.exemptFamilies()
-      if !exempt.isEmpty { out["lazy_tools_exempt_clients"] = exempt }
-    }
     let missing = ProfileEnvironment.missing(for: profile, server: server)
     if !missing.isEmpty { out["missing"] = missing }
     if !ignored.isEmpty {

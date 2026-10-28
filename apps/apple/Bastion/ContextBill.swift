@@ -59,7 +59,7 @@ enum ContextBill {
     // `partial` counts as fronted — the gateway decides on the whole list, and
     // this figure stopped at page one.
     let fronted =
-      server.loadsToolsOnDemand && !defers
+      ToolFacade.isOn && !defers
       && (cost.partial
         || ToolFacade.worthFronting(
           listingBytes: cost.bytes, listingCount: cost.toolCount, facadeBytes: facade,

@@ -159,11 +159,7 @@ nonisolated enum BuiltinServer {
     // defers schemas itself either, whatever the profile says; see `ToolFacade`.
     var frame = frame
     var facadeAnswer: [String: Any]?
-    // Off the snapshot rather than off `definition`, which is this build's
-    // static copy and carries no user setting. `lookup` is nonisolated and
-    // lock-free, which is what lets it be read from this thread at all.
-    let stored = ServerStore.lookup(id)
-    if stored?.loadsToolsOnDemand ?? ToolFacade.globalDefault,
+    if ToolFacade.isOn,
       !ToolFacade.clientDefersSchemas(client),
       client != ServerCheck.client,
       ToolFacade.handles(method: method, params: frame["params"] as? [String: Any])

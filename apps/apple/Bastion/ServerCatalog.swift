@@ -148,38 +148,14 @@ nonisolated struct BastionServer: Identifiable, Hashable {
   /// which is far too much to mean "not right now".
   var isEnabled: Bool = true
 
-  /// Whether clients are served `ToolFacade`'s three tools instead of this
-  /// server's own. `nil` follows the app-wide default.
-  ///
-  /// A property of the install, like `isEnabled`, and here for the same reason:
-  /// the gateway reads servers off a lock-free snapshot rather than off the
-  /// store, so the answer has to travel with the definition.
-  ///
-  /// On the SERVER and no longer on the profile, which is where it started. The
-  /// question this answers is "is this listing big enough to be worth the
-  /// trade", and a listing is a property of the server — two profiles of one
-  /// server differ in credentials and in `allowWrites`, not in whether
-  /// eighty-five tools is a lot. The disagreement that used to justify a
-  /// per-profile override was "this profile feeds Claude Code, which defers by
-  /// itself", and that is now `ToolFacade.clientDefersSchemas`, answered per
-  /// client where a profile feeding two of them can be answered honestly.
-  var lazyTools: Bool?
-
-  /// Whether this server actually fronts its tools, default resolved. The only
-  /// form the gateway reads, so a server that has expressed no preference
-  /// cannot be mistaken for one that said no.
-  var loadsToolsOnDemand: Bool { lazyTools ?? ToolFacade.globalDefault }
-
-  /// This definition with `previous`'s per-install switches, for an edit.
+  /// This definition with `previous`'s per-install switch, for an edit.
   ///
   /// `ServerStore.upsert` rebuilds a custom server from the definition the
-  /// editor saved, and neither switch is part of one. Without this, opening the
-  /// editor on a disabled server and pressing Save turned it back on, and a
-  /// server set to load its tools on demand went back to Default.
+  /// editor saved, and the switch is not part of one. Without this, opening the
+  /// editor on a disabled server and pressing Save turned it back on.
   func carryingSwitches(from previous: BastionServer) -> BastionServer {
     var carried = self
     carried.isEnabled = previous.isEnabled
-    carried.lazyTools = previous.lazyTools
     return carried
   }
 

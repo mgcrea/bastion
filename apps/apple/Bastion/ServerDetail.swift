@@ -758,14 +758,10 @@ struct ServerDetail: View {
     return merged.values.sorted { $0.day < $1.day }
   }
 
-  private var lazyToolsSelection: String {
-    server.lazyTools.map(String.init) ?? ""
-  }
-
   /// The measurement to quote, from whichever profile has a current one.
   ///
-  /// Still keyed by profile, and deliberately: the SETTING is per server but the
-  /// COST is not. `allowWrites` filters the catalog, and `mcp-stripe` varies its
+  /// Still keyed by profile, and deliberately: the caption is per server but
+  /// the COST is not. `allowWrites` filters the catalog, and `mcp-stripe` varies its
   /// tools by auth mode, so two profiles of one server can honestly disagree
   /// about the number. This takes the first rather than summing, and the
   /// sentence says "on every connect" rather than claiming a total.
@@ -773,67 +769,38 @@ struct ServerDetail: View {
     profiles.compactMap { ToolCostStore.shared.current(for: $0, server: server) }.first
   }
 
-  private func setLazyTools(_ raw: String) {
-    do {
-      try ServerStore.shared.setLazyTools(Bool(raw), for: server.id)
-    } catch {
-      lastError = error.localizedDescription
-    }
-  }
-
-  /// The control, under the profiles it applies to.
+  /// What loading on demand does for these profiles, under the rows it
+  /// applies to.
   ///
-  /// Below the list rather than in the header, because what it changes is what
-  /// those rows are sent — and the same three positions the rest of the app
-  /// uses, because a control that means one thing in one place and another
-  /// somewhere else is worse than one more click.
-  ///
-  /// Where the facade switch actually lives.
-  ///
-  /// It used to be stored per profile, with this control writing through to
-  /// every row of the server — which is why it needed a "Mixed" position at
-  /// all. Mixed was never a state anybody meant to reach; it was the shape of
-  /// the storage showing through the UI.
-  ///
-  /// The question this answers is "is this listing big enough to be worth the
-  /// trade", and that is a property of the SERVER: `appstore-connect` is 85
-  /// tools and 26.2k tokens, `reddit` is 14 and 3.3k, and nobody wants the same
-  /// answer for both. Two profiles of one server differ in credentials and in
-  /// `allowWrites`, not in whether eighty-five is a lot. The disagreement that
-  /// used to justify a per-profile override — "this profile feeds Claude Code,
-  /// which defers by itself" — is now `ToolFacade.clientDefersSchemas`, per
-  /// client, where a profile feeding two of them can be answered honestly.
-  @ViewBuilder private var lazyToolsControl: some View {
-    let selection = lazyToolsSelection
-    VStack(alignment: .leading, spacing: 6) {
-      Picker(
-        "Load tools on demand",
-        selection: Binding(get: { selection }, set: { setLazyTools($0) })
-      ) {
-        Text("Default (\(ToolFacade.globalDefault ? "on" : "off"))").tag("")
-        Text("On").tag("true")
-        Text("Off").tag("false")
+  /// A caption and no control. There was a Default/On/Off picker here until
+  /// 1.32, and before that the setting lived on each profile. Both asked a
+  /// person whether this listing is big enough to be worth searching, which
+  /// `ToolFacade.floor` answers from the listing itself on every `tools/list`;
+  /// what is left to decide is whether anybody wants the trade at all, which
+  /// is the one switch in Settings, and which clients need it, which is each
+  /// client's own pane. So this only says what happened, and says nothing
+  /// while the switch is off rather than describing a feature nobody wants.
+  @ViewBuilder private var lazyToolsNote: some View {
+    if ToolFacade.isOn {
+      Divider()
+      VStack(alignment: .leading, spacing: 4) {
+        Text("Load tools on demand")
+          .font(.callout)
+        Text(lazyToolsDetail)
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
       }
-      .pickerStyle(.segmented)
-      .controlSize(.small)
-      .fixedSize()
-
-      Text(lazyToolsDetail)
-        .font(.caption).foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
+      .padding(.top, 2)
     }
-    .padding(.top, 2)
   }
 
   private var lazyToolsDetail: String {
     let scope =
       profiles.count == 1
       ? "This server's profile" : "All \(profiles.count) of this server's profiles"
-    // Only where the facade is actually on for something here. Then it is a
-    // live fact about what those profiles do; under a picker sitting at Off it
-    // is a caveat about a feature nobody turned on, and the same sentence is
-    // already in Settings, in the profile sheet and in the client's own pane.
-    let exempt = server.loadsToolsOnDemand ? facadeExemptClause() : ""
+    // Only reached with the switch on, so this is a live fact about what
+    // those profiles do rather than a caveat about a feature nobody turned on.
+    let exempt = facadeExemptClause()
     guard let measured = lazyToolsMeasurement else {
       return "\(scope). Clients get three Bastion tools — search, describe and call — instead of "
         + "every tool \(server.displayName) exposes." + exempt
@@ -849,10 +816,9 @@ struct ServerDetail: View {
       hasWriteDispatcher: (measured.writeToolCount ?? 0) > 0)
     // The floor, said out loud rather than rendered as a saving of nothing.
     // A listing the three declarations would not meaningfully shrink is
-    // forwarded whole by the gateway whatever this picker says, and a caption
-    // claiming "26.2k → 1.1k" for a server whose real numbers are "1.4k → 1.2k"
-    // is the one sentence here that could sell the trade on arithmetic that
-    // does not hold.
+    // forwarded whole by the gateway, and a caption claiming "26.2k → 1.1k"
+    // for a server whose real numbers are "1.4k → 1.2k" is the one sentence
+    // here that could sell the trade on arithmetic that does not hold.
     //
     // Only where the figure is whole. `partial` means `measured.bytes` is a
     // lower bound and the gateway decides on the WHOLE list it walked, so a
@@ -864,21 +830,14 @@ struct ServerDetail: View {
         facadeCount: ToolFacade.declarationCount(
           hasWriteDispatcher: (measured.writeToolCount ?? 0) > 0))
     {
-      let outcome =
-        server.loadsToolsOnDemand
-        ? "Bastion is sending the real list anyway."
-        : "turning this on would change nothing here."
-      // Said because the picker above stays live, and a caption ending at
-      // `outcome` reads as if it should not. The floor is not a property of
-      // this server that the app stored once; every `tools/list` recomputes it
-      // from the catalog the server just returned, so the setting is an armed
-      // intent rather than a switch on a wire, and a server that grows starts
-      // being fronted with nobody touching the control again. Leaving that
-      // unsaid is what makes On look broken here.
-      let carry =
-        server.loadsToolsOnDemand
-        ? " It re-checks on every listing, and will front this server"
-        : " It would take effect"
+      // "Not yet" rather than "no", and then what would change it: the
+      // floor is not a property of this server that the app stored once.
+      // Every `tools/list` recomputes it from the catalog the server just
+      // returned, so a server that grows starts being fronted with nobody
+      // touching anything, and the caption has to say so or it reads as a
+      // verdict.
+      let outcome = "Bastion sends the real list."
+      let carry = " It re-checks on every listing, and will front this server"
       // The term that actually held, named. "Too small to be worth searching"
       // and "the three cost what the list costs" are different facts about a
       // server and lead somewhere different — the first is permanent, the
@@ -922,7 +881,7 @@ struct ServerDetail: View {
   /// measured: `nil` means nobody has looked, which is not the same claim as
   /// zero and must not be rendered as one.
   private func unclassifiedClause(_ measured: ToolCostStore.Measurement) -> String {
-    guard server.loadsToolsOnDemand, measured.writeToolCount == 0 else { return "" }
+    guard measured.writeToolCount == 0 else { return "" }
     return
       " Bastion cannot tell this server's writes from its reads — it declares none and annotates "
       + "none — so there is one dispatcher and one approval rule in the editor covering every "
@@ -1000,8 +959,7 @@ struct ServerDetail: View {
               if profile.id != profiles.last?.id { Divider() }
             }
 
-            Divider()
-            lazyToolsControl
+            lazyToolsNote
           }
 
           if let lastError {
@@ -1358,7 +1316,7 @@ private struct ProfileRow: View {
         facadeCount: ToolFacade.declarationCount(
           hasWriteDispatcher: (measured.writeToolCount ?? 0) > 0))
 
-    if server.loadsToolsOnDemand, fronted {
+    if ToolFacade.isOn, fronted {
       let facade = facadeBytes
       return (
         "\(ToolCost.short(ToolCost.tokens(bytes: facade))) of \(tokens)\(measured.partial ? "+" : "") tokens",
@@ -1378,13 +1336,13 @@ private struct ProfileRow: View {
       "\(count) tool\(count == 1 ? "" : "s"), "
         + ToolCost.phrase(bytes: measured.bytes, partial: measured.partial)
         + " of a client's context window on every connect."
-        // Only under a picker sitting at On, where it explains a badge that
-        // shows no saving. Off, this is the ordinary bill and the floor is not
-        // what makes it one.
+        // Only with the switch on, where it explains a badge that shows no
+        // saving. Off, this is the ordinary bill and the floor is not what
+        // makes it one.
         // "Not applied" rather than "off", and then what would change it: the
         // floor is recomputed from the catalog on every `tools/list`, so this
         // is a description of today's listing and not of the setting.
-        + (server.loadsToolsOnDemand
+        + (ToolFacade.isOn
           ? " Loading on demand is on and not applied yet: this listing is too small to be worth "
             + "putting a search in front of, so the real one is sent. Bastion checks again on "
             + "every listing."

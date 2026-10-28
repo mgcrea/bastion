@@ -238,9 +238,9 @@ three generic entries instead of the server's eighty-five, so
 `bastion_search_tools` stays findable by "app store connect" while
 `app_store_connect_list_builds` stops being findable by "testflight build".
 
-**Load tools on demand** (Settings › General, with a per-profile override under
-Context) is Bastion's answer for the clients that cannot. With it on, a client is
-served three tools instead of the server's own:
+**Load tools on demand** (Settings › General, on by default) is Bastion's answer
+for the clients that cannot. With it on, a client is served three tools instead
+of the server's own:
 
 | Tool                      | What it does                                                     |
 | ------------------------- | ---------------------------------------------------------------- |
@@ -283,27 +283,23 @@ move a guess into the editor's confirmation prompt. A server Bastion cannot
 classify keeps the three tools and the old, coarser bargain. Bastion's own gate is unaffected: a
 write tool is still absent from the index and still refused by the dispatcher
 for a profile with writes off. But the editor's gate is coarser, which is why it
-is off by default.
+was off by default until 1.32.
 
-The switch is app-wide because the answer is usually the same for every server
-on one machine. It is overridable per server because it is not always. A server
-that has expressed no preference follows the app-wide setting, which is the same
-tri-state **Record** uses one section further down.
+It is on by default now, and app-wide with nothing narrower, because the other
+two questions below turned out to carry the whole decision. It had a per-profile
+override until 1.11 and a per-server one until 1.32, and both asked a person
+whether a listing is big enough to be worth searching — which the floor answers
+from the listing itself, on every `tools/list`, and keeps answering as the
+server grows. A choice stored under either is ignored. Somebody who turned the
+switch off keeps it off; only a machine that never touched it moved.
 
-Per server, and not per profile, because the listing is the server's: two
-profiles of one server differ in credentials and in the write gate, not in
-whether eighty-five tools is a lot. It was stored per profile until 1.11, and a
-value written there is carried onto its server on the first launch after
-upgrading.
-
-Which is one of three questions, and the switch only answers the first. _Did
-somebody ask for this_ is per server; _does this client need the help at all_ is
-per client; and _would fronting this listing actually buy anything_ is neither —
-it is measured. The facade applies where all three say yes. The gateway knows
-which client is asking because the bearer token identifies it, so the first two
-resolve together on every request — and a per-profile answer could never have
-expressed the client one anyway, since a profile feeds every client wired to it
-at once.
+So the switch is one of three questions. _Does anybody want this at all_ is the
+switch; _does this client need the help_ is per client; and _would fronting this
+listing actually buy anything_ is measured. The facade applies where all three
+say yes. The gateway knows which client is asking because the bearer token
+identifies it, so the first two resolve together on every request — and a
+per-profile or per-server answer could never have expressed the client one
+anyway, since a profile feeds every client wired to it at once.
 
 **The third is a floor, and it is the reason a small server is left alone even
 with the switch on.** A listing is fronted only when it has at least twice as
