@@ -93,14 +93,22 @@ nonisolated enum ToolFacade {
   /// worth searching. The answer that genuinely varies is per client, and that
   /// is `clientDefersSchemas`, with its own override in the client's pane.
   ///
-  /// On when nobody has touched it. An absent key is not a `false` here, which
-  /// is why this reads `object(forKey:)` rather than `bool(forKey:)`: somebody
-  /// who turned it off keeps it off across the change of default, and only a
-  /// machine that never expressed a preference moves. The key keeps its old
-  /// name for the same reason — renaming it would forget every explicit off.
+  /// On when nobody has touched it. An absent key is not a `false` here:
+  /// somebody who turned it off keeps it off across the change of default, and
+  /// only a machine that never expressed a preference moves. The key keeps its
+  /// old name for the same reason — renaming it would forget every explicit off.
+  ///
+  /// Presence from `object(forKey:)`, the value from `bool(forKey:)`, and never
+  /// `object(forKey:) as? Bool`. A launch argument lands in `NSArgumentDomain`
+  /// as the STRING "NO", which that cast reads as absent and so as on — which
+  /// is how the screenshot capture's `-lazyToolsDefault NO` stopped working.
+  /// `bool(forKey:)` parses the string.
   static let defaultsKey = "lazyToolsDefault"
 
-  static var isOn: Bool { UserDefaults.standard.object(forKey: defaultsKey) as? Bool ?? true }
+  static var isOn: Bool {
+    let defaults = UserDefaults.standard
+    return defaults.object(forKey: defaultsKey) == nil ? true : defaults.bool(forKey: defaultsKey)
+  }
 
   // MARK: - Which clients need this
 

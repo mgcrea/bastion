@@ -2387,6 +2387,20 @@ struct UnitCheck {
         params: ["name": ToolFacade.searchName, "arguments": ["query": ""]],
         catalog: selfFronted, displayName: "Cloudflare", summary: "Something.") != .passThrough)
 
+    print("\nTool facade: the switch")
+    // This binary's own defaults domain, put back as it was found. The string
+    // case is the launch argument's shape: `-lazyToolsDefault NO` arrives as
+    // "NO", and the capture relied on it while `isOn` read it as on.
+    let switchDefaults = UserDefaults.standard
+    let foundSwitch = switchDefaults.object(forKey: ToolFacade.defaultsKey)
+    switchDefaults.removeObject(forKey: ToolFacade.defaultsKey)
+    check("an untouched switch is on", ToolFacade.isOn)
+    switchDefaults.set(false, forKey: ToolFacade.defaultsKey)
+    check("a switch turned off stays off", !ToolFacade.isOn)
+    switchDefaults.set("NO", forKey: ToolFacade.defaultsKey)
+    check("and so does one passed as the string a launch argument is", !ToolFacade.isOn)
+    switchDefaults.set(foundSwitch, forKey: ToolFacade.defaultsKey)
+
     print("\nTool facade: which clients need it")
 
     // The second term of the gate. The profile says whether the listing is big
