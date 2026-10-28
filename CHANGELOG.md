@@ -4,10 +4,14 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.31.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.32.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.32.0] - 2026-10-28
+
+**Large servers load their tools on demand.** In Cursor, VS Code, Codex and LM Studio, Bastion now
+swaps a big server's tool list for search, describe and call by itself, so each connection costs
+far fewer tokens. The per-server picker is gone.
 
 ### Changed
 
@@ -31,6 +35,16 @@ are taken from this file, which is the curated summary.
   follows: `list_servers`, `get_server` and `list_profiles` no longer report `lazy_tools`,
   `status` reports the switch instead, and `upsert_profile` refuses a `lazy_tools` argument and
   says where the switch is rather than ignoring it.
+
+### Fixed
+
+- **A failing server's red mark lines up with the green dots.** It sat a few points off the dots in
+  the sidebar rows around it. Every status mark there now centres on one column.
+
+### Internal
+
+- The website's context section and `llms.txt` say tools load on demand by default.
+- `make screenshots-capture SHOT_SCREENS=<id>` re-captures one plate and leaves the others in place.
 
 ## [1.31.0] - 2026-10-25
 
