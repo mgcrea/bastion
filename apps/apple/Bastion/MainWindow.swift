@@ -606,6 +606,13 @@ private struct ServerBadge: View {
     }
   }
 
+  /// One square every glyph of the ladder is centred in. The symbols at
+  /// `.caption2` are wider than the 7pt green dot, and each flush against the
+  /// row's trailing edge put a failing row's red mark a few points off the
+  /// running row's dot above it: the column only reads as one when they share
+  /// a centre.
+  private static let slot: CGFloat = 12
+
   @ViewBuilder private var ladder: some View {
     let live = Activity.shared.instances.filter { $0.server == server.id && $0.isLive }.count
     let failing = Activity.shared.instances.filter {
@@ -620,6 +627,7 @@ private struct ServerBadge: View {
       Image(systemName: "pause.circle")
         .font(.caption2)
         .foregroundStyle(.secondary)
+        .frame(width: Self.slot, height: Self.slot)
         .help("Disabled")
     } else if let first = failing.first {
       // Ahead of a live sibling: one profile answering does not help the
@@ -628,6 +636,7 @@ private struct ServerBadge: View {
       Image(systemName: "exclamationmark.circle.fill")
         .font(.caption2)
         .foregroundStyle(.red)
+        .frame(width: Self.slot, height: Self.slot)
         .help(
           failing.count == 1
             ? "\(first.profile): \(first.upstreamFailure ?? "")"
@@ -635,13 +644,14 @@ private struct ServerBadge: View {
     } else if live > 0 {
       HStack(spacing: 3) {
         Circle().fill(Color.green).frame(width: 7, height: 7)
+          .frame(width: Self.slot, height: Self.slot)
         if live > 1 {
           Text("\(live)").font(.caption2).foregroundStyle(.secondary).monospacedDigit()
         }
       }
       .help(live == 1 ? "Running" : "\(live) running")
     } else if ServerInstaller.shared.isRunning(server.id) {
-      ProgressView().controlSize(.small).scaleEffect(0.6).frame(width: 10, height: 10)
+      ProgressView().controlSize(.small).scaleEffect(0.6).frame(width: Self.slot, height: Self.slot)
     } else if !ServerInstaller.isInstalled(server) {
       // The state a bundled-servers app could not be in, and the one a user
       // will hit first: added, not downloaded, and silent about it unless the
@@ -650,6 +660,7 @@ private struct ServerBadge: View {
       Image(systemName: "arrow.down.circle")
         .font(.caption2)
         .foregroundStyle(.orange)
+        .frame(width: Self.slot, height: Self.slot)
         .help("Not installed")
     } else if profiles > 0 {
       Text("\(profiles)")
