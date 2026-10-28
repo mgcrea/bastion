@@ -951,11 +951,17 @@ screenshots-capture: app ## Capture only (no gate, no compose)
 	@# filename fails now rather than two minutes later.
 	@# --extra-args needs the `=`: the value starts with `-`, and without it
 	@# ArgumentParser reads it as appshot's own flags.
+	@# --partial when SHOT_SCREENS comes from the command line, so
+	@# `make screenshots-capture SHOT_SCREENS=server` recaptures one plate and
+	@# leaves the other six in place. Without it, --config refuses any subset as
+	@# screens that "will be missing". The default list is the full set and is
+	@# still checked as one; a typo is refused either way.
 	appshot capture \
 		--app "$(APP)" \
 		--out "$(SHOT_SOURCE)" \
 		--config "$(SHOT_CONFIG)" \
 		--screens $(SHOT_SCREENS) \
+		$(if $(filter command line,$(origin SHOT_SCREENS)),--partial) \
 		--appearances $(SHOT_APPEARANCES) \
 		--extra-args="$(SHOT_ARGS)" \
 		--settle $(SHOT_SETTLE) \
