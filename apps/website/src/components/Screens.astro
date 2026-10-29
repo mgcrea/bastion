@@ -12,8 +12,9 @@
  * as it actually renders, so a reader can check the drawings against it.
  *
  * Five of the seven captures. `server` is promoted out of this section into
- * `ServerPane.astro`, the first section after the tour loop under the hero,
- * because the drawing it answers is up there — see that file's header.
+ * `ServerPane.astro`, the first section after the hero, because the drawing it
+ * answers is up there — see that file's header. `Tour.astro` leads this
+ * column instead: the same window, moving, for the same reason as the rest.
  *
  * The images are NOT hand-placed. `make screenshots` from the repository root
  * builds Bastion, launches it in demo mode onto each screen, gates the result
@@ -36,6 +37,7 @@ import logShot from "../assets/shots/log.png";
 import runningShot from "../assets/shots/running.png";
 import statsShot from "../assets/shots/stats.png";
 import SectionHeader from "./SectionHeader.astro";
+import Tour from "./Tour.astro";
 
 /**
  * The captions are deliberately NOT the ones in
@@ -153,6 +155,7 @@ const plate = (image: (typeof shots)[number]["image"]) => {
     </div>
 
     <div class="mt-14 flex flex-col gap-14">
+      <Tour />
       {
         shots.map(({ image, id, title, body, alt }) => (
           <figure id={`shot-${id}`} class="reveal m-0 scroll-mt-24">
