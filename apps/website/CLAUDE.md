@@ -30,7 +30,7 @@ width. Five captures are the main window at 2360px and `licence` is the smaller 
 applications. The `plate()` helper is what keeps them honest, and it derives everything from the
 imported image's own width, so a capture that changes size does not need a second edit here.
 
-`public/video/tour.mp4` (and its `tour.jpg` poster), played by `Tour.astro` under the hero, is
+`public/video/tour.mp4` (and its `tour.jpg` poster), played by `Tour.astro` at the head of `Screens.astro`, is
 rendered from the same captures by `make site-video`, from the `tour` entry in
 `apps/apple/Screenshots/screenshots.config.json`. It is in `public/` because astro:assets does
 nothing for video, so `make screenshots` neither clears nor refreshes it and nothing fails when it
