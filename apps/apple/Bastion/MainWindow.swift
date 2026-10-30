@@ -703,7 +703,14 @@ struct MainView: View {
         UnknownPane(what: "server", id: id)
       }
     case .workspace(let name):
-      UnknownPane(what: "workspace", id: name)
+      // Reachable the moment a workspace is renamed elsewhere or deleted while
+      // its page is open: the selection outlives the name.
+      if let workspace = WorkspaceStore.shared.workspaces.first(where: { $0.name == name }) {
+        WorkspaceDetail(workspace: workspace, renamed: workspaceRenamed)
+          .id(name)
+      } else {
+        UnknownPane(what: "workspace", id: name)
+      }
     case .client(let id):
       if let client = ClientWiring.all.first(where: { $0.id == id }) {
         ClientDetail(client: client)
@@ -870,6 +877,9 @@ private struct UnknownPane: View {
     ContentUnavailableView(
       "No such \(what)",
       systemImage: "questionmark.folder",
-      description: Text("'\(id)' is not installed. It may have been removed."))
+      description: Text(
+        what == "workspace"
+          ? "There is no workspace named '\(id)'. It may have been renamed or deleted."
+          : "'\(id)' is not installed. It may have been removed."))
   }
 }

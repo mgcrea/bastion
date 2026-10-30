@@ -127,7 +127,16 @@ final class WorkspaceStore {
   /// A move that changes nothing, such as a drop on the section a row came
   /// from, returns before touching the file, so it never rewires either.
   func moveProfiles(_ ids: [String], from: String?, to: String?) throws {
-    let next = WorkspaceScope.moving(ids, from: from, to: to, in: workspaces)
+    try replace(with: WorkspaceScope.moving(ids, from: from, to: to, in: workspaces))
+  }
+
+  /// Put one profile in `workspace` alone, or in none for nil, in one save and
+  /// one rewire. The profile editor's Scope menu.
+  func setScope(_ profileID: String, to workspace: String?) throws {
+    try replace(with: WorkspaceScope.scoping(profileID, to: workspace, in: workspaces))
+  }
+
+  private func replace(with next: [Workspace]) throws {
     guard next != workspaces else { return }
     let previous = workspaces
     workspaces = next

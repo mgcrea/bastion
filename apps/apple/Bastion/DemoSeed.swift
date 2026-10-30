@@ -435,8 +435,8 @@ enum DemoSeed {
     ]
   }
 
-  /// One workspace scoping the Keycloak profile, so the Workspaces pane and the
-  /// client pane's card have something to draw. The folder is invented and does
+  /// One workspace scoping the Keycloak profile, so the sidebar's acme section
+  /// and the client pane's card have something to draw. The folder is invented and does
   /// not exist, so a capture resolves it to nothing and scans nothing real.
   nonisolated static var workspaces: [Workspace] {
     [Workspace(name: "acme", folders: ["/Users/demo/Projects/acme"], profiles: ["acme/keycloak"])]

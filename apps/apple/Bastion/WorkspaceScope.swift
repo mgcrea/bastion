@@ -187,6 +187,26 @@ nonisolated enum WorkspaceScope {
     }
   }
 
+  /// `workspaces` with one profile in `workspace` alone, or in none for nil:
+  /// the profile editor's Scope menu, which unlike a drag says where the
+  /// profile is rather than where it goes from where it was.
+  static func scoping(_ profileID: String, to workspace: String?, in workspaces: [Workspace])
+    -> [Workspace]
+  {
+    if let workspace, !workspaces.contains(where: { $0.name == workspace }) { return workspaces }
+    return workspaces.map { candidate in
+      var next = candidate
+      if candidate.name == workspace {
+        if !next.profiles.contains(profileID) {
+          next.profiles = (next.profiles + [profileID]).sorted()
+        }
+      } else {
+        next.profiles.removeAll { $0 == profileID }
+      }
+      return next
+    }
+  }
+
   /// `workspaces` with one profile id swapped for another, for a rename.
   ///
   /// A workspace that already holds the new id (a dead profile's id is kept by

@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Settings → Skills. Every edit saves and reconciles at once, as the
-/// Workspaces pane does, so there is no Apply button to forget. Adding a source
+/// workspace page does, so there is no Apply button to forget. Adding a source
 /// is the one exception: it shows what it would change first.
 struct SkillsPane: View {
   @State private var error: String?
@@ -45,7 +45,7 @@ struct SkillsPane: View {
           Button("Add Source…", action: pickSource)
           Button("Rescan") {
             // New clones under a workspace's parent folder first, as the
-            // Workspaces pane's Rescan finds them, so the reconcile sees them.
+            // workspace page's Rescan finds them, so the reconcile sees them.
             WorkspaceStore.shared.rescan()
             store.reconcile()
           }
@@ -162,8 +162,10 @@ struct SkillsPane: View {
       if !scopes.isEmpty {
         Text("Linked only into the repositories of \(scopes.joined(separator: ", ")).")
           .font(.caption).foregroundStyle(.secondary)
-        Button("Edit Workspaces…") { SettingsWindowController.show(.workspaces) }
-          .controlSize(.small)
+        if let first = scopes.first {
+          Button("Show Workspace") { MainWindowController.show(.workspace(first)) }
+            .controlSize(.small)
+        }
       } else if skill.isValid {
         HStack(spacing: 16) {
           ForEach(store.targets) { target in

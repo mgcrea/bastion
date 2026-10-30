@@ -958,8 +958,10 @@ struct ClientDetail: View {
           .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxHeight: 240)
-        Button("Edit Workspaces…") { SettingsWindowController.show(.workspaces) }
-          .controlSize(.small)
+        if let first = WorkspaceStore.shared.workspaces.first {
+          Button("Show Workspaces") { MainWindowController.show(.workspace(first.name)) }
+            .controlSize(.small)
+        }
       }
     }
   }

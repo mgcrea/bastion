@@ -172,6 +172,7 @@ struct WiringCheck {
     collapsedServerSections()
     sidebarSelection()
     sidebarDropTargeting()
+    workspaceScoping()
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 { exit(1) }
@@ -2670,6 +2671,32 @@ struct WiringCheck {
       check(
         "\(pane.rawValue) is left alone", WorkspaceSidebar.rowPane(for: pane, in: sections) == pane)
     }
+  }
+
+  /// The profile editor's Scope menu: one place, whatever it was in before.
+  static func workspaceScoping() {
+    print("\nSidebar: a profile's scope")
+    var both = sidebarWorkspaces
+    both[1].profiles.append("rgis/ovh")
+    func holders(_ workspaces: [Workspace]) -> [String] {
+      workspaces.filter { $0.profiles.contains("rgis/ovh") }.map(\.name).sorted()
+    }
+    check(
+      "scoping to a workspace leaves it only there",
+      holders(WorkspaceScope.scoping("rgis/ovh", to: "empty", in: both)) == ["empty"])
+    check(
+      "scoping to one it is already in drops the others",
+      holders(WorkspaceScope.scoping("rgis/ovh", to: "rgis", in: both)) == ["rgis"])
+    check(
+      "scoping to Everywhere takes it out of all of them",
+      holders(WorkspaceScope.scoping("rgis/ovh", to: nil, in: both)) == [])
+    check(
+      "scoping to a workspace that does not exist changes nothing",
+      WorkspaceScope.scoping("rgis/ovh", to: "nope", in: both) == both)
+    check(
+      "a scope it already has alone changes nothing",
+      WorkspaceScope.scoping("rgis/ovh", to: "rgis", in: sidebarWorkspaces)
+        == sidebarWorkspaces)
   }
 
   static func sidebarDropTargeting() {
