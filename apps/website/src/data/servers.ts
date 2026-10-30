@@ -483,6 +483,17 @@ export const SERVERS: Server[] = [
     provenance: false,
     dialect: "2025-11-25",
   },
+  {
+    id: "langfuse",
+    displayName: "Langfuse",
+    summary: "Langfuse LLM observability, built for v4 events-only mode: traces, sessions, observations, scores, metrics, prompts. One profile reads many projects.",
+    writeGate: "LANGFUSE_ALLOW_WRITES",
+    gatesByName: false,
+    transport: "child",
+    vendor: "mgcrea",
+    provenance: true,
+    dialect: "2025-11-25",
+  },
 ];
 // </generated:servers>
 

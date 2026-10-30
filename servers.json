@@ -3116,6 +3116,100 @@
         "DIALECT MEASURED 2026-10-14. A live `initialize` asking for 2026-07-28",
         "is answered 2025-11-25, serverInfo shopify-dev-mcp 1.16.0."
       ]
+    },
+    {
+      "id": "langfuse",
+      "displayName": "Langfuse",
+      "summary": "Langfuse LLM observability, built for v4 events-only mode: traces, sessions, observations, scores, metrics, prompts. One profile reads many projects.",
+      "transport": {
+        "kind": "child",
+        "npmName": "@mgcrea/mcp-langfuse",
+        "binName": "langfuse-mcp",
+        "distribution": "npm",
+        "localPath": "mcp-langfuse",
+        "vendor": "mgcrea",
+        "provenance": true
+      },
+      "docsUrl": "https://github.com/mgcrea/mcp-langfuse",
+      "dialect": "2025-11-25",
+      "writeGate": "LANGFUSE_ALLOW_WRITES",
+      "gateBypass": [],
+      "authModes": [
+        {
+          "id": "keys-file",
+          "displayName": "Keys file, one key per project",
+          "env": ["LANGFUSE_KEYS_FILE"]
+        },
+        {
+          "id": "projects",
+          "displayName": "Project keys as JSON",
+          "env": ["LANGFUSE_PROJECTS"]
+        },
+        {
+          "id": "single",
+          "displayName": "One project's key pair",
+          "env": ["LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"]
+        }
+      ],
+      "stateEnv": ["LANGFUSE_KEYS_FILE"],
+      "callbackEnv": [],
+      "env": [
+        {
+          "name": "LANGFUSE_HOST",
+          "required": false,
+          "secret": false,
+          "description": "Instance URL, e.g. https://langfuse.example.com. Falls back to the keys file's host, then Langfuse Cloud."
+        },
+        {
+          "name": "LANGFUSE_KEYS_FILE",
+          "required": false,
+          "secret": false,
+          "description": "The per-project keys file `pnpm provision` writes. Unset resolves under XDG_CONFIG_HOME, which Bastion already points at the profile's own directory."
+        },
+        {
+          "name": "LANGFUSE_PROJECTS",
+          "required": false,
+          "secret": true,
+          "description": "JSON map of project name to {publicKey, secretKey, id}, one key per project."
+        },
+        {
+          "name": "LANGFUSE_PUBLIC_KEY",
+          "required": false,
+          "secret": false,
+          "description": "A single project's public key, pk-lf-…"
+        },
+        {
+          "name": "LANGFUSE_SECRET_KEY",
+          "required": false,
+          "secret": true,
+          "description": "That project's secret key, sk-lf-…"
+        },
+        {
+          "name": "LANGFUSE_PROJECT",
+          "required": false,
+          "secret": false,
+          "description": "The project the single key pair belongs to, by name or id. Checked before anything is read."
+        },
+        {
+          "name": "LANGFUSE_ALLOW_WRITES",
+          "required": false,
+          "secret": false,
+          "description": "Lets langfuse_request send POST/PUT/PATCH/DELETE. Every named tool is a read."
+        }
+      ],
+      "notes": [
+        "Langfuse keys are project-scoped and organization keys read no data,",
+        "so one profile holds one key per project and every tool takes a",
+        "`project` argument. On an OSS Langfuse nothing mints those keys over",
+        "the API (that is the EE admin-api), so the server repo's",
+        "`pnpm provision` seeds them into Langfuse's own Postgres and writes",
+        "the keys file.",
+        "",
+        "The keys-file mode names LANGFUSE_KEYS_FILE, but leaving it unset",
+        "works: the default resolves under XDG_CONFIG_HOME, so it lands in",
+        "profiles/langfuse/<profile>/langfuse-mcp/keys.json. Run the",
+        "provisioner with LANGFUSE_KEYS_FILE pointed there."
+      ]
     }
   ]
 }

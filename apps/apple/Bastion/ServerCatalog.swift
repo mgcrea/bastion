@@ -3170,6 +3170,99 @@ nonisolated enum ServerCatalog {
           isSecret: false,
           summary: "Set to true to stop the usage reports this server sends to Shopify by default, the feedback tool's scorecards included."),
       ]),
+    // Langfuse keys are project-scoped and organization keys read no data,
+    // so one profile holds one key per project and every tool takes a
+    // `project` argument. On an OSS Langfuse nothing mints those keys over
+    // the API (that is the EE admin-api), so the server repo's
+    // `pnpm provision` seeds them into Langfuse's own Postgres and writes
+    // the keys file.
+    //
+    // The keys-file mode names LANGFUSE_KEYS_FILE, but leaving it unset
+    // works: the default resolves under XDG_CONFIG_HOME, so it lands in
+    // profiles/langfuse/<profile>/langfuse-mcp/keys.json. Run the
+    // provisioner with LANGFUSE_KEYS_FILE pointed there.
+    BastionServer(
+      id: "langfuse",
+      displayName: "Langfuse",
+      summary: "Langfuse LLM observability, built for v4 events-only mode: traces, sessions, observations, scores, metrics, prompts. One profile reads many projects.",
+      transport: .child(
+        .init(
+          npmName: "@mgcrea/mcp-langfuse",
+          binName: "langfuse-mcp",
+          distribution: .npm,
+          localPath: "mcp-langfuse",
+          vendor: .mgcrea,
+          provenance: true)),
+      docsURL: URL(string: "https://github.com/mgcrea/mcp-langfuse"),
+      dialect: .v2025_11_25,
+      writeGate: "LANGFUSE_ALLOW_WRITES",
+      writeTools: [],
+      gateBypass: [],
+      authModes: [
+        .init(
+          id: "keys-file",
+          displayName: "Keys file, one key per project",
+          kind: .env,
+          env: ["LANGFUSE_KEYS_FILE"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+        .init(
+          id: "projects",
+          displayName: "Project keys as JSON",
+          kind: .env,
+          env: ["LANGFUSE_PROJECTS"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+        .init(
+          id: "single",
+          displayName: "One project's key pair",
+          kind: .env,
+          env: ["LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+      ],
+      stateEnv: ["LANGFUSE_KEYS_FILE"],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "LANGFUSE_HOST",
+          isRequired: false,
+          isSecret: false,
+          summary: "Instance URL, e.g. https://langfuse.example.com. Falls back to the keys file's host, then Langfuse Cloud."),
+        .init(
+          name: "LANGFUSE_KEYS_FILE",
+          isRequired: false,
+          isSecret: false,
+          summary: "The per-project keys file `pnpm provision` writes. Unset resolves under XDG_CONFIG_HOME, which Bastion already points at the profile's own directory."),
+        .init(
+          name: "LANGFUSE_PROJECTS",
+          isRequired: false,
+          isSecret: true,
+          summary: "JSON map of project name to {publicKey, secretKey, id}, one key per project."),
+        .init(
+          name: "LANGFUSE_PUBLIC_KEY",
+          isRequired: false,
+          isSecret: false,
+          summary: "A single project's public key, pk-lf-…"),
+        .init(
+          name: "LANGFUSE_SECRET_KEY",
+          isRequired: false,
+          isSecret: true,
+          summary: "That project's secret key, sk-lf-…"),
+        .init(
+          name: "LANGFUSE_PROJECT",
+          isRequired: false,
+          isSecret: false,
+          summary: "The project the single key pair belongs to, by name or id. Checked before anything is read."),
+        .init(
+          name: "LANGFUSE_ALLOW_WRITES",
+          isRequired: false,
+          isSecret: false,
+          summary: "Lets langfuse_request send POST/PUT/PATCH/DELETE. Every named tool is a read."),
+      ]),
   ]
   // </generated:servers>
 

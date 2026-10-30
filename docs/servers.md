@@ -74,7 +74,7 @@ sets no variable in it: a system command takes no credentials, and its write
 gate is a filter over tool names.
 
 Bastion curates lightly, and only to fill the first screen. The catalog seeds
-thirty-eight entries — fourteen servers written here, twelve somebody else
+thirty-nine entries — fifteen servers written here, twelve somebody else
 publishes, eleven endpoints their own vendors operate, and one command that
 ships with a developer tool on the Mac — because a catalog
 that opens with nothing recognisable in it teaches nobody what the app is for.
@@ -168,7 +168,7 @@ declares its protocol version, identity and capabilities in each request's
 shared server instance correct rather than a hack, and it is why Bastion fronts
 clients with it.
 
-None of the catalog entries below are modern. The fourteen children written here
+None of the catalog entries below are modern. The fifteen children written here
 run an SDK whose newest protocol is `2025-11-25`, and `server/discover` against
 one returns `-32601` — the exact signal the spec names for recognising a legacy
 server. The twelve third-party children were measured at the same revision, and
@@ -252,6 +252,7 @@ asserts both eras against a running build.
 | Apple Ads | `apple-ads` | `apple-ads-mcp` | `mcp-apple-ads` (local) | `APPLE_ADS_ALLOW_WRITES` | 1 |
 | [Yahoo Finance](https://github.com/mgcrea/mcp-yahoo-finance) | `yahoo-finance` | `yahoo-finance-mcp` | `@mgcrea/mcp-yahoo-finance` (npm, provenance) | `YAHOO_FINANCE_ALLOW_WRITES` | 2 |
 | [Shopify Dev](https://shopify.dev/docs/apps/build/devmcp) | `shopify-dev` | `shopify-dev-mcp` | `@shopify/dev-mcp` (npm) | read-only | — |
+| [Langfuse](https://github.com/mgcrea/mcp-langfuse) | `langfuse` | `langfuse-mcp` | `@mgcrea/mcp-langfuse` (npm, provenance) | `LANGFUSE_ALLOW_WRITES` | 2 |
 
 ### App Store Connect
 
@@ -1406,4 +1407,34 @@ is answered 2025-11-25, serverInfo shopify-dev-mcp 1.16.0.
 | Variable | Required | Secret | Meaning |
 | --- | --- | --- | --- |
 | `OPT_OUT_INSTRUMENTATION` | — | — | Set to true to stop the usage reports this server sends to Shopify by default, the feedback tool's scorecards included. |
+
+### Langfuse
+
+Langfuse LLM observability, built for v4 events-only mode: traces, sessions, observations, scores, metrics, prompts. One profile reads many projects.
+
+Langfuse keys are project-scoped and organization keys read no data,
+so one profile holds one key per project and every tool takes a
+`project` argument. On an OSS Langfuse nothing mints those keys over
+the API (that is the EE admin-api), so the server repo's
+`pnpm provision` seeds them into Langfuse's own Postgres and writes
+the keys file.
+
+The keys-file mode names LANGFUSE_KEYS_FILE, but leaving it unset
+works: the default resolves under XDG_CONFIG_HOME, so it lands in
+profiles/langfuse/<profile>/langfuse-mcp/keys.json. Run the
+provisioner with LANGFUSE_KEYS_FILE pointed there.
+
+| Variable | Required | Secret | Meaning |
+| --- | --- | --- | --- |
+| `LANGFUSE_HOST` | — | — | Instance URL, e.g. https://langfuse.example.com. Falls back to the keys file's host, then Langfuse Cloud. |
+| `LANGFUSE_KEYS_FILE` | — | — | The per-project keys file `pnpm provision` writes. Unset resolves under XDG_CONFIG_HOME, which Bastion already points at the profile's own directory. |
+| `LANGFUSE_PROJECTS` | — | yes | JSON map of project name to {publicKey, secretKey, id}, one key per project. |
+| `LANGFUSE_PUBLIC_KEY` | — | — | A single project's public key, pk-lf-… |
+| `LANGFUSE_SECRET_KEY` | — | yes | That project's secret key, sk-lf-… |
+| `LANGFUSE_PROJECT` | — | — | The project the single key pair belongs to, by name or id. Checked before anything is read. |
+| `LANGFUSE_ALLOW_WRITES` | — | — | Lets langfuse_request send POST/PUT/PATCH/DELETE. Every named tool is a read. |
+
+Satisfy exactly one of: **Keys file, one key per project** (`LANGFUSE_KEYS_FILE`), **Project keys as JSON** (`LANGFUSE_PROJECTS`), **One project's key pair** (`LANGFUSE_PUBLIC_KEY` + `LANGFUSE_SECRET_KEY`)
+
+Per-profile state: `LANGFUSE_KEYS_FILE`
 <!-- </generated:servers> -->
