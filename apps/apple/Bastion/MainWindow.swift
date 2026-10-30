@@ -1,57 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// What the sidebar selects.
-///
-/// Servers and clients carry an **id** rather than the value itself, and the
-/// detail pane re-resolves it. A `BastionServer` captured in the selection
-/// would be a copy of a generated table, and a `ClientWiring.Client` captured
-/// there would be a snapshot of somebody else's config file — which is exactly
-/// the thing `ClientDetail` refuses to cache.
-enum MainPane: Hashable {
-  case server(String)
-  case client(String)
-  case running
-  case stats
-  case log
-  case chat
-}
-
-/// `RawRepresentable` so the selection can live in `@AppStorage`. See
-/// `MainView.pane` for why it has to.
-extension MainPane: RawRepresentable {
-  static let defaultsKey = "mainPane"
-
-  init?(rawValue: String) {
-    switch rawValue {
-    case "running": self = .running
-    case "stats": self = .stats
-    case "log": self = .log
-    case "chat": self = .chat
-    default:
-      guard let separator = rawValue.firstIndex(of: ":") else { return nil }
-      let id = String(rawValue[rawValue.index(after: separator)...])
-      guard !id.isEmpty else { return nil }
-      switch rawValue[..<separator] {
-      case "server": self = .server(id)
-      case "client": self = .client(id)
-      default: return nil
-      }
-    }
-  }
-
-  var rawValue: String {
-    switch self {
-    case .server(let id): "server:\(id)"
-    case .client(let id): "client:\(id)"
-    case .running: "running"
-    case .stats: "stats"
-    case .log: "log"
-    case .chat: "chat"
-    }
-  }
-}
-
 /// Bastion's main window.
 ///
 /// This replaces two separate windows — Activity and MCP Clients — that could
@@ -530,7 +479,9 @@ struct MainView: View {
   @ViewBuilder
   private var detail: some View {
     switch current {
-    case .server(let id):
+    // Both rows of a split server open the same pane, keyed by the server, so
+    // moving between them keeps an open profile editor rather than resetting it.
+    case .server(let id), .scopedServer(_, let id):
       // `.id`, so another server gets another pane. As one branch of this
       // switch the pane was reused across servers with its `@State`: a profile
       // editor open on one server stayed up for the next and saved its fields
@@ -543,6 +494,8 @@ struct MainView: View {
         // outlives the server it named the moment somebody removes one.
         UnknownPane(what: "server", id: id)
       }
+    case .workspace(let name):
+      UnknownPane(what: "workspace", id: name)
     case .client(let id):
       if let client = ClientWiring.all.first(where: { $0.id == id }) {
         ClientDetail(client: client)

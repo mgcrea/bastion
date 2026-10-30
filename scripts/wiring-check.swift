@@ -166,6 +166,8 @@ struct WiringCheck {
     workspaceProfileRename()
     projectReconcile()
 
+    mainPaneRawValues()
+
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 { exit(1) }
   }
@@ -2461,6 +2463,34 @@ struct WiringCheck {
     check(
       "and a worktree reached through one names its real main repository",
       resolved.contains("/real/main") && !resolved.contains("/w/links/main"))
+  }
+
+  // MARK: - The sidebar
+
+  /// The selection lives in `@AppStorage` as a string, so every pane has to
+  /// come back from its raw value as itself.
+  static func mainPaneRawValues() {
+    print("\nMain window: pane raw values")
+    let panes: [MainPane] = [
+      .server("ovh"), .client("claude-code"), .running, .stats, .log, .chat,
+      .workspace("rgis"), .scopedServer(workspace: "rgis", server: "ovh"),
+    ]
+    for pane in panes {
+      check("\(pane.rawValue) round-trips", MainPane(rawValue: pane.rawValue) == pane)
+    }
+    check("a workspace pane", MainPane.workspace("rgis").rawValue == "workspace:rgis")
+    check(
+      "a server in a workspace",
+      MainPane.scopedServer(workspace: "rgis", server: "ovh").rawValue
+        == "scoped-server:rgis/ovh")
+    for raw in ["scoped-server:rgis", "scoped-server:/ovh", "scoped-server:rgis/", "workspace:"] {
+      check("\(raw) is refused", MainPane(rawValue: raw) == nil)
+    }
+    check("a server pane names its server", MainPane.server("ovh").serverID == "ovh")
+    check(
+      "so does a server in a workspace",
+      MainPane.scopedServer(workspace: "rgis", server: "ovh").serverID == "ovh")
+    check("nothing else does", MainPane.workspace("rgis").serverID == nil)
   }
 
   static func workspaceChangeFilter() {
