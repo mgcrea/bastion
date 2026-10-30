@@ -73,5 +73,20 @@
 	<false/>
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
+	<!-- A server row dragged between workspaces in the sidebar. Within the app
+	     only (`ServerDragPayload`), and plain data, so nothing else reads it. -->
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>io.mgcrea.bastion.profiles</string>
+			<key>UTTypeDescription</key>
+			<string>Bastion server profiles</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

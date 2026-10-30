@@ -83,6 +83,8 @@ struct MainView: View {
   @State private var workspaceSheet: WorkspaceSheet?
   @State private var pendingWorkspaceDeletion: String?
   @AppStorage(CollapsedServerSections.defaultsKey) private var collapsedSections = ""
+  /// Which section a dragged server row would land in; see `ServerDropHighlight`.
+  @State private var dropHighlight = ServerDropHighlight()
 
   /// `List(selection:)` drives an `Optional` for a single selection, and the
   /// stored value is a `String` because that is what `@AppStorage` can hold.
@@ -194,6 +196,8 @@ struct MainView: View {
         Label("Chat", systemImage: "bubble.left.and.text.bubble.right").tag(MainPane.chat)
       }
     }
+    .background(SidebarTableFeedback())
+    .environment(dropHighlight)
     .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
     .safeAreaInset(edge: .bottom) { sidebarStatus }
     .confirmationDialog(
@@ -275,11 +279,9 @@ struct MainView: View {
       Section(isExpanded: expansion(section.kind)) {
         serverRows(section)
         if section.rows.isEmpty {
-          // Somewhere to drop, so a workspace just made is visibly a place.
-          Text("Drag servers here")
-            .font(.callout)
-            .foregroundStyle(.tertiary)
+          DropHereRow()
             .selectionDisabled()
+            .serverDropTarget(section) { drop($0, into: section) }
         }
       } header: {
         HStack(spacing: 4) {
@@ -411,6 +413,30 @@ struct MainView: View {
     .foregroundStyle(server.isEnabled ? .primary : .secondary)
     .tag(row.pane)
     .contextMenu { serverMenu(server, row: row, in: section) }
+    .modifier(ServerRowDragAndDrop(row: row, section: section, drop: drop))
+  }
+
+  /// Rows move only between workspaces and Everywhere. The one-section list of
+  /// a Mac with no workspace has nowhere to drag to.
+  private struct ServerRowDragAndDrop: ViewModifier {
+    let row: ServerRow
+    let section: ServerSection
+    let drop: (ServerDragPayload, ServerSection) -> Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+      if section.kind == .servers {
+        content
+      } else {
+        content
+          .serverDragSource(row, in: section)
+          .serverDropTarget(section) { drop($0, section) }
+      }
+    }
+  }
+
+  private func drop(_ payload: ServerDragPayload, into section: ServerSection) -> Bool {
+    move(payload.profileIDs, from: payload.from, to: section.kind)
   }
 
   /// Per Mac and per section, through `CollapsedServerSections`. Always open
@@ -428,13 +454,17 @@ struct MainView: View {
       })
   }
 
-  /// Move profiles between sections, from a drop or the Move to menu.
-  private func move(_ ids: [String], from: ServerSectionKind, to: ServerSectionKind) {
+  /// Move profiles between sections, from a drop or the Move to menu. Whether
+  /// it saved, which is what a drop reports back.
+  @discardableResult
+  private func move(_ ids: [String], from: ServerSectionKind, to: ServerSectionKind) -> Bool {
     do {
       try WorkspaceStore.shared.moveProfiles(
         ids, from: from.workspaceName, to: to.workspaceName)
+      return true
     } catch {
       sidebarError = error.localizedDescription
+      return false
     }
   }
 

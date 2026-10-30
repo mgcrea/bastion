@@ -129,6 +129,37 @@ nonisolated enum WorkspaceSidebar {
   }
 }
 
+/// Which section a dragged server row would land in, so the whole section can
+/// light rather than the one row under the pointer. Cadence's `DropTargeting`.
+///
+/// Every row of a section is a drop target of its own, and a drag moving from
+/// one to the next can hear that it entered the next before it hears that it
+/// left the last. So each section counts the targets the drag is over, and the
+/// one entered last wins.
+nonisolated struct ServerDropTargeting: Equatable {
+  /// Where the drag started. A drop there changes nothing, so it never lights.
+  var source: ServerSectionKind?
+  private var counts: [ServerSectionKind: Int] = [:]
+  private var latest: ServerSectionKind?
+
+  init(source: ServerSectionKind? = nil) {
+    self.source = source
+  }
+
+  mutating func target(_ kind: ServerSectionKind, isTargeted: Bool) {
+    let count = (counts[kind] ?? 0) + (isTargeted ? 1 : -1)
+    counts[kind] = count > 0 ? count : nil
+    if isTargeted { latest = kind }
+  }
+
+  var lit: ServerSectionKind? {
+    if let latest, counts[latest] != nil {
+      return latest == source ? nil : latest
+    }
+    return counts.keys.first { $0 != source }
+  }
+}
+
 /// Which server sections are collapsed, as the comma-separated string
 /// `@AppStorage` can hold. Per Mac: it is a view preference, not a setting.
 nonisolated enum CollapsedServerSections {

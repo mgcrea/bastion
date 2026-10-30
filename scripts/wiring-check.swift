@@ -171,6 +171,7 @@ struct WiringCheck {
     workspaceMoves()
     collapsedServerSections()
     sidebarSelection()
+    sidebarDropTargeting()
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 { exit(1) }
@@ -2669,6 +2670,27 @@ struct WiringCheck {
       check(
         "\(pane.rawValue) is left alone", WorkspaceSidebar.rowPane(for: pane, in: sections) == pane)
     }
+  }
+
+  static func sidebarDropTargeting() {
+    print("\nSidebar: which section a drag lights")
+    var targeting = ServerDropTargeting(source: .everywhere)
+    check("nothing is lit before the drag is over a target", targeting.lit == nil)
+    targeting.target(.workspace("rgis"), isTargeted: true)
+    check("a target lights its section", targeting.lit == .workspace("rgis"))
+    targeting.target(.workspace("apps"), isTargeted: true)
+    targeting.target(.workspace("rgis"), isTargeted: false)
+    check(
+      "entering the next before leaving the last lights the next",
+      targeting.lit == .workspace("apps"))
+    targeting.target(.workspace("apps"), isTargeted: false)
+    check("leaving every target lights nothing", targeting.lit == nil)
+    targeting.target(.everywhere, isTargeted: true)
+    check("the section the drag came from never lights", targeting.lit == nil)
+    targeting.target(.workspace("rgis"), isTargeted: true)
+    targeting.target(.workspace("rgis"), isTargeted: true)
+    targeting.target(.workspace("rgis"), isTargeted: false)
+    check("two rows of one section count separately", targeting.lit == .workspace("rgis"))
   }
 
   static func workspaceChangeFilter() {
