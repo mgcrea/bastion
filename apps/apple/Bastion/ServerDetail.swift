@@ -122,7 +122,11 @@ struct ServerDetail: View {
           } else if let package = server.package {
             Badge(package.npmName, tint: .secondary)
           }
-          Badge("custom", tint: .purple)
+          if server.transport.isOnThisMac {
+            Badge("local", tint: .blue)
+          } else {
+            Badge("custom", tint: .purple)
+          }
         case .catalog:
           // `.local` is not a footnote now that installs happen on demand: it
           // is the difference between an entry that installs and one that
