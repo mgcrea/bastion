@@ -7,7 +7,10 @@ import Foundation
 /// would be a copy of a generated table, and a `ClientWiring.Client` captured
 /// there would be a snapshot of somebody else's config file — which is exactly
 /// the thing `ClientDetail` refuses to cache.
-enum MainPane: Hashable {
+///
+/// `nonisolated`, because `WorkspaceSidebar` works out which row a pane is off
+/// the main actor, in `wiring-check`.
+nonisolated enum MainPane: Hashable {
   case server(String)
   /// A server's row in a workspace's section. A server whose profiles are
   /// split between sections has a row in each, and each row needs a tag of

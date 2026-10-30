@@ -161,6 +161,32 @@ nonisolated enum WorkspaceScope {
     Set(workspaces.flatMap(\.profiles))
   }
 
+  /// `workspaces` after moving profiles from one section of the sidebar to
+  /// another. A nil `from` or `to` is Everywhere.
+  ///
+  /// Into a workspace takes them out of the workspace they came from only, so a
+  /// profile some tool put in two workspaces keeps the other. Into Everywhere
+  /// takes them out of every workspace, because Everywhere is where a profile
+  /// in none of them is. Workspaces the move does not touch come back as they
+  /// were, so a move that changes nothing compares equal and saves nothing.
+  static func moving(
+    _ profileIDs: [String], from: String?, to: String?, in workspaces: [Workspace]
+  ) -> [Workspace] {
+    guard from != to else { return workspaces }
+    if let to, !workspaces.contains(where: { $0.name == to }) { return workspaces }
+    let moving = Set(profileIDs)
+    return workspaces.map { workspace in
+      var next = workspace
+      if to == nil || workspace.name == from {
+        next.profiles.removeAll(where: moving.contains)
+      }
+      if workspace.name == to {
+        next.profiles = Array(Set(next.profiles).union(moving)).sorted()
+      }
+      return next
+    }
+  }
+
   /// `workspaces` with one profile id swapped for another, for a rename.
   ///
   /// A workspace that already holds the new id (a dead profile's id is kept by

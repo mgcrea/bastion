@@ -604,6 +604,7 @@ wiring-check: ## Assert the config merge leaves other people's files alone
 		apps/apple/Bastion/ClientLockdown.swift \
 		apps/apple/Bastion/WorkspaceScope.swift \
 		apps/apple/Bastion/MainPane.swift \
+		apps/apple/Bastion/WorkspaceSidebar.swift \
 		scripts/wiring-check.swift
 	@apps/apple/.build/wiring-check
 

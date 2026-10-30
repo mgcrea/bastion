@@ -167,6 +167,10 @@ struct WiringCheck {
     projectReconcile()
 
     mainPaneRawValues()
+    workspaceSidebarSections()
+    workspaceMoves()
+    collapsedServerSections()
+    sidebarSelection()
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 { exit(1) }
@@ -2491,6 +2495,180 @@ struct WiringCheck {
       "so does a server in a workspace",
       MainPane.scopedServer(workspace: "rgis", server: "ovh").serverID == "ovh")
     check("nothing else does", MainPane.workspace("rgis").serverID == nil)
+  }
+
+  static let sidebarServers = ["bastion", "ovh", "x", "shopify", "fresh"]
+  static let sidebarProfiles: [(id: String, serverID: String)] = [
+    ("local/bastion", "bastion"), ("mgcrea/ovh", "ovh"), ("rgis/ovh", "ovh"),
+    ("mgcrea/x", "x"), ("risingpaw/x", "x"), ("prod/shopify", "shopify"),
+  ]
+  static let sidebarWorkspaces = [
+    Workspace(name: "rgis", folders: ["/r"], profiles: ["gone/npm", "rgis/ovh"]),
+    Workspace(name: "apps", folders: ["/a"], profiles: ["risingpaw/x"]),
+    Workspace(name: "empty", folders: ["/e"], profiles: []),
+  ]
+
+  static func workspaceSidebarSections() {
+    print("\nSidebar: sections")
+    let plain = WorkspaceSidebar.sections(
+      servers: sidebarServers, profiles: sidebarProfiles, workspaces: [])
+    check("no workspaces is one Servers section", plain.map(\.kind) == [.servers])
+    check(
+      "holding every server in order", plain.first?.rows.map(\.serverID) == sidebarServers)
+    check(
+      "with no captions and plain server panes",
+      plain.first?.rows.allSatisfy { $0.caption == nil && $0.pane == .server($0.serverID) }
+        == true)
+
+    let sections = WorkspaceSidebar.sections(
+      servers: sidebarServers, profiles: sidebarProfiles, workspaces: sidebarWorkspaces)
+    check(
+      "a section per workspace by name, then Everywhere",
+      sections.map(\.kind) == [
+        .workspace("apps"), .workspace("empty"), .workspace("rgis"), .everywhere,
+      ])
+    func section(_ kind: ServerSectionKind) -> ServerSection? {
+      sections.first { $0.kind == kind }
+    }
+    func row(_ kind: ServerSectionKind, _ server: String) -> ServerRow? {
+      section(kind)?.rows.first { $0.serverID == server }
+    }
+    let rgisOVH = row(.workspace("rgis"), "ovh")
+    check("a workspace holds the server of its profile", rgisOVH?.profileIDs == ["rgis/ovh"])
+    check("a split server names its profile there", rgisOVH?.caption == "rgis")
+    check(
+      "and its row opens the server in that workspace",
+      rgisOVH?.pane == .scopedServer(workspace: "rgis", server: "ovh"))
+    check("a missing profile id puts nothing in", section(.workspace("rgis"))?.rows.count == 1)
+    let everywhereOVH = row(.everywhere, "ovh")
+    check("its other profile stays in Everywhere", everywhereOVH?.profileIDs == ["mgcrea/ovh"])
+    check("named there too", everywhereOVH?.caption == "mgcrea")
+    check("with a plain server pane", everywhereOVH?.pane == .server("ovh"))
+    check("an empty workspace is still a section", section(.workspace("empty"))?.rows == [])
+    let fresh = row(.everywhere, "fresh")
+    check(
+      "a server with no profile is in Everywhere", fresh != nil && fresh?.profileIDs == [])
+    check("with no caption", fresh?.caption == nil)
+    check("a server in one section has no caption", row(.everywhere, "shopify")?.caption == nil)
+    check(
+      "Everywhere keeps server order",
+      section(.everywhere)?.rows.map(\.serverID) == ["bastion", "ovh", "x", "shopify", "fresh"])
+
+    let twice = WorkspaceSidebar.sections(
+      servers: sidebarServers, profiles: sidebarProfiles,
+      workspaces: [
+        Workspace(name: "rgis", folders: [], profiles: ["prod/shopify"]),
+        Workspace(name: "apps", folders: [], profiles: ["prod/shopify"]),
+      ])
+    check(
+      "a profile in two workspaces shows in both",
+      twice.filter { $0.rows.contains { $0.serverID == "shopify" } }.map(\.kind) == [
+        .workspace("apps"), .workspace("rgis"),
+      ])
+
+    let allScoped = WorkspaceSidebar.sections(
+      servers: ["ovh"], profiles: [("rgis/ovh", "ovh")],
+      workspaces: [Workspace(name: "rgis", folders: [], profiles: ["rgis/ovh"])])
+    check(
+      "Everywhere is present even when empty",
+      allScoped.last?.kind == .everywhere && allScoped.last?.rows == [])
+  }
+
+  static func workspaceMoves() {
+    print("\nSidebar: moving profiles")
+    func profiles(_ workspaces: [Workspace], _ name: String) -> [String]? {
+      workspaces.first { $0.name == name }?.profiles
+    }
+    let w = sidebarWorkspaces
+    let joined = WorkspaceScope.moving(["mgcrea/ovh"], from: nil, to: "rgis", in: w)
+    check(
+      "Everywhere to a workspace adds it, sorted",
+      profiles(joined, "rgis") == ["gone/npm", "mgcrea/ovh", "rgis/ovh"])
+    let across = WorkspaceScope.moving(["rgis/ovh"], from: "rgis", to: "apps", in: w)
+    check(
+      "one workspace to another moves it",
+      profiles(across, "rgis") == ["gone/npm"]
+        && profiles(across, "apps") == ["risingpaw/x", "rgis/ovh"].sorted())
+
+    var both = w
+    both[1].profiles.append("rgis/ovh")
+    let home = WorkspaceScope.moving(["rgis/ovh"], from: "rgis", to: nil, in: both)
+    check(
+      "to Everywhere takes it out of every workspace",
+      !home.contains { $0.profiles.contains("rgis/ovh") })
+
+    check(
+      "aMoveWithinOneSectionChangesNothing",
+      WorkspaceScope.moving(["rgis/ovh"], from: "rgis", to: "rgis", in: w) == w
+        && WorkspaceScope.moving(["prod/shopify"], from: nil, to: nil, in: w) == w)
+
+    let left = WorkspaceScope.moving(["rgis/ovh"], from: "rgis", to: "empty", in: both)
+    check(
+      "movingFromOneOfTwoWorkspacesLeavesTheOther",
+      profiles(left, "apps")?.contains("rgis/ovh") == true
+        && profiles(left, "empty") == ["rgis/ovh"]
+        && profiles(left, "rgis")?.contains("rgis/ovh") == false)
+
+    check(
+      "a move to a workspace that does not exist changes nothing",
+      WorkspaceScope.moving(["rgis/ovh"], from: "rgis", to: "nope", in: w) == w)
+    check(
+      "adding a profile already there does not repeat it",
+      profiles(WorkspaceScope.moving(["rgis/ovh"], from: nil, to: "rgis", in: w), "rgis")
+        == ["gone/npm", "rgis/ovh"])
+  }
+
+  static func collapsedServerSections() {
+    print("\nSidebar: collapsed sections")
+    check("nothing stored is nothing collapsed", CollapsedServerSections.decode("").isEmpty)
+    check(
+      "unknown keys are kept and harmless",
+      CollapsedServerSections.decode("everywhere,workspace:rgis,junk") == [
+        "everywhere", "workspace:rgis", "junk",
+      ])
+    let collapsed = CollapsedServerSections.setting(
+      .workspace("rgis"), expanded: false, in: "")
+    check("collapsing stores the key", collapsed == "workspace:rgis")
+    check(
+      "expanding removes it",
+      CollapsedServerSections.setting(.workspace("rgis"), expanded: true, in: collapsed) == "")
+    check(
+      "the Servers section never collapses",
+      CollapsedServerSections.setting(.servers, expanded: false, in: "everywhere")
+        == "everywhere")
+    check(
+      "stored sorted",
+      CollapsedServerSections.encode(["workspace:rgis", "everywhere"])
+        == "everywhere,workspace:rgis")
+    check("keys", ServerSectionKind.everywhere.collapseKey == "everywhere")
+  }
+
+  static func sidebarSelection() {
+    print("\nSidebar: selection")
+    let sections = WorkspaceSidebar.sections(
+      servers: ["ovh", "shopify"], profiles: [("rgis/ovh", "ovh"), ("prod/shopify", "shopify")],
+      workspaces: [Workspace(name: "rgis", folders: [], profiles: ["rgis/ovh"])])
+    check(
+      "aServerOnlyInAWorkspaceMapsToItsFirstRow",
+      WorkspaceSidebar.rowPane(for: .server("ovh"), in: sections)
+        == .scopedServer(workspace: "rgis", server: "ovh"))
+    check(
+      "a server in Everywhere maps to itself",
+      WorkspaceSidebar.rowPane(for: .server("shopify"), in: sections) == .server("shopify"))
+    check(
+      "a scoped row whose workspace no longer holds it maps to the server's row",
+      WorkspaceSidebar.rowPane(
+        for: .scopedServer(workspace: "gone", server: "shopify"), in: sections)
+        == .server("shopify"))
+    check(
+      "a live scoped row is itself",
+      WorkspaceSidebar.rowPane(
+        for: .scopedServer(workspace: "rgis", server: "ovh"), in: sections)
+        == .scopedServer(workspace: "rgis", server: "ovh"))
+    for pane: MainPane in [.running, .workspace("rgis"), .server("unknown")] {
+      check(
+        "\(pane.rawValue) is left alone", WorkspaceSidebar.rowPane(for: pane, in: sections) == pane)
+    }
   }
 
   static func workspaceChangeFilter() {
