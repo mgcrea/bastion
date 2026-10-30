@@ -108,7 +108,12 @@ nonisolated enum WorkspaceScope {
   /// Every key a set of picked folders reaches.
   ///
   /// A folder inside a repository is that repository. Any other folder is
-  /// itself, as an exact key, plus every repository found beneath it.
+  /// itself, as an exact key, plus every repository found beneath it, plus
+  /// every plain folder on the way down to one. Claude Code applies a block
+  /// outside git to that exact folder and nothing below it, so without those a
+  /// session started in `~/Projects/rgis/rgis-ai`, between the picked folder
+  /// and its repositories, got nothing. A plain folder with no repository
+  /// beneath it is left out, so a folder of assets never becomes a block.
   static func projectKeys(for folders: [String], fs: WorkspaceFileSystem) -> Set<String> {
     var keys: Set<String> = []
     for folder in folders {
@@ -122,6 +127,17 @@ nonisolated enum WorkspaceScope {
       scan(path, depth: 1, fs: fs, into: &keys)
     }
     return keys
+  }
+
+  /// Whether a change FSEvents reported at `path` can change what a scan finds.
+  ///
+  /// Only a change outside every repository can: a clone lands in its parent,
+  /// `git init` writes into a plain folder, and a deleted repository is a change
+  /// to its parent. Edits, builds and git's own churn inside a repository are
+  /// the bulk of what a watched tree reports, and none of them moves a key.
+  static func isRelevantChange(_ path: String, repositoryKeys: Set<String>) -> Bool {
+    let trimmed = path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
+    return !repositoryKeys.contains { trimmed == $0 || trimmed.hasPrefix($0 + "/") }
   }
 
   /// Which live profiles each key gets. A key two workspaces reach gets both
@@ -199,18 +215,26 @@ nonisolated enum WorkspaceScope {
     return String(gitdir[..<marker.lowerBound])
   }
 
+  /// Whether a repository was found anywhere below `directory`.
+  @discardableResult
   private static func scan(
     _ directory: String, depth: Int, fs: WorkspaceFileSystem, into keys: inout Set<String>
-  ) {
-    guard depth <= scanDepth else { return }
+  ) -> Bool {
+    guard depth <= scanDepth else { return false }
+    var found = false
     for name in fs.children(directory) where !name.hasPrefix(".") && name != "node_modules" {
       let child = (directory as NSString).appendingPathComponent(name)
       guard fs.isDirectory(child) else { continue }
       if let key = repositoryKey(at: child, fs: fs) {
         keys.insert(key)
+        found = true
         continue
       }
-      scan(child, depth: depth + 1, fs: fs, into: &keys)
+      if scan(child, depth: depth + 1, fs: fs, into: &keys) {
+        keys.insert(fs.canonical(child))
+        found = true
+      }
     }
+    return found
   }
 }

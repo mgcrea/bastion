@@ -161,6 +161,7 @@ struct WiringCheck {
     lockdownSplicesIntoARealShape()
 
     workspaceResolution()
+    workspaceChangeFilter()
     workspaceAssignments()
     workspaceProfileRename()
     projectReconcile()
@@ -2380,6 +2381,7 @@ struct WiringCheck {
         "/w/rgis/api/lib",
         "/w/wt/feature",
         "/w/plain/notes",
+        "/w/rgis/assets/img",
       ],
       files: [
         "/w/rgis/api/.claude/worktrees/feat/.git": "gitdir: /w/rgis/api/.git/worktrees/feat\n",
@@ -2421,7 +2423,13 @@ struct WiringCheck {
       !parent.contains("/w/rgis/.hidden/secret") && !parent.contains("/w/rgis/node_modules/pkg"))
     check(
       "the scan does not descend into a repository", !parent.contains("/w/rgis/api/vendor/nested"))
-    check("exactly those keys", parent.count == 4)
+    check("a plain folder with a repository below it is a key", parent.contains("/w/rgis/clients"))
+    check("and so is each plain folder on the way down", parent.contains("/w/rgis/clients/acme"))
+    check(
+      "a plain folder whose repository is past the depth limit is not",
+      !parent.contains("/w/rgis/a") && !parent.contains("/w/rgis/a/b"))
+    check("a plain folder with no repository below it is not", !parent.contains("/w/rgis/assets"))
+    check("exactly those keys", parent.count == 6)
 
     check(
       "a folder inside a repository yields only that repository",
@@ -2453,6 +2461,29 @@ struct WiringCheck {
     check(
       "and a worktree reached through one names its real main repository",
       resolved.contains("/real/main") && !resolved.contains("/w/links/main"))
+  }
+
+  static func workspaceChangeFilter() {
+    print("\nWorkspaces: which file changes call for a rescan")
+    let repos: Set<String> = ["/w/rgis/api", "/w/rgis/infra"]
+    check(
+      "a file inside a repository is not relevant",
+      !WorkspaceScope.isRelevantChange("/w/rgis/api/src", repositoryKeys: repos))
+    check(
+      "a repository's own folder is not relevant",
+      !WorkspaceScope.isRelevantChange("/w/rgis/api", repositoryKeys: repos))
+    check(
+      "a repository's parent is relevant",
+      WorkspaceScope.isRelevantChange("/w/rgis", repositoryKeys: repos))
+    check(
+      "a sibling plain folder is relevant",
+      WorkspaceScope.isRelevantChange("/w/rgis/new-clone", repositoryKeys: repos))
+    check(
+      "a prefix that is not a path component is relevant",
+      WorkspaceScope.isRelevantChange("/w/rgis/api-v2", repositoryKeys: repos))
+    check(
+      "a trailing slash is ignored",
+      !WorkspaceScope.isRelevantChange("/w/rgis/api/src/", repositoryKeys: repos))
   }
 
   static func workspaceAssignments() {
