@@ -615,9 +615,25 @@ Claude Code files a project block under the **git repository root** and applies
 it in every subfolder and worktree. Outside git it applies to that exact folder
 only (measured 2026-09-22). So a folder is resolved before it is written: one
 inside a repository becomes that repository, and any other folder becomes itself
-plus every repository up to three levels below it. Hidden folders and
-`node_modules` are skipped. Resolution runs again on every rewire, so a
-repository cloned later is picked up on the next one.
+plus every repository up to three levels below it, plus every plain folder on the
+way down to one of them. Without those, a session started in
+`~/Projects/rgis/rgis-ai`, between the picked folder and its repositories, got
+nothing. A plain folder with no repository below it is left out. Hidden folders
+and `node_modules` are skipped.
+
+Resolution runs again on every rewire, and an FSEvents stream over every
+workspace's folders asks for one when a repository appears or disappears below
+them: a clone, `git init` in a plain folder, a deletion. Changes inside a
+repository, which are nearly everything a working tree reports, are ignored
+(`WorkspaceScope.isRelevantChange`), and a rescan that finds the same keys
+writes nothing.
+
+Workspaces are managed in the main window. With none, the sidebar's server list
+is one Servers section as it always was. With some, each workspace is a section
+and Everywhere, the profiles in no workspace, comes last. Dragging a server row
+moves the profiles it holds; a server whose profiles sit in different sections
+gets a row in each, captioned with the profile names. A workspace's page holds
+its folders, what they reach, its profiles and its skills.
 
 Keys are physical paths, from `realpath(3)`. `URL.resolvingSymlinksInPath()`
 strips a leading `/private`, and Claude Code keys by the path `getcwd` returns,

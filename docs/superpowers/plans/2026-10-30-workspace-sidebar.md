@@ -39,10 +39,12 @@
 ### Task 1: Resolution reaches plain folders, and the change filter
 
 **Files:**
+
 - Modify: `apps/apple/Bastion/WorkspaceScope.swift` (`projectKeys`, `scan`, new `isRelevantChange`)
 - Test: `scripts/wiring-check.swift` (`workspaceResolution`, new `workspaceChangeFilter`, registered in `main`)
 
 **Interfaces:**
+
 - Produces: `WorkspaceScope.isRelevantChange(_ path: String, repositoryKeys: Set<String>) -> Bool`
 - Produces: `projectKeys(for:fs:)` now also returns plain folders that have a repository below them within `scanDepth`.
 
@@ -90,12 +92,14 @@ check("a trailing slash is ignored",
 ### Task 2: `MainPane` in its own file, with the two new cases
 
 **Files:**
+
 - Create: `apps/apple/Bastion/MainPane.swift` (the enum and its `RawRepresentable` extension, moved verbatim from `MainWindow.swift:1-55`, plus the new cases)
 - Modify: `apps/apple/Bastion/MainWindow.swift` (remove the moved code), `Makefile` (`wiring-check` adds `MainPane.swift`)
 - Modify: every `switch` over `MainPane` that must be exhaustive (`MainView.detail`, `DemoSeed` if it switches)
 - Test: `scripts/wiring-check.swift` new `mainPaneRawValues()`
 
 **Interfaces:**
+
 - Produces: `MainPane.workspace(String)`, `MainPane.scopedServer(workspace: String, server: String)`, and `var serverID: String?` (the server id for `.server` and `.scopedServer`, else nil).
 
 - [ ] **Step 1: Write the failing checks.** Round-trip every case through `rawValue` → `init(rawValue:)`, including `.workspace("rgis")` ↔ `"workspace:rgis"` and `.scopedServer(workspace: "rgis", server: "ovh")` ↔ `"scoped-server:rgis/ovh"`. Reject `"scoped-server:rgis"`, `"scoped-server:/ovh"`, `"scoped-server:rgis/"`, `"workspace:"`.
@@ -109,11 +113,13 @@ check("a trailing slash is ignored",
 ### Task 3: The sidebar model
 
 **Files:**
+
 - Create: `apps/apple/Bastion/WorkspaceSidebar.swift`
 - Modify: `apps/apple/Bastion/WorkspaceScope.swift` (add `moving`), `Makefile` (`wiring-check` adds `WorkspaceSidebar.swift`)
 - Test: `scripts/wiring-check.swift` new `workspaceSidebarSections()`, `workspaceMoves()`, `collapsedServerSections()`, `sidebarSelection()`
 
 **Interfaces:**
+
 - Consumes: `Workspace`, `MainPane` (Task 2).
 - Produces:
 
@@ -158,6 +164,7 @@ extension WorkspaceScope {
 - [ ] **Step 1: Write the failing checks.** Fixture: servers `["bastion", "ovh", "x", "shopify", "fresh"]`; profiles `local/bastion`, `mgcrea/ovh`, `rgis/ovh`, `mgcrea/x`, `risingpaw/x`, `prod/shopify`; workspaces `rgis: [rgis/ovh, gone/npm]`, `apps: [risingpaw/x]`, `empty: []`.
 
 `workspaceSidebarSections`:
+
 - no workspaces → one `.servers` section holding all five servers in order, every caption nil, every pane `.server`.
 - with workspaces → kinds `[.workspace("apps"), .workspace("empty"), .workspace("rgis"), .everywhere]`.
 - rgis holds one row `ovh` with profileIDs `["rgis/ovh"]`, caption `"rgis"`, pane `.scopedServer(workspace: "rgis", server: "ovh")`.
@@ -169,6 +176,7 @@ extension WorkspaceScope {
 - an Everywhere section with no rows is still present.
 
 `workspaceMoves`:
+
 - `moving(["mgcrea/ovh"], from: nil, to: "rgis")` → rgis gains it.
 - `moving(["rgis/ovh"], from: "rgis", to: "apps")` → out of rgis, into apps.
 - `moving(["rgis/ovh"], from: "rgis", to: nil)` with `rgis/ovh` also in apps → out of **both** (Everywhere clears every workspace).
@@ -190,10 +198,12 @@ extension WorkspaceScope {
 ### Task 4: Store moves and the watcher
 
 **Files:**
+
 - Modify: `apps/apple/Bastion/Workspaces.swift` (`moveProfiles`, owns the watcher, restarts it in `rescan`)
 - Create: `apps/apple/Bastion/WorkspaceWatcher.swift`
 
 **Interfaces:**
+
 - Consumes: `WorkspaceScope.moving`, `WorkspaceScope.isRelevantChange` (Tasks 1, 3).
 - Produces: `WorkspaceStore.moveProfiles(_ ids: [String], from: String?, to: String?) throws` (nil = Everywhere). Returns without saving or rewiring when `moving` returns the current workspaces. Otherwise saves once, `rescan()`, `ClientWiring.rewire()` once.
 - Produces: `@MainActor final class WorkspaceWatcher { init(onRelevantChange: @escaping @MainActor () -> Void); func watch(_ folders: Set<String>, repositoryKeys: Set<String>) }`. `watch` with an unchanged folder set only updates the keys; with a changed set it tears down and recreates the stream; with an empty set it stops.
@@ -210,10 +220,12 @@ extension WorkspaceScope {
 ### Task 5: Sidebar sections, headers, footer and sheets
 
 **Files:**
+
 - Modify: `apps/apple/Bastion/MainWindow.swift` (sidebar body, selection binding, footer, server context menu)
 - Create: `apps/apple/Bastion/WorkspaceSheets.swift` (`NewWorkspaceSheet`, `RenameWorkspaceSheet`, the delete confirmation modifier, `ServerSectionHeader`)
 
 **Interfaces:**
+
 - Consumes: `WorkspaceSidebar.sections`, `rowPane`, `CollapsedServerSections`, `WorkspaceStore.moveProfiles`, `upsert(_:replacing:)`, `remove(named:)`, `resolvedKeys`.
 
 - [ ] **Step 1: Sections.** Replace the single Servers `Section` with a `ForEach` over `WorkspaceSidebar.sections(...)` (servers from `ServerStore.shared.servers`, profiles from `ProfileStore.shared.profiles`, workspaces from `WorkspaceStore.shared.workspaces`, or `[]` when `unreadable`). The row view (icon, name, `ServerBadge`, enabled dimming, context menu) is extracted into a `serverRow(_ server:, _ row: ServerRow, in: ServerSection)` builder and gains the caption in `.secondary` after the name. Tag with `row.pane`. `.servers` keeps today's header and empty line; workspace and Everywhere sections use `Section(isExpanded:)` bound through `CollapsedServerSections.setting`. The header buttons go on the first section's header.
@@ -229,11 +241,13 @@ extension WorkspaceScope {
 ### Task 6: Drag and drop
 
 **Files:**
+
 - Create: `apps/apple/Bastion/ServerDrag.swift` (payload, `UTType.bastionProfiles`, `SectionDropHighlight`, `DropHereRow`, the drag-source and drop-target modifiers)
 - Create: `apps/apple/Bastion/SidebarTableFeedback.swift` (from Cadence, verbatim apart from the doc comment's wording)
 - Modify: `apps/apple/Bastion-Info.plist` (`UTExportedTypeDeclarations`), `apps/apple/Bastion/MainWindow.swift`
 
 **Interfaces:**
+
 - Produces: `struct ServerDragPayload: Codable, Transferable { let serverID: String; let profileIDs: [String]; let from: ServerSectionKind }` with `CodableRepresentation(contentType: .bastionProfiles)`.
 
 - [ ] **Step 1: Declare the type** in the Info.plist: identifier `io.mgcrea.bastion.profiles`, conforms to `public.data`, description "Bastion server profiles".
@@ -246,6 +260,7 @@ extension WorkspaceScope {
 ### Task 7: The workspace page, and Settings → Workspaces retired
 
 **Files:**
+
 - Create: `apps/apple/Bastion/WorkspaceDetail.swift`
 - Delete: `apps/apple/Bastion/WorkspacesPane.swift`
 - Modify: `apps/apple/Bastion/SettingsWindow.swift` (remove the `.workspaces` case), `MainWindow.swift` (`detail` renders `WorkspaceDetail`), `ProfileEditor.swift:176-189` (Scope menu), `ClientDetail.swift:961`, `SkillsPane.swift:165` (open the main window on the first workspace, hidden when there is none), `DemoSeed.swift:438` and `Profiles.swift:429` (comments that name the Settings pane)
@@ -261,6 +276,7 @@ extension WorkspaceScope {
 ### Task 8: Docs, changelog, screenshots, end-to-end check
 
 **Files:**
+
 - Modify: `CHANGELOG.md` (an `## [Unreleased]` section if none: **Added** — workspaces in the sidebar with drag and drop, the page, the Scope menu; **Changed** — plain folders on the way to a repository get a workspace's profiles, new repositories are picked up without Rescan, Settings → Workspaces moved to the main window). Do not run `make changelog`; that belongs to the release.
 - Modify: any docs or website copy that says "Settings → Workspaces" (`grep -rn -i "workspaces" apps/website/src docs/*.md README.md`), and `apps/website/public/llms.txt` if it describes where workspaces are edited.
 - Modify: `apps/apple/Screenshots/golden/*` only after review.
