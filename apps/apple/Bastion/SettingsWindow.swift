@@ -16,7 +16,8 @@ import SwiftUI
 /// outgrew sitting on the end of the configuration list, and what Cupertino
 /// took from it.
 ///
-/// The first is what Bastion does: General, Activity, Workspaces and Skills.
+/// The first is what Bastion does: General, Activity and Skills. Workspaces
+/// moved to the main window, beside the sidebar sections they make.
 ///
 /// The second is the fleet's two pairs. What's New and Updates are the version
 /// pair: what did this build change, and is there a newer one. Updates is a pane
@@ -34,7 +35,6 @@ import SwiftUI
 enum SettingsPane: String, SupportKitSettings.SettingsPane {
   case general
   case audit
-  case workspaces
   case skills
   case whatsNew
   case updates
@@ -46,7 +46,6 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
     switch self {
     case .general: "General"
     case .audit: "Activity"
-    case .workspaces: "Workspaces"
     case .skills: "Skills"
     case .about: "About"
     case .whatsNew: "What's New"
@@ -60,7 +59,6 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
     switch self {
     case .general: "gearshape"
     case .audit: "list.bullet.rectangle"
-    case .workspaces: "folder.badge.gearshape"
     case .skills: "puzzlepiece.extension"
     case .about: "info.circle"
     case .whatsNew: "sparkles"
@@ -72,7 +70,7 @@ enum SettingsPane: String, SupportKitSettings.SettingsPane {
 
   var group: SettingsPaneGroup {
     switch self {
-    case .general, .audit, .workspaces, .skills: .configuration
+    case .general, .audit, .skills: .configuration
     case .whatsNew, .updates, .about, .help: .information
     case .licence: .entitlement
     }
@@ -147,7 +145,6 @@ struct SettingsView: View {
       switch pane {
       case .general: GeneralPane()
       case .audit: AuditPane()
-      case .workspaces: WorkspacesPane()
       case .skills: SkillsPane()
       case .about: AboutPane()
       case .whatsNew:

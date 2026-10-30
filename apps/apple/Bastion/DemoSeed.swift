@@ -435,12 +435,19 @@ enum DemoSeed {
     ]
   }
 
-  /// One workspace scoping the Keycloak profile, so the Workspaces pane and the
-  /// client pane's card have something to draw. The folder is invented and does
+  /// One workspace scoping the Keycloak profile, so the sidebar's acme section
+  /// and the client pane's card have something to draw. The folder is invented and does
   /// not exist, so a capture resolves it to nothing and scans nothing real.
   nonisolated static var workspaces: [Workspace] {
     [Workspace(name: "acme", folders: ["/Users/demo/Projects/acme"], profiles: ["acme/keycloak"])]
   }
+
+  /// How many folders the sidebar's acme header says it reaches. The invented
+  /// folder resolves to none, and the header's answer to none is an orange
+  /// warning, which every main-window plate would otherwise carry. Only the
+  /// count, not keys: real keys would feed the client pane's project blocks,
+  /// which `config(for:)` fixes on its own terms.
+  nonisolated static let workspaceReach = 4
 
   /// Skills for the Skills pane and the Claude Desktop card. Invented paths
   /// that do not exist, as with `workspaces`: nothing under a capture reads or

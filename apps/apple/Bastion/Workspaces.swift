@@ -35,6 +35,11 @@ final class WorkspaceStore {
 
   private var fileURL: URL { AppSupport.directory.appendingPathComponent("workspaces.json") }
   private let fs: WorkspaceFileSystem = LocalWorkspaceFileSystem()
+  /// Lazy so its callback can capture `self`; lives as long as the store,
+  /// which is the app.
+  @ObservationIgnored private lazy var watcher = WorkspaceWatcher { [weak self] in
+    self?.foldersChanged()
+  }
 
   init() { load() }
 
@@ -53,13 +58,13 @@ final class WorkspaceStore {
     case .absent:
       unreadable = nil
       workspaces = []
-      resolved = [:]
+      rescan()
       return
     case .unreadable(let problem):
       unreadable = problem
       hostLog("workspaces", .error, problem.localizedDescription)
       workspaces = []
-      resolved = [:]
+      rescan()
       return
     }
     workspaces = rows.filter { row in
@@ -90,9 +95,71 @@ final class WorkspaceStore {
       out[workspace.name] = WorkspaceScope.projectKeys(for: workspace.folders, fs: fs)
     }
     resolved = out
+    watchFolders()
+  }
+
+  /// Watches the folders as picked, which is where a clone lands. Nothing
+  /// under a capture: the fixture's folders are invented.
+  private func watchFolders() {
+    if DemoSeed.isEnabled { return }
+    let folders = Set(workspaces.flatMap(\.folders).map(fs.canonical))
+    let repositories = Set(resolved.values.joined()).filter { key in
+      let git = (key as NSString).appendingPathComponent(".git")
+      return fs.isDirectory(git) || fs.isFile(git)
+    }
+    watcher.watch(folders, repositoryKeys: repositories)
+  }
+
+  /// A clone, a `git init` or a deletion under a workspace's folders. Rewires
+  /// only when what the folders reach moved, so a new plain folder with nothing
+  /// in it writes nothing.
+  private func foldersChanged() {
+    let before = resolved
+    rescan()
+    guard resolved != before else { return }
+    hostLog("workspaces", .info, "a workspace's folders changed; rewiring")
+    ClientWiring.rewire()
+  }
+
+  /// Move profiles between sections of the sidebar, in one save and one
+  /// rewire. A nil `from` or `to` is Everywhere; see `WorkspaceScope.moving`.
+  ///
+  /// A move that changes nothing, such as a drop on the section a row came
+  /// from, returns before touching the file, so it never rewires either.
+  func moveProfiles(_ ids: [String], from: String?, to: String?) throws {
+    try replace(with: WorkspaceScope.moving(ids, from: from, to: to, in: workspaces))
+  }
+
+  /// Put one profile in `workspace` alone, or in none for nil, in one save and
+  /// one rewire. The profile editor's Scope menu.
+  func setScope(_ profileID: String, to workspace: String?) throws {
+    try replace(with: WorkspaceScope.scoping(profileID, to: workspace, in: workspaces))
+  }
+
+  private func replace(with next: [Workspace]) throws {
+    guard next != workspaces else { return }
+    let previous = workspaces
+    workspaces = next
+    do {
+      try save()
+    } catch {
+      // Unlike `upsert`, which leaves the sheet that asked holding the draft:
+      // a refused drop has nothing else to show, so the sidebar goes back to
+      // what is on disk.
+      workspaces = previous
+      throw error
+    }
+    rescan()
+    ClientWiring.rewire()
   }
 
   func resolvedKeys(_ workspace: Workspace) -> Set<String> { resolved[workspace.name] ?? [] }
+
+  /// How many folders a workspace reaches, for its sidebar header. The
+  /// fixture's own count under a capture; see `DemoSeed.workspaceReach`.
+  func reachCount(named name: String) -> Int {
+    DemoSeed.isEnabled ? DemoSeed.workspaceReach : resolved[name]?.count ?? 0
+  }
 
   /// Create, replace, or rename (`previousName`) one workspace, then rewire.
   func upsert(_ workspace: Workspace, replacing previousName: String? = nil) throws {

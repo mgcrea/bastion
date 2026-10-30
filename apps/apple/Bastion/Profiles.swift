@@ -426,7 +426,7 @@ final class ProfileStore {
     do {
       try WorkspaceStore.shared.renameProfile(from: oldID, to: renamed.id)
     } catch {
-      // Only when `workspaces.json` is unreadable, which the Workspaces pane
+      // Only when `workspaces.json` is unreadable, which the sidebar's footer
       // already reports and which refuses every workspace save alike.
       hostLog(
         "profiles", .error,

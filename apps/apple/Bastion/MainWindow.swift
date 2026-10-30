@@ -1,57 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// What the sidebar selects.
-///
-/// Servers and clients carry an **id** rather than the value itself, and the
-/// detail pane re-resolves it. A `BastionServer` captured in the selection
-/// would be a copy of a generated table, and a `ClientWiring.Client` captured
-/// there would be a snapshot of somebody else's config file — which is exactly
-/// the thing `ClientDetail` refuses to cache.
-enum MainPane: Hashable {
-  case server(String)
-  case client(String)
-  case running
-  case stats
-  case log
-  case chat
-}
-
-/// `RawRepresentable` so the selection can live in `@AppStorage`. See
-/// `MainView.pane` for why it has to.
-extension MainPane: RawRepresentable {
-  static let defaultsKey = "mainPane"
-
-  init?(rawValue: String) {
-    switch rawValue {
-    case "running": self = .running
-    case "stats": self = .stats
-    case "log": self = .log
-    case "chat": self = .chat
-    default:
-      guard let separator = rawValue.firstIndex(of: ":") else { return nil }
-      let id = String(rawValue[rawValue.index(after: separator)...])
-      guard !id.isEmpty else { return nil }
-      switch rawValue[..<separator] {
-      case "server": self = .server(id)
-      case "client": self = .client(id)
-      default: return nil
-      }
-    }
-  }
-
-  var rawValue: String {
-    switch self {
-    case .server(let id): "server:\(id)"
-    case .client(let id): "client:\(id)"
-    case .running: "running"
-    case .stats: "stats"
-    case .log: "log"
-    case .chat: "chat"
-    }
-  }
-}
-
 /// Bastion's main window.
 ///
 /// This replaces two separate windows — Activity and MCP Clients — that could
@@ -131,15 +80,25 @@ struct MainView: View {
   /// from need not be the one selected.
   @State private var pendingRemoval: BastionServer?
   @State private var sidebarError: String?
+  @State private var workspaceSheet: WorkspaceSheet?
+  @State private var pendingWorkspaceDeletion: String?
+  @AppStorage(CollapsedServerSections.defaultsKey) private var collapsedSections = ""
+  /// Which section a dragged server row would land in; see `ServerDropHighlight`.
+  @State private var dropHighlight = ServerDropHighlight()
 
   /// `List(selection:)` drives an `Optional` for a single selection, and the
   /// stored value is a `String` because that is what `@AppStorage` can hold.
   /// Bridging here rather than mirroring into `@State` keeps one source of
   /// truth, which is what makes `MainWindowController.show(_:)` reach a window
   /// that is already open.
+  ///
+  /// Read through `WorkspaceSidebar.rowPane`, because the pane remembered or
+  /// deep-linked to can name a server row that is not in the list: every one
+  /// of its profiles is in a workspace, or the profile it was dragged with has
+  /// moved on.
   private var pane: Binding<MainPane?> {
     Binding(
-      get: { current },
+      get: { WorkspaceSidebar.rowPane(for: current, in: serverSections) },
       // Swallowed under a capture: `current` would ignore the write anyway, and
       // letting it through would put the stage's pane into the developer's own
       // `@AppStorage`.
@@ -191,112 +150,11 @@ struct MainView: View {
   /// that always looks wrong.
   private var sidebar: some View {
     List(selection: pane) {
-      Section {
-        let servers = ServerStore.shared.servers
-        ForEach(servers) { server in
-          Label {
-            HStack(spacing: 6) {
-              Text(server.displayName)
-              Spacer(minLength: 4)
-              ServerBadge(server: server)
-            }
-          } icon: {
-            // One glyph per transport: gears for Bastion's own server, a box
-            // for a package it downloaded, a terminal for a system command, a
-            // cloud for an endpoint somebody else operates and a computer for
-            // one on 127.0.0.1. It is the only thing on the row
-            // that says which, and the sidebar is where a reader decides what
-            // a server is before opening it.
-            Image(systemName: server.transport.symbolName)
-              .help(server.transport.summaryLabel)
-          }
-          // Dimmed rather than hidden or moved. A disabled server is still
-          // something you own and still where you left it — the sidebar's job
-          // is to say it will not answer, not to hide it until it does.
-          .foregroundStyle(server.isEnabled ? .primary : .secondary)
-          .tag(MainPane.server(server.id))
-          .contextMenu { serverMenu(server) }
-        }
-
-        // The empty state is the first thing a new install shows, and Bastion
-        // ships with nothing installed. A blank section under a heading reads
-        // as a bug; a sentence that says what is true does not. It is a label
-        // rather than a second button — the one under the list is right there,
-        // and two buttons a row apart doing the same thing reads as two things.
-        // Bastion's own server is always in the list, so "empty" now means
-        // "nothing but Bastion" — otherwise the sentence would never appear
-        // again and a fresh install would look furnished when it is not.
-        if servers.allSatisfy({ $0.origin == .builtin }) {
-          Text("None installed yet.")
-            .font(.callout)
-            .foregroundStyle(.tertiary)
-        }
-      } header: {
-        // The `+` is back in the header, and the reason it works now is that it
-        // is no longer the only one. It was pulled from here because it was the
-        // sole route to adding a server: small, unlabelled, and sitting in a row
-        // that reads as a title. The labelled button under the list fixed that
-        // and stays; this is an accelerator at the end of the sidebar the eye
-        // reaches first, which is a different job from being the affordance.
-        //
-        // ⌘N is deliberately not repeated here. Two views in one window claiming
-        // the same shortcut is ambiguous, and the one under the list already has
-        // it. The label is spelled out rather than left to the glyph, because
-        // this control has no text for VoiceOver to read — the one way the
-        // original really was worse than the row below.
-        HStack(spacing: 4) {
-          Text("Servers")
-          Spacer()
-          // The only place in the window that asks about every server at once,
-          // and the reason the dots below it can ever appear: `availability` is
-          // empty until something asks, so a badge with no way to populate it
-          // but nine visits to nine panes would be a feature nobody finds.
-          //
-          // Still a press, which is the whole constraint — see
-          // `ServerInstaller.checkForUpdate`. Nothing here runs on a timer, on
-          // launch, or when this view appears.
-          if ServerInstaller.shared.hasCheckableServers {
-            Button {
-              let installer = ServerInstaller.shared
-              if installer.isCheckingAll {
-                installer.cancelCheckAll()
-              } else {
-                installer.checkAll()
-              }
-            } label: {
-              if ServerInstaller.shared.isCheckingAll {
-                ProgressView().controlSize(.small).scaleEffect(0.6).frame(width: 12, height: 12)
-              } else {
-                Image(systemName: "arrow.triangle.2.circlepath")
-              }
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .contentShape(.rect)
-            .help(
-              ServerInstaller.shared.isCheckingAll
-                ? "Stop checking — anything already asking npm finishes"
-                : "Check all servers for updates"
-            )
-            .accessibilityLabel(
-              ServerInstaller.shared.isCheckingAll ? "Stop checking" : "Check all for updates")
-          }
-          Button {
-            editor.subject = .adding
-          } label: {
-            Image(systemName: "plus")
-          }
-          .buttonStyle(.plain)
-          .foregroundStyle(.secondary)
-          .contentShape(.rect)
-          .help("Add a server (⌘N)")
-          .accessibilityLabel("Add server")
-          // The `Spacer` above puts the glyph flush against the header's
-          // trailing edge, which in this sidebar is nearer the window edge than
-          // anything in the rows below sits. Small enough to read as breathing
-          // room rather than an indent.
-          .padding(.trailing, 10)
-        }
+      // One section while there is no workspace, which is the sidebar this
+      // always was, and then one per workspace with Everywhere last.
+      let sections = serverSections
+      ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
+        serverSection(section, isFirst: index == 0)
       }
 
       // Installed only, and absent rather than empty when there are none. Which
@@ -338,6 +196,8 @@ struct MainView: View {
         Label("Chat", systemImage: "bubble.left.and.text.bubble.right").tag(MainPane.chat)
       }
     }
+    .background(SidebarTableFeedback())
+    .environment(dropHighlight)
     .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
     .safeAreaInset(edge: .bottom) { sidebarStatus }
     .confirmationDialog(
@@ -361,6 +221,9 @@ struct MainView: View {
     } message: {
       Text(sidebarError ?? "")
     }
+    // On the list, not on `body`: two sheet presenters on one view race.
+    .workspaceSheet($workspaceSheet, renamed: workspaceRenamed)
+    .workspaceDeletion($pendingWorkspaceDeletion) { sidebarError = $0 }
   }
 
   /// The MCP clients this Mac actually has. Recomputed per redraw, because
@@ -370,6 +233,247 @@ struct MainView: View {
   ///
   /// The detail pane deliberately does not filter: a pane remembered in
   /// `@AppStorage` for a client since uninstalled still renders, and says so.
+  // MARK: - Server sections
+
+  /// The server list's sections; see `WorkspaceSidebar`.
+  ///
+  /// An unreadable `workspaces.json` reads as no workspaces, as the store
+  /// treats it: nothing is scoped, so every profile really does go to every
+  /// client, and the footer says why.
+  private var serverSections: [ServerSection] {
+    let workspaces = WorkspaceStore.shared
+    return WorkspaceSidebar.sections(
+      servers: ServerStore.shared.servers.map(\.id),
+      profiles: ProfileStore.shared.profiles.map { (id: $0.id, serverID: $0.serverID) },
+      workspaces: workspaces.unreadable == nil ? workspaces.workspaces : [])
+  }
+
+  @ViewBuilder
+  private func serverSection(_ section: ServerSection, isFirst: Bool) -> some View {
+    switch section.kind {
+    case .servers:
+      Section {
+        serverRows(section)
+
+        // The empty state is the first thing a new install shows, and Bastion
+        // ships with nothing installed. A blank section under a heading reads
+        // as a bug; a sentence that says what is true does not. It is a label
+        // rather than a second button — the one under the list is right there,
+        // and two buttons a row apart doing the same thing reads as two things.
+        // Bastion's own server is always in the list, so "empty" now means
+        // "nothing but Bastion" — otherwise the sentence would never appear
+        // again and a fresh install would look furnished when it is not.
+        if ServerStore.shared.servers.allSatisfy({ $0.origin == .builtin }) {
+          Text("None installed yet.")
+            .font(.callout)
+            .foregroundStyle(.tertiary)
+        }
+      } header: {
+        HStack(spacing: 4) {
+          Text("Servers")
+          Spacer()
+          serverHeaderButtons
+        }
+      }
+    case .workspace(let name):
+      Section(isExpanded: expansion(section.kind)) {
+        serverRows(section)
+        if section.rows.isEmpty {
+          DropHereRow()
+            .selectionDisabled()
+            .serverDropTarget(section) { drop($0, into: section) }
+        }
+      } header: {
+        HStack(spacing: 4) {
+          WorkspaceSectionHeader(
+            name: name, folderCount: WorkspaceStore.shared.reachCount(named: name),
+            open: { pane.wrappedValue = .workspace(name) },
+            rename: { workspaceSheet = .rename(name) },
+            delete: { pendingWorkspaceDeletion = name })
+          Spacer()
+          if isFirst { serverHeaderButtons }
+        }
+      }
+    case .everywhere:
+      Section(isExpanded: expansion(section.kind)) {
+        serverRows(section)
+      } header: {
+        HStack(spacing: 4) {
+          Text("Everywhere")
+            .help("Profiles in no workspace, which every configured client gets")
+          Spacer()
+          if isFirst { serverHeaderButtons }
+        }
+      }
+    }
+  }
+
+  /// The header's update check and `+`, on whichever section comes first.
+  ///
+  /// The `+` is back in the header, and the reason it works now is that it is
+  /// no longer the only one. It was pulled from here because it was the sole
+  /// route to adding a server: small, unlabelled, and sitting in a row that
+  /// reads as a title. The labelled button under the list fixed that and
+  /// stays; this is an accelerator at the end of the sidebar the eye reaches
+  /// first, which is a different job from being the affordance.
+  ///
+  /// ⌘N is deliberately not repeated here. Two views in one window claiming the
+  /// same shortcut is ambiguous, and the one under the list already has it. The
+  /// label is spelled out rather than left to the glyph, because this control
+  /// has no text for VoiceOver to read — the one way the original really was
+  /// worse than the row below.
+  @ViewBuilder private var serverHeaderButtons: some View {
+    // The only place in the window that asks about every server at once, and
+    // the reason the dots below it can ever appear: `availability` is empty
+    // until something asks, so a badge with no way to populate it but nine
+    // visits to nine panes would be a feature nobody finds.
+    //
+    // Still a press, which is the whole constraint — see
+    // `ServerInstaller.checkForUpdate`. Nothing here runs on a timer, on
+    // launch, or when this view appears.
+    if ServerInstaller.shared.hasCheckableServers {
+      Button {
+        let installer = ServerInstaller.shared
+        if installer.isCheckingAll {
+          installer.cancelCheckAll()
+        } else {
+          installer.checkAll()
+        }
+      } label: {
+        if ServerInstaller.shared.isCheckingAll {
+          ProgressView().controlSize(.small).scaleEffect(0.6).frame(width: 12, height: 12)
+        } else {
+          Image(systemName: "arrow.triangle.2.circlepath")
+        }
+      }
+      .buttonStyle(.plain)
+      .foregroundStyle(.secondary)
+      .contentShape(.rect)
+      .help(
+        ServerInstaller.shared.isCheckingAll
+          ? "Stop checking — anything already asking npm finishes"
+          : "Check all servers for updates"
+      )
+      .accessibilityLabel(
+        ServerInstaller.shared.isCheckingAll ? "Stop checking" : "Check all for updates")
+    }
+    Button {
+      editor.subject = .adding
+    } label: {
+      Image(systemName: "plus")
+    }
+    .buttonStyle(.plain)
+    .foregroundStyle(.secondary)
+    .contentShape(.rect)
+    .help("Add a server (⌘N)")
+    .accessibilityLabel("Add server")
+    // The `Spacer` before this puts the glyph flush against the header's
+    // trailing edge, which in this sidebar is nearer the window edge than
+    // anything in the rows below sits. Small enough to read as breathing room
+    // rather than an indent.
+    .padding(.trailing, 10)
+  }
+
+  private func serverRows(_ section: ServerSection) -> some View {
+    ForEach(section.rows) { row in
+      if let server = ServerStore.shared.server(id: row.serverID) {
+        serverRow(server, row: row, in: section)
+      }
+    }
+  }
+
+  private func serverRow(_ server: BastionServer, row: ServerRow, in section: ServerSection)
+    -> some View
+  {
+    Label {
+      HStack(spacing: 6) {
+        Text(server.displayName)
+        // Which of its profiles this row is, for a server split between
+        // sections. Absent otherwise, so the usual row reads as it always did.
+        if let caption = row.caption {
+          Text(caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+        }
+        Spacer(minLength: 4)
+        ServerBadge(server: server)
+      }
+    } icon: {
+      // One glyph per transport: gears for Bastion's own server, a box for a
+      // package it downloaded, a terminal for a system command, a cloud for an
+      // endpoint somebody else operates and a computer for one on 127.0.0.1.
+      // It is the only thing on the row that says which, and the sidebar is
+      // where a reader decides what a server is before opening it.
+      Image(systemName: server.transport.symbolName)
+        .help(server.transport.summaryLabel)
+    }
+    // Dimmed rather than hidden or moved. A disabled server is still something
+    // you own and still where you left it — the sidebar's job is to say it will
+    // not answer, not to hide it until it does.
+    .foregroundStyle(server.isEnabled ? .primary : .secondary)
+    .tag(row.pane)
+    .contextMenu { serverMenu(server, row: row, in: section) }
+    .modifier(ServerRowDragAndDrop(row: row, section: section, drop: drop))
+  }
+
+  /// Rows move only between workspaces and Everywhere. The one-section list of
+  /// a Mac with no workspace has nowhere to drag to.
+  private struct ServerRowDragAndDrop: ViewModifier {
+    let row: ServerRow
+    let section: ServerSection
+    let drop: (ServerDragPayload, ServerSection) -> Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+      if section.kind == .servers {
+        content
+      } else {
+        content
+          .serverDragSource(row, in: section)
+          .serverDropTarget(section) { drop($0, section) }
+      }
+    }
+  }
+
+  private func drop(_ payload: ServerDragPayload, into section: ServerSection) -> Bool {
+    move(payload.profileIDs, from: payload.from, to: section.kind)
+  }
+
+  /// Per Mac and per section, through `CollapsedServerSections`. Always open
+  /// under a capture, whatever the developer left collapsed.
+  private func expansion(_ kind: ServerSectionKind) -> Binding<Bool> {
+    Binding(
+      get: {
+        guard !DemoSeed.isEnabled, let key = kind.collapseKey else { return true }
+        return !CollapsedServerSections.decode(collapsedSections).contains(key)
+      },
+      set: { expanded in
+        if DemoSeed.isEnabled { return }
+        collapsedSections = CollapsedServerSections.setting(
+          kind, expanded: expanded, in: collapsedSections)
+      })
+  }
+
+  /// Move profiles between sections, from a drop or the Move to menu. Whether
+  /// it saved, which is what a drop reports back.
+  @discardableResult
+  private func move(_ ids: [String], from: ServerSectionKind, to: ServerSectionKind) -> Bool {
+    do {
+      try WorkspaceStore.shared.moveProfiles(
+        ids, from: from.workspaceName, to: to.workspaceName)
+      return true
+    } catch {
+      sidebarError = error.localizedDescription
+      return false
+    }
+  }
+
+  /// A rename follows the page it renamed, rather than leaving it on a name
+  /// that is gone.
+  private func workspaceRenamed(from old: String, to new: String) {
+    if current == .workspace(old) { pane.wrappedValue = .workspace(new) }
+  }
+
   private var installedClients: [ClientWiring.Client] {
     ClientWiring.all.filter(\.isInstalled)
   }
@@ -377,7 +481,9 @@ struct MainView: View {
   /// The right-click on a server row: the detail pane's actions, reachable
   /// without opening the pane first. Each one is offered only where that pane
   /// offers it, so the menu never holds an item the pane would refuse.
-  @ViewBuilder private func serverMenu(_ server: BastionServer) -> some View {
+  @ViewBuilder private func serverMenu(
+    _ server: BastionServer, row: ServerRow, in section: ServerSection
+  ) -> some View {
     if server.origin == .custom {
       Button("Edit…") { editor.subject = .editing(server) }
     }
@@ -386,9 +492,32 @@ struct MainView: View {
         sidebarError = error.localizedDescription
       }
     }
+    moveMenus(row: row, in: section)
     if server.origin != .builtin {
       Divider()
       Button("Remove Server…", role: .destructive) { pendingRemoval = server }
+    }
+  }
+
+  /// Move to, per profile the row holds: the way to split a server between
+  /// sections, which a drag of the whole row cannot do, and the way in for
+  /// anybody not using a pointer.
+  @ViewBuilder private func moveMenus(row: ServerRow, in section: ServerSection) -> some View {
+    let store = WorkspaceStore.shared
+    if store.unreadable == nil, !store.workspaces.isEmpty, !row.profileIDs.isEmpty {
+      let targets = store.workspaces.map(\.name).filter { $0 != section.kind.workspaceName }
+      Divider()
+      ForEach(row.profileIDs, id: \.self) { id in
+        Menu(row.profileIDs.count == 1 ? "Move to" : "Move \(id) to") {
+          ForEach(targets, id: \.self) { name in
+            Button(name) { move([id], from: section.kind, to: .workspace(name)) }
+          }
+          if section.kind != .everywhere {
+            if !targets.isEmpty { Divider() }
+            Button("Everywhere") { move([id], from: section.kind, to: .everywhere) }
+          }
+        }
+      }
     }
   }
 
@@ -426,6 +555,24 @@ struct MainView: View {
     .help("Install a server from the catalog, or add one by npm package or URL (⌘N)")
   }
 
+  /// Under Add server and styled like it, as Finder and Mail put New Folder
+  /// and New Mailbox: it is how the first workspace gets made, so it is always
+  /// there rather than appearing once one exists.
+  private var sidebarNewWorkspace: some View {
+    Button {
+      workspaceSheet = .create
+    } label: {
+      Label("New workspace", systemImage: "folder.badge.plus")
+        .font(.callout)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(.rect)
+    }
+    .buttonStyle(.plain)
+    .foregroundStyle(.primary)
+    .disabled(WorkspaceStore.shared.unreadable != nil)
+    .help("Give some profiles to Claude Code only in chosen folders")
+  }
+
   /// What used to be the Activity window's header, moved to where it is true of
   /// the whole app rather than of one pane. The gateway is either serving or it
   /// is not, and that fact does not belong to any one screen.
@@ -435,7 +582,17 @@ struct MainView: View {
     return VStack(alignment: .leading, spacing: 8) {
       Divider()
 
+      // Above the buttons it explains: New workspace is disabled while it shows.
+      if let problem = WorkspaceStore.shared.unreadable {
+        Label(problem.localizedDescription, systemImage: "exclamationmark.triangle.fill")
+          .font(.caption)
+          .foregroundStyle(.red)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
       sidebarAdd
+
+      sidebarNewWorkspace
 
       Divider()
 
@@ -530,7 +687,9 @@ struct MainView: View {
   @ViewBuilder
   private var detail: some View {
     switch current {
-    case .server(let id):
+    // Both rows of a split server open the same pane, keyed by the server, so
+    // moving between them keeps an open profile editor rather than resetting it.
+    case .server(let id), .scopedServer(_, let id):
       // `.id`, so another server gets another pane. As one branch of this
       // switch the pane was reused across servers with its `@State`: a profile
       // editor open on one server stayed up for the next and saved its fields
@@ -542,6 +701,15 @@ struct MainView: View {
         // Reachable, and now routinely: a pane remembered in `@AppStorage`
         // outlives the server it named the moment somebody removes one.
         UnknownPane(what: "server", id: id)
+      }
+    case .workspace(let name):
+      // Reachable the moment a workspace is renamed elsewhere or deleted while
+      // its page is open: the selection outlives the name.
+      if let workspace = WorkspaceStore.shared.workspaces.first(where: { $0.name == name }) {
+        WorkspaceDetail(workspace: workspace, renamed: workspaceRenamed)
+          .id(name)
+      } else {
+        UnknownPane(what: "workspace", id: name)
       }
     case .client(let id):
       if let client = ClientWiring.all.first(where: { $0.id == id }) {
@@ -709,6 +877,9 @@ private struct UnknownPane: View {
     ContentUnavailableView(
       "No such \(what)",
       systemImage: "questionmark.folder",
-      description: Text("'\(id)' is not installed. It may have been removed."))
+      description: Text(
+        what == "workspace"
+          ? "There is no workspace named '\(id)'. It may have been renamed or deleted."
+          : "'\(id)' is not installed. It may have been removed."))
   }
 }

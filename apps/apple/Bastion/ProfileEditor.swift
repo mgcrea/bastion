@@ -52,6 +52,9 @@ struct ProfileEditor: View {
   /// rather than optional here.
   @State private var capture: String
   @State private var error: String?
+  /// Apart from `error`, which belongs to the Save the sheet ends with: a
+  /// scope change saves on its own, at once.
+  @State private var scopeError: String?
   /// Authorization state, kept separately from `error` so a failed sign-in does
   /// not look like a failed save.
   @State private var isAuthorized: Bool = false
@@ -174,15 +177,21 @@ struct ProfileEditor: View {
           Text("Activity")
         }
 
-        // Only an existing profile: one being created has no id to be in a
-        // workspace under yet.
+        // A profile being created has no id to put in a workspace yet, so it
+        // gets the rule that will place it instead.
         if let profile = subject.profile {
           Section {
-            let names = WorkspaceStore.shared.workspaces(containing: profile).map(\.name)
-            LabeledContent(
-              "Scope", value: names.isEmpty ? "Everywhere" : names.joined(separator: ", "))
-            Button("Edit Workspaces…") { SettingsWindowController.show(.workspaces) }
-              .controlSize(.small)
+            scopeMenu(profile)
+            if let scopeError {
+              Text(scopeError).font(.caption).foregroundStyle(.red)
+            }
+          } header: {
+            Text("Workspaces")
+          }
+        } else if !WorkspaceStore.shared.workspaces.isEmpty {
+          Section {
+            Text("A profile named after a workspace joins it.")
+              .font(.caption).foregroundStyle(.secondary)
           } header: {
             Text("Workspaces")
           }
@@ -391,6 +400,34 @@ struct ProfileEditor: View {
           .textSelection(.enabled)
           .foregroundStyle(.secondary)
       }
+    }
+  }
+
+  /// Where this profile reaches: Everywhere or one workspace. Choosing puts it
+  /// there alone, so a profile some tool put in two workspaces comes out of
+  /// the other; the checkmarks show both until then.
+  private func scopeMenu(_ profile: Profile) -> some View {
+    let store = WorkspaceStore.shared
+    let current = Set(store.workspaces(containing: profile).map(\.name))
+    func choose(_ workspace: String?) {
+      do {
+        try store.setScope(profile.id, to: workspace)
+        scopeError = nil
+      } catch {
+        scopeError = error.localizedDescription
+      }
+    }
+    return LabeledContent("Scope") {
+      Menu(current.isEmpty ? "Everywhere" : current.sorted().joined(separator: ", ")) {
+        Toggle("Everywhere", isOn: Binding(get: { current.isEmpty }, set: { _ in choose(nil) }))
+        if !store.workspaces.isEmpty { Divider() }
+        ForEach(store.workspaces.map(\.name), id: \.self) { name in
+          Toggle(
+            name, isOn: Binding(get: { current.contains(name) }, set: { _ in choose(name) }))
+        }
+      }
+      .fixedSize()
+      .disabled(store.unreadable != nil)
     }
   }
 

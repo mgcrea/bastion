@@ -7,6 +7,31 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.33.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Added
+
+- **Workspaces live in the sidebar.** Once a workspace exists, the server list has a section per
+  workspace and an Everywhere section for the profiles every client gets. Drag a server between
+  sections to move its profiles, or use Move to on its right-click menu to move one profile of a
+  server that has several. A server split between sections shows in each, with its profile names
+  beside it. Sections collapse, and stay collapsed.
+- **New workspace, under Add server.** It asks for a name and at least one folder, since a workspace
+  that reaches no folder would take every profile dropped into it out of every client.
+- **A page per workspace** in the main window, with its folders, the folders Claude Code is given,
+  its profiles and its skills. Rename and Delete are there and on the section header's menu.
+- **A Scope menu in the profile editor** puts a profile in one workspace, or in none.
+
+### Changed
+
+- **A workspace now reaches the plain folders between its folder and the repositories below it.**
+  Claude Code applies a block outside git to that exact folder only, so a session started in, say,
+  `~/Projects/rgis/rgis-ai` got none of the workspace's servers. It does now.
+- **A repository cloned under a workspace's folder gets its servers within seconds**, without
+  pressing Rescan. Bastion watches the workspace folders and rewires when a repository appears or
+  disappears below them.
+- **Settings → Workspaces is gone**; everything it held is on the workspace pages.
+
 ## [1.33.0] - 2026-10-30
 
 **Yahoo Finance can read its cookie from a file.** A profile can point Yahoo Finance at a file
