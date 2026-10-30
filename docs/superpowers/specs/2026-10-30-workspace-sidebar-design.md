@@ -78,7 +78,11 @@ decides the server sections. Inputs are plain values: the server ids in
 ### Section headers
 
 A workspace header shows its name and, in caption text, what it reaches:
-"Claude Code · 37 folders" (one folder: "1 folder"). A workspace whose folders
+"37 folders" (one folder: "1 folder"), with "Claude Code only" in its help: the
+longer "Claude Code · 37 folders" truncated beside the first header's buttons at
+the sidebar's default width (changed after review, 2026-10-30). Under a capture
+the count is `DemoSeed.workspaceReach`, since the fixture's invented folder
+resolves to nothing. A workspace whose folders
 resolve to nothing shows "No folders found" in orange instead, since every
 profile in it then reaches no client at all.
 

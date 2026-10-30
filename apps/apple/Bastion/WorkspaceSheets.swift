@@ -61,8 +61,12 @@ struct WorkspaceSectionHeader: View {
         if folderCount == 0 {
           Text("No folders found").foregroundStyle(.orange)
         } else {
-          Text("Claude Code · \(folderCount) folder\(folderCount == 1 ? "" : "s")")
+          // The count alone: with the list's buttons beside the first header,
+          // "Claude Code · 4 folders" truncated at the sidebar's own width. The
+          // client it is about goes in the help instead.
+          Text("\(folderCount) folder\(folderCount == 1 ? "" : "s")")
             .foregroundStyle(.tertiary)
+            .help("Claude Code only: these profiles are written into \(folderCount) folders")
         }
       }
       .font(.caption2)

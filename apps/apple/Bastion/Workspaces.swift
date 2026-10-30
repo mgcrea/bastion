@@ -155,6 +155,12 @@ final class WorkspaceStore {
 
   func resolvedKeys(_ workspace: Workspace) -> Set<String> { resolved[workspace.name] ?? [] }
 
+  /// How many folders a workspace reaches, for its sidebar header. The
+  /// fixture's own count under a capture; see `DemoSeed.workspaceReach`.
+  func reachCount(named name: String) -> Int {
+    DemoSeed.isEnabled ? DemoSeed.workspaceReach : resolved[name]?.count ?? 0
+  }
+
   /// Create, replace, or rename (`previousName`) one workspace, then rewire.
   func upsert(_ workspace: Workspace, replacing previousName: String? = nil) throws {
     guard Profile.isValidName(workspace.name) else { throw StoreError.invalidName(workspace.name) }

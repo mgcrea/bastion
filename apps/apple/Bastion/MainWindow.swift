@@ -286,7 +286,7 @@ struct MainView: View {
       } header: {
         HStack(spacing: 4) {
           WorkspaceSectionHeader(
-            name: name, folderCount: WorkspaceStore.shared.resolved[name]?.count ?? 0,
+            name: name, folderCount: WorkspaceStore.shared.reachCount(named: name),
             open: { pane.wrappedValue = .workspace(name) },
             rename: { workspaceSheet = .rename(name) },
             delete: { pendingWorkspaceDeletion = name })

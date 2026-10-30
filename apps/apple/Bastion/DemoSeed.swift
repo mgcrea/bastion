@@ -442,6 +442,13 @@ enum DemoSeed {
     [Workspace(name: "acme", folders: ["/Users/demo/Projects/acme"], profiles: ["acme/keycloak"])]
   }
 
+  /// How many folders the sidebar's acme header says it reaches. The invented
+  /// folder resolves to none, and the header's answer to none is an orange
+  /// warning, which every main-window plate would otherwise carry. Only the
+  /// count, not keys: real keys would feed the client pane's project blocks,
+  /// which `config(for:)` fixes on its own terms.
+  nonisolated static let workspaceReach = 4
+
   /// Skills for the Skills pane and the Claude Desktop card. Invented paths
   /// that do not exist, as with `workspaces`: nothing under a capture reads or
   /// links a real skills folder.
