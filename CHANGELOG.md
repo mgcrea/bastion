@@ -4,10 +4,14 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.33.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.34.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.34.0] - 2026-10-30
+
+**Workspaces live in the sidebar.** Drag a client's servers into a workspace and they reach Claude
+Code only in that client's folders, including every folder below them and repositories cloned
+later.
 
 ### Added
 
@@ -31,6 +35,14 @@ are taken from this file, which is the curated summary.
   pressing Rescan. Bastion watches the workspace folders and rewires when a repository appears or
   disappears below them.
 - **Settings → Workspaces is gone**; everything it held is on the workspace pages.
+- **A custom server at an address on this Mac is tagged local, in blue**, rather than custom, in
+  its pane's header.
+
+### Internal
+
+- The screenshots, the website's captures and its tour video were re-taken for the sidebar's
+  workspace sections, and the plates now read 1.34.0.
+- The design and plan for workspaces in the sidebar are in `docs/superpowers/`.
 
 ## [1.33.0] - 2026-10-30
 

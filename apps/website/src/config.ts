@@ -335,7 +335,7 @@ export const TRIAL = {
  * before it. CI holds it to the pbxproj's MARKETING_VERSION, and
  * `src/data/changelog.ts` to a released section of CHANGELOG.md.
  */
-export const APP_VERSION = "1.33.0";
+export const APP_VERSION = "1.34.0";
 
 /**
  * The MCP clients Bastion can wire in one click.

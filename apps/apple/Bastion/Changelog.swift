@@ -66,7 +66,72 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_33_0, v1_32_0, v1_31_0, v1_30_0, v1_29_0]
+  static let releases: [Release] = [v1_34_0, v1_33_0, v1_32_0, v1_31_0, v1_30_0]
+
+  // swift-format-ignore
+  private static let v1_34_0: Release = Release(
+    version: "1.34.0",
+    date: "2026-10-30",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Workspaces live in the sidebar.",
+            body: [
+              "Once a workspace exists, the server list has a section per workspace and an Everywhere section for the profiles every client gets. Drag a server between sections to move its profiles, or use Move to on its right-click menu to move one profile of a server that has several. A server split between sections shows in each, with its profile names beside it. Sections collapse, and stay collapsed.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "New workspace, under Add server.",
+            body: [
+              "It asks for a name and at least one folder, since a workspace that reaches no folder would take every profile dropped into it out of every client.",
+            ]),
+          Entry(
+            ordinal: 2,
+            headline: "A page per workspace",
+            body: [
+              "in the main window, with its folders, the folders Claude Code is given, its profiles and its skills. Rename and Delete are there and on the section header's menu.",
+            ]),
+          Entry(
+            ordinal: 3,
+            headline: "A Scope menu in the profile editor",
+            body: [
+              "puts a profile in one workspace, or in none.",
+            ]),
+        ]),
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 4,
+            headline: "A workspace now reaches the plain folders between its folder and the repositories below it.",
+            body: [
+              "Claude Code applies a block outside git to that exact folder only, so a session started in, say, `~/Projects/rgis/rgis-ai` got none of the workspace's servers. It does now.",
+            ]),
+          Entry(
+            ordinal: 5,
+            headline: "A repository cloned under a workspace's folder gets its servers within seconds",
+            body: [
+              ", without pressing Rescan. Bastion watches the workspace folders and rewires when a repository appears or disappears below them.",
+            ]),
+          Entry(
+            ordinal: 6,
+            headline: "Settings → Workspaces is gone",
+            body: [
+              "; everything it held is on the workspace pages.",
+            ]),
+          Entry(
+            ordinal: 7,
+            headline: "A custom server at an address on this Mac is tagged local, in blue",
+            body: [
+              ", rather than custom, in its pane's header.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_33_0: Release = Release(
@@ -171,36 +236,6 @@ nonisolated enum Changelog {
             headline: "A right-click menu on each server in the sidebar",
             body: [
               ", with Edit…, Enable or Disable, and Remove Server…. Each item appears only where the server's own page offers it: Edit… on a server you added yourself, Remove Server… on anything but Bastion's own server. Removing still asks first, and says what goes with the server: its profiles, their credentials in the Keychain and its downloaded code.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_29_0: Release = Release(
-    version: "1.29.0",
-    date: "2026-10-15",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Rename a profile.",
-            body: [
-              "Rename… on a profile's row, and `rename_profile` on Bastion's own server, give a profile a new name. Its credentials and OAuth sign-in, the state its server keeps (a child's own login, its callback port), its workspaces and its usage history move with it, and every client Bastion configured is rewired to the new endpoint. The client's tool names change with the entry, so permission rules naming the old ones stop matching. The audit log keeps the old name, since its lines are hash-chained.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "Shopify can write, behind the writes switch.",
-            body: [
-              "From mcp-shopify 0.7.0, a profile with writes on can set and delete metafields, update a product's and its variants' content, and adjust or set inventory. None of these deletes a product. `SHOPIFY_ALLOW_RAW_MUTATIONS` adds `shopify_graphql_mutation`, which runs any mutation the app's access scopes allow, deletes and refunds included. The switch decides which tools the server offers, not what the credential can do, so grant `write_*` scopes only to an app whose profile is meant to write. A server still on 0.6.0 stays read-only.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "Shopify Dev is in the catalog",
-            body: [
-              ": the server from Shopify's AI Toolkit that searches shopify.dev and validates generated GraphQL, Liquid and UI code, with no credential. It reports usage to Shopify by default, and its profile offers `OPT_OUT_INSTRUMENTATION` to stop that.",
             ]),
         ]),
     ])
