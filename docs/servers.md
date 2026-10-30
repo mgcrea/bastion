@@ -1334,6 +1334,12 @@ gated). Removing a position that holds lots or transactions, or
 deleting a portfolio that does, is refused unless the call passes
 delete_history: true.
 
+0.6.0 keeps the session Yahoo renews between runs in a cookies.json
+under XDG_CONFIG_HOME, which Bastion points at each profile's own
+folder. 0.7.0 adds YAHOO_FINANCE_COOKIE_IMPORT_FILE, a file holding
+the cookie header in place of the pasted value; it is an error to set
+both.
+
 No credential, but not no state: the server runs Yahoo's cookie + crumb
 handshake itself and keeps the result in memory, so one supervised
 instance shared by every client is one session and one rate-limit
@@ -1352,6 +1358,7 @@ browser session for whoever captured it - signed in, it is the account.
 | Variable | Required | Secret | Meaning |
 | --- | --- | --- | --- |
 | `YAHOO_FINANCE_COOKIE` | — | yes | Cookie header from a finance.yahoo.com browser session, used instead of the automatic handshake. The A3, T and Y cookies of a signed-in tab add the watchlist tools. It does not get past a 429: Yahoo checks the TLS fingerprint on every request. |
+| `YAHOO_FINANCE_COOKIE_IMPORT_FILE` | — | — | Path of a file holding that same cookie header, read at startup instead of YAHOO_FINANCE_COOKIE (set one, not both). A missing or empty file stops the server with an error naming the path. Cupertino's Safari MCP can write it from a signed-in tab. |
 | `YAHOO_FINANCE_CRUMB` | — | yes | Rarely needed: a crumb is derived from the cookie, and replaced if Yahoo rejects it. Useless without the cookie it was issued for. |
 | `YAHOO_FINANCE_CONCURRENCY` | — | — | Max requests in flight to Yahoo, handshake included. Defaults to 4; lower it if a watchlist-sized fan-out trips 429s. |
 | `YAHOO_FINANCE_REQUEST_TIMEOUT_MS` | — | — | Per-request timeout in milliseconds, body included. Defaults to 30000. |

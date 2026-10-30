@@ -3033,6 +3033,12 @@ nonisolated enum ServerCatalog {
     // deleting a portfolio that does, is refused unless the call passes
     // delete_history: true.
     //
+    // 0.6.0 keeps the session Yahoo renews between runs in a cookies.json
+    // under XDG_CONFIG_HOME, which Bastion points at each profile's own
+    // folder. 0.7.0 adds YAHOO_FINANCE_COOKIE_IMPORT_FILE, a file holding
+    // the cookie header in place of the pasted value; it is an error to set
+    // both.
+    //
     // No credential, but not no state: the server runs Yahoo's cookie + crumb
     // handshake itself and keeps the result in memory, so one supervised
     // instance shared by every client is one session and one rate-limit
@@ -3073,6 +3079,11 @@ nonisolated enum ServerCatalog {
           isRequired: false,
           isSecret: true,
           summary: "Cookie header from a finance.yahoo.com browser session, used instead of the automatic handshake. The A3, T and Y cookies of a signed-in tab add the watchlist tools. It does not get past a 429: Yahoo checks the TLS fingerprint on every request."),
+        .init(
+          name: "YAHOO_FINANCE_COOKIE_IMPORT_FILE",
+          isRequired: false,
+          isSecret: false,
+          summary: "Path of a file holding that same cookie header, read at startup instead of YAHOO_FINANCE_COOKIE (set one, not both). A missing or empty file stops the server with an error naming the path. Cupertino's Safari MCP can write it from a signed-in tab."),
         .init(
           name: "YAHOO_FINANCE_CRUMB",
           isRequired: false,
