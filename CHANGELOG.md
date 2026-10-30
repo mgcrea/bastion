@@ -4,8 +4,27 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.32.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.33.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
+
+## [1.33.0] - 2026-10-30
+
+**Yahoo Finance can read its cookie from a file.** A profile can point Yahoo Finance at a file
+holding the cookie header of a signed-in tab, instead of pasting the value, and the session it
+renews now outlasts a restart.
+
+### Added
+
+- **Yahoo Finance takes its cookie from a file.** From 0.7.0 the server reads
+  `YAHOO_FINANCE_COOKIE_IMPORT_FILE`, the path of a file holding the same cookie header
+  `YAHOO_FINANCE_COOKIE` takes, at startup. Set one or the other, not both. A missing or empty file
+  stops the server with an error naming the path. Cupertino's Safari server can write that file from
+  a signed-in tab. From 0.6.0 the session Yahoo renews is kept in that profile's own folder, so it
+  survives a restart.
+
+### Internal
+
+- The website's tour loop moved from under the hero to the top of the app's captures.
 
 ## [1.32.0] - 2026-10-28
 
