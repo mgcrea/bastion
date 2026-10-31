@@ -494,6 +494,17 @@ export const SERVERS: Server[] = [
     provenance: true,
     dialect: "2025-11-25",
   },
+  {
+    id: "prometheus",
+    displayName: "Prometheus",
+    summary: "Prometheus HTTP API: PromQL instant and range queries, metric and label discovery, alerts, rules, scrape health and cardinality, shaped to fit a context window.",
+    writeGate: "PROMETHEUS_ALLOW_WRITES",
+    gatesByName: false,
+    transport: "child",
+    vendor: "mgcrea",
+    provenance: true,
+    dialect: "2025-11-25",
+  },
 ];
 // </generated:servers>
 

@@ -3263,6 +3263,65 @@ nonisolated enum ServerCatalog {
           isSecret: false,
           summary: "Lets langfuse_request send POST/PUT/PATCH/DELETE. Every named tool is a read."),
       ]),
+    // Prometheus has no auth of its own, so every credential here is for
+    // whatever sits in front of it, and a profile with only PROMETHEUS_URL is
+    // complete. That is why there are no auth modes.
+    //
+    // The URL picks the instance, but kube-prometheus-stack names everything
+    // the same on every cluster. prometheus_auth_status and the startup line
+    // report the version, hostname and external labels that tell them apart.
+    BastionServer(
+      id: "prometheus",
+      displayName: "Prometheus",
+      summary: "Prometheus HTTP API: PromQL instant and range queries, metric and label discovery, alerts, rules, scrape health and cardinality, shaped to fit a context window.",
+      transport: .child(
+        .init(
+          npmName: "@mgcrea/mcp-prometheus",
+          binName: "prometheus-mcp",
+          distribution: .npm,
+          localPath: "mcp-prometheus",
+          vendor: .mgcrea,
+          provenance: true)),
+      docsURL: URL(string: "https://github.com/mgcrea/mcp-prometheus"),
+      dialect: .v2025_11_25,
+      writeGate: "PROMETHEUS_ALLOW_WRITES",
+      writeTools: [],
+      gateBypass: [],
+      authModes: [],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "PROMETHEUS_URL",
+          isRequired: true,
+          isSecret: false,
+          summary: "Base URL, including any path prefix it is served under, e.g. https://prometheus.example.com. No credentials in it."),
+        .init(
+          name: "PROMETHEUS_USERNAME",
+          isRequired: false,
+          isSecret: false,
+          summary: "Basic auth user for the proxy in front of Prometheus. Set with PROMETHEUS_PASSWORD, or leave both empty."),
+        .init(
+          name: "PROMETHEUS_PASSWORD",
+          isRequired: false,
+          isSecret: true,
+          summary: "Basic auth password."),
+        .init(
+          name: "PROMETHEUS_TOKEN",
+          isRequired: false,
+          isSecret: true,
+          summary: "Bearer token instead of basic auth, e.g. for an OAuth proxy. Setting both is refused."),
+        .init(
+          name: "PROMETHEUS_HEADERS",
+          isRequired: false,
+          isSecret: true,
+          summary: "Extra request headers as a JSON object, e.g. {\"X-Scope-OrgID\":\"tenant-1\"} for Mimir, or a Cloudflare Access token."),
+        .init(
+          name: "PROMETHEUS_ALLOW_WRITES",
+          isRequired: false,
+          isSecret: false,
+          summary: "Registers the admin tools: delete_series, clean_tombstones, reload_config. They also need Prometheus run with --web.enable-admin-api / --web.enable-lifecycle."),
+      ]),
   ]
   // </generated:servers>
 

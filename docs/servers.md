@@ -74,7 +74,7 @@ sets no variable in it: a system command takes no credentials, and its write
 gate is a filter over tool names.
 
 Bastion curates lightly, and only to fill the first screen. The catalog seeds
-thirty-nine entries — fifteen servers written here, twelve somebody else
+forty entries — sixteen servers written here, twelve somebody else
 publishes, eleven endpoints their own vendors operate, and one command that
 ships with a developer tool on the Mac — because a catalog
 that opens with nothing recognisable in it teaches nobody what the app is for.
@@ -168,7 +168,7 @@ declares its protocol version, identity and capabilities in each request's
 shared server instance correct rather than a hack, and it is why Bastion fronts
 clients with it.
 
-None of the catalog entries below are modern. The fifteen children written here
+None of the catalog entries below are modern. The sixteen children written here
 run an SDK whose newest protocol is `2025-11-25`, and `server/discover` against
 one returns `-32601` — the exact signal the spec names for recognising a legacy
 server. The twelve third-party children were measured at the same revision, and
@@ -253,6 +253,7 @@ asserts both eras against a running build.
 | [Yahoo Finance](https://github.com/mgcrea/mcp-yahoo-finance) | `yahoo-finance` | `yahoo-finance-mcp` | `@mgcrea/mcp-yahoo-finance` (npm, provenance) | `YAHOO_FINANCE_ALLOW_WRITES` | 2 |
 | [Shopify Dev](https://shopify.dev/docs/apps/build/devmcp) | `shopify-dev` | `shopify-dev-mcp` | `@shopify/dev-mcp` (npm) | read-only | — |
 | [Langfuse](https://github.com/mgcrea/mcp-langfuse) | `langfuse` | `langfuse-mcp` | `@mgcrea/mcp-langfuse` (npm, provenance) | `LANGFUSE_ALLOW_WRITES` | 2 |
+| [Prometheus](https://github.com/mgcrea/mcp-prometheus) | `prometheus` | `prometheus-mcp` | `@mgcrea/mcp-prometheus` (npm, provenance) | `PROMETHEUS_ALLOW_WRITES` | 3 |
 
 ### App Store Connect
 
@@ -1437,4 +1438,25 @@ provisioner with LANGFUSE_KEYS_FILE pointed there.
 Satisfy exactly one of: **Keys file, one key per project** (`LANGFUSE_KEYS_FILE`), **Project keys as JSON** (`LANGFUSE_PROJECTS`), **One project's key pair** (`LANGFUSE_PUBLIC_KEY` + `LANGFUSE_SECRET_KEY`)
 
 Per-profile state: `LANGFUSE_KEYS_FILE`
+
+### Prometheus
+
+Prometheus HTTP API: PromQL instant and range queries, metric and label discovery, alerts, rules, scrape health and cardinality, shaped to fit a context window.
+
+Prometheus has no auth of its own, so every credential here is for
+whatever sits in front of it, and a profile with only PROMETHEUS_URL is
+complete. That is why there are no auth modes.
+
+The URL picks the instance, but kube-prometheus-stack names everything
+the same on every cluster. prometheus_auth_status and the startup line
+report the version, hostname and external labels that tell them apart.
+
+| Variable | Required | Secret | Meaning |
+| --- | --- | --- | --- |
+| `PROMETHEUS_URL` | yes | — | Base URL, including any path prefix it is served under, e.g. https://prometheus.example.com. No credentials in it. |
+| `PROMETHEUS_USERNAME` | — | — | Basic auth user for the proxy in front of Prometheus. Set with PROMETHEUS_PASSWORD, or leave both empty. |
+| `PROMETHEUS_PASSWORD` | — | yes | Basic auth password. |
+| `PROMETHEUS_TOKEN` | — | yes | Bearer token instead of basic auth, e.g. for an OAuth proxy. Setting both is refused. |
+| `PROMETHEUS_HEADERS` | — | yes | Extra request headers as a JSON object, e.g. {"X-Scope-OrgID":"tenant-1"} for Mimir, or a Cloudflare Access token. |
+| `PROMETHEUS_ALLOW_WRITES` | — | — | Registers the admin tools: delete_series, clean_tombstones, reload_config. They also need Prometheus run with --web.enable-admin-api / --web.enable-lifecycle. |
 <!-- </generated:servers> -->
