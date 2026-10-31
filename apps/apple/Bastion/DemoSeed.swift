@@ -96,6 +96,12 @@ enum DemoSeed {
     case client
     case chat
     case licence
+    /// The two stages only the release video uses: `"store": false` in
+    /// `screenshots.config.json` and no `website` key, so they are captured and
+    /// gated but never become a plate. They are also the only stages that list
+    /// an internal host; see `internalHosts`.
+    case internalHosts = "internal-hosts"
+    case internalServer = "internal-server"
 
     static var allNames: String { allCases.map(\.rawValue).joined(separator: ", ") }
 
@@ -110,7 +116,8 @@ enum DemoSeed {
     var subject: Subject {
       switch self {
       case .licence: .settings(.licence)
-      case .server, .running, .stats, .log, .client, .chat: .main
+      case .internalHosts: .settings(.general)
+      case .server, .running, .stats, .log, .client, .chat, .internalServer: .main
       }
     }
 
@@ -130,17 +137,18 @@ enum DemoSeed {
       // file" card has anything in it.
       case .client: .client("claude-code")
       case .chat: .chat
-      // Never seen: `openStagedWindow()` never builds `MainView` on this stage,
-      // so this exists only because the switch must be exhaustive.
-      case .licence: .running
+      case .internalServer: .server(InternalDemo.server.id)
+      // Never seen: `openStagedWindow()` never builds `MainView` on these
+      // stages, so this exists only because the switch must be exhaustive.
+      case .licence, .internalHosts: .running
       }
     }
 
     /// Which view's `.task` is allowed to report readiness for this stage.
     var readySource: ReadySource {
       switch self {
-      case .licence: .settings
-      case .server, .running, .stats, .log, .client, .chat: .main
+      case .licence, .internalHosts: .settings
+      case .server, .running, .stats, .log, .client, .chat, .internalServer: .main
       }
     }
   }
@@ -343,6 +351,7 @@ enum DemoSeed {
     [BuiltinServer.definition]
       + ["shopify", "keycloak", "unifi-network", "stripe", "reddit"]
       .compactMap { ServerCatalog.byID[$0] }
+      + (InternalDemo.isStaged ? [InternalDemo.server] : [])
   }
 
   /// What is on disk for each, or nil for the one that is not.
@@ -433,13 +442,64 @@ enum DemoSeed {
         values: ["UNIFI_HOST": Host.unifi],
         allowWrites: true, captureMode: nil),
     ]
+      + (InternalDemo.isStaged ? [InternalDemo.profile] : [])
   }
 
   /// One workspace scoping the Keycloak profile, so the sidebar's acme section
   /// and the client pane's card have something to draw. The folder is invented and does
   /// not exist, so a capture resolves it to nothing and scans nothing real.
   nonisolated static var workspaces: [Workspace] {
-    [Workspace(name: "acme", folders: ["/Users/demo/Projects/acme"], profiles: ["acme/keycloak"])]
+    [
+      Workspace(
+        name: "acme", folders: ["/Users/demo/Projects/acme"],
+        profiles: ["acme/keycloak"]
+          + (InternalDemo.isStaged ? ["acme/\(InternalDemo.server.id)"] : []))
+    ]
+  }
+
+  /// What the release video's two stages add: one internal host, and one
+  /// server on it.
+  ///
+  /// Invented under `.example` like every other fixture host, so a capture can
+  /// never show a real company's internal name, and seeded on those two stages
+  /// only, so the seven plates and their goldens do not move.
+  nonisolated enum InternalDemo {
+    static var isStaged: Bool { stage == .internalHosts || stage == .internalServer }
+
+    static let host = InternalHost(
+      host: "mcp.acme.example", networks: ["10.240.20.35/32"], addedAt: nil)
+
+    /// A custom remote server, since that is what a company's own server is.
+    static let server = BastionServer(
+      id: "acme-mcp",
+      displayName: "Acme MCP",
+      summary: "The company's own MCP server: the engineering wiki, on-call runbooks and the "
+        + "deploy queue, reached over the VPN.",
+      transport: .remote(endpoint: URL(string: "https://mcp.acme.example/mcp")!),
+      docsURL: nil,
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: [],
+      gateBypass: [],
+      authModes: [],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "ACME_MCP_TOKEN", isRequired: true, isSecret: true,
+          summary: "Personal access token, sent as the bearer token.",
+          header: .init(name: "Authorization", format: "Bearer {value}"))
+      ],
+      origin: .custom)
+
+    static let profile = Profile(
+      name: "acme", serverID: server.id, values: [:], allowWrites: false, captureMode: nil)
+  }
+
+  /// The internal-host list `InternalHostStore` holds under a capture: empty,
+  /// the shipped default, except on the video's two stages.
+  nonisolated static var internalHosts: [InternalHost] {
+    InternalDemo.isStaged ? [InternalDemo.host] : []
   }
 
   /// How many folders the acme workspace reaches, for the sidebar header's
@@ -505,6 +565,7 @@ enum DemoSeed {
     case "staging/shopify": []
     case "acme/keycloak": ["KEYCLOAK_CLIENT_SECRET"]
     case "home/unifi-network", "lab/unifi-network": ["UNIFI_API_KEY"]
+    case "acme/\(InternalDemo.server.id)": ["ACME_MCP_TOKEN"]
     default: []
     }
   }
@@ -1063,10 +1124,20 @@ enum DemoSeed {
   /// in the Activity section costs the same 32: the Stats pane took it to 796,
   /// and at 764 the Chat row sat clipped underneath the Add server footer on
   /// every main-window plate.
-  nonisolated static let contentSize = NSSize(width: 1180, height: 796)
+  ///
+  /// The `internal-server` stage adds one server row to the acme section, so it
+  /// gets the 32 that row costs rather than clipping the Chat row.
+  nonisolated static var contentSize: NSSize {
+    NSSize(width: 1180, height: stage == .internalServer ? 828 : 796)
+  }
   /// The licence pane is the shortest screen in the app: a status card, a key
   /// field and two sentences. 620 left half the window empty under it.
-  nonisolated static let settingsContentSize = NSSize(width: 760, height: 470)
+  ///
+  /// The `internal-hosts` stage shows General from the top down to the end of
+  /// Internal hosts, so the frame says which pane it is without a scroll.
+  nonisolated static var settingsContentSize: NSSize {
+    NSSize(width: 760, height: stage == .internalHosts ? 760 : 470)
+  }
 
   /// Pin, centre and defocus every window this launch opens.
   ///

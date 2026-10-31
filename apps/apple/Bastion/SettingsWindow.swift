@@ -362,6 +362,8 @@ private struct GeneralPane: View {
       }
     }
     .formStyle(.grouped)
+    // The `internal-hosts` stage's ready signal, as `LicensePane` sends its own.
+    .task { DemoSeed.signalReady(from: .settings) }
   }
 }
 

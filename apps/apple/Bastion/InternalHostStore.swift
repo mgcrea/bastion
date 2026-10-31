@@ -29,10 +29,11 @@ final class InternalHostStore {
   init() { load() }
 
   func load() {
-    // The fixture never lists anything: a capture must not show a real
-    // company's internal names, and an empty list is the shipped default.
+    // The fixture lists nothing but an invented `.example` host, and that only
+    // on the release video's stages: a capture must not show a real company's
+    // internal names, and an empty list is the shipped default.
     if DemoSeed.isEnabled {
-      entries = []
+      entries = DemoSeed.internalHosts
       publish()
       return
     }

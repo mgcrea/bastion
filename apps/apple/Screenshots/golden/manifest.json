@@ -10,6 +10,23 @@
         "--golden",
         "apps/apple/Screenshots/golden"
       ],
+      "at" : "2026-10-31T14:27:19Z",
+      "count" : 9,
+      "cwd" : "/Users/olivier/Projects/apps/bastion",
+      "host" : "oliviermacbookpro.local",
+      "pid" : 65971,
+      "user" : "olivier"
+    },
+    {
+      "appshotVersion" : "0.23.0",
+      "argv" : [
+        "/Users/olivier/.local/bin/appshot",
+        "accept",
+        "--source",
+        "apps/apple/Screenshots/source",
+        "--golden",
+        "apps/apple/Screenshots/golden"
+      ],
       "at" : "2026-10-31T13:29:25Z",
       "count" : 7,
       "cwd" : "/Users/olivier/Projects/apps/bastion",
@@ -152,23 +169,6 @@
       "host" : "oliviermacbookpro.local",
       "pid" : 45509,
       "user" : "olivier"
-    },
-    {
-      "appshotVersion" : "0.11.0",
-      "argv" : [
-        "/Users/olivier/.local/bin/appshot",
-        "accept",
-        "--source",
-        "apps/apple/Screenshots/source",
-        "--golden",
-        "apps/apple/Screenshots/golden"
-      ],
-      "at" : "2026-09-16T15:46:03Z",
-      "count" : 7,
-      "cwd" : "/Users/olivier/Projects/apps/bastion",
-      "host" : "oliviermacbookpro.local",
-      "pid" : 73410,
-      "user" : "olivier"
     }
   ],
   "entries" : {
@@ -182,6 +182,18 @@
       "bytes" : 401412,
       "height" : 1656,
       "sha256" : "2851b11c7a8ea0117e5064959159b91db76f0fb6214b44aae15cd15d2a573b94",
+      "width" : 2360
+    },
+    "internal-hosts~dark.png" : {
+      "bytes" : 291089,
+      "height" : 1584,
+      "sha256" : "330a6200873fbc3965f9b7db691cfc2774cf60c4ad693f784815ac8522f56d3d",
+      "width" : 1520
+    },
+    "internal-server~dark.png" : {
+      "bytes" : 405895,
+      "height" : 1720,
+      "sha256" : "7b448315035a720efa2cb0d608b4a7a611742b776ce071e95490c2f7e386574a",
       "width" : 2360
     },
     "licence~dark.png" : {
