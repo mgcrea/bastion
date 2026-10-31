@@ -15,7 +15,9 @@ struct WorkspaceDetail: View {
   @State private var sheet: WorkspaceSheet?
   @State private var pendingDeletion: String?
   @State private var error: String?
-  @State private var showsReach = false
+  /// Open under a capture, so the `workspace` stage shows the folders the
+  /// count stands for.
+  @State private var showsReach = DemoSeed.isEnabled
 
   private var store: WorkspaceStore { WorkspaceStore.shared }
 

@@ -102,6 +102,9 @@ enum DemoSeed {
     /// an internal host; see `internalHosts`.
     case internalHosts = "internal-hosts"
     case internalServer = "internal-server"
+    /// The workspaces video's page for acme, likewise video-only. The one stage
+    /// where acme's reach is a list rather than a count; see `workspaceReachKeys`.
+    case workspace
 
     static var allNames: String { allCases.map(\.rawValue).joined(separator: ", ") }
 
@@ -117,7 +120,7 @@ enum DemoSeed {
       switch self {
       case .licence: .settings(.licence)
       case .internalHosts: .settings(.general)
-      case .server, .running, .stats, .log, .client, .chat, .internalServer: .main
+      case .server, .running, .stats, .log, .client, .chat, .internalServer, .workspace: .main
       }
     }
 
@@ -138,6 +141,7 @@ enum DemoSeed {
       case .client: .client("claude-code")
       case .chat: .chat
       case .internalServer: .server(InternalDemo.server.id)
+      case .workspace: .workspace("acme")
       // Never seen: `openStagedWindow()` never builds `MainView` on these
       // stages, so this exists only because the switch must be exhaustive.
       case .licence, .internalHosts: .running
@@ -148,7 +152,7 @@ enum DemoSeed {
     var readySource: ReadySource {
       switch self {
       case .licence, .internalHosts: .settings
-      case .server, .running, .stats, .log, .client, .chat, .internalServer: .main
+      case .server, .running, .stats, .log, .client, .chat, .internalServer, .workspace: .main
       }
     }
   }
@@ -509,6 +513,15 @@ enum DemoSeed {
   /// count, not keys: real keys would feed the client pane's project blocks,
   /// which `config(for:)` fixes on its own terms.
   nonisolated static let workspaceReach = 4
+
+  /// The folders behind that count, for the `workspace` stage's expanded list
+  /// and nowhere else: on any other stage they would feed the client pane's
+  /// project blocks. Invented under `/Users/demo`, like the workspace folder.
+  nonisolated static func workspaceReachKeys(_ name: String) -> Set<String>? {
+    guard stage == .workspace, name == "acme" else { return nil }
+    let root = "/Users/demo/Projects/acme"
+    return [root, "\(root)/acme-api", "\(root)/acme-web", "\(root)/acme-infra"]
+  }
 
   /// Skills for the Skills pane and the Claude Desktop card. Invented paths
   /// that do not exist, as with `workspaces`: nothing under a capture reads or

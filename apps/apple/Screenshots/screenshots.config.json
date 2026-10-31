@@ -121,6 +121,12 @@
       "id": "internal-server",
       "store": false,
       "title": "Its servers get through, tagged internal."
+    },
+    {
+      "//": "Video only, for the workspaces promo: store: false and no website key. The acme workspace's page, with the folders it applies in expanded. DemoSeed lists those folders on this stage alone (`workspaceReachKeys`), invented under /Users/demo.",
+      "id": "workspace",
+      "store": false,
+      "title": "Its servers reach Claude Code only there."
     }
   ],
   "//videos": "Rendered from the captures in source/ by `make video` (appshot compose video --from-stills): a caption or a timing change re-renders in seconds and needs no app. Rects are in the captures' own pixels (2360x1656), so a capture that moves a row leaves its rect pointing at the old place; look at the contact sheet in videos/report/ after every `make screenshots`. No App Store preview, because Bastion is not on the App Store: promos at 16:9 and 1:1 for X and LinkedIn.",
@@ -261,6 +267,40 @@
         },
         { "at": 11.5, "spotlight": { "rect": [760, 1146, 1100, 132], "until": 13.6 } },
         { "at": 14, "endCard": true }
+      ]
+    },
+    {
+      "//": "Workspaces on X, from stills: the sidebar sections on the running plate, then the video-only workspace page. Both captures are 2360x1656, so rects are capture pixels. No drag is staged: a scripted pointer dragging a row over a still would be faking one. The sidebar beat does not zoom: appshot clamps a zoomed window to the canvas, not to the room below the caption, so any framing near the window's top edge parks the acme section under the caption.",
+      "id": "workspaces",
+      "duration": 19,
+      "motion": "kinetic",
+      "outputs": {
+        "promo": [
+          [1200, 1200],
+          [1920, 1080]
+        ]
+      },
+      "hook": "Every MCP server, *in every repo*.",
+      "card": {
+        "title": "Bastion",
+        "subtitle": "Each project gets its own MCP servers.",
+        "icon": "card-icon.png",
+        "cta": "bastion.mgcrea.io"
+      },
+      "beats": [
+        { "at": 0, "screen": "running" },
+        { "at": 3, "caption": "Give each project *its own workspace*." },
+        { "at": 3.8, "pop": { "rect": [14, 76, 415, 120], "until": 6.6 } },
+        {
+          "at": 7,
+          "screen": "workspace",
+          "caption": "Its servers reach Claude Code *only there*.",
+          "focus": { "rect": [472, 80, 1853, 600] }
+        },
+        { "at": 8, "spotlight": { "rect": [490, 400, 840, 200], "until": 10.8 } },
+        { "at": 11.2, "caption": "New repos below *pick them up by themselves*." },
+        { "at": 11.8, "spotlight": { "rect": [490, 605, 1830, 52], "until": 14.6 } },
+        { "at": 15, "endCard": true }
       ]
     }
   ]

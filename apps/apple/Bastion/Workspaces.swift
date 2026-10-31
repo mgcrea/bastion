@@ -153,7 +153,10 @@ final class WorkspaceStore {
     ClientWiring.rewire()
   }
 
-  func resolvedKeys(_ workspace: Workspace) -> Set<String> { resolved[workspace.name] ?? [] }
+  func resolvedKeys(_ workspace: Workspace) -> Set<String> {
+    if DemoSeed.isEnabled, let keys = DemoSeed.workspaceReachKeys(workspace.name) { return keys }
+    return resolved[workspace.name] ?? []
+  }
 
   /// How many folders a workspace reaches, for its sidebar header. The
   /// fixture's own count under a capture; see `DemoSeed.workspaceReach`.

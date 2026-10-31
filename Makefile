@@ -855,10 +855,11 @@ icon: ## Regenerate Bastion.icon and the web SVG from design/bastion-mark.svg
 # because cupertino captures on the same machine and the lock has no project
 # key.
 
-# The last two are the release video's, not plates: `"store": false` and no
+# The last three are the videos', not plates: `"store": false` and no
 # `website` key in the config, so they are captured and gated but composed into
 # nothing but the video. See `DemoSeed.InternalDemo`.
-SHOT_SCREENS := running stats server log client chat licence internal-hosts internal-server
+SHOT_SCREENS := running stats server log client chat licence internal-hosts internal-server \
+                workspace
 
 # Dark only. `appshot capture` does not read the config's "appearances" key —
 # only `appshot run` does — so it needs its own flag, defaulting to `dark,light`.
