@@ -2907,11 +2907,6 @@ nonisolated enum ServerCatalog {
       env: [
 
       ]),
-    // Local, not npm: @mgcrea/mcp-apple-ads 0.1.0 is unpublished and
-    // github.com/mgcrea/mcp-apple-ads does not resolve, which is also why
-    // docsUrl is null. Publishing it means switching distribution to npm,
-    // adding provenance, and setting docsUrl once the repo is public.
-    //
     // These are Apple Ads credentials, not App Store Connect ones. The key
     // pair is generated locally and only the public half is registered at
     // ads.apple.com, by a user holding an API role - an Account Admin has no
@@ -2937,11 +2932,11 @@ nonisolated enum ServerCatalog {
         .init(
           npmName: "@mgcrea/mcp-apple-ads",
           binName: "apple-ads-mcp",
-          distribution: .local,
+          distribution: .npm,
           localPath: "mcp-apple-ads",
           vendor: .mgcrea,
-          provenance: false)),
-      docsURL: nil,
+          provenance: true)),
+      docsURL: URL(string: "https://github.com/mgcrea/mcp-apple-ads"),
       dialect: .v2025_11_25,
       writeGate: "APPLE_ADS_ALLOW_WRITES",
       writeTools: [],

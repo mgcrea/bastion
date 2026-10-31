@@ -249,7 +249,7 @@ asserts both eras against a running build.
 | [Apify](https://github.com/apify/apify-mcp-server) | `apify` | `actors-mcp-server` | `@apify/actors-mcp-server` (npm, provenance) | `abort-actor-run`, `call-actor`, `report-problem` (by name) | 1 |
 | [iOS Simulator](https://github.com/mgcrea/mcp-ios-simulator) | `ios-simulator` | `ios-simulator-mcp` | `@mgcrea/mcp-ios-simulator` (npm, provenance) | `IOS_SIMULATOR_ALLOW_WRITES` | — |
 | [Xcode](https://developer.apple.com/documentation/xcode/giving-agentic-coding-tools-access-to-xcode) | `xcode` | — | `/usr/bin/xcrun mcpbridge` (system) | `AddEntitlement`, `AddInfoPlist`, `InvokeDebuggerCommand`, `LocalizationPlanner`, `RunCodeSnippet`, `StringCatalogEdit`, `UpdateFileCompilerFlags`, `UpdateTargetBuildSetting`, `XcodeMV`, `XcodeMakeDir`, `XcodeNewProject`, `XcodeNewTarget`, `XcodeRM`, `XcodeUpdate`, `XcodeWrite` (by name) | — |
-| Apple Ads | `apple-ads` | `apple-ads-mcp` | `mcp-apple-ads` (local) | `APPLE_ADS_ALLOW_WRITES` | 1 |
+| [Apple Ads](https://github.com/mgcrea/mcp-apple-ads) | `apple-ads` | `apple-ads-mcp` | `@mgcrea/mcp-apple-ads` (npm, provenance) | `APPLE_ADS_ALLOW_WRITES` | 1 |
 | [Yahoo Finance](https://github.com/mgcrea/mcp-yahoo-finance) | `yahoo-finance` | `yahoo-finance-mcp` | `@mgcrea/mcp-yahoo-finance` (npm, provenance) | `YAHOO_FINANCE_ALLOW_WRITES` | 2 |
 | [Shopify Dev](https://shopify.dev/docs/apps/build/devmcp) | `shopify-dev` | `shopify-dev-mcp` | `@shopify/dev-mcp` (npm) | read-only | — |
 | [Langfuse](https://github.com/mgcrea/mcp-langfuse) | `langfuse` | `langfuse-mcp` | `@mgcrea/mcp-langfuse` (npm, provenance) | `LANGFUSE_ALLOW_WRITES` | 2 |
@@ -1277,11 +1277,6 @@ Hidden with writes off: `AddEntitlement`, `AddInfoPlist`, `InvokeDebuggerCommand
 ### Apple Ads
 
 Apple Ads Platform API: ad accounts, campaigns, ad groups, keywords, ads, budgets and reports.
-
-Local, not npm: @mgcrea/mcp-apple-ads 0.1.0 is unpublished and
-github.com/mgcrea/mcp-apple-ads does not resolve, which is also why
-docsUrl is null. Publishing it means switching distribution to npm,
-adding provenance, and setting docsUrl once the repo is public.
 
 These are Apple Ads credentials, not App Store Connect ones. The key
 pair is generated locally and only the public half is registered at

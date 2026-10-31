@@ -458,7 +458,7 @@ export const SERVERS: Server[] = [
     gatesByName: false,
     transport: "child",
     vendor: "mgcrea",
-    provenance: false,
+    provenance: true,
     dialect: "2025-11-25",
   },
   {
