@@ -223,9 +223,15 @@ struct RemoteCheck {
     // The guard must not lean on validation alone. These lists never pass
     // `InternalHosts.validated`, and that is the point: a list that reached the
     // guard some other way still cannot open loopback or link-local.
-    let unvalidatedLoopback = [InternalHost(host: "workers.corp.example", networks: ["127.0.0.0/8"])]
-    let unvalidatedMetadata = [InternalHost(host: "workers.corp.example", networks: ["169.254.0.0/16"])]
-    let unvalidatedPublic = [InternalHost(host: "workers.corp.example", networks: ["93.184.216.0/24"])]
+    let unvalidatedLoopback = [
+      InternalHost(host: "workers.corp.example", networks: ["127.0.0.0/8"])
+    ]
+    let unvalidatedMetadata = [
+      InternalHost(host: "workers.corp.example", networks: ["169.254.0.0/16"])
+    ]
+    let unvalidatedPublic = [
+      InternalHost(host: "workers.corp.example", networks: ["93.184.216.0/24"])
+    ]
     check(
       "an unvalidated loopback network still cannot open loopback",
       !lands("127.0.0.1", on: "workers.corp.example", unvalidatedLoopback))
@@ -239,7 +245,9 @@ struct RemoteCheck {
     check("http to a listed host is still refused", !shapeOK("http://10.240.20.40/mcp", literal))
     check(
       "a literal outside its own network is refused",
-      !shapeOK("https://10.240.21.1/mcp", [InternalHost(host: "10.240.21.1", networks: ["10.240.20.0/24"])]))
+      !shapeOK(
+        "https://10.240.21.1/mcp", [InternalHost(host: "10.240.21.1", networks: ["10.240.20.0/24"])]
+      ))
     check(
       "an empty list changes nothing",
       !shapeOK("https://10.240.20.40/mcp", []) && refusesShape("https://10.240.20.40/mcp"))
@@ -285,7 +293,8 @@ struct RemoteCheck {
     check("a scope sign never leads an address", InternalHosts.Address("%10.0.0.1") == nil)
     check(
       "a network is stored canonical",
-      (try? InternalHosts.validated(InternalHost(host: "a.corp.example", networks: ["10.240.20.99/24"])))?
+      (try? InternalHosts.validated(
+        InternalHost(host: "a.corp.example", networks: ["10.240.20.99/24"])))?
         .networks == ["10.240.20.0/24"])
     check(
       "Look Up suggests only private addresses, as single hosts",

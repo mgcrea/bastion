@@ -111,7 +111,9 @@ nonisolated enum RemoteEndpoint {
   ///
   /// `internalHosts` defaults to the list the user keeps in Settings; the
   /// checks pass one explicitly so they never read the machine's own.
-  static func validateShape(_ url: URL, internalHosts: [InternalHost] = InternalHosts.current) throws {
+  static func validateShape(_ url: URL, internalHosts: [InternalHost] = InternalHosts.current)
+    throws
+  {
     // The one exception, before the scheme rule because it is the one place
     // http is allowed. See `isLoopbackLiteral`.
     let scheme = url.scheme?.lowercased() ?? ""

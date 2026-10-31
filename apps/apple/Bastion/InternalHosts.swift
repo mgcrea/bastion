@@ -156,7 +156,9 @@ nonisolated enum InternalHosts {
       // name that was looked up.
       guard !host.isEmpty, host.count <= 253, host.allSatisfy(allowed.contains),
         labels.count >= 2,
-        labels.allSatisfy({ !$0.isEmpty && $0.count <= 63 && !$0.hasPrefix("-") && !$0.hasSuffix("-") })
+        labels.allSatisfy({
+          !$0.isEmpty && $0.count <= 63 && !$0.hasPrefix("-") && !$0.hasSuffix("-")
+        })
       else {
         throw Problem.badHost(entry.host)
       }
