@@ -644,6 +644,21 @@ Nothing records where Bastion wrote. `isOurs` claims the entries, as it does in
 the global block, so a folder or profile taken out of a workspace is cleaned up
 on the next write, and Unwire strips every project block too.
 
+Every entry lives in `~/.claude.json`. Nothing is written inside the folders,
+except a workspace's skills, which are linked into each folder's
+`.agents/skills`. A parent folder fans out: on 2026-10-31 three workspaces over
+`~/Projects/{apps,mgcrea,houses,rgis}` held 207 project blocks with a Bastion
+entry, about 38 KB of a 274 KB file. Each entry is a type, a loopback URL and
+the client's bearer token, the same token in every block. 162 of the 207 were
+for folders Claude Code had never opened, which it ignores until a session
+starts there.
+
+Two shapes the scan misses, both seen in `~/Projects/rgis`: a repository more
+than three levels below the picked folder, and a repository nested inside
+another, since the scan never descends into a repository. Which key Claude Code
+uses for a nested repository was not measured; the innermost root is the
+assumption.
+
 Only Claude Code has project blocks Bastion writes. The other clients keep
 per-project servers in files inside each repository, which would put a gateway
 token in a file that is routinely committed. Those clients simply do not get
