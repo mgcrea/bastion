@@ -4,8 +4,61 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.34.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.35.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
+
+## [1.35.0] - 2026-10-31
+
+**Remote servers on your own network.** List a company host reached over a VPN, with the private
+networks it may resolve to, and a remote server on it gets through. Prometheus, Grafana and
+Langfuse join the catalog.
+
+### Added
+
+- **Internal hosts, under Settings › General.** A remote server had to be on a public host, which
+  also refused a company MCP server whose name resolves to `10.x` over a VPN. An entry is the exact
+  host name plus the private networks it may resolve to, and every address it resolves to and every
+  address the connection lands on must be inside them, over https. Look Up fills the networks with
+  what the host resolves to today, the narrowest entry that works. Only 10/8, 172.16/12, 192.168/16
+  and fc00::/7 can be listed; loopback, link-local, `localhost`, `.local` and single-label names
+  stay refused whatever the list says. An entry covers every port on the host.
+- **Only you change that list.** No tool on Bastion's own server reads or writes it and no field of
+  a server definition carries it, so an agent can add a server on a listed host but cannot list
+  one. It lives in the Keychain rather than in a file another process could edit. Signing in
+  follows a URL a server hands back onto an internal host only when that server's own address is
+  listed, so a public server cannot point Bastion inward. A server on a listed host is tagged
+  internal, in orange, in its pane's header.
+- **Prometheus is in the catalog**: PromQL instant and range queries, metric and label discovery,
+  alerts, rules, scrape health and cardinality, with results shaped to fit a context window. Basic
+  auth or a bearer token for the proxy in front of it. Its admin tools (deleting series, cleaning
+  tombstones, reloading the config) appear only with writes on.
+- **Grafana is in the catalog**: dashboards and the data their panels show with the variables
+  filled in, PromQL and LogQL through its datasources, alerts, rules, silences and annotations.
+  With writes on it can save and delete dashboards, create annotations and create or expire
+  silences; the destructive tools also ask for `confirm: true`.
+- **Langfuse is in the catalog**: traces, sessions, observations, scores, metrics and prompts, built
+  for Langfuse v4's events-only mode. One profile can read many projects, from a keys file or a map
+  of keys. Every named tool is a read; `LANGFUSE_ALLOW_WRITES` lets its raw request tool write.
+
+### Changed
+
+- **A workspace's sidebar header counts the folders you picked**, not every folder below them that
+  Claude Code applies it in, which under a parent folder ran to dozens. The full reach is in the
+  header's tooltip, and a workspace that reaches none still says No folders found, in orange.
+- **A workspace's page says Applies in, not Written into**, and notes that the entries live in
+  `~/.claude.json`, one per folder, with nothing written into the folders themselves.
+- **The URL field for a remote server** says a private address is let through when its host is
+  listed under Internal hosts.
+
+### Internal
+
+- `make remote-check` asserts the internal-host rule against explicit lists, and `make builtin`
+  asserts, against the live tool list and at the source, that no tool reaches it. `make builtin`
+  also turns tools-on-demand off for its scratch profile, so it sees every tool.
+- The screenshots, the website's captures and its tour video were re-taken for the workspace
+  header, and the plates now read 1.35.0.
+- `docs/clients.md` records what a workspace writes and what its scan misses, and `PLAN.md` queues
+  the workspace sidebar's deferred review findings.
 
 ## [1.34.0] - 2026-10-30
 

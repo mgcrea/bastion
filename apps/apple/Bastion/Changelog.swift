@@ -66,7 +66,72 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_34_0, v1_33_0, v1_32_0, v1_31_0, v1_30_0]
+  static let releases: [Release] = [v1_35_0, v1_34_0, v1_33_0, v1_32_0, v1_31_0]
+
+  // swift-format-ignore
+  private static let v1_35_0: Release = Release(
+    version: "1.35.0",
+    date: "2026-10-31",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Internal hosts, under Settings › General.",
+            body: [
+              "A remote server had to be on a public host, which also refused a company MCP server whose name resolves to `10.x` over a VPN. An entry is the exact host name plus the private networks it may resolve to, and every address it resolves to and every address the connection lands on must be inside them, over https. Look Up fills the networks with what the host resolves to today, the narrowest entry that works. Only 10/8, 172.16/12, 192.168/16 and fc00::/7 can be listed; loopback, link-local, `localhost`, `.local` and single-label names stay refused whatever the list says. An entry covers every port on the host.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "Only you change that list.",
+            body: [
+              "No tool on Bastion's own server reads or writes it and no field of a server definition carries it, so an agent can add a server on a listed host but cannot list one. It lives in the Keychain rather than in a file another process could edit. Signing in follows a URL a server hands back onto an internal host only when that server's own address is listed, so a public server cannot point Bastion inward. A server on a listed host is tagged internal, in orange, in its pane's header.",
+            ]),
+          Entry(
+            ordinal: 2,
+            headline: "Prometheus is in the catalog",
+            body: [
+              ": PromQL instant and range queries, metric and label discovery, alerts, rules, scrape health and cardinality, with results shaped to fit a context window. Basic auth or a bearer token for the proxy in front of it. Its admin tools (deleting series, cleaning tombstones, reloading the config) appear only with writes on.",
+            ]),
+          Entry(
+            ordinal: 3,
+            headline: "Grafana is in the catalog",
+            body: [
+              ": dashboards and the data their panels show with the variables filled in, PromQL and LogQL through its datasources, alerts, rules, silences and annotations. With writes on it can save and delete dashboards, create annotations and create or expire silences; the destructive tools also ask for `confirm: true`.",
+            ]),
+          Entry(
+            ordinal: 4,
+            headline: "Langfuse is in the catalog",
+            body: [
+              ": traces, sessions, observations, scores, metrics and prompts, built for Langfuse v4's events-only mode. One profile can read many projects, from a keys file or a map of keys. Every named tool is a read; `LANGFUSE_ALLOW_WRITES` lets its raw request tool write.",
+            ]),
+        ]),
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 5,
+            headline: "A workspace's sidebar header counts the folders you picked",
+            body: [
+              ", not every folder below them that Claude Code applies it in, which under a parent folder ran to dozens. The full reach is in the header's tooltip, and a workspace that reaches none still says No folders found, in orange.",
+            ]),
+          Entry(
+            ordinal: 6,
+            headline: "A workspace's page says Applies in, not Written into",
+            body: [
+              ", and notes that the entries live in `~/.claude.json`, one per folder, with nothing written into the folders themselves.",
+            ]),
+          Entry(
+            ordinal: 7,
+            headline: "The URL field for a remote server",
+            body: [
+              "says a private address is let through when its host is listed under Internal hosts.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_34_0: Release = Release(
@@ -218,24 +283,6 @@ nonisolated enum Changelog {
             headline: "The embedded Node runtime is 24.22.1",
             body: [
               ", up from 24.20.0, for Node's October 2026 security release: an out-of-bounds write in the Brotli decoder, three ways around TLS hostname and IP checks, and HTTP keep-alive response confusion, with undici, OpenSSL and the CA bundle updated. Every server Bastion downloads runs on this runtime, holding its profile's credentials. npm moves to 11.19.1.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_30_0: Release = Release(
-    version: "1.30.0",
-    date: "2026-10-16",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "A right-click menu on each server in the sidebar",
-            body: [
-              ", with Edit…, Enable or Disable, and Remove Server…. Each item appears only where the server's own page offers it: Edit… on a server you added yourself, Remove Server… on anything but Bastion's own server. Removing still asks first, and says what goes with the server: its profiles, their credentials in the Keychain and its downloaded code.",
             ]),
         ]),
     ])
