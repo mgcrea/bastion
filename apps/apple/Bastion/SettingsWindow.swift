@@ -249,6 +249,8 @@ private struct GeneralPane: View {
         Text("Gateway")
       }
 
+      InternalHostsSection()
+
       Section {
         Toggle("Load tools on demand", isOn: $lazyTools)
         Text(
@@ -360,6 +362,130 @@ private struct GeneralPane: View {
       }
     }
     .formStyle(.grouped)
+  }
+}
+
+// MARK: - Internal hosts
+
+/// The hosts on the user's own network a remote server may live on.
+///
+/// The only place `InternalHostStore` is written, on purpose: see
+/// `InternalHosts` for why no tool can reach it. Its own view because it holds
+/// draft state and a lookup in flight, like `ClaudeProfilesSection` below.
+private struct InternalHostsSection: View {
+  @State private var store = InternalHostStore.shared
+  @State private var host = ""
+  @State private var networks = ""
+  @State private var problem: String?
+  @State private var lookingUp = false
+
+  var body: some View {
+    Section {
+      Text(
+        "A remote server must be on a public host, so a name that resolves to an address on "
+          + "this network is refused — including a company server reached over a VPN. List one "
+          + "here to let it through: the exact host, and the private networks it may resolve to. "
+          + "Servers on it still need https."
+      )
+      .font(.caption).foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+
+      if let unreadable = store.unreadable {
+        Label(unreadable.localizedDescription, systemImage: "exclamationmark.triangle.fill")
+          .font(.caption).foregroundStyle(.orange)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
+      ForEach(store.entries) { entry in
+        HStack(spacing: 6) {
+          VStack(alignment: .leading, spacing: 2) {
+            Text(entry.host)
+              .font(.system(.caption, design: .monospaced))
+            Text(entry.networks.joined(separator: ", "))
+              .font(.system(.caption2, design: .monospaced)).foregroundStyle(.secondary)
+          }
+          Spacer()
+          Button {
+            do { try store.remove(entry.host) } catch { problem = error.localizedDescription }
+          } label: {
+            Image(systemName: "minus.circle")
+          }
+          .buttonStyle(.borderless)
+          .help("Stop letting servers on \(entry.host) through. The servers stay in the list.")
+        }
+      }
+
+      HStack(spacing: 6) {
+        TextField("Host", text: $host, prompt: Text("mcp.corp.example"))
+          .frame(maxWidth: 200)
+          .onSubmit { lookUp() }
+        TextField("Networks", text: $networks, prompt: Text("10.240.20.35/32"))
+          .frame(maxWidth: 200)
+        Button("Look Up") { lookUp() }
+          .disabled(host.isEmpty || lookingUp)
+          .help("Fill the networks with the private addresses the host resolves to now.")
+        Button("Add") { add() }
+          .disabled(host.isEmpty || networks.isEmpty)
+      }
+      .font(.caption)
+
+      if let problem {
+        Label(problem, systemImage: "exclamationmark.triangle.fill")
+          .font(.caption).foregroundStyle(.orange)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
+      Text(
+        "Look Up fills in exactly the addresses the host has today, which is the narrowest entry "
+          + "that works; widen it only if you know the server moves. Only 10.0.0.0/8, "
+          + "172.16.0.0/12, 192.168.0.0/16 and fc00::/7 can be listed. Loopback, link-local "
+          + "(where cloud metadata lives), localhost and .local names are refused whatever this "
+          + "list says, and no tool can change it — only this window."
+      )
+      .font(.caption).foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+    } header: {
+      Text("Internal hosts")
+    }
+  }
+
+  private func add() {
+    do {
+      try store.add(host: host, networks: InternalHosts.networkTexts(from: networks))
+      host = ""
+      networks = ""
+      problem = nil
+    } catch {
+      problem = error.localizedDescription
+    }
+  }
+
+  /// Resolved off the main thread: `getaddrinfo` blocks, and a VPN that is
+  /// down makes it block for seconds.
+  private func lookUp() {
+    let name = InternalHosts.normalize(host)
+    guard !name.isEmpty else { return }
+    lookingUp = true
+    problem = nil
+    Task {
+      let result = await Task.detached { () -> Result<[String], Error> in
+        Result { try RemoteEndpoint.resolve(name) }
+      }.value
+      lookingUp = false
+      switch result {
+      case .success(let addresses):
+        let suggested = InternalHosts.suggestedNetworks(for: addresses)
+        if suggested.isEmpty {
+          problem =
+            "\(name) resolves to \(addresses.joined(separator: ", ")), none of it private. A "
+            + "public host needs no entry here."
+        } else {
+          networks = suggested.joined(separator: ", ")
+        }
+      case .failure(let error):
+        problem = error.localizedDescription
+      }
+    }
   }
 }
 

@@ -164,6 +164,116 @@ struct RemoteCheck {
       "one private hop among public ones is refused",
       refusesPeers(["93.184.216.34", "10.0.0.5"]))
 
+    print("\nAn internal host the user listed")
+    // The second exception: an exact name, landing inside the private networks
+    // it was listed with, over https. Each neighbour is asserted, because the
+    // ways this goes wrong are all "a little wider than intended".
+    let listed = [InternalHost(host: "workers.corp.example", networks: ["10.240.20.35/32"])]
+    let literal = [InternalHost(host: "10.240.20.40", networks: ["10.240.20.0/24"])]
+    func lands(_ address: String, on host: String, _ list: [InternalHost]) -> Bool {
+      (try? RemoteEndpoint.verify(connectedTo: address, host: host, internalHosts: list)) != nil
+    }
+    func shapeOK(_ text: String, _ list: [InternalHost]) -> Bool {
+      guard let url = URL(string: text) else { return false }
+      return (try? RemoteEndpoint.validateShape(url, internalHosts: list)) != nil
+    }
+    check(
+      "a listed host may land inside its network",
+      lands("10.240.20.35", on: "workers.corp.example", listed))
+    check(
+      "the match ignores case and a trailing dot",
+      lands("10.240.20.35", on: "Workers.Corp.Example.", listed))
+    check(
+      "an unlisted host landing there is refused",
+      !lands("10.240.20.35", on: "other.corp.example", listed))
+    check(
+      "a subdomain of a listed host is a different host",
+      !lands("10.240.20.35", on: "evil.workers.corp.example", listed))
+    check(
+      "a listed host landing elsewhere on the network is refused",
+      !lands("10.240.20.36", on: "workers.corp.example", listed))
+    check(
+      "a listed host landing on the router is refused",
+      !lands("192.168.1.1", on: "workers.corp.example", listed))
+    check(
+      "a listed host landing on loopback is refused",
+      !lands("127.0.0.1", on: "workers.corp.example", listed))
+    check(
+      "a listed host landing on the metadata address is refused",
+      !lands("169.254.169.254", on: "workers.corp.example", listed))
+    check(
+      "an IPv4-mapped form of its address is judged as that address",
+      lands("::ffff:10.240.20.35", on: "workers.corp.example", listed))
+    check(
+      "one hop outside its network among inside ones is refused",
+      (try? RemoteEndpoint.verify(
+        connectedTo: ["10.240.20.35", "10.0.0.9"], host: "workers.corp.example",
+        internalHosts: listed)) == nil)
+    check(
+      "the refusal names the networks it was listed for",
+      {
+        do {
+          try RemoteEndpoint.verify(
+            connectedTo: "10.9.9.9", host: "workers.corp.example", internalHosts: listed)
+          return false
+        } catch {
+          return error.localizedDescription.contains("10.240.20.35/32")
+        }
+      }())
+    check("a listed private literal is accepted", shapeOK("https://10.240.20.40/mcp", literal))
+    check("http to a listed host is still refused", !shapeOK("http://10.240.20.40/mcp", literal))
+    check(
+      "a literal outside its own network is refused",
+      !shapeOK("https://10.240.21.1/mcp", [InternalHost(host: "10.240.21.1", networks: ["10.240.20.0/24"])]))
+    check(
+      "an empty list changes nothing",
+      !shapeOK("https://10.240.20.40/mcp", []) && refusesShape("https://10.240.20.40/mcp"))
+    check(
+      "the unlisted refusal says how to list a host",
+      {
+        guard let url = URL(string: "https://10.1.1.1") else { return false }
+        do {
+          try RemoteEndpoint.validateShape(url, internalHosts: [])
+          return false
+        } catch {
+          return error.localizedDescription.contains("Internal hosts")
+        }
+      }())
+
+    print("\nWhat a listing may hold")
+    // Validated on every add and every load, so a hand-edited file cannot
+    // widen the rule past what Settings would accept.
+    func valid(_ host: String, _ networks: [String]) -> Bool {
+      (try? InternalHosts.validated(InternalHost(host: host, networks: networks))) != nil
+    }
+    check("a name with a /32 is accepted", valid("workers.corp.example", ["10.240.20.35/32"]))
+    check("172.16/12 is accepted", valid("a.corp.example", ["172.20.0.0/16"]))
+    check("192.168/16 is accepted", valid("a.corp.example", ["192.168.4.0/24"]))
+    check("unique-local IPv6 is accepted", valid("a.corp.example", ["fd12:3456::/48"]))
+    check("loopback is never listable", !valid("a.corp.example", ["127.0.0.1/32"]))
+    check("link-local is never listable", !valid("a.corp.example", ["169.254.169.254/32"]))
+    check("a public network is never listable", !valid("a.corp.example", ["93.184.216.0/24"]))
+    check("CGNAT is never listable", !valid("a.corp.example", ["100.64.0.0/10"]))
+    check("0.0.0.0/0 is never listable", !valid("a.corp.example", ["0.0.0.0/0"]))
+    check("a network wider than its range is refused", !valid("a.corp.example", ["10.0.0.0/7"]))
+    check("172.32 is not private", !valid("a.corp.example", ["172.32.0.0/16"]))
+    check("IPv6 link-local is never listable", !valid("a.corp.example", ["fe80::/10"]))
+    check("a bare address with no prefix is refused", !valid("a.corp.example", ["10.0.0.1"]))
+    check("no network at all is refused", !valid("a.corp.example", []))
+    check("localhost is refused by name", !valid("localhost", ["10.0.0.1/32"]))
+    check("a .local name is refused", !valid("nas.local", ["192.168.1.0/24"]))
+    check("a host with a scheme is refused", !valid("https://a.corp.example", ["10.0.0.1/32"]))
+    check("a host with a port is refused", !valid("a.corp.example:443", ["10.0.0.1/32"]))
+    check("a wildcard is refused", !valid("*.corp.example", ["10.0.0.0/8"]))
+    check(
+      "a network is stored canonical",
+      (try? InternalHosts.validated(InternalHost(host: "a.corp.example", networks: ["10.240.20.99/24"])))?
+        .networks == ["10.240.20.0/24"])
+    check(
+      "Look Up suggests only private addresses, as single hosts",
+      InternalHosts.suggestedNetworks(for: ["10.240.20.35", "93.184.216.34", "127.0.0.1"])
+        == ["10.240.20.35/32"])
+
     print("\nNo host at all")
     check("a bare scheme is refused", refusesShape("https://"))
 

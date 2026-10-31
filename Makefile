@@ -695,6 +695,7 @@ remote-check: ## Assert where a remote server may live, the SSE collapse, the wr
 	@mkdir -p apps/apple/.build
 	@swiftc -O -o apps/apple/.build/remote-check \
 		apps/apple/Bastion/RemoteEndpoint.swift \
+		apps/apple/Bastion/InternalHosts.swift \
 		apps/apple/Shared/ServerSentEvents.swift \
 		apps/apple/Bastion/WriteGate.swift \
 		apps/apple/Bastion/RemoteOAuth.swift \

@@ -64,6 +64,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // app would start with none until something reloaded it.
     _ = ServerStore.shared
     _ = ProfileStore.shared
+    // Before the gateway, for the same reason as the two above: `RemoteEndpoint`
+    // reads the published copy off the main thread and never constructs the
+    // store, so a listed host would be refused until Settings was first opened.
+    _ = InternalHostStore.shared
     #if DEBUG
       DevSeed.runIfPresent()
     #endif

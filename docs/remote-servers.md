@@ -54,6 +54,31 @@ off the machine, and a loopback request never leaves it. Literals only, because
 a literal cannot be rebound: `localhost`, the rest of `127/8`, an IPv4-mapped
 loopback, and a public name that resolves to loopback are all still refused.
 
+A second exception, for a server on your own network — a company MCP server
+behind a VPN, whose name resolves to `10.x`: a host listed under **Settings ›
+General › Internal hosts** may resolve to a private address, as long as the
+address is inside the networks it was listed with. An entry is the exact host
+name plus those networks, and both halves matter. The name alone would let a
+DNS change, or a hijacked record, land the credential on the router and still
+pass; so the name is matched exactly (no wildcards, no suffix match), and every
+resolved address and every address the connection lands on must be inside the
+listed networks, or the request is refused with a sentence naming them. Look Up
+pre-fills the networks with what the name resolves to today, as single
+addresses, which is the narrowest entry that works.
+
+What a listing never allows: plain http (the credential still crosses the
+network), loopback and so the gateway, link-local and so the metadata address,
+anything outside 10/8, 172.16/12, 192.168/16 and fc00::/7, and the names
+`localhost` and `*.local`, which are refused by name before anything resolves.
+Entries are re-validated whenever the file is read, so a hand edit cannot widen
+the rule past what Settings accepts.
+
+**Only a person changes the list.** No tool of Bastion's own MCP server reads
+or writes it, and no field of a server definition carries it — the wall secrets
+stand behind, and `make builtin-check` asserts it. An agent can still add a
+server on a listed host; it cannot list one. Otherwise one agent that read the
+wrong page could list the router and then add a "server" pointing at it.
+
 `make remote-check` asserts this as a pure function of a URL: no app, no
 network.
 

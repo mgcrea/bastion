@@ -124,6 +124,11 @@ struct ServerDetail: View {
           }
           if server.transport.isOnThisMac {
             Badge("local", tint: .blue)
+          } else if let host = server.endpoint?.host(), InternalHostStore.shared.lists(host) {
+            // Listed under Settings › General › Internal hosts: the one thing
+            // about this server a person decided outside its own definition,
+            // so it is named where the definition is shown.
+            Badge("internal", tint: .orange)
           } else {
             Badge("custom", tint: .purple)
           }

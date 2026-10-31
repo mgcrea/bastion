@@ -340,7 +340,8 @@ struct ServerEditor: View {
                 "URL", text: $draft.url, placeholder: "https://mcp.example.com",
                 help:
                   "https to a public host, or http://127.0.0.1 for a server on this machine. "
-                  + "Other addresses on this machine or this network are refused.")
+                  + "Other addresses on this machine or this network are refused, unless the "
+                  + "host is listed under Settings › General › Internal hosts.")
               Text(
                 "Nothing is installed and no process is started. What Bastion adds is the "
                   + "credential in the Keychain instead of in every config file, one identity "

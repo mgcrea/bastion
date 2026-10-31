@@ -27,6 +27,11 @@ import Foundation
 /// `127.0.0.1` or `[::1]`, over http or https, on any port but the gateway's.
 /// `isLoopbackLiteral` says why it is safe and how narrow it is kept.
 ///
+/// And a second, for a server on the user's own network: a host they listed
+/// under Settings › General › Internal hosts may resolve to a private address
+/// inside the networks they listed it with, over https only. `InternalHosts`
+/// says why both halves of an entry matter, and why only a person can make one.
+///
 /// This file is the whole answer, in one readable place on purpose:
 /// `scripts/audit-remote.sh` asserts it against a running build, and an
 /// assertion is only worth as much as the reader's ability to check what it
@@ -48,6 +53,9 @@ nonisolated enum RemoteEndpoint {
     case notHTTPS(String)
     case noHost
     case privateAddress(host: String, address: String)
+    /// A listed internal host that resolved, or landed, outside the networks
+    /// it was listed with — the DNS-change shape the networks half exists for.
+    case outsideListedNetworks(host: String, address: String, networks: [String])
     case bastionItself(String)
     case unresolvable(host: String, detail: String)
     case crossOriginRedirect(from: String, to: String)
@@ -68,7 +76,16 @@ nonisolated enum RemoteEndpoint {
           + "server has to be somewhere else, or 'add a server' becomes a way to reach anything "
           + "you can reach"
           + (host.lowercased() == "localhost" || host.lowercased().hasSuffix(".localhost")
-            ? ". For a server on this machine, type 127.0.0.1 or [::1] instead of the name" : "")
+            ? ". For a server on this machine, type 127.0.0.1 or [::1] instead of the name"
+            : host.lowercased().hasSuffix(".local")
+              ? ""
+              : ". If it is a server on your own network, list it under Settings › General › "
+                + "Internal hosts")
+      case .outsideListedNetworks(let host, let address, let networks):
+        return
+          "\(host) resolves to \(address), outside the networks it is listed for "
+          + "(\(networks.joined(separator: ", "))). Its address may have changed, or somebody "
+          + "changed it: check before widening the entry in Settings › General › Internal hosts"
       case .bastionItself(let host):
         return
           "\(host) is Bastion's own gateway. Pointing a server at it would let one profile's "
@@ -91,7 +108,10 @@ nonisolated enum RemoteEndpoint {
   /// Shape only: scheme and host. Cheap, synchronous, and safe to call while
   /// someone is still typing — `ServerEditor` uses it to enable its Save
   /// button, so it must not touch the network.
-  static func validateShape(_ url: URL) throws {
+  ///
+  /// `internalHosts` defaults to the list the user keeps in Settings; the
+  /// checks pass one explicitly so they never read the machine's own.
+  static func validateShape(_ url: URL, internalHosts: [InternalHost] = InternalHosts.current) throws {
     // The one exception, before the scheme rule because it is the one place
     // http is allowed. See `isLoopbackLiteral`.
     let scheme = url.scheme?.lowercased() ?? ""
@@ -114,7 +134,11 @@ nonisolated enum RemoteEndpoint {
     }
     // A literal address needs no resolver, and judging it here means the same
     // sentence appears whether or not the machine is online.
-    if let judgement = judge(literal: lowered) { throw judgement.error(host: host) }
+    if let judgement = judge(literal: lowered),
+      let refusal = refusal(judgement, host: host, internalHosts: internalHosts)
+    {
+      throw refusal
+    }
   }
 
   /// Shape, then what the name actually resolves to.
@@ -122,14 +146,20 @@ nonisolated enum RemoteEndpoint {
   /// Blocking, because everything on the supervisor's path is: it runs on the
   /// connection's own dedicated thread, which exists so that waiting costs a
   /// thread rather than a slot in a bounded pool.
-  static func preflight(_ url: URL) throws {
-    try validateShape(url)
+  static func preflight(_ url: URL, internalHosts: [InternalHost] = InternalHosts.current) throws {
+    try validateShape(url, internalHosts: internalHosts)
     guard let host = url.host() else { throw EndpointError.noHost }
     // A literal needs no resolver, and `validateShape` has already judged it.
     if isLoopbackLiteral(host) { return }
 
+    // Every address, not the first: a listed host with one answer inside its
+    // networks and one outside is a host that can land outside them.
     for address in try resolve(host) {
-      if let judgement = judge(literal: address) { throw judgement.error(host: host) }
+      if let judgement = judge(literal: address),
+        let refusal = refusal(judgement, host: host, internalHosts: internalHosts)
+      {
+        throw refusal
+      }
     }
   }
 
@@ -138,13 +168,18 @@ nonisolated enum RemoteEndpoint {
   /// `URLSessionTaskTransactionMetrics.remoteAddress` is the only place the
   /// resolved peer is observable, and it arrives once the exchange is over —
   /// too late to stop the request, in time to refuse the answer.
-  static func verify(connectedTo address: String?, host: String) throws {
+  static func verify(
+    connectedTo address: String?, host: String,
+    internalHosts: [InternalHost] = InternalHosts.current
+  ) throws {
     guard let address, !address.isEmpty else { return }
     let judgement = judge(literal: address.lowercased())
     // A typed loopback literal lands on loopback, and that is the one answer
     // allowed back from there. A NAME that lands on loopback is still refused.
     if isLoopbackLiteral(host), case .bastion? = judgement { return }
-    if let judgement { throw judgement.error(host: host) }
+    if let judgement, let refusal = refusal(judgement, host: host, internalHosts: internalHosts) {
+      throw refusal
+    }
   }
 
   /// Every hop of one exchange, as `RemoteInstance` observed them — nil when
@@ -155,11 +190,38 @@ nonisolated enum RemoteEndpoint {
   /// the request, and a rebinding answer is precisely a second resolution that
   /// differs. An exchange whose peer was never seen is one this cannot vouch
   /// for.
-  static func verify(connectedTo addresses: [String]?, host: String) throws {
+  static func verify(
+    connectedTo addresses: [String]?, host: String,
+    internalHosts: [InternalHost] = InternalHosts.current
+  ) throws {
     guard let addresses, !addresses.isEmpty else {
       throw EndpointError.unconfirmedPeer(host: host)
     }
-    for address in addresses { try verify(connectedTo: address, host: host) }
+    for address in addresses {
+      try verify(connectedTo: address, host: host, internalHosts: internalHosts)
+    }
+  }
+
+  // MARK: - The internal-host exception
+
+  /// The error to throw for an address `judge` objected to, or nil when the
+  /// host is listed and the address is inside its networks.
+  ///
+  /// Only a `.privateAddress` judgement can be waived. Loopback answers
+  /// `.bastion`, and nothing a listing says reaches it. Link-local, multicast
+  /// and the rest also answer `.privateAddress`, but `InternalHosts.validated`
+  /// keeps every listed network inside RFC 1918 or unique-local space, so
+  /// none of them can be inside one.
+  private static func refusal(
+    _ judgement: Judgement, host: String, internalHosts: [InternalHost]
+  ) -> EndpointError? {
+    guard case .privateAddress(let address) = judgement,
+      let entry = InternalHosts.entry(for: host, in: internalHosts)
+    else {
+      return judgement.error(host: host)
+    }
+    if entry.permits(address: address) { return nil }
+    return .outsideListedNetworks(host: host, address: address, networks: entry.networks)
   }
 
   // MARK: - The loopback exception
@@ -254,7 +316,9 @@ nonisolated enum RemoteEndpoint {
 
   // MARK: - Resolution
 
-  private static func resolve(_ host: String) throws -> [String] {
+  /// Not private: Settings resolves a host with it to pre-fill the networks of
+  /// a new internal-host entry, so the field and the guard see the same answer.
+  static func resolve(_ host: String) throws -> [String] {
     var hints = addrinfo(
       ai_flags: 0, ai_family: AF_UNSPEC, ai_socktype: SOCK_STREAM, ai_protocol: IPPROTO_TCP,
       ai_addrlen: 0, ai_canonname: nil, ai_addr: nil, ai_next: nil)
