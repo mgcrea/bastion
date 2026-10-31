@@ -74,7 +74,7 @@ sets no variable in it: a system command takes no credentials, and its write
 gate is a filter over tool names.
 
 Bastion curates lightly, and only to fill the first screen. The catalog seeds
-forty entries — sixteen servers written here, twelve somebody else
+forty-one entries — seventeen servers written here, twelve somebody else
 publishes, eleven endpoints their own vendors operate, and one command that
 ships with a developer tool on the Mac — because a catalog
 that opens with nothing recognisable in it teaches nobody what the app is for.
@@ -168,7 +168,7 @@ declares its protocol version, identity and capabilities in each request's
 shared server instance correct rather than a hack, and it is why Bastion fronts
 clients with it.
 
-None of the catalog entries below are modern. The sixteen children written here
+None of the catalog entries below are modern. The seventeen children written here
 run an SDK whose newest protocol is `2025-11-25`, and `server/discover` against
 one returns `-32601` — the exact signal the spec names for recognising a legacy
 server. The twelve third-party children were measured at the same revision, and
@@ -254,6 +254,7 @@ asserts both eras against a running build.
 | [Shopify Dev](https://shopify.dev/docs/apps/build/devmcp) | `shopify-dev` | `shopify-dev-mcp` | `@shopify/dev-mcp` (npm) | read-only | — |
 | [Langfuse](https://github.com/mgcrea/mcp-langfuse) | `langfuse` | `langfuse-mcp` | `@mgcrea/mcp-langfuse` (npm, provenance) | `LANGFUSE_ALLOW_WRITES` | 2 |
 | [Prometheus](https://github.com/mgcrea/mcp-prometheus) | `prometheus` | `prometheus-mcp` | `@mgcrea/mcp-prometheus` (npm, provenance) | `PROMETHEUS_ALLOW_WRITES` | 3 |
+| [Grafana](https://github.com/mgcrea/mcp-grafana) | `grafana` | `grafana-mcp` | `@mgcrea/mcp-grafana` (npm, provenance) | `GRAFANA_ALLOW_WRITES` | 3 |
 
 ### App Store Connect
 
@@ -1459,4 +1460,28 @@ report the version, hostname and external labels that tell them apart.
 | `PROMETHEUS_TOKEN` | — | yes | Bearer token instead of basic auth, e.g. for an OAuth proxy. Setting both is refused. |
 | `PROMETHEUS_HEADERS` | — | yes | Extra request headers as a JSON object, e.g. {"X-Scope-OrgID":"tenant-1"} for Mimir, or a Cloudflare Access token. |
 | `PROMETHEUS_ALLOW_WRITES` | — | — | Registers the admin tools: delete_series, clean_tombstones, reload_config. They also need Prometheus run with --web.enable-admin-api / --web.enable-lifecycle. |
+
+### Grafana
+
+Grafana HTTP API: dashboards and the data their panels show with variables filled in, PromQL and LogQL through its datasources, alerts, rules, silences and annotations, shaped to fit a context window.
+
+A service account token is bound to one org and takes no org in the
+request, so a token copied from the wrong org answers with plausible data.
+grafana_auth_status and the startup line report the org and the role, every
+data response carries the org, and GRAFANA_ORG_ID makes a mismatch refuse.
+
+GRAFANA_API_KEY, which Grafana's own mcp-grafana reads, is accepted as an
+alias for the token but is left out here so a profile has one place for it.
+
+| Variable | Required | Secret | Meaning |
+| --- | --- | --- | --- |
+| `GRAFANA_URL` | yes | — | Grafana root URL, including any sub-path it is served under, e.g. https://grafana.example.com. No credentials in it. |
+| `GRAFANA_SERVICE_ACCOUNT_TOKEN` | — | yes | Service account token (glsa_...). Viewer is enough for every read tool; writes need Editor. |
+| `GRAFANA_USERNAME` | — | — | Basic auth user, instead of a token. Set with GRAFANA_PASSWORD. Setting both a token and a password is refused. |
+| `GRAFANA_PASSWORD` | — | yes | Basic auth password. |
+| `GRAFANA_ORG_ID` | — | — | The org this profile must read, e.g. 1. Sent as X-Grafana-Org-Id; every data tool refuses when the credential reads another org. |
+| `GRAFANA_HEADERS` | — | yes | Extra request headers as a JSON object, e.g. a Cloudflare Access service token. |
+| `GRAFANA_ALLOW_WRITES` | — | — | Registers the write tools: save_dashboard, delete_dashboard, create_annotation, create_silence, expire_silence, and any method on grafana_request. The destructive ones also take confirm: true. |
+
+Satisfy exactly one of: **Service account token** (`GRAFANA_SERVICE_ACCOUNT_TOKEN`), **Username and password** (`GRAFANA_USERNAME` + `GRAFANA_PASSWORD`)
 <!-- </generated:servers> -->

@@ -3278,6 +3278,96 @@
         "the same on every cluster. prometheus_auth_status and the startup line",
         "report the version, hostname and external labels that tell them apart."
       ]
+    },
+    {
+      "id": "grafana",
+      "displayName": "Grafana",
+      "summary": "Grafana HTTP API: dashboards and the data their panels show with variables filled in, PromQL and LogQL through its datasources, alerts, rules, silences and annotations, shaped to fit a context window.",
+      "transport": {
+        "kind": "child",
+        "npmName": "@mgcrea/mcp-grafana",
+        "binName": "grafana-mcp",
+        "distribution": "npm",
+        "localPath": "mcp-grafana",
+        "vendor": "mgcrea",
+        "provenance": true
+      },
+      "docsUrl": "https://github.com/mgcrea/mcp-grafana",
+      "dialect": "2025-11-25",
+      "writeGate": "GRAFANA_ALLOW_WRITES",
+      "gateBypass": [],
+      "authModes": [
+        {
+          "id": "token",
+          "displayName": "Service account token",
+          "env": [
+            "GRAFANA_SERVICE_ACCOUNT_TOKEN"
+          ]
+        },
+        {
+          "id": "password",
+          "displayName": "Username and password",
+          "env": [
+            "GRAFANA_USERNAME",
+            "GRAFANA_PASSWORD"
+          ]
+        }
+      ],
+      "stateEnv": [],
+      "callbackEnv": [],
+      "env": [
+        {
+          "name": "GRAFANA_URL",
+          "required": true,
+          "secret": false,
+          "description": "Grafana root URL, including any sub-path it is served under, e.g. https://grafana.example.com. No credentials in it."
+        },
+        {
+          "name": "GRAFANA_SERVICE_ACCOUNT_TOKEN",
+          "required": false,
+          "secret": true,
+          "description": "Service account token (glsa_...). Viewer is enough for every read tool; writes need Editor."
+        },
+        {
+          "name": "GRAFANA_USERNAME",
+          "required": false,
+          "secret": false,
+          "description": "Basic auth user, instead of a token. Set with GRAFANA_PASSWORD. Setting both a token and a password is refused."
+        },
+        {
+          "name": "GRAFANA_PASSWORD",
+          "required": false,
+          "secret": true,
+          "description": "Basic auth password."
+        },
+        {
+          "name": "GRAFANA_ORG_ID",
+          "required": false,
+          "secret": false,
+          "description": "The org this profile must read, e.g. 1. Sent as X-Grafana-Org-Id; every data tool refuses when the credential reads another org."
+        },
+        {
+          "name": "GRAFANA_HEADERS",
+          "required": false,
+          "secret": true,
+          "description": "Extra request headers as a JSON object, e.g. a Cloudflare Access service token."
+        },
+        {
+          "name": "GRAFANA_ALLOW_WRITES",
+          "required": false,
+          "secret": false,
+          "description": "Registers the write tools: save_dashboard, delete_dashboard, create_annotation, create_silence, expire_silence, and any method on grafana_request. The destructive ones also take confirm: true."
+        }
+      ],
+      "notes": [
+        "A service account token is bound to one org and takes no org in the",
+        "request, so a token copied from the wrong org answers with plausible data.",
+        "grafana_auth_status and the startup line report the org and the role, every",
+        "data response carries the org, and GRAFANA_ORG_ID makes a mismatch refuse.",
+        "",
+        "GRAFANA_API_KEY, which Grafana's own mcp-grafana reads, is accepted as an",
+        "alias for the token but is left out here so a profile has one place for it."
+      ]
     }
   ]
 }

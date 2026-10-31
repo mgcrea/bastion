@@ -505,6 +505,17 @@ export const SERVERS: Server[] = [
     provenance: true,
     dialect: "2025-11-25",
   },
+  {
+    id: "grafana",
+    displayName: "Grafana",
+    summary: "Grafana HTTP API: dashboards and the data their panels show with variables filled in, PromQL and LogQL through its datasources, alerts, rules, silences and annotations, shaped to fit a context window.",
+    writeGate: "GRAFANA_ALLOW_WRITES",
+    gatesByName: false,
+    transport: "child",
+    vendor: "mgcrea",
+    provenance: true,
+    dialect: "2025-11-25",
+  },
 ];
 // </generated:servers>
 

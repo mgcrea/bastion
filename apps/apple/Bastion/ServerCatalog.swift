@@ -3322,6 +3322,87 @@ nonisolated enum ServerCatalog {
           isSecret: false,
           summary: "Registers the admin tools: delete_series, clean_tombstones, reload_config. They also need Prometheus run with --web.enable-admin-api / --web.enable-lifecycle."),
       ]),
+    // A service account token is bound to one org and takes no org in the
+    // request, so a token copied from the wrong org answers with plausible data.
+    // grafana_auth_status and the startup line report the org and the role, every
+    // data response carries the org, and GRAFANA_ORG_ID makes a mismatch refuse.
+    //
+    // GRAFANA_API_KEY, which Grafana's own mcp-grafana reads, is accepted as an
+    // alias for the token but is left out here so a profile has one place for it.
+    BastionServer(
+      id: "grafana",
+      displayName: "Grafana",
+      summary: "Grafana HTTP API: dashboards and the data their panels show with variables filled in, PromQL and LogQL through its datasources, alerts, rules, silences and annotations, shaped to fit a context window.",
+      transport: .child(
+        .init(
+          npmName: "@mgcrea/mcp-grafana",
+          binName: "grafana-mcp",
+          distribution: .npm,
+          localPath: "mcp-grafana",
+          vendor: .mgcrea,
+          provenance: true)),
+      docsURL: URL(string: "https://github.com/mgcrea/mcp-grafana"),
+      dialect: .v2025_11_25,
+      writeGate: "GRAFANA_ALLOW_WRITES",
+      writeTools: [],
+      gateBypass: [],
+      authModes: [
+        .init(
+          id: "token",
+          displayName: "Service account token",
+          kind: .env,
+          env: ["GRAFANA_SERVICE_ACCOUNT_TOKEN"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+        .init(
+          id: "password",
+          displayName: "Username and password",
+          kind: .env,
+          env: ["GRAFANA_USERNAME", "GRAFANA_PASSWORD"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+      ],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "GRAFANA_URL",
+          isRequired: true,
+          isSecret: false,
+          summary: "Grafana root URL, including any sub-path it is served under, e.g. https://grafana.example.com. No credentials in it."),
+        .init(
+          name: "GRAFANA_SERVICE_ACCOUNT_TOKEN",
+          isRequired: false,
+          isSecret: true,
+          summary: "Service account token (glsa_...). Viewer is enough for every read tool; writes need Editor."),
+        .init(
+          name: "GRAFANA_USERNAME",
+          isRequired: false,
+          isSecret: false,
+          summary: "Basic auth user, instead of a token. Set with GRAFANA_PASSWORD. Setting both a token and a password is refused."),
+        .init(
+          name: "GRAFANA_PASSWORD",
+          isRequired: false,
+          isSecret: true,
+          summary: "Basic auth password."),
+        .init(
+          name: "GRAFANA_ORG_ID",
+          isRequired: false,
+          isSecret: false,
+          summary: "The org this profile must read, e.g. 1. Sent as X-Grafana-Org-Id; every data tool refuses when the credential reads another org."),
+        .init(
+          name: "GRAFANA_HEADERS",
+          isRequired: false,
+          isSecret: true,
+          summary: "Extra request headers as a JSON object, e.g. a Cloudflare Access service token."),
+        .init(
+          name: "GRAFANA_ALLOW_WRITES",
+          isRequired: false,
+          isSecret: false,
+          summary: "Registers the write tools: save_dashboard, delete_dashboard, create_annotation, create_silence, expire_silence, and any method on grafana_request. The destructive ones also take confirm: true."),
+      ]),
   ]
   // </generated:servers>
 
