@@ -442,9 +442,10 @@ enum DemoSeed {
     [Workspace(name: "acme", folders: ["/Users/demo/Projects/acme"], profiles: ["acme/keycloak"])]
   }
 
-  /// How many folders the sidebar's acme header says it reaches. The invented
-  /// folder resolves to none, and the header's answer to none is an orange
-  /// warning, which every main-window plate would otherwise carry. Only the
+  /// How many folders the acme workspace reaches, for the sidebar header's
+  /// warning and tooltip. The invented folder resolves to none, and the
+  /// header's answer to none is an orange warning, which every main-window
+  /// plate would otherwise carry. Only the
   /// count, not keys: real keys would feed the client pane's project blocks,
   /// which `config(for:)` fixes on its own terms.
   nonisolated static let workspaceReach = 4

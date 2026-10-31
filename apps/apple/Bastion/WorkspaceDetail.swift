@@ -92,8 +92,19 @@ struct WorkspaceDetail: View {
         // The list Claude Code actually keys on: each repository, and each
         // plain folder on the way to one. Collapsed, because under a parent
         // folder it runs to dozens of lines.
+        //
+        // "Applies in", not "written into": read as "written into", the list
+        // looked like a config file dropped in each folder, when it is one
+        // entry per folder in Claude Code's own `~/.claude.json`.
         DisclosureGroup(isExpanded: $showsReach) {
           VStack(alignment: .leading, spacing: 2) {
+            Text(
+              "One entry per folder in ~/.claude.json. Nothing is written into the folders "
+                + "themselves."
+            )
+            .font(.caption).foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.bottom, 4)
             ForEach(reached, id: \.self) { key in
               Text((key as NSString).abbreviatingWithTildeInPath)
                 .font(.caption.monospaced())
@@ -102,8 +113,9 @@ struct WorkspaceDetail: View {
           }
           .frame(maxWidth: .infinity, alignment: .leading)
         } label: {
-          Text("Written into \(reached.count) folder\(reached.count == 1 ? "" : "s")")
+          Text("Applies in \(reached.count) folder\(reached.count == 1 ? "" : "s")")
             .font(.caption).foregroundStyle(.secondary)
+            .help("Claude Code sessions started in these folders get this workspace's profiles")
         }
       }
       HStack {

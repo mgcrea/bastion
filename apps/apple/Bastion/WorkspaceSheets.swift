@@ -39,15 +39,19 @@ func pickWorkspaceFolders() -> [String] {
   return panel.urls.map(\.path)
 }
 
-/// A workspace's section header: its name, which opens its page, and what its
-/// folders reach.
+/// A workspace's section header: its name, which opens its page, and how many
+/// folders it was given.
 ///
-/// The reach is on the header rather than on the page alone because it is the
-/// thing that goes wrong silently: a workspace whose folders resolve to
-/// nothing still takes every profile dragged into it out of every client.
+/// The folders as picked, not every folder they reach: under a parent folder
+/// the reach runs to dozens, and the page lists it. The reach still decides the
+/// warning, because a workspace that reaches nothing is the thing that goes
+/// wrong silently: it takes every profile dragged into it out of every client.
 struct WorkspaceSectionHeader: View {
   let name: String
+  /// The folders as picked.
   let folderCount: Int
+  /// Every folder Claude Code applies them in; see `WorkspaceStore.reachCount`.
+  let reachCount: Int
   let open: () -> Void
   let rename: () -> Void
   let delete: () -> Void
@@ -58,7 +62,7 @@ struct WorkspaceSectionHeader: View {
         .buttonStyle(.plain)
         .help("Show the workspace's folders, profiles and skills")
       Group {
-        if folderCount == 0 {
+        if reachCount == 0 {
           Text("No folders found").foregroundStyle(.orange)
         } else {
           // The count alone: with the list's buttons beside the first header,
@@ -66,7 +70,9 @@ struct WorkspaceSectionHeader: View {
           // client it is about goes in the help instead.
           Text("\(folderCount) folder\(folderCount == 1 ? "" : "s")")
             .foregroundStyle(.tertiary)
-            .help("Claude Code only: these profiles are written into \(folderCount) folders")
+            .help(
+              "Claude Code only: these profiles apply in \(reachCount) folder"
+                + "\(reachCount == 1 ? "" : "s"), these and the ones below them")
         }
       }
       .font(.caption2)
