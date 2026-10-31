@@ -68,16 +68,29 @@ addresses, which is the narrowest entry that works.
 
 What a listing never allows: plain http (the credential still crosses the
 network), loopback and so the gateway, link-local and so the metadata address,
-anything outside 10/8, 172.16/12, 192.168/16 and fc00::/7, and the names
-`localhost` and `*.local`, which are refused by name before anything resolves.
-Entries are re-validated whenever the file is read, so a hand edit cannot widen
-the rule past what Settings accepts.
+anything outside 10/8, 172.16/12, 192.168/16 and fc00::/7, single-label names
+(the resolver expands them through search domains), and the names `localhost`
+and `*.local`, which are refused by name before anything resolves. The guard
+also checks that an address is private itself, so it does not rest on the
+list having been validated. An entry covers every port on the host: it is a
+statement about the machine, not about one service on it.
 
 **Only a person changes the list.** No tool of Bastion's own MCP server reads
-or writes it, and no field of a server definition carries it — the wall secrets
-stand behind, and `make builtin-check` asserts it. An agent can still add a
-server on a listed host; it cannot list one. Otherwise one agent that read the
-wrong page could list the router and then add a "server" pointing at it.
+or writes it, and no field of a server definition carries it; `make
+builtin-check` asserts both against the live tool list and at the source. An
+agent can still add a server on a listed host; it cannot list one. Otherwise
+one agent that read the wrong page could list the router and then add a
+"server" pointing at it. The list lives in the Keychain, not in Application
+Support, because a JSON file there is one any local process can edit — an agent
+with a shell included. Bastion creates the item at launch, so it exists under
+Bastion's own access control, and deleting it empties the list. A process free
+to rewrite the login keychain is beyond this rule, as it is for the
+credentials beside it. Entries are re-validated whenever the item is read.
+
+OAuth discovery follows URLs the server hands back (its 401's resource
+metadata, the issuer that metadata names). Those hops get the internal-host
+waiver only when the server's own endpoint is a listed host, so a public
+server cannot aim Bastion at an internal name by naming it in a challenge.
 
 `make remote-check` asserts this as a pure function of a URL: no app, no
 network.

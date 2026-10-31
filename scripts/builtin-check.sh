@@ -253,6 +253,20 @@ absent "no tool reads a credential back"          "$RW"       'get_credential'
 # Neither a tool nor a field of any tool's schema may name it.
 absent "no tool reaches the internal-host list"   "$RW"       'internal_host'
 absent "and no tool schema carries one"           "$RW"       'internalHost'
+# And at the source, which a tool list cannot show: a tool named for something
+# else that reached the store would pass both lines above. Code lines only —
+# a comment naming the store is not a way in.
+SRC="$ROOT/apps/apple/Bastion"
+absent "no built-in tool's source names the list" \
+  "$(grep -v -E '^[[:space:]]*//' "$SRC/BuiltinTools.swift" "$SRC/BuiltinServer.swift")" 'InternalHost'
+REACHERS="$(grep -l -E '^[^/]*(InternalHostStore\.shared|InternalHosts\.publish\()' "$SRC"/*.swift \
+  | xargs -n1 basename | sort | tr '\n' ' ')"
+EXPECTED_REACHERS="BastionApp.swift InternalHostStore.swift ServerDetail.swift SettingsWindow.swift "
+if [ "$REACHERS" = "$EXPECTED_REACHERS" ]; then
+  ok "only launch, Settings, the badge and the store reach the list"
+else
+  bad "only launch, Settings, the badge and the store reach the list — found: $REACHERS"
+fi
 check "a secret handed to upsert_profile is refused" \
   "$(tool checkrw upsert_profile '{"name":"one","server":"checkscratch","values":{"CHECK_TOKEN":"s3cr3t-canary"}}')" \
   'set with set_credential'

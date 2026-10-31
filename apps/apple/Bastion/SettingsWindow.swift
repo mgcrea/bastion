@@ -390,8 +390,8 @@ private struct InternalHostsSection: View {
       .font(.caption).foregroundStyle(.secondary)
       .fixedSize(horizontal: false, vertical: true)
 
-      if let unreadable = store.unreadable {
-        Label(unreadable.localizedDescription, systemImage: "exclamationmark.triangle.fill")
+      if let stored = store.problem {
+        Label(stored, systemImage: "exclamationmark.triangle.fill")
           .font(.caption).foregroundStyle(.orange)
           .fixedSize(horizontal: false, vertical: true)
       }
@@ -440,7 +440,9 @@ private struct InternalHostsSection: View {
           + "that works; widen it only if you know the server moves. Only 10.0.0.0/8, "
           + "172.16.0.0/12, 192.168.0.0/16 and fc00::/7 can be listed. Loopback, link-local "
           + "(where cloud metadata lives), localhost and .local names are refused whatever this "
-          + "list says, and no tool can change it — only this window."
+          + "list says, and no tool can change it — only this window. An entry covers every "
+          + "port on the host, so list only machines you would trust with any server's "
+          + "credential."
       )
       .font(.caption).foregroundStyle(.secondary)
       .fixedSize(horizontal: false, vertical: true)
@@ -467,6 +469,10 @@ private struct InternalHostsSection: View {
     guard !name.isEmpty else { return }
     lookingUp = true
     problem = nil
+    // What the field held when the lookup started. If it changed by the time
+    // the answer arrives, the person typed while waiting, and their networks
+    // win over the suggestion.
+    let typedBefore = networks
     Task {
       let result = await Task.detached { () -> Result<[String], Error> in
         Result { try RemoteEndpoint.resolve(name) }
@@ -479,7 +485,7 @@ private struct InternalHostsSection: View {
           problem =
             "\(name) resolves to \(addresses.joined(separator: ", ")), none of it private. A "
             + "public host needs no entry here."
-        } else {
+        } else if networks == typedBefore {
           networks = suggested.joined(separator: ", ")
         }
       case .failure(let error):

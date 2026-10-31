@@ -220,6 +220,21 @@ struct RemoteCheck {
           return error.localizedDescription.contains("10.240.20.35/32")
         }
       }())
+    // The guard must not lean on validation alone. These lists never pass
+    // `InternalHosts.validated`, and that is the point: a list that reached the
+    // guard some other way still cannot open loopback or link-local.
+    let unvalidatedLoopback = [InternalHost(host: "workers.corp.example", networks: ["127.0.0.0/8"])]
+    let unvalidatedMetadata = [InternalHost(host: "workers.corp.example", networks: ["169.254.0.0/16"])]
+    let unvalidatedPublic = [InternalHost(host: "workers.corp.example", networks: ["93.184.216.0/24"])]
+    check(
+      "an unvalidated loopback network still cannot open loopback",
+      !lands("127.0.0.1", on: "workers.corp.example", unvalidatedLoopback))
+    check(
+      "an unvalidated link-local network still cannot open the metadata address",
+      !lands("169.254.169.254", on: "workers.corp.example", unvalidatedMetadata))
+    check(
+      "and a public network in a list changes nothing for public addresses",
+      lands("93.184.216.34", on: "workers.corp.example", unvalidatedPublic))
     check("a listed private literal is accepted", shapeOK("https://10.240.20.40/mcp", literal))
     check("http to a listed host is still refused", !shapeOK("http://10.240.20.40/mcp", literal))
     check(
@@ -265,6 +280,9 @@ struct RemoteCheck {
     check("a host with a scheme is refused", !valid("https://a.corp.example", ["10.0.0.1/32"]))
     check("a host with a port is refused", !valid("a.corp.example:443", ["10.0.0.1/32"]))
     check("a wildcard is refused", !valid("*.corp.example", ["10.0.0.0/8"]))
+    check("a single-label name is refused", !valid("intranet", ["10.0.0.1/32"]))
+    check("a host led by a scope sign is refused", !valid("%10.0.0.1", ["10.0.0.0/8"]))
+    check("a scope sign never leads an address", InternalHosts.Address("%10.0.0.1") == nil)
     check(
       "a network is stored canonical",
       (try? InternalHosts.validated(InternalHost(host: "a.corp.example", networks: ["10.240.20.99/24"])))?

@@ -182,6 +182,14 @@ nonisolated final class RemoteOAuthSession: @unchecked Sendable {
     }
     try RemoteEndpoint.preflight(endpoint)
 
+    // The two URLs below come from the server's own answers, so the internal-
+    // host waiver follows the server, not the URL: a public server must not be
+    // able to aim this discovery at an internal name just by naming it in its
+    // 401. Only a server on a host the person listed may delegate inward.
+    let hopAllowance: [InternalHost] =
+      endpoint.host().flatMap { InternalHosts.entry(for: $0, in: InternalHosts.current) } != nil
+      ? InternalHosts.current : []
+
     // 1. Ask the resource where its metadata is.
     var probe = URLRequest(url: endpoint)
     probe.httpMethod = "POST"
@@ -204,7 +212,7 @@ nonisolated final class RemoteOAuthSession: @unchecked Sendable {
       ?? URL(string: "/.well-known/oauth-protected-resource", relativeTo: endpoint)?.absoluteURL
 
     guard let resourceMetadata else { throw RemoteOAuth.OAuthError.noChallenge }
-    try RemoteEndpoint.preflight(resourceMetadata)
+    try RemoteEndpoint.preflight(resourceMetadata, internalHosts: hopAllowance)
 
     let (resourceStatus, resourceJSON) = try sendJSON(URLRequest(url: resourceMetadata))
     guard (200..<300).contains(resourceStatus),
@@ -214,7 +222,7 @@ nonisolated final class RemoteOAuthSession: @unchecked Sendable {
       throw RemoteOAuth.OAuthError.discoveryFailed(
         "\(resourceMetadata.absoluteString) named no authorization server")
     }
-    try RemoteEndpoint.preflight(issuer)
+    try RemoteEndpoint.preflight(issuer, internalHosts: hopAllowance)
 
     // 2. The authorization server's own metadata, trying each spec-legal
     //    location in order.

@@ -47,6 +47,15 @@ nonisolated enum CredentialStore {
     /// Its own service so "delete this profile's secrets" cannot sweep it up,
     /// which is the same argument `.oauth` makes one case above.
     case auditSigning
+    /// The internal-host list, as one JSON item.
+    ///
+    /// Not a secret, but kept here rather than in Application Support because
+    /// it widens what a remote server may reach, and a JSON file there is one
+    /// any local process can edit — an agent with a shell included. An item
+    /// Bastion created can only be changed by another process through the
+    /// Keychain, and deleting it empties the list rather than widening it. See
+    /// `InternalHostStore`.
+    case internalHosts
 
     var service: String {
       let base = AppSupport.identifier
@@ -55,6 +64,7 @@ nonisolated enum CredentialStore {
       case .gatewayToken: return "\(base).gateway"
       case .oauth: return "\(base).oauth"
       case .auditSigning: return "\(base).audit"
+      case .internalHosts: return "\(base).internal-hosts"
       }
     }
   }

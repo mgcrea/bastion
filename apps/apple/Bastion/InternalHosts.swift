@@ -26,9 +26,18 @@ import Foundation
 ///
 /// **Only a person changes this list**, in Settings. No tool of Bastion's own
 /// MCP server reads or writes it, and no field of a server definition carries
-/// it — the same wall secrets stand behind. Otherwise one agent that read the
-/// wrong web page could list the router and then add a "server" pointing at
-/// it, which is exactly the hole `RemoteEndpoint` exists to close.
+/// it. Otherwise one agent that read the wrong web page could list the router
+/// and then add a "server" pointing at it, which is exactly the hole
+/// `RemoteEndpoint` exists to close. The list is kept in the Keychain rather
+/// than a file, so an agent with a shell cannot widen it by editing JSON
+/// either — it would have to manipulate a Keychain item Bastion owns, and
+/// deleting that item empties the list. What this does not claim: a local
+/// process free to rewrite the user's login keychain is out of reach of any
+/// rule here, as it is for the credentials beside it.
+///
+/// An entry covers every port on the host. A server definition, including one
+/// an agent adds, can reach any TLS port there, so a listing is a statement
+/// about the machine, not about one service on it.
 ///
 /// Its own file, Foundation and Darwin only, so `make remote-check` compiles it
 /// beside `RemoteEndpoint` and asserts the rule without the app.
@@ -46,8 +55,16 @@ nonisolated struct InternalHost: Codable, Hashable, Sendable, Identifiable {
   /// Whether `address` — a resolved or connected peer, as text — is inside one
   /// of this entry's networks. An IPv4-mapped IPv6 address is judged as the
   /// IPv4 address it carries, as `RemoteEndpoint` judges it.
+  ///
+  /// Also requires the address itself to be private, whatever the networks say.
+  /// `InternalHosts.validated` already keeps every network inside a private
+  /// range, but this is the check the guard leans on, and a list that reached
+  /// it some other way — a test, a future caller — must not be able to waive a
+  /// link-local or loopback answer by naming it.
   func permits(address: String) -> Bool {
-    guard let parsed = InternalHosts.Address(address) else { return false }
+    guard let parsed = InternalHosts.Address(address), InternalHosts.isPrivate(parsed) else {
+      return false
+    }
     return networks.contains { InternalHosts.Network($0)?.contains(parsed) == true }
   }
 }
@@ -134,7 +151,11 @@ nonisolated enum InternalHosts {
     if !isLiteral {
       let allowed = Set("abcdefghijklmnopqrstuvwxyz0123456789-.")
       let labels = host.split(separator: ".", omittingEmptySubsequences: false)
+      // At least two labels: a single label (`intranet`) is expanded through
+      // the resolver's search domains, so the name listed would not be the
+      // name that was looked up.
       guard !host.isEmpty, host.count <= 253, host.allSatisfy(allowed.contains),
+        labels.count >= 2,
         labels.allSatisfy({ !$0.isEmpty && $0.count <= 63 && !$0.hasPrefix("-") && !$0.hasSuffix("-") })
       else {
         throw Problem.badHost(entry.host)
@@ -177,6 +198,12 @@ nonisolated enum InternalHosts {
     return out
   }
 
+  /// Inside 10/8, 172.16/12, 192.168/16 or fc00::/7 — the only space a listing
+  /// may ever open.
+  static func isPrivate(_ address: Address) -> Bool {
+    Network.privateRanges.contains { $0.contains(address) }
+  }
+
   // MARK: - Addresses and networks
 
   struct Address: Equatable {
@@ -184,8 +211,11 @@ nonisolated enum InternalHosts {
     let bytes: [UInt8]
 
     init?(_ text: String) {
-      let bare = InternalHosts.normalize(text).split(separator: "%", maxSplits: 1).first.map(String.init)
-        ?? text
+      // Empty pieces kept, so `%10.0.0.1` is not read as `10.0.0.1`: a scope
+      // follows an address, it never precedes one.
+      let bare = String(
+        InternalHosts.normalize(text)
+          .split(separator: "%", maxSplits: 1, omittingEmptySubsequences: false)[0])
       var v4 = in_addr()
       if bare.withCString({ inet_pton(AF_INET, $0, &v4) }) == 1 {
         bytes = withUnsafeBytes(of: &v4) { Array($0) }
@@ -249,7 +279,7 @@ nonisolated enum InternalHosts {
       return String(cString: buffer) + "/\(prefix)"
     }
 
-    private static let privateRanges: [Network] = [
+    fileprivate static let privateRanges: [Network] = [
       Network("10.0.0.0/8")!, Network("172.16.0.0/12")!, Network("192.168.0.0/16")!,
       Network("fc00::/7")!,
     ]

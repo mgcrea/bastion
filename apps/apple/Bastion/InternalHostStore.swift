@@ -1,22 +1,30 @@
 import Foundation
 
-/// The internal hosts on disk, and the only writer of `InternalHosts.current`.
+/// The internal-host list, and the only writer of `InternalHosts.current`.
 ///
 /// Written from Settings and from nowhere else: no tool of Bastion's own MCP
 /// server reaches this type, which is the half of the rule that keeps an agent
 /// from listing the router. `InternalHosts` says why.
+///
+/// Kept in the Keychain (`CredentialStore.Scope.internalHosts`), not in a file
+/// beside `servers.json`. A file in Application Support is one any process of
+/// the user's can rewrite, and a coding agent with a shell is exactly the
+/// process this list must not trust. The item is created at launch, empty if
+/// need be, so it always exists under Bastion's own access control rather than
+/// one another process got to create first. Deleting it empties the list,
+/// which refuses rather than allows.
 @MainActor
 @Observable
 final class InternalHostStore {
   static let shared = InternalHostStore()
 
   private(set) var entries: [InternalHost] = []
-  /// Set when the file is there and would not decode. Saves refuse while it is
-  /// — see `StoreFile` — and the guard runs with an empty list, which refuses
-  /// rather than allows.
-  private(set) var unreadable: StoreFile.Unreadable?
+  /// Set when the item is there and could not be read or decoded. Saves refuse
+  /// while it is, so what is there is never written over with an empty list,
+  /// and the guard runs with an empty list, which refuses rather than allows.
+  private(set) var problem: String?
 
-  private var fileURL: URL { AppSupport.directory.appendingPathComponent("internal-hosts.json") }
+  private static let account = "list"
 
   init() { load() }
 
@@ -28,29 +36,45 @@ final class InternalHostStore {
       publish()
       return
     }
-    switch StoreFile.load([InternalHost].self, from: fileURL) {
-    case .absent:
-      unreadable = nil
+    let stored: String?
+    do {
+      stored = try CredentialStore.lookup(.internalHosts, account: Self.account)
+    } catch {
+      fail("the internal-host list could not be read: \(error.localizedDescription)")
+      return
+    }
+    guard let stored else {
+      // First launch of a build that has this: claim the item now, empty.
+      problem = nil
       entries = []
-    case .unreadable(let problem):
-      unreadable = problem
-      hostLog("internal-hosts", .error, problem.localizedDescription)
-      entries = []
-    case .decoded(let rows):
-      unreadable = nil
-      // Re-validated, not trusted. The file is the user's own and 0o600, but a
-      // hand edit — or a build that once allowed more — must not be what widens
-      // the rule. An entry that fails is dropped from the list the guard sees
-      // and kept on disk until the next save, like every other store's rows.
-      entries = rows.compactMap { row in
-        do {
-          return try InternalHosts.validated(row)
-        } catch {
-          hostLog(
-            "internal-hosts", .error,
-            "ignoring internal host '\(row.host)': \(error.localizedDescription)")
-          return nil
-        }
+      do {
+        try CredentialStore.write(.internalHosts, account: Self.account, value: "[]")
+      } catch {
+        hostLog("internal-hosts", .error, error.localizedDescription)
+      }
+      publish()
+      return
+    }
+    guard let rows = try? JSONDecoder().decode([InternalHost].self, from: Data(stored.utf8))
+    else {
+      fail(
+        "the internal-host list in the Keychain could not be decoded, so Bastion will not "
+          + "write over it. Remove the '\(CredentialStore.Scope.internalHosts.service)' item in "
+          + "Keychain Access to start again.")
+      return
+    }
+    problem = nil
+    // Re-validated, not trusted: a build that once allowed more must not be
+    // what widens the rule. An entry that fails is dropped from the list the
+    // guard sees, and written back out at the next save.
+    entries = rows.compactMap { row in
+      do {
+        return try InternalHosts.validated(row)
+      } catch {
+        hostLog(
+          "internal-hosts", .error,
+          "ignoring internal host '\(row.host)': \(error.localizedDescription)")
+        return nil
       }
     }
     publish()
@@ -78,20 +102,27 @@ final class InternalHostStore {
     hostLog("internal-hosts", .info, "removed \(key)")
   }
 
+  struct Unwritable: LocalizedError {
+    let reason: String
+    var errorDescription: String? { reason }
+  }
+
   private func replace(with next: [InternalHost]) throws {
     if DemoSeed.isEnabled { return }
-    if let unreadable { throw unreadable }
-    AppSupport.ensureDirectory()
+    if let problem { throw Unwritable(reason: problem) }
+    // Default date encoding, matching the decoder in `load`.
     let encoder = JSONEncoder()
-    // Default date encoding, not ISO 8601: `StoreFile.load` decodes with a
-    // default `JSONDecoder`, and a mismatch would make the next launch read
-    // this file as unreadable and refuse every save after it.
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    try encoder.encode(next).write(to: fileURL, options: .atomic)
-    // After every write: `.atomic` replaces the file, so permissions set once
-    // do not survive the next save.
-    try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+    encoder.outputFormatting = [.sortedKeys]
+    let json = String(decoding: try encoder.encode(next), as: UTF8.self)
+    try CredentialStore.write(.internalHosts, account: Self.account, value: json)
     entries = next
+    publish()
+  }
+
+  private func fail(_ message: String) {
+    problem = message
+    hostLog("internal-hosts", .error, message)
+    entries = []
     publish()
   }
 
