@@ -477,13 +477,13 @@ export const FOOTER_APPS = [
     blurb: "Every Claude Code and Codex session on your Mac, in one menu bar window.",
   },
   {
+    name: "Drakar",
+    url: "https://drakar.mgcrea.io",
+    blurb: "Claude Code and Codex in a native Mac window, on the CLIs you installed.",
+  },
+  {
     name: "DevPulse",
     url: "https://dev-pulse.mgcrea.io",
     blurb: "A release radar for the repos you depend on, grouped by risk.",
-  },
-  {
-    name: "R2Explorer",
-    url: "https://r2-explorer.mgcrea.io",
-    blurb: "Browse and manage Cloudflare R2 and S3-compatible storage natively.",
   },
 ] as const;
