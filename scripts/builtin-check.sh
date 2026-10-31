@@ -56,6 +56,13 @@ done
 ALL_PROFILES="$(defaults read "$BUNDLE" recentActivityAllProfiles 2>/dev/null || true)"
 defaults write "$BUNDLE" recentActivityAllProfiles -bool false
 
+# "Load tools on demand" is on by default and fronts the built-in server with
+# three search tools, so `tools/list` names none of the real ones: the write
+# gate checks then fail on a build that is right, and every `absent` check on
+# the list passes on one that is wrong. Off for the run, put back as found.
+LAZY_TOOLS="$(defaults read "$BUNDLE" lazyToolsDefault 2>/dev/null || true)"
+defaults write "$BUNDLE" lazyToolsDefault -bool false
+
 restore() {
   kill "${APP:-0}" 2>/dev/null || true
   wait "${APP:-0}" 2>/dev/null || true
@@ -73,6 +80,13 @@ restore() {
     defaults write "$BUNDLE" recentActivityAllProfiles -bool false
   else
     defaults delete "$BUNDLE" recentActivityAllProfiles 2>/dev/null || true
+  fi
+  if [ "$LAZY_TOOLS" = 1 ]; then
+    defaults write "$BUNDLE" lazyToolsDefault -bool true
+  elif [ "$LAZY_TOOLS" = 0 ]; then
+    defaults write "$BUNDLE" lazyToolsDefault -bool false
+  else
+    defaults delete "$BUNDLE" lazyToolsDefault 2>/dev/null || true
   fi
   rm -rf "$SUPPORT/audit"
   if [ -d "$SUPPORT/audit.builtin-check-backup" ]; then
@@ -234,6 +248,11 @@ PROFILES="$(tool checkrw list_profiles '{"server":"checkscratch"}')"
 check  "list_profiles names a secret that is set" "$PROFILES" 'CHECK_TOKEN'
 absent "and never its value"                      "$PROFILES" 's3cr3t-canary'
 absent "no tool reads a credential back"          "$RW"       'get_credential'
+# The same wall for the internal-host list: only Settings writes it, because an
+# agent that could list the router could then add a "server" pointing at it.
+# Neither a tool nor a field of any tool's schema may name it.
+absent "no tool reaches the internal-host list"   "$RW"       'internal_host'
+absent "and no tool schema carries one"           "$RW"       'internalHost'
 check "a secret handed to upsert_profile is refused" \
   "$(tool checkrw upsert_profile '{"name":"one","server":"checkscratch","values":{"CHECK_TOKEN":"s3cr3t-canary"}}')" \
   'set with set_credential'
