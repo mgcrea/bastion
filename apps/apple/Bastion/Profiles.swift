@@ -515,7 +515,21 @@ nonisolated enum ProfileEnvironment {
       }
     }
 
-    env.merge(values(for: profile, server: server)) { _, resolved in resolved }
+    // A custom definition cannot declare a reserved name — `ServerStore.upsert`
+    // refuses it — so one arriving here came from a hand-edited row. Left out
+    // rather than refused, so the server still starts, and said once per spawn
+    // so the missing variable is findable. The catalog is exempt: see
+    // `ReservedEnv`.
+    let (admitted, skipped) = ReservedEnv.admit(
+      values(for: profile, server: server), declaredByCatalog: server.origin == .catalog)
+    if !skipped.isEmpty {
+      hostLog(
+        "profiles", .error,
+        "'\(server.id)' declares \(skipped.joined(separator: ", ")), which a custom server "
+          + "cannot set; its row was edited by hand, so \(skipped.count == 1 ? "it was" : "they were") left out"
+      )
+    }
+    env.merge(admitted) { _, resolved in resolved }
 
     // Last, and unconditionally in both directions. Setting the gate only when
     // it is on would let a stale value in `profiles.json` leave writes enabled

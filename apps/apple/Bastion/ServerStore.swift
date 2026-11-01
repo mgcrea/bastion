@@ -385,6 +385,7 @@ final class ServerStore {
     case unusablePackage(String)
     case unusableEndpoint(String)
     case unusableVariable(String)
+    case reservedVariable(String)
     case contradictoryVariable(name: String, detail: String)
     case noVariables
     case renameWouldStrand(from: String, to: String, profiles: Int)
@@ -411,6 +412,9 @@ final class ServerStore {
         return detail
       case .unusableVariable(let name):
         return "'\(name)' is not a usable environment variable name"
+      case .reservedVariable(let name):
+        return
+          "\(name) is set by Bastion, or can change what code a server runs, so a custom server cannot declare it"
       case .contradictoryVariable(let name, let detail):
         return "'\(name)' \(detail)"
       case .noVariables:
@@ -508,6 +512,13 @@ final class ServerStore {
     guard !definition.env.isEmpty else { throw StoreError.noVariables }
     for variable in definition.env where !Self.isValidVariable(variable.name) {
       throw StoreError.unusableVariable(variable.name)
+    }
+    // The same `spawn(whatever_you_typed)` hole as the package check above,
+    // reached through the environment instead: a definition that may list
+    // `NODE_OPTIONS` or `PATH` chooses what runs without naming a package.
+    // `ReservedEnv` says which names and why.
+    if let reserved = ReservedEnv.firstReserved(in: definition.env.map(\.name)) {
+      throw StoreError.reservedVariable(reserved)
     }
     // The three combinations a switch cannot be in. The editor clears these as
     // they are typed, so reaching here means a hand-edited file in Application

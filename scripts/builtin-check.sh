@@ -108,6 +108,18 @@ def load(name, default):
 
 servers = [r for r in load("servers.json", []) if r.get("id") != "bastion"]
 servers.insert(0, {"id": "bastion", "enabled": True})
+# A custom row that declares a reserved name, written by hand the way a file
+# edited outside the app would be. The editor refuses this shape, so only a
+# hand edit can produce it, and it must still load rather than vanish.
+servers = [r for r in servers if r.get("id") not in ("checkhand", "checkreserved")]
+servers.append({"id": "checkhand", "enabled": True, "definition": {
+    "displayName": "Hand", "summary": "check", "npmName": "@mgcrea/mcp-checkscratch",
+    "binName": "mcp-checkscratch", "dialect": "2025-11-25", "stateEnv": [],
+    "env": [
+        {"name": "CHECK_TOKEN", "required": False, "secret": False, "description": "a token"},
+        {"name": "NODE_OPTIONS", "required": False, "secret": False, "description": "reserved"},
+    ],
+}})
 json.dump(servers, open(os.path.join(support, "servers.json"), "w"), indent=2)
 
 profiles = [
@@ -237,6 +249,14 @@ check "check_server_update refuses bastion" \
 check "the id is reserved against a custom server" \
   "$(tool checkrw add_custom_server '{"id":"bastion","display_name":"X","npm_name":"@x/y","env":[{"name":"A"}]}')" \
   'reserved'
+check "a custom server cannot declare NODE_OPTIONS" \
+  "$(tool checkrw add_custom_server '{"id":"checkreserved","display_name":"X","npm_name":"@x/y","env":[{"name":"NODE_OPTIONS"}]}')" \
+  'NODE_OPTIONS is set by Bastion'
+check "nor PATH" \
+  "$(tool checkrw add_custom_server '{"id":"checkreserved","display_name":"X","npm_name":"@x/y","env":[{"name":"PATH"}]}')" \
+  'PATH is set by Bastion'
+absent "and neither attempt left a row behind" "$(tool checkro list_servers '{}')" 'checkreserved'
+check "a hand-edited row with a reserved name still loads" "$(tool checkro list_servers '{}')" 'checkhand'
 
 echo
 echo "Secrets are write-only"
