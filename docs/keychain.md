@@ -1,14 +1,40 @@
 # The Keychain, entitlements and provisioning
 
-Where Bastion's secrets live, why the app carries no entitlements today, and what it
-would cost to change that. Written down because the obvious reason to make the change
-is the wrong one, and that is not visible from the code.
+Where Bastion's secrets live, why the app traded its "no entitlements" claim for four,
+and what that cost. Written down because the obvious reason to make the change was the
+wrong one, and that is not visible from the code.
 
 ## Where secrets live today
 
-The **file-based login keychain**, reached through `SecItem*` with no
-`kSecUseDataProtectionKeychain` flag. [`CredentialStore`](../apps/apple/Bastion/CredentialStore.swift)
-keys everything by service + account, across three scopes:
+**The Release build: the data protection keychain.** It carries
+`keychain-access-groups`, so [`CredentialStore`](../apps/apple/Bastion/CredentialStore.swift)
+sets `kSecUseDataProtectionKeychain` on every query, with
+`kSecAttrSynchronizable: kSecAttrSynchronizableAny` so a synced item is never missed.
+Every item is `AfterFirstUnlockThisDeviceOnly` and not synchronizable until the sync
+design's phase 3.
+
+**Debug, and a Release build signed without the profile: the file-based login keychain**,
+as before. Without the entitlement every data protection call answers `-34018`, so
+`CredentialStore.usesDataProtection` asks the running process which one it may use.
+
+**Moving across.** On the first launch of an entitled build, `KeychainMigration.run()`
+moves every item from the login keychain: add on the new side, read back and compare,
+then delete the old one. An item it cannot read (a denied prompt, a keychain locked
+since boot) stays where it is, and `CredentialStore` reads through to the login keychain
+until a pass leaves nothing behind. That pass writes a `.migration` marker, on the data
+protection side where only Bastion's access group can create it, and the fallback ends.
+Deletes always clear both sides, so a removed credential cannot come back through it.
+`make keychain-selftest` runs all of this for real on the signed build, in a throwaway
+`io.mgcrea.bastion.selftest` namespace.
+
+**One trap, measured.** In a process that carries `keychain-access-groups`, a query
+_without_ `kSecUseDataProtectionKeychain` reaches the data protection keychain too: it
+lists those items, reads their values and deletes them. So login-side queries state the
+key as `false`. Leaving it out made the migration's last step, deleting the login copy,
+delete the copy it had just moved. The self-test caught it on its first run, and checks
+the two keychains stay two.
+
+The scopes, keyed by service + account:
 
 | Scope           | Service                     | Account                    | Holds                                     |
 | --------------- | --------------------------- | -------------------------- | ----------------------------------------- |
@@ -154,7 +180,13 @@ typed and would rather not retype.
   items belong to the access group, not to the profile, so a new profile for the same
   App ID and team should read them. Unverified until a renewal happens.
 - **Items become invisible to Keychain Access.app and the `security` CLI.** Manual
-  inspection and repair get harder.
+  inspection and repair get harder, and `make dev-clone` could no longer read the
+  Release build's credentials. The Release app writes the Debug build's `import.json`
+  itself instead, after a click: Settings › General › Export to the Debug Build. No
+  launch argument or MCP tool can do it, or any process could collect every credential
+  in a file without a prompt.
+- **Going back to 1.35.0 or earlier after migrating finds no credentials.** They were
+  moved, not copied. Copying would have left a stale login copy for an old build to use.
 - **`ThisDeviceOnly` today also means credentials stop following a Migration
   Assistant transfer** once the attribute is honoured. Arguably correct for a
   credential vault, but it should be a decision, not a discovery.
@@ -194,13 +226,13 @@ records the same finding from the other side — `Passwords.app` holds
 
 ## Current state
 
-|                                                 |                                                                                   |
-| ----------------------------------------------- | --------------------------------------------------------------------------------- |
-| Presence-by-name, loud refusals, `run` ordering | **Done.** Zero `kcacl` activity measured                                          |
-| `keychain-access-groups` entitlement            | **Gate passed on two Macs, 2026-11-01.** Entitlements and profile ship; see below |
-| iCloud key-value storage                        | **Gate passed on two Macs, 2026-11-01.** See below                                |
-| Data protection keychain migration              | **Not started.** Phase 1 of the sync design                                       |
-| iCloud sync toggle                              | **Not started.** Phases 2–3                                                       |
+|                                                 |                                                                                     |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Presence-by-name, loud refusals, `run` ordering | **Done.** Zero `kcacl` activity measured                                            |
+| `keychain-access-groups` entitlement            | **Gate passed on two Macs, 2026-11-01.** Entitlements and profile ship; see below   |
+| iCloud key-value storage                        | **Gate passed on two Macs, 2026-11-01.** See below                                  |
+| Data protection keychain migration              | **Built, 2026-11-01.** `make keychain-selftest` passes; ships with the next release |
+| iCloud sync toggle                              | **Not started.** Phases 2–3                                                         |
 
 `make icloud-probe` runs the gate against the signed Release build: it writes one
 synchronizable data protection keychain item and one key-value pair named after the
@@ -221,9 +253,8 @@ build, and the key-value store carries a pair, both within seconds. Both ran bes
 the installed Bastion on each Mac, which they never touched. `-iCloudProbeClean YES`
 removed the probe's entries afterwards.
 
-The only `kSecUseDataProtectionKeychain` in the tree is the probe's. The stores still
-use the login keychain, and existing credentials have never moved and need no
-re-entry. The sync design and its plan are in `docs/superpowers/specs/` and
-`docs/superpowers/plans/`, dated 2026-11-01.
+The migration is built and self-tested, and runs on a person's Mac when they first
+launch the release that carries it. The sync design and its plans are in
+`docs/superpowers/specs/` and `docs/superpowers/plans/`, dated 2026-11-01.
 
 [devid-help]: https://developer.apple.com/help/account/certificates/create-developer-id-certificates/

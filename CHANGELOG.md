@@ -21,8 +21,18 @@ are taken from this file, which is the curated summary.
   variables are headers. `NODE_EXTRA_CA_CERTS`, for a company certificate authority, is
   the one most likely to be missed. Catalog servers are unaffected.
 
+- **Credentials move to the data protection keychain on first launch.** Every profile
+  credential, OAuth sign-in, gateway token, the audit signing key and the internal-host list
+  move out of the login keychain, each one copied, read back and only then deleted. macOS may
+  ask once per item. An item that cannot be read yet stays where it is and keeps working, and
+  the next launch tries again. They no longer show in Keychain Access, and going back to
+  1.35.0 or earlier afterwards finds none, because they were moved, not copied.
+
 ### Added
 
+- **Settings › General › Export to the Debug Build**, for working on Bastion itself. It writes
+  the Debug build's import file with every profile, its credentials and the gateway tokens,
+  after a click; `make dev-clone` can no longer read them from the data protection keychain.
 - **Variables whose value belongs to one Mac are marked as such** in the server docs: paths to a
   key file or a kubeconfig, launch arguments, `NPM_BIN`, and every per-profile state path. Nothing
   reads the mark yet. It is the list a later iCloud sync leaves out, so a path set on one Mac never

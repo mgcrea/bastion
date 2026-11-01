@@ -307,13 +307,25 @@ nonisolated enum Changelog {
             body: [
               "Each of them changes what code a server runs: `NODE_OPTIONS` loads code before the server's first line, and a `PATH` puts another `npm` in front of the bundled one. A custom entry could already name only a package or an endpoint, never a command line, and these were the same hole by another door. Saving a definition that lists one, or names one as its write gate, is refused with the variable's name. A custom server saved with one by an earlier version still starts without it, and the log says which it left out. Remote servers are unaffected: their variables are headers. `NODE_EXTRA_CA_CERTS`, for a company certificate authority, is the one most likely to be missed. Catalog servers are unaffected.",
             ]),
+          Entry(
+            ordinal: 1,
+            headline: "Credentials move to the data protection keychain on first launch.",
+            body: [
+              "Every profile credential, OAuth sign-in, gateway token, the audit signing key and the internal-host list move out of the login keychain, each one copied, read back and only then deleted. macOS may ask once per item. An item that cannot be read yet stays where it is and keeps working, and the next launch tries again. They no longer show in Keychain Access, and going back to 1.35.0 or earlier afterwards finds none, because they were moved, not copied.",
+            ]),
         ]),
       Section(
         name: "Added",
         lead: [],
         entries: [
           Entry(
-            ordinal: 1,
+            ordinal: 2,
+            headline: "Settings › General › Export to the Debug Build",
+            body: [
+              ", for working on Bastion itself. It writes the Debug build's import file with every profile, its credentials and the gateway tokens, after a click; `make dev-clone` can no longer read them from the data protection keychain.",
+            ]),
+          Entry(
+            ordinal: 3,
             headline: "Variables whose value belongs to one Mac are marked as such",
             body: [
               "in the server docs: paths to a key file or a kubeconfig, launch arguments, `NPM_BIN`, and every per-profile state path. Nothing reads the mark yet. It is the list a later iCloud sync leaves out, so a path set on one Mac never chooses code on another.",

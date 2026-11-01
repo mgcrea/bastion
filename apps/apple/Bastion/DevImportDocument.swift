@@ -27,7 +27,7 @@ nonisolated struct DevImportDocument: Codable {
   /// Existing gateway tokens to adopt, by client, verbatim.
   ///
   /// Not minted, unlike the two fields above — carried. This is how
-  /// `make dev-clone` makes a Debug build a drop-in replacement for the
+  /// the export makes a Debug build a drop-in replacement for the
   /// installed app on the same port: every client config Bastion wrote
   /// carries the INSTALLED app's token, and a Debug build checks tokens
   /// against its own Keychain service, so without this every editor gets a
