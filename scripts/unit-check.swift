@@ -3111,6 +3111,22 @@ struct UnitCheck {
       "a catalog-declared reserved name is admitted",
       catalog.admitted["NPM_CONFIG_USERCONFIG"] == "/x/.npmrc")
     check("and nothing is skipped for the catalog", catalog.skipped.isEmpty)
+    check(
+      "a custom server's write gate cannot be a reserved name",
+      !ReservedEnv.admitsGate("NODE_TLS_REJECT_UNAUTHORIZED", declaredByCatalog: false))
+    check(
+      "an ordinary custom write gate is admitted",
+      ReservedEnv.admitsGate("CHECK_ALLOW_WRITES", declaredByCatalog: false))
+    check(
+      "a catalog write gate is admitted whatever its name",
+      ReservedEnv.admitsGate("XDG_ANYTHING", declaredByCatalog: true))
+    let notice = ReservedEnv.skipNotice(server: "checkhand", skipped: ["NODE_OPTIONS"])
+    check(
+      "the skip notice names the server and the variable",
+      notice.contains("'checkhand'") && notice.contains("NODE_OPTIONS"))
+    check(
+      "and does not blame a hand edit the user may never have made",
+      notice.contains("saved by an earlier version of Bastion, or edited by hand"))
   }
 
   // MARK: - Per-Mac catalog variables

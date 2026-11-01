@@ -516,8 +516,14 @@ final class ServerStore {
     // The same `spawn(whatever_you_typed)` hole as the package check above,
     // reached through the environment instead: a definition that may list
     // `NODE_OPTIONS` or `PATH` chooses what runs without naming a package.
-    // `ReservedEnv` says which names and why.
-    if let reserved = ReservedEnv.firstReserved(in: definition.env.map(\.name)) {
+    // The write gate counts, because Bastion writes it into the environment
+    // last. A child only: a remote server's variables are headers, and the
+    // name `ServerHandoff` derives for an app id starting `node-` is fine
+    // there. `ReservedEnv` says which names and why.
+    if case .child = definition.transport,
+      let reserved = ReservedEnv.firstReserved(
+        in: definition.env.map(\.name) + [definition.writeGate].compactMap { $0 })
+    {
       throw StoreError.reservedVariable(reserved)
     }
     // The three combinations a switch cannot be in. The editor clears these as

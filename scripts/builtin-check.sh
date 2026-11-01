@@ -255,7 +255,15 @@ check "a custom server cannot declare NODE_OPTIONS" \
 check "nor PATH" \
   "$(tool checkrw add_custom_server '{"id":"checkreserved","display_name":"X","npm_name":"@x/y","env":[{"name":"PATH"}]}')" \
   'PATH is set by Bastion'
+check "nor name a reserved write gate" \
+  "$(tool checkrw add_custom_server '{"id":"checkreserved","display_name":"X","npm_name":"@x/y","write_gate":"NODE_TLS_REJECT_UNAUTHORIZED","env":[{"name":"A"}]}')" \
+  'NODE_TLS_REJECT_UNAUTHORIZED is set by Bastion'
 absent "and neither attempt left a row behind" "$(tool checkro list_servers '{}')" 'checkreserved'
+# A remote server has no environment: its variables are headers, so a name
+# like the one `ServerHandoff` derives for an app id starting `node-` is fine.
+check "a remote custom server may use a NODE_-prefixed variable" \
+  "$(tool checkrw add_custom_server '{"id":"checkremotenode","display_name":"X","url":"https://mcp.example.com/mcp","env":[{"name":"NODE_APP_TOKEN","secret":true,"header":{"name":"Authorization","format":"Bearer {value}"}}]}')" \
+  '"added":true'
 check "a hand-edited row with a reserved name still loads" "$(tool checkro list_servers '{}')" 'checkhand'
 
 echo

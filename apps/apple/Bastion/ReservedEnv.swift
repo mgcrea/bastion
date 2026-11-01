@@ -58,4 +58,24 @@ nonisolated enum ReservedEnv {
     let skipped = values.keys.filter(isReserved).sorted()
     return (admitted, skipped)
   }
+
+  /// Whether Bastion writes a server's write gate at spawn. It is written
+  /// after the profile's values and wins over them, so a custom gate named
+  /// `NODE_TLS_REJECT_UNAUTHORIZED` would turn certificate checks off whenever
+  /// writes are, and one named `PATH` would replace Bastion's own.
+  static func admitsGate(_ gate: String, declaredByCatalog: Bool) -> Bool {
+    declaredByCatalog || !isReserved(gate)
+  }
+
+  /// The log line for names left out of a custom server's environment.
+  ///
+  /// Not "edited by hand" alone: before this rule, the editor and
+  /// `add_custom_server` accepted any of these names, so the likeliest row
+  /// carrying one was saved normally by an earlier version.
+  static func skipNotice(server: String, skipped: [String]) -> String {
+    let names = skipped.joined(separator: ", ")
+    let verb = skipped.count == 1 ? "it was" : "they were"
+    return "'\(server)' declares \(names), which a custom server cannot set; its row was "
+      + "saved by an earlier version of Bastion, or edited by hand, so \(verb) left out"
+  }
 }

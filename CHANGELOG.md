@@ -15,9 +15,10 @@ are taken from this file, which is the curated summary.
   `XDG_*`.** Each of them changes what code a server runs: `NODE_OPTIONS` loads code before the
   server's first line, and a `PATH` puts another `npm` in front of the bundled one. A custom entry
   could already name only a package or an endpoint, never a command line, and these were the same
-  hole by another door. Saving a definition that lists one is refused with the variable's name. A
-  custom server that already declares one, in a row edited by hand, still starts without it, and
-  the log says which it left out. `NODE_EXTRA_CA_CERTS`, for a company certificate authority, is
+  hole by another door. Saving a definition that lists one, or names one as its write gate, is
+  refused with the variable's name. A custom server saved with one by an earlier version still
+  starts without it, and the log says which it left out. Remote servers are unaffected: their
+  variables are headers. `NODE_EXTRA_CA_CERTS`, for a company certificate authority, is
   the one most likely to be missed. Catalog servers are unaffected.
 
 ### Added

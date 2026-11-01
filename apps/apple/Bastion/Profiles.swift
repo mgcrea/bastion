@@ -516,18 +516,19 @@ nonisolated enum ProfileEnvironment {
     }
 
     // A custom definition cannot declare a reserved name — `ServerStore.upsert`
-    // refuses it — so one arriving here came from a hand-edited row. Left out
-    // rather than refused, so the server still starts, and said once per spawn
-    // so the missing variable is findable. The catalog is exempt: see
-    // `ReservedEnv`.
-    let (admitted, skipped) = ReservedEnv.admit(
-      values(for: profile, server: server), declaredByCatalog: server.origin == .catalog)
+    // refuses it — so one arriving here was saved by an earlier version or
+    // edited by hand. Left out rather than refused, so the server still
+    // starts, and said once per spawn so the missing variable is findable. The
+    // write gate counts: it is written below, after these, and would win. The
+    // catalog is exempt: see `ReservedEnv`.
+    let fromCatalog = server.origin == .catalog
+    var (admitted, skipped) = ReservedEnv.admit(
+      values(for: profile, server: server), declaredByCatalog: fromCatalog)
+    if let gate = server.writeGate, !ReservedEnv.admitsGate(gate, declaredByCatalog: fromCatalog) {
+      skipped.append(gate)
+    }
     if !skipped.isEmpty {
-      hostLog(
-        "profiles", .error,
-        "'\(server.id)' declares \(skipped.joined(separator: ", ")), which a custom server "
-          + "cannot set; its row was edited by hand, so \(skipped.count == 1 ? "it was" : "they were") left out"
-      )
+      hostLog("profiles", .error, ReservedEnv.skipNotice(server: server.id, skipped: skipped))
     }
     env.merge(admitted) { _, resolved in resolved }
 
@@ -544,7 +545,11 @@ nonisolated enum ProfileEnvironment {
     // not every gate points the same way: a third-party server's is typically a
     // READ-ONLY switch, where "1" is writes OFF. Deciding that at this call site
     // would put the rule in a file `make unit` does not compile.
-    if let gate = server.writeGate, let value = server.gateValue(allowWrites: profile.allowWrites) {
+    //
+    // Not a reserved name on a custom server, which was left out above.
+    if let gate = server.writeGate, ReservedEnv.admitsGate(gate, declaredByCatalog: fromCatalog),
+      let value = server.gateValue(allowWrites: profile.allowWrites)
+    {
       env[gate] = value
     }
 
