@@ -37,11 +37,13 @@
 ### Task 1: `ReservedEnv` policy
 
 **Files:**
+
 - Create: `apps/apple/Bastion/ReservedEnv.swift`
 - Modify: `Makefile` (the `unit:` compile list, after `apps/apple/Bastion/ServerCatalog.swift`)
 - Test: `scripts/unit-check.swift` (new `reservedEnv()` section, called from `main`)
 
 **Interfaces:**
+
 - Produces:
   - `nonisolated enum ReservedEnv`
   - `static func isReserved(_ name: String) -> Bool`
@@ -103,11 +105,13 @@ git commit -m "feat(profiles): a reserved-name policy for child environments"
 ### Task 2: Refuse and skip reserved names for custom servers
 
 **Files:**
+
 - Modify: `apps/apple/Bastion/ServerStore.swift` (`StoreError`, around line 387; `errorDescription`, around line 412; `upsert(custom:definition:replacing:)`, after the `isValidVariable` loop, around line 497)
 - Modify: `apps/apple/Bastion/Profiles.swift` (`ProfileEnvironment.build`, the `env.merge(values(…))` line, around line 518)
 - Test: `scripts/builtin-check.sh` (in the block after "the id is reserved against a custom server", around line 237)
 
 **Interfaces:**
+
 - Consumes: `ReservedEnv.firstReserved(in:)`, `ReservedEnv.admit(_:declaredByCatalog:)` from Task 1; `BastionServer.origin` (`.catalog` for catalog entries).
 - Produces: `ServerStore.StoreError.reservedVariable(String)`.
 
@@ -163,6 +167,7 @@ git commit -m "feat(servers): custom servers cannot declare reserved environment
 ### Task 3: The `perMachine` flag on catalog variables
 
 **Files:**
+
 - Modify: `scripts/servers.schema.json` (env item `properties`, beside `boolean`)
 - Modify: `scripts/generate-servers.mjs` (validation near line 265, `swiftEnvVar` near line 546, the docs table near line 695)
 - Modify: `servers.json` (seven variables, below)
@@ -171,6 +176,7 @@ git commit -m "feat(servers): custom servers cannot declare reserved environment
 - Test: `scripts/unit-check.swift` (new `perMachineEnv()` section)
 
 **Interfaces:**
+
 - Consumes: `ReservedEnv.isReserved` semantics, mirrored in JS. The generator can't import Swift, so it keeps its own copy of the list with a comment pointing at `ReservedEnv.swift`.
 - Produces:
   - `BastionServer.EnvVar.isPerMachine: Bool` (defaulted `false`, declared last).
@@ -211,6 +217,7 @@ Expected: compile error, `value of type 'BastionServer' has no member 'perMachin
 Schema: `"perMachine": { "type": "boolean", "description": "The value names code, a launch argument or a path on this Mac, so it never leaves it: iCloud sync leaves it out. stateEnv variables are per-Mac without saying so." }`.
 
 Generator validation, added to `problems`:
+
 - A variable whose name ends in `_PATH`, `_FILE`, `_DIR`, `_ARGS`, `_BIN`, `_CONFIG` or `USERCONFIG`, or is reserved, and is not in the server's `stateEnv`, must state `perMachine` (true or false): `${eat}: looks like a path or launch argument; state perMachine either way`.
 - A reserved name must be in `stateEnv` or carry `perMachine: true`: `${eat}: a reserved name is allowed in the catalog only as a per-Mac variable`.
 - `perMachine` on a remote server's variable is refused: `${eat}: a header is not a local path; perMachine is for child variables`.
@@ -242,6 +249,7 @@ git commit -m "feat(catalog): mark the variables whose values belong to one Mac"
 ### Task 4: CHANGELOG for phase 0a
 
 **Files:**
+
 - Modify: `CHANGELOG.md` (an `## [Unreleased]` section above `## [1.35.0]`, created if absent)
 
 - [ ] **Step 1: Write the entry**
@@ -301,6 +309,7 @@ Before signing the app itself: fail with `"  apps/apple/Bastion.provisionprofile
 - [ ] **Step 6: `audit-listener.sh` rule 5**
 
 Replace the `CODE_SIGN_ENTITLEMENTS` absence check with three checks:
+
 - The pbxproj sets `CODE_SIGN_ENTITLEMENTS` only to `Bastion-Debug.entitlements`, only once.
 - `apps/apple/Bastion.entitlements` holds exactly the four keys.
 - If the app under audit is a Release build, its signed entitlements equal those keys.
@@ -328,11 +337,13 @@ git commit -m "feat(sign): the four entitlements iCloud sync needs, and an embed
 ### Task 6: The `-iCloudProbe YES` launch mode
 
 **Files:**
+
 - Create: `apps/apple/Bastion/ICloudProbe.swift`
 - Modify: `apps/apple/Bastion/BastionApp.swift` (`applicationDidFinishLaunching`, directly after the `DemoSeed.isEnabled` block, around line 29)
 - Modify: `Makefile` (new `icloud-probe` target beside `builtin`)
 
 **Interfaces:**
+
 - Produces:
   - `enum ICloudProbe`
   - `static var isRequested: Bool`, from `UserDefaults.standard.bool(forKey: "iCloudProbe")`.
@@ -341,6 +352,7 @@ git commit -m "feat(sign): the four entitlements iCloud sync needs, and an embed
 - [ ] **Step 1: Implement `ICloudProbe`**
 
 It prints one line per step to stdout, prefixed `probe:`, and exits `0` only if every step passed. The steps:
+
 1. Add a generic password with service `"\(AppSupport.identifier).probe"`, account the Mac's `Host.current().localizedName ?? "unknown"`, `kSecUseDataProtectionKeychain: true`, `kSecAttrSynchronizable: true` and `kSecAttrAccessibleAfterFirstUnlock`. Print `keychain add: ok` or `keychain add: <OSStatus> <SecCopyErrorMessageString>`. `-34018` means the entitlement or profile is wrong.
 2. Read it back with `kSecAttrSynchronizableAny`.
 3. List every account under the probe service. A second Mac's name here proves iCloud Keychain sync.
@@ -373,6 +385,7 @@ git commit -m "feat(icloud): a launch mode that proves the keychain and key-valu
 ### Task 7: Run the gate on two Macs and record it
 
 **Files:**
+
 - Modify: `docs/keychain.md` ("Costs to weigh", the provisioning-profile bullet; "Current state" table)
 
 - [ ] **Step 1 (owner): Second Mac**

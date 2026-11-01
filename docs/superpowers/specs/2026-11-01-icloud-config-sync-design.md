@@ -74,10 +74,10 @@ arrives enabled on the others.
 
 ### Two transports
 
-| What | Transport |
-| --- | --- |
-| Profile secrets (`CredentialStore.Scope.profile`) | iCloud Keychain: `kSecAttrSynchronizable = true` in the data protection keychain |
-| Servers, profiles (non-secret fields), workspaces, skill sources, skill choices | `NSUbiquitousKeyValueStore`, one key per entity |
+| What                                                                            | Transport                                                                        |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Profile secrets (`CredentialStore.Scope.profile`)                               | iCloud Keychain: `kSecAttrSynchronizable = true` in the data protection keychain |
+| Servers, profiles (non-secret fields), workspaces, skill sources, skill choices | `NSUbiquitousKeyValueStore`, one key per entity                                  |
 
 Rejected: CloudKit / `CKSyncEngine` (a schema, zones and an `aps-environment`
 entitlement for 15 KB of JSON); a JSON file in iCloud Drive (whole-file
@@ -87,14 +87,14 @@ last writer wins).
 
 ### What syncs
 
-| Store | Synced | Stays on this Mac |
-| --- | --- | --- |
-| `servers.json` | which servers exist, custom `definition`, `enabled` | installed code and its version |
-| `profiles.json` | `name`, `server`, `values` except per-Mac variables, `allowWrites` | per-Mac variable values; `profiles/<server>/<name>/` state files children write |
-| Keychain `.profile` | every value | — |
-| `workspaces.json` | every field; folder paths under the home folder stored as `~/…` | — |
-| `skill-sources.json` | every field and the order; paths as `~/…` | — |
-| `skills.json` | `choices`, `repositoryLinks` (paths as `~/…`) | the links on disk, which each Mac's reconcile makes |
+| Store                | Synced                                                             | Stays on this Mac                                                               |
+| -------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `servers.json`       | which servers exist, custom `definition`, `enabled`                | installed code and its version                                                  |
+| `profiles.json`      | `name`, `server`, `values` except per-Mac variables, `allowWrites` | per-Mac variable values; `profiles/<server>/<name>/` state files children write |
+| Keychain `.profile`  | every value                                                        | —                                                                               |
+| `workspaces.json`    | every field; folder paths under the home folder stored as `~/…`    | —                                                                               |
+| `skill-sources.json` | every field and the order; paths as `~/…`                          | —                                                                               |
+| `skills.json`        | `choices`, `repositoryLinks` (paths as `~/…`)                      | the links on disk, which each Mac's reconcile makes                             |
 
 Not synced at all: client wiring and lockdown, `.gateway`, `.oauth`, `.audit`,
 `.internal-hosts`, `call-stats.json`, `tool-costs.json`, the licence, `dev.json`,
@@ -303,19 +303,19 @@ A "Sync with iCloud" section, off by default:
 ## Phases
 
 0a. **Environment hardening**, guard mechanisms 1 and 2 (the reserved-name
-   refusal and the per-Mac catalog flag, the flag doing nothing yet but
-   documenting itself). No entitlement, no sync; ships first.
-0. **Prove the gate before writing sync code.** Register the App ID with
-   iCloud (key-value storage) and keychain sharing, create the Developer ID
-   provisioning profile, embed it in `make build-release`/`make sign`, rewrite
-   the two entitlement assertions. Then, on a signed build: a data protection
-   `SecItemAdd` returns `errSecSuccess` (not `-34018`), and a key-value round
-   trip between two Macs succeeds. Settle `docs/keychain.md`'s open question of
-   what happens to stored credentials when the embedded profile expires, and
-   write the answer there.
-   *If keychain sharing turns out not to be available to Developer ID*, phases
-   1 and 3 are dropped and phase 2 still ships: configuration syncs, and each
-   Mac asks for its own credentials.
+refusal and the per-Mac catalog flag, the flag doing nothing yet but
+documenting itself). No entitlement, no sync; ships first. 0. **Prove the gate before writing sync code.** Register the App ID with
+iCloud (key-value storage) and keychain sharing, create the Developer ID
+provisioning profile, embed it in `make build-release`/`make sign`, rewrite
+the two entitlement assertions. Then, on a signed build: a data protection
+`SecItemAdd` returns `errSecSuccess` (not `-34018`), and a key-value round
+trip between two Macs succeeds. Settle `docs/keychain.md`'s open question of
+what happens to stored credentials when the embedded profile expires, and
+write the answer there.
+_If keychain sharing turns out not to be available to Developer ID_, phases
+1 and 3 are dropped and phase 2 still ships: configuration syncs, and each
+Mac asks for its own credentials.
+
 1. **Data protection keychain migration**, per `docs/keychain.md`: the one-time
    round of ACL prompts, then no more. `kSecAttrSynchronizableAny` everywhere.
    Ships on its own, with sync still absent.
