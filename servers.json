@@ -279,6 +279,7 @@
         },
         {
           "name": "APP_STORE_CONNECT_P8_PATH",
+          "perMachine": true,
           "required": false,
           "secret": false,
           "description": "Path to a .p8 file on disk. The legacy shape — it leaves the key readable outside the Keychain."
@@ -1336,6 +1337,7 @@
         },
         {
           "name": "NPM_BIN",
+          "perMachine": true,
           "required": false,
           "secret": false,
           "description": "Path to npm's npm-cli.js, used by npm_publish to build the tarball with `npm pack`. Left unset the server finds npm beside the Node it is running under, which under Bastion is the bundled runtime. Set it to publish with a different npm than the one this app ships."
@@ -2059,6 +2061,7 @@
         },
         {
           "name": "IOS_DEVICE_LAUNCH_ARGS",
+          "perMachine": true,
           "required": false,
           "secret": false,
           "description": "Launch arguments applied when a launch passes none, e.g. -CanopyDemoMode to open fixtures instead of the owner's real account."
@@ -2257,6 +2260,7 @@
       "env": [
         {
           "name": "KUBECONFIG_PATH",
+          "perMachine": true,
           "required": false,
           "secret": false,
           "description": "Path to a kubeconfig file. Unset falls through to the server's own default of ~/.kube/config, which is every cluster the user has."
@@ -2705,6 +2709,7 @@
         },
         {
           "name": "IOS_SIMULATOR_LAUNCH_ARGS",
+          "perMachine": true,
           "required": false,
           "secret": false,
           "description": "Launch arguments applied when a launch passes none, e.g. -CanopyDemoMode to open fixtures instead of a real account."
@@ -2892,6 +2897,7 @@
         },
         {
           "name": "APPLE_ADS_PRIVATE_KEY_PATH",
+          "perMachine": true,
           "required": false,
           "secret": false,
           "description": "Path to the private key PEM on disk. It leaves the key readable outside the Keychain."
@@ -2976,6 +2982,7 @@
         },
         {
           "name": "YAHOO_FINANCE_COOKIE_IMPORT_FILE",
+          "perMachine": true,
           "required": false,
           "secret": false,
           "description": "Path of a file holding that same cookie header, read at startup instead of YAHOO_FINANCE_COOKIE (set one, not both). A missing or empty file stops the server with an error naming the path. Cupertino's Safari MCP can write it from a signed-in tab."

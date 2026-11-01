@@ -263,6 +263,10 @@
                 "type": "string",
                 "minLength": 1
               },
+              "perMachine": {
+                "type": "boolean",
+                "description": "The value names code, a launch argument or a path on this Mac, so it never leaves it: iCloud sync leaves it out. stateEnv variables are per-Mac without saying so. Required, either way, on a variable named like a path or launch argument."
+              },
               "boolean": {
                 "type": "object",
                 "additionalProperties": false,

@@ -3065,6 +3065,7 @@ struct UnitCheck {
     }
 
     reservedEnv()
+    perMachineEnv()
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 {
@@ -3110,5 +3111,38 @@ struct UnitCheck {
       "a catalog-declared reserved name is admitted",
       catalog.admitted["NPM_CONFIG_USERCONFIG"] == "/x/.npmrc")
     check("and nothing is skipped for the catalog", catalog.skipped.isEmpty)
+  }
+
+  // MARK: - Per-Mac catalog variables
+
+  /// The variables whose values belong to one Mac: a path, a launch argument,
+  /// something naming code. iCloud sync leaves them out, so a value set on one
+  /// Mac never chooses code on another.
+  static func perMachineEnv() {
+    print("\nPer-Mac catalog variables")
+    func server(_ id: String) -> BastionServer? { ServerCatalog.all.first { $0.id == id } }
+    check("npm's NPM_BIN is per-Mac", server("npm")?.perMachineEnv.contains("NPM_BIN") == true)
+    check(
+      "npm's NPM_CONFIG_USERCONFIG is per-Mac, through stateEnv",
+      server("npm")?.perMachineEnv.contains("NPM_CONFIG_USERCONFIG") == true)
+    check(
+      "npm's NPM_REGISTRY is not",
+      server("npm")?.perMachineEnv.contains("NPM_REGISTRY") == false)
+    check(
+      "iOS Device's launch arguments are per-Mac",
+      server("ios-device")?.perMachineEnv.contains("IOS_DEVICE_LAUNCH_ARGS") == true)
+    check(
+      "App Store Connect's .p8 path is per-Mac",
+      server("appstore-connect")?.perMachineEnv.contains("APP_STORE_CONNECT_P8_PATH") == true)
+    check(
+      "Reddit's redirect URI follows the sync",
+      server("reddit")?.perMachineEnv.contains("REDDIT_REDIRECT_URI") == false)
+    check(
+      "every reserved name in the catalog is per-Mac",
+      ServerCatalog.all.allSatisfy { s in
+        s.env.filter { ReservedEnv.isReserved($0.name) }.allSatisfy {
+          s.perMachineEnv.contains($0.name)
+        }
+      })
   }
 }

@@ -270,9 +270,9 @@ task in the build order.
 | `APP_STORE_CONNECT_KEY_ID` | yes | — | The 10-character API key id. |
 | `APP_STORE_CONNECT_ISSUER_ID` | yes | — | Issuer UUID from the Keys page. |
 | `APP_STORE_CONNECT_P8` | — | yes | The .p8 private key, inline PEM. Preferred: Bastion keeps it in the Keychain and never writes it to disk. |
-| `APP_STORE_CONNECT_P8_PATH` | — | — | Path to a .p8 file on disk. The legacy shape — it leaves the key readable outside the Keychain. |
+| `APP_STORE_CONNECT_P8_PATH` | — | — | Path to a .p8 file on disk. The legacy shape — it leaves the key readable outside the Keychain. Per Mac — never synced. |
 | `APP_STORE_CONNECT_VENDOR_NUMBER` | — | — | Vendor number, needed only for sales and finance reports. |
-| `APP_STORE_CONNECT_CONFIG` | — | — | Config file path. Bastion points this at the profile's own directory. |
+| `APP_STORE_CONNECT_CONFIG` | — | — | Config file path. Bastion points this at the profile's own directory. Per Mac — never synced. |
 | `APP_STORE_CONNECT_ALLOW_WRITES` | — | — | Enables the mutating tools: version metadata, screenshots, submissions, pricing. |
 
 Satisfy exactly one of: **Inline private key** (`APP_STORE_CONNECT_P8`), **Private key file** (`APP_STORE_CONNECT_P8_PATH`)
@@ -313,7 +313,7 @@ locally, which is the only reason a version this fresh installs at all.
 | `CLOUDKIT_MANAGEMENT_TOKEN` | yes | yes | CloudKit management token, from icloud.developer.apple.com/dashboard/account/tokens — CloudKit Management Tokens. Can rewrite the container's schema; scope it and revoke when done. |
 | `CLOUDKIT_TEAM_ID` | yes | — | 10-character Apple Developer team id, e.g. 75QE9PRT3V. Also in the app's exportOptions.plist. |
 | `CLOUDKIT_CONTAINER_ID` | — | — | Default container, e.g. iCloud.io.mgcrea.Balise, so it need not be passed on every call. cloudkit_list_containers finds it if unset. |
-| `CLOUDKIT_CONFIG` | — | — | Config file path. Bastion points this at the profile's own directory. |
+| `CLOUDKIT_CONFIG` | — | — | Config file path. Bastion points this at the profile's own directory. Per Mac — never synced. |
 | `CLOUDKIT_MAX_RETRIES` | — | — | Retry budget for 429/5xx responses. Defaults to 3. |
 | `CLOUDKIT_ALLOW_WRITES` | — | — | Enables cloudkit_deploy_schema and cloudkit_import_schema. Both additionally require confirm: true on every call. |
 
@@ -333,7 +333,7 @@ which are per-identity, so both must be per-profile.
 | `REDDIT_CLIENT_SECRET` | — | yes | App client secret. Empty for an installed app, set for a web or script app. |
 | `REDDIT_USER_AGENT` | — | — | platform:app-id:version (by /u/username). Reddit throttles generic agents regardless of rate limit. |
 | `REDDIT_REDIRECT_URI` | — | — | Loopback OAuth callback. Per-profile, or two profiles race for one port — and the URL must be registered with the Reddit app. |
-| `REDDIT_TOKEN_PATH` | — | — | Where the refresh token is stored. Per-profile, or two profiles share one login. |
+| `REDDIT_TOKEN_PATH` | — | — | Where the refresh token is stored. Per-profile, or two profiles share one login. Per Mac — never synced. |
 | `REDDIT_ALLOW_WRITES` | — | — | Enables posting, commenting and voting. |
 
 Satisfy exactly one of: **Sign in with Reddit** (no variables — the server holds its own token)
@@ -360,8 +360,8 @@ on this API a read has a price, so an unbounded profile is a bill.
 | `X_CLIENT_ID` | — | — | OAuth2 client id. Required for a user context, and therefore for writes and for Ads. |
 | `X_CLIENT_SECRET` | — | yes | OAuth2 client secret, for a confidential client. |
 | `X_REDIRECT_URI` | — | — | Loopback OAuth callback. Per-profile, or two profiles race for one port — and the URL must be registered with the X app. |
-| `X_TOKEN_FILE` | — | — | Where the user token is stored. Per-profile, or two accounts share one login. |
-| `X_CONFIG` | — | — | Config file path. Bastion points this at the profile's own directory. |
+| `X_TOKEN_FILE` | — | — | Where the user token is stored. Per-profile, or two accounts share one login. Per Mac — never synced. |
+| `X_CONFIG` | — | — | Config file path. Bastion points this at the profile's own directory. Per Mac — never synced. |
 | `X_MONTHLY_BUDGET_USD` | — | — | Spend ceiling. X bills per read, so this is a real safety control, not a preference. |
 | `X_ALLOW_WRITES` | — | — | Enables posting through the API rather than returning an intent URL. |
 | `X_ADS_ENABLED` | — | — | Registers the Ads API tools. Needs a user context. Boolean — unset means off. |
@@ -397,9 +397,9 @@ profiles is the leak this app exists to prevent.
 | `UNIFI_PROTECT_MODE` | — | — | cloud or local. Inferred as cloud when a key and a console id are both set. |
 | `UNIFI_PROTECT_TOTP` | — | yes | 2FA code. Expires in ~30s, so prefer the server's own login tool. |
 | `UNIFI_PROTECT_VERIFY_TLS` | — | — | Verify the console certificate. Needs a hostname, not an IP. Boolean — unset means on. |
-| `UNIFI_PROTECT_SESSION_FILE` | — | — | Cached session, mode 600. Per-profile, or two identities share one session. |
-| `UNIFI_PROTECT_SNAPSHOT_DIR` | — | — | Where snapshots and exports are written. Per-profile, or one profile reads another's footage. |
-| `UNIFI_PROTECT_CONFIG` | — | — | Config file path. Bastion points this at the profile's own directory. |
+| `UNIFI_PROTECT_SESSION_FILE` | — | — | Cached session, mode 600. Per-profile, or two identities share one session. Per Mac — never synced. |
+| `UNIFI_PROTECT_SNAPSHOT_DIR` | — | — | Where snapshots and exports are written. Per-profile, or one profile reads another's footage. Per Mac — never synced. |
+| `UNIFI_PROTECT_CONFIG` | — | — | Config file path. Bastion points this at the profile's own directory. Per Mac — never synced. |
 | `UNIFI_PROTECT_MAX_RETRIES` | — | — | Retries on 401 / 429 / 5xx. Defaults to 3. |
 | `UNIFI_PROTECT_MAX_DOWNLOAD_BYTES` | — | — | Refuse a download larger than this. Defaults to 200000000. |
 | `UNIFI_PROTECT_DEVICE_CACHE_TTL` | — | — | Camera id-to-name cache lifetime in seconds. Defaults to 60. |
@@ -432,7 +432,7 @@ questions, one gated for changes - is the shape this is built for.
 | `UNIFI_PAGE_LIMIT` | — | — | Page size. Defaults to 50. |
 | `UNIFI_MAX_PAGES` | — | — | Pagination ceiling. Defaults to 20. |
 | `UNIFI_MAX_RETRIES` | — | — | Retries on a transient failure. Defaults to 3. |
-| `UNIFI_CONFIG` | — | — | Config file path. Bastion points this at the profile's own directory. |
+| `UNIFI_CONFIG` | — | — | Config file path. Bastion points this at the profile's own directory. Per Mac — never synced. |
 | `UNIFI_ALLOW_WRITES` | — | — | Enables the mutating tools: WLANs, port profiles, firewall rules, device adoption. |
 
 Satisfy exactly one of: **Console API key** (`UNIFI_HOST` + `UNIFI_API_KEY`), **Cloud API key** (`UNIFI_API_KEY` + `UNIFI_CONSOLE_ID`), **Local admin account** (`UNIFI_HOST` + `UNIFI_USERNAME` + `UNIFI_PASSWORD`)
@@ -600,8 +600,8 @@ token, so anything that can read that keychain item can publish.
 | --- | --- | --- | --- |
 | `NPM_TOKEN` | — | yes | npm access token. Optional: with none set the server falls back to the token `npm login` wrote to ~/.npmrc. A granular token with 'Bypass 2FA' enabled is refused by every trusted-publisher write. |
 | `NPM_REGISTRY` | — | — | Registry to talk to. Defaults to https://registry.npmjs.org, and the .npmrc token is looked up for whichever host this names, never sent to another. |
-| `NPM_CONFIG_USERCONFIG` | — | — | Which .npmrc the fallback token is read from. Unset means the machine's own ~/.npmrc, which every profile would then share. |
-| `NPM_MCP_CONFIG` | — | — | Config file path. Bastion already points the default at the profile's own directory; set this only to name a file elsewhere. |
+| `NPM_CONFIG_USERCONFIG` | — | — | Which .npmrc the fallback token is read from. Unset means the machine's own ~/.npmrc, which every profile would then share. Per Mac — never synced. |
+| `NPM_MCP_CONFIG` | — | — | Config file path. Bastion already points the default at the profile's own directory; set this only to name a file elsewhere. Per Mac — never synced. |
 | `NPM_OTP_MODE` | — | — | How the one-time password npm demands on every trusted-publisher call and on a challenged publish is obtained: web opens npm's confirmation page and waits, totp mints one locally from a stored seed, static uses NPM_OTP, none refuses with instructions. Defaults to web. Only totp runs unattended — the others all end at a human. |
 | `NPM_OTP` | — | yes | A one-time password, and the only thing NPM_OTP_MODE=static will start without complaining about. Rarely right: a code lasts about five minutes, so one set at spawn is dead before anything calls a tool. |
 | `NPM_TOTP_LABEL` | — | — | NPM_OTP_MODE=totp only: which stored seed to read, through @mgcrea/mcp-totp. Defaults to npm. |
@@ -609,7 +609,7 @@ token, so anything that can read that keychain item can publish.
 | `NPM_TOTP_KEYCHAIN_SERVICE` | — | — | NPM_OTP_MODE=totp only: which keychain service the seed is stored under. Defaults to com.mgcrea.mcp-totp, which is where mcp-totp's own totp_import_uri writes it. |
 | `NPM_AUTO_OPEN_BROWSER` | — | — | Whether the one-time-password flow launches a browser, or only prints the authorization URL. Boolean — unset means on. |
 | `NPM_ALLOW_WRITES` | — | — | Registers the write tools: publish and unpublish, dist-tags, deprecation, package access, org and team membership, tokens, trusted-publisher changes, and the browser login that puts a session token in front of every other credential for the life of the process. |
-| `NPM_BIN` | — | — | Path to npm's npm-cli.js, used by npm_publish to build the tarball with `npm pack`. Left unset the server finds npm beside the Node it is running under, which under Bastion is the bundled runtime. Set it to publish with a different npm than the one this app ships. |
+| `NPM_BIN` | — | — | Path to npm's npm-cli.js, used by npm_publish to build the tarball with `npm pack`. Left unset the server finds npm beside the Node it is running under, which under Bastion is the bundled runtime. Set it to publish with a different npm than the one this app ships. Per Mac — never synced. |
 
 Per-profile state: `NPM_CONFIG_USERCONFIG`, `NPM_MCP_CONFIG`
 
@@ -958,8 +958,8 @@ they have.
 | --- | --- | --- | --- |
 | `IOS_DEVICE_ID` | — | — | CoreDevice identifier, UDID or name of the device to drive. Unset uses the only connected device; two connected and no value is an error that names them. |
 | `IOS_DEVICE_WDA_URL` | — | — | Explicit WebDriverAgent URL. Unset derives it from the device's CoreDevice tunnel, which is the normal path and needs no port forwarding. |
-| `IOS_DEVICE_LAUNCH_ARGS` | — | — | Launch arguments applied when a launch passes none, e.g. -CanopyDemoMode to open fixtures instead of the owner's real account. |
-| `IOS_DEVICE_OUTPUT_DIR` | — | — | Where saved screenshots and pulled app containers land. Defaults to a directory under TMPDIR. |
+| `IOS_DEVICE_LAUNCH_ARGS` | — | — | Launch arguments applied when a launch passes none, e.g. -CanopyDemoMode to open fixtures instead of the owner's real account. Per Mac — never synced. |
+| `IOS_DEVICE_OUTPUT_DIR` | — | — | Where saved screenshots and pulled app containers land. Defaults to a directory under TMPDIR. Per Mac — never synced. |
 | `IOS_DEVICE_ALLOW_WRITES` | — | — | Enables the nine tools that drive the device: tap, tap_element, swipe, type, press_button, install, launch, terminate, pull_container. |
 
 Per-profile state: `IOS_DEVICE_OUTPUT_DIR`
@@ -1020,7 +1020,7 @@ DIALECT MEASURED. A live `initialize` that asks for 2026-07-28 - a revision no s
 
 | Variable | Required | Secret | Meaning |
 | --- | --- | --- | --- |
-| `KUBECONFIG_PATH` | — | — | Path to a kubeconfig file. Unset falls through to the server's own default of ~/.kube/config, which is every cluster the user has. |
+| `KUBECONFIG_PATH` | — | — | Path to a kubeconfig file. Unset falls through to the server's own default of ~/.kube/config, which is every cluster the user has. Per Mac — never synced. |
 | `K8S_SERVER` | — | — | API server URL, for reaching a cluster with a token instead of a kubeconfig. |
 | `K8S_TOKEN` | — | yes | Service account bearer token, paired with K8S_SERVER. |
 | `K8S_CONTEXT` | — | — | Which context in the kubeconfig to use. The difference between staging and production is usually this one string. |
@@ -1106,7 +1106,7 @@ DIALECT MEASURED. A live `initialize` that asks for 2026-07-28 - a revision no s
 | Variable | Required | Secret | Meaning |
 | --- | --- | --- | --- |
 | `PLAYWRIGHT_MCP_BROWSER` | — | — | Which browser to drive: chrome, firefox, webkit, msedge. Unset uses the server's own default of chrome. |
-| `PLAYWRIGHT_MCP_USER_DATA_DIR` | — | — | The browser profile directory, which holds cookies and logged-in sessions. Redirected per profile by Bastion. |
+| `PLAYWRIGHT_MCP_USER_DATA_DIR` | — | — | The browser profile directory, which holds cookies and logged-in sessions. Redirected per profile by Bastion. Per Mac — never synced. |
 | `PLAYWRIGHT_MCP_ALLOWED_ORIGINS` | — | — | Semicolon-separated origins the browser may reach. Unset means all of them, which is the setting worth thinking about before a model drives this. |
 
 Hidden with writes off: `browser_click`, `browser_close`, `browser_drag`, `browser_drop`, `browser_evaluate`, `browser_file_upload`, `browser_fill_form`, `browser_handle_dialog`, `browser_hover`, `browser_navigate`, `browser_navigate_back`, `browser_press_key`, `browser_resize`, `browser_run_code_unsafe`, `browser_select_option`, `browser_tabs`, `browser_type` — and any tool the server annotates as not read-only. This filters what Bastion forwards; it does not bind the server, so the credential's own scopes remain the real boundary.
@@ -1223,8 +1223,8 @@ ui_tree works before it has ever run.
 | `IOS_SIMULATOR_ID` | — | — | UDID, name, or the literal `booted` of the simulator to drive. Unset uses the single booted simulator; two or more booted and no value is an error that names them, rather than the coin flip simctl's own `booted` performs. |
 | `IOS_SIMULATOR_WDA_URL` | — | — | Explicit WebDriverAgent URL. Unset builds one from IOS_SIMULATOR_WDA_PORT on the host's own loopback, which is the normal path. |
 | `IOS_SIMULATOR_WDA_PORT` | — | — | Port the runner was started on, default 8100, and it must match its USE_PORT. One port per simulator: they all bind the same host loopback, so two runners on one port drives the wrong simulator silently instead of colliding. |
-| `IOS_SIMULATOR_LAUNCH_ARGS` | — | — | Launch arguments applied when a launch passes none, e.g. -CanopyDemoMode to open fixtures instead of a real account. |
-| `IOS_SIMULATOR_OUTPUT_DIR` | — | — | Where saved screenshots, launch logs and the runner log land. Defaults to a directory under TMPDIR. |
+| `IOS_SIMULATOR_LAUNCH_ARGS` | — | — | Launch arguments applied when a launch passes none, e.g. -CanopyDemoMode to open fixtures instead of a real account. Per Mac — never synced. |
+| `IOS_SIMULATOR_OUTPUT_DIR` | — | — | Where saved screenshots, launch logs and the runner log land. Defaults to a directory under TMPDIR. Per Mac — never synced. |
 | `IOS_SIMULATOR_ALLOW_WRITES` | — | — | Enables the fourteen tools that drive the simulator: tap, tap_element, swipe, type, press_button, power, erase, install, launch, terminate, open_url, push, set_environment, restart_wda. |
 
 Per-profile state: `IOS_SIMULATOR_OUTPUT_DIR`
@@ -1302,11 +1302,11 @@ overrides), APPLE_ADS_MAX_RETRIES and APPLE_ADS_DEBUG.
 | `APPLE_ADS_TEAM_ID` | yes | — | Team id, printed beside the client id once the public key is registered. |
 | `APPLE_ADS_KEY_ID` | yes | — | Key id, printed beside the client id once the public key is registered. |
 | `APPLE_ADS_PRIVATE_KEY` | — | yes | The EC P-256 private key, inline PEM. Preferred: Bastion keeps it in the Keychain and never writes it to disk. |
-| `APPLE_ADS_PRIVATE_KEY_PATH` | — | — | Path to the private key PEM on disk. It leaves the key readable outside the Keychain. |
+| `APPLE_ADS_PRIVATE_KEY_PATH` | — | — | Path to the private key PEM on disk. It leaves the key readable outside the Keychain. Per Mac — never synced. |
 | `APPLE_ADS_AD_ACCOUNT_ID` | — | — | Default ad account. Needed when the API user reaches more than one; otherwise each call must name one. |
 | `APPLE_ADS_MAX_DAILY_BUDGET` | — | — | Ceiling, in major currency units, on any daily budget a write tool may set. Unset means no ceiling. |
 | `APPLE_ADS_MAX_BID` | — | — | Ceiling, in major currency units, on any bid a write tool may set. Unset means no ceiling. |
-| `APPLE_ADS_CONFIG` | — | — | Config file path. Unset resolves under XDG_CONFIG_HOME, which Bastion already points at the profile's own directory. |
+| `APPLE_ADS_CONFIG` | — | — | Config file path. Unset resolves under XDG_CONFIG_HOME, which Bastion already points at the profile's own directory. Per Mac — never synced. |
 | `APPLE_ADS_ALLOW_WRITES` | — | — | Enables the mutating tools: creating, updating and deleting campaigns, ad groups, keywords and ads, budgets, and non-GET raw requests. |
 
 Satisfy exactly one of: **Inline private key** (`APPLE_ADS_PRIVATE_KEY`), **Private key file** (`APPLE_ADS_PRIVATE_KEY_PATH`)
@@ -1356,7 +1356,7 @@ browser session for whoever captured it - signed in, it is the account.
 | Variable | Required | Secret | Meaning |
 | --- | --- | --- | --- |
 | `YAHOO_FINANCE_COOKIE` | — | yes | Cookie header from a finance.yahoo.com browser session, used instead of the automatic handshake. The A3, T and Y cookies of a signed-in tab add the watchlist tools. It does not get past a 429: Yahoo checks the TLS fingerprint on every request. |
-| `YAHOO_FINANCE_COOKIE_IMPORT_FILE` | — | — | Path of a file holding that same cookie header, read at startup instead of YAHOO_FINANCE_COOKIE (set one, not both). A missing or empty file stops the server with an error naming the path. Cupertino's Safari MCP can write it from a signed-in tab. |
+| `YAHOO_FINANCE_COOKIE_IMPORT_FILE` | — | — | Path of a file holding that same cookie header, read at startup instead of YAHOO_FINANCE_COOKIE (set one, not both). A missing or empty file stops the server with an error naming the path. Cupertino's Safari MCP can write it from a signed-in tab. Per Mac — never synced. |
 | `YAHOO_FINANCE_CRUMB` | — | yes | Rarely needed: a crumb is derived from the cookie, and replaced if Yahoo rejects it. Useless without the cookie it was issued for. |
 | `YAHOO_FINANCE_CONCURRENCY` | — | — | Max requests in flight to Yahoo, handshake included. Defaults to 4; lower it if a watchlist-sized fan-out trips 429s. |
 | `YAHOO_FINANCE_REQUEST_TIMEOUT_MS` | — | — | Per-request timeout in milliseconds, body included. Defaults to 30000. |
@@ -1424,7 +1424,7 @@ provisioner with LANGFUSE_KEYS_FILE pointed there.
 | Variable | Required | Secret | Meaning |
 | --- | --- | --- | --- |
 | `LANGFUSE_HOST` | — | — | Instance URL, e.g. https://langfuse.example.com. Falls back to the keys file's host, then Langfuse Cloud. |
-| `LANGFUSE_KEYS_FILE` | — | — | The per-project keys file `pnpm provision` writes. Unset resolves under XDG_CONFIG_HOME, which Bastion already points at the profile's own directory. |
+| `LANGFUSE_KEYS_FILE` | — | — | The per-project keys file `pnpm provision` writes. Unset resolves under XDG_CONFIG_HOME, which Bastion already points at the profile's own directory. Per Mac — never synced. |
 | `LANGFUSE_PROJECTS` | — | yes | JSON map of project name to {publicKey, secretKey, id}, one key per project. |
 | `LANGFUSE_PUBLIC_KEY` | — | — | A single project's public key, pk-lf-… |
 | `LANGFUSE_SECRET_KEY` | — | yes | That project's secret key, sk-lf-… |

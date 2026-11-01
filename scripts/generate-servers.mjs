@@ -56,6 +56,27 @@ const manifest = JSON.parse(read("servers.json"));
 /** Every revision the manifest may name, oldest first. */
 const DIALECTS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"];
 
+/**
+ * The environment names a custom server may not declare, mirrored from
+ * `apps/apple/Bastion/ReservedEnv.swift`, which says why each is there. The
+ * generator cannot import Swift, so the two lists are kept in step by hand;
+ * `make unit` checks the Swift side against the generated catalog.
+ */
+const RESERVED_EXACT = new Set(["PATH", "HOME"]);
+const RESERVED_PREFIXES = ["NODE_", "NPM_CONFIG_", "DYLD_", "XDG_"];
+const isReserved = (name) => {
+  const upper = name.toUpperCase();
+  return RESERVED_EXACT.has(upper) || RESERVED_PREFIXES.some((x) => upper.startsWith(x));
+};
+
+/**
+ * Names that usually hold a path, a launch argument or a binary. A variable
+ * named like one must say whether its value belongs to one Mac, because iCloud
+ * sync carries every value that does not, and a path set on one Mac is code
+ * chosen on another.
+ */
+const LOOKS_LOCAL = /(_PATH|_FILE|_DIR|_ARGS|_BIN|_CONFIG|USERCONFIG)$/;
+
 const validate = (servers) => {
   const problems = [];
   const seen = new Set();
@@ -308,6 +329,34 @@ const validate = (servers) => {
         }
       }
 
+      // Whether the value belongs to one Mac. `stateEnv` variables do without
+      // saying so - each is a path into this Mac's profile directory - and
+      // every other variable named like a path or a launch argument has to say
+      // which it is, so a new one cannot slip into iCloud sync by default.
+      const inState = (s.stateEnv ?? []).includes(e.name);
+      if (e.perMachine !== undefined && typeof e.perMachine !== "boolean") {
+        problems.push(`${eat}: perMachine must be a boolean`);
+      }
+      if (isRemote && e.perMachine !== undefined) {
+        problems.push(`${eat}: a header is not a local path; perMachine is for child variables`);
+      }
+      if (
+        !isRemote &&
+        !inState &&
+        e.perMachine === undefined &&
+        (LOOKS_LOCAL.test(e.name ?? "") || isReserved(e.name ?? ""))
+      ) {
+        problems.push(`${eat}: looks like a path or launch argument; state perMachine either way`);
+      }
+      // The catalog is exempt from the reserved-name refusal custom servers
+      // meet, because it is compiled into the app. It is not exempt from sync:
+      // a reserved name that travelled to another Mac would choose code there.
+      if (isReserved(e.name ?? "") && !inState && e.perMachine !== true) {
+        problems.push(
+          `${eat}: a reserved name is allowed in the catalog only as a per-Mac variable`,
+        );
+      }
+
       // A variable's SINK. On a child it is an environment variable and there
       // is nothing to say; on a remote server there is no environment, so a
       // variable with no header is a variable that goes nowhere - collected
@@ -544,23 +593,24 @@ const swiftCallbackList = (cs) =>
   cs.length === 0 ? "[]" : `[${cs.map(swiftCallbackVar).join(", ")}]`;
 
 const swiftEnvVar = (e) => {
-  // `summary` is last among the required fields, so whichever optional follows
-  // it decides where the closing paren goes. Only one of the two can be
-  // present — the validator refuses a variable that is both — so this is a
-  // three-way choice and not a combination.
-  const tail = e.header
-    ? `          summary: ${swiftString(e.description)},\n` +
-      `          header: .init(name: ${swiftString(e.header.name)}, format: ${swiftString(e.header.format)})),`
-    : e.boolean
-      ? `          summary: ${swiftString(e.description)},\n` +
-        `          booleanDefault: ${e.boolean.default}),`
-      : `          summary: ${swiftString(e.description)}),`;
+  // `summary` is the last required field, and the optionals follow it in
+  // declaration order. `header` and `booleanDefault` never appear together -
+  // the validator refuses a variable that is both - and `isPerMachine` is
+  // written only when true, so the common case stays one line.
+  const trailing = [`summary: ${swiftString(e.description)}`];
+  if (e.header) {
+    trailing.push(
+      `header: .init(name: ${swiftString(e.header.name)}, format: ${swiftString(e.header.format)})`,
+    );
+  }
+  if (e.boolean) trailing.push(`booleanDefault: ${e.boolean.default}`);
+  if (e.perMachine === true) trailing.push("isPerMachine: true");
   return [
     `        .init(`,
     `          name: ${swiftString(e.name)},`,
     `          isRequired: ${e.required},`,
     `          isSecret: ${e.secret},`,
-    tail,
+    ...trailing.map((line, k) => `          ${line}${k === trailing.length - 1 ? ")," : ","}`),
   ].join("\n");
 };
 
@@ -692,9 +742,10 @@ const mdDetail = (s) => {
     // Appended rather than given a column: only three servers have any, and a
     // column that is a dash on seventy-five rows earns nothing. The sentence
     // says what unset does, which is the state a reader cannot infer.
-    const meaning = e.boolean
-      ? `${mdEscape(e.description)} Boolean — unset means ${e.boolean.default ? "on" : "off"}.`
-      : mdEscape(e.description);
+    const boolean = e.boolean ? ` Boolean — unset means ${e.boolean.default ? "on" : "off"}.` : "";
+    const local =
+      e.perMachine === true || s.stateEnv.includes(e.name) ? " Per Mac — never synced." : "";
+    const meaning = `${mdEscape(e.description)}${boolean}${local}`;
     const cells = [
       mdCode(e.name),
       e.required ? "yes" : "—",

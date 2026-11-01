@@ -233,6 +233,13 @@ nonisolated struct BastionServer: Identifiable, Hashable {
     return env.filter { $0.name != gate }
   }
 
+  /// The variables whose values never leave this Mac: every `stateEnv` path
+  /// into the profile directory, and every variable the catalog marks
+  /// `perMachine`. iCloud sync leaves these out of the profile it carries.
+  var perMachineEnv: Set<String> {
+    Set(stateEnv).union(env.filter(\.isPerMachine).map(\.name))
+  }
+
   /// A profile's stored values without any this server declares secret.
   ///
   /// Secrets live in the Keychain, but a value typed while its variable was not
@@ -592,6 +599,15 @@ nonisolated struct BastionServer: Identifiable, Hashable {
     /// which is only safe to offer once the third state is visible, and that is
     /// what this field makes possible.
     var booleanDefault: Bool?
+    /// The value belongs to this Mac: a path, a launch argument, something
+    /// naming code. iCloud sync leaves it out, because a path set on one Mac
+    /// is code chosen on another, and a `.p8` path or `NPM_BIN` that resolves
+    /// here may resolve to something else there, or to nothing.
+    ///
+    /// Declared last and defaulted, so the generated catalog writes it only
+    /// where it is true. `stateEnv` variables are per-Mac too, without saying
+    /// so: `BastionServer.perMachineEnv` is the union.
+    var isPerMachine: Bool = false
 
     /// How every one of these servers reads a boolean, so the editor can show
     /// which way an existing value is actually being read.
@@ -699,7 +715,8 @@ nonisolated enum ServerCatalog {
           name: "APP_STORE_CONNECT_P8_PATH",
           isRequired: false,
           isSecret: false,
-          summary: "Path to a .p8 file on disk. The legacy shape — it leaves the key readable outside the Keychain."),
+          summary: "Path to a .p8 file on disk. The legacy shape — it leaves the key readable outside the Keychain.",
+          isPerMachine: true),
         .init(
           name: "APP_STORE_CONNECT_VENDOR_NUMBER",
           isRequired: false,
@@ -1650,7 +1667,8 @@ nonisolated enum ServerCatalog {
           name: "NPM_BIN",
           isRequired: false,
           isSecret: false,
-          summary: "Path to npm's npm-cli.js, used by npm_publish to build the tarball with `npm pack`. Left unset the server finds npm beside the Node it is running under, which under Bastion is the bundled runtime. Set it to publish with a different npm than the one this app ships."),
+          summary: "Path to npm's npm-cli.js, used by npm_publish to build the tarball with `npm pack`. Left unset the server finds npm beside the Node it is running under, which under Bastion is the bundled runtime. Set it to publish with a different npm than the one this app ships.",
+          isPerMachine: true),
       ]),
     // REMOTE. GitHub operates this one; Bastion holds the credential and the
     // audit line and forwards the call.
@@ -2274,7 +2292,8 @@ nonisolated enum ServerCatalog {
           name: "IOS_DEVICE_LAUNCH_ARGS",
           isRequired: false,
           isSecret: false,
-          summary: "Launch arguments applied when a launch passes none, e.g. -CanopyDemoMode to open fixtures instead of the owner's real account."),
+          summary: "Launch arguments applied when a launch passes none, e.g. -CanopyDemoMode to open fixtures instead of the owner's real account.",
+          isPerMachine: true),
         .init(
           name: "IOS_DEVICE_OUTPUT_DIR",
           isRequired: false,
@@ -2447,7 +2466,8 @@ nonisolated enum ServerCatalog {
           name: "KUBECONFIG_PATH",
           isRequired: false,
           isSecret: false,
-          summary: "Path to a kubeconfig file. Unset falls through to the server's own default of ~/.kube/config, which is every cluster the user has."),
+          summary: "Path to a kubeconfig file. Unset falls through to the server's own default of ~/.kube/config, which is every cluster the user has.",
+          isPerMachine: true),
         .init(
           name: "K8S_SERVER",
           isRequired: false,
@@ -2840,7 +2860,8 @@ nonisolated enum ServerCatalog {
           name: "IOS_SIMULATOR_LAUNCH_ARGS",
           isRequired: false,
           isSecret: false,
-          summary: "Launch arguments applied when a launch passes none, e.g. -CanopyDemoMode to open fixtures instead of a real account."),
+          summary: "Launch arguments applied when a launch passes none, e.g. -CanopyDemoMode to open fixtures instead of a real account.",
+          isPerMachine: true),
         .init(
           name: "IOS_SIMULATOR_OUTPUT_DIR",
           isRequired: false,
@@ -2986,7 +3007,8 @@ nonisolated enum ServerCatalog {
           name: "APPLE_ADS_PRIVATE_KEY_PATH",
           isRequired: false,
           isSecret: false,
-          summary: "Path to the private key PEM on disk. It leaves the key readable outside the Keychain."),
+          summary: "Path to the private key PEM on disk. It leaves the key readable outside the Keychain.",
+          isPerMachine: true),
         .init(
           name: "APPLE_ADS_AD_ACCOUNT_ID",
           isRequired: false,
@@ -3078,7 +3100,8 @@ nonisolated enum ServerCatalog {
           name: "YAHOO_FINANCE_COOKIE_IMPORT_FILE",
           isRequired: false,
           isSecret: false,
-          summary: "Path of a file holding that same cookie header, read at startup instead of YAHOO_FINANCE_COOKIE (set one, not both). A missing or empty file stops the server with an error naming the path. Cupertino's Safari MCP can write it from a signed-in tab."),
+          summary: "Path of a file holding that same cookie header, read at startup instead of YAHOO_FINANCE_COOKIE (set one, not both). A missing or empty file stops the server with an error naming the path. Cupertino's Safari MCP can write it from a signed-in tab.",
+          isPerMachine: true),
         .init(
           name: "YAHOO_FINANCE_CRUMB",
           isRequired: false,
