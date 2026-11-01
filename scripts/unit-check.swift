@@ -3068,6 +3068,7 @@ struct UnitCheck {
     perMachineEnv()
     iCloudProbeArguments()
     keychainMigration()
+    devImportDocument()
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 {
@@ -3208,5 +3209,36 @@ struct UnitCheck {
     check(
       "the union lists a name in both keychains once",
       KeychainMigration.union(modern: ["a", "c"], legacy: ["c", "b"]) == ["a", "b", "c"])
+  }
+
+  // MARK: - The Debug build's import document
+
+  /// What the Release build's export writes and `DevSeed` reads: one type, so
+  /// the two cannot drift.
+  static func devImportDocument() {
+    print("\nThe Debug build's import document")
+    let doc = DevImportDocument.export(
+      profiles: [
+        .init(name: "prod", server: "shopify", allowWrites: true, values: ["SHOPIFY_TOKEN": "x"])
+      ],
+      gatewayTokens: ["claude-code": "t1", "dev": "t2"])
+    check(
+      "profiles are carried with their values",
+      doc.profiles.first?.values["SHOPIFY_TOKEN"] == "x")
+    check(
+      "the Debug build's own dev token is left alone", doc.gatewayTokens == ["claude-code": "t1"])
+    check(
+      "it decodes as DevSeed reads it",
+      (try? JSONDecoder().decode(DevImportDocument.self, from: JSONEncoder().encode(doc)))?
+        .profiles.count == 1)
+    let missing = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("no-such-\(UUID().uuidString)")
+    check(
+      "no destination where there is no Debug build",
+      DevImportDocument.destination(debugSupport: missing) == nil)
+    check(
+      "import.json inside it when there is one",
+      DevImportDocument.destination(debugSupport: URL(fileURLWithPath: NSTemporaryDirectory()))?
+        .lastPathComponent == "import.json")
   }
 }

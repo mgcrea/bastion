@@ -711,6 +711,7 @@ unit: ## Assert the translation, the parser, call capture, the audit chain, the 
 		apps/apple/Bastion/ReservedEnv.swift \
 		apps/apple/Bastion/ICloudProbe.swift \
 		apps/apple/Bastion/KeychainMigration.swift \
+		apps/apple/Bastion/DevImportDocument.swift \
 		apps/apple/Bastion/RemoteEndpoint.swift \
 		apps/apple/Bastion/InternalHosts.swift \
 		apps/apple/Bastion/HTTP.swift \
