@@ -56,17 +56,71 @@ nonisolated enum CredentialStore {
     /// Keychain, and deleting it empties the list rather than widening it. See
     /// `InternalHostStore`.
     case internalHosts
+    /// One item, written when every credential has left the login keychain.
+    ///
+    /// On the data protection side, where only an app holding Bastion's access
+    /// group can create it, so another process cannot write it early and turn
+    /// the fallback off while credentials are still on the login side. See
+    /// `KeychainMigration`.
+    case migration
+
+    /// Every scope that holds credentials, which is every scope a migration
+    /// pass moves.
+    static let credentialScopes: [Scope] = [
+      .profile, .gatewayToken, .oauth, .auditSigning, .internalHosts,
+    ]
 
     var service: String {
-      let base = AppSupport.identifier
+      let base = CredentialStore.serviceBase
       switch self {
       case .profile: return "\(base).profile"
       case .gatewayToken: return "\(base).gateway"
       case .oauth: return "\(base).oauth"
       case .auditSigning: return "\(base).audit"
       case .internalHosts: return "\(base).internal-hosts"
+      case .migration: return "\(base).migration"
       }
     }
+  }
+
+  /// The prefix every service is built on: the bundle identifier, so a Debug
+  /// build addresses its own namespace.
+  ///
+  /// Settable for one reason. `KeychainSelfTest` points it at a throwaway
+  /// namespace before anything touches the keychain, so it can run the real
+  /// migration on the signed build without going near a real credential.
+  /// Nothing else sets it, and the self-test exits rather than handing the
+  /// process back.
+  nonisolated(unsafe) static var serviceBase = AppSupport.identifier
+
+  /// Whether this process may use the data protection keychain.
+  ///
+  /// It may when it carries `keychain-access-groups`, which only the Release
+  /// build signed with the Developer ID profile does. Debug and the Apple
+  /// Development fallback carry none and stay on the login keychain, where they
+  /// have always been: without the entitlement every data protection call
+  /// answers `-34018`. Asked of the running process rather than decided at
+  /// compile time, so a Release build signed without the profile still works.
+  static let usesDataProtection: Bool = {
+    guard let task = SecTaskCreateFromSelf(nil) else { return false }
+    return SecTaskCopyValueForEntitlement(task, "keychain-access-groups" as CFString, nil) != nil
+  }()
+
+  private static let migrated = OSAllocatedUnfairLock(initialState: false)
+
+  /// Whether a migration pass has moved everything, so the login keychain is
+  /// no longer read.
+  ///
+  /// True once and then cached: the marker is never removed by this app. Asked
+  /// by attributes only, which never meets an ACL.
+  static var migrationDone: Bool {
+    if !usesDataProtection || migrated.withLock({ $0 }) { return true }
+    var query = baseQuery(.migration, account: "login-keychain")
+    query[kSecReturnAttributes as String] = true
+    var item: CFTypeRef?
+    let found = SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess
+    if found { migrated.withLock { $0 = true } }
+    return found
   }
 
   enum StoreError: LocalizedError {
@@ -154,7 +208,17 @@ nonisolated enum CredentialStore {
   /// not be had. For a caller whose next step depends on the difference — one
   /// that would otherwise replace a value it merely failed to read.
   static func lookup(_ scope: Scope, account: String) throws -> String? {
-    var query = baseQuery(scope, account: account)
+    if let value = try rawLookup(baseQuery(scope, account: account), account: account) {
+      return value
+    }
+    // Not on the data protection side yet: the login keychain still holds
+    // whatever a migration pass has not moved.
+    guard usesDataProtection, !migrationDone else { return nil }
+    return try legacyLookup(scope, account: account)
+  }
+
+  private static func rawLookup(_ base: [String: Any], account: String) throws -> String? {
+    var query = base
     query[kSecReturnData as String] = true
     query[kSecMatchLimit as String] = kSecMatchLimitOne
 
@@ -198,13 +262,31 @@ nonisolated enum CredentialStore {
       throw StoreError.keychain(updated, "update \(account)")
     }
 
+    try add(query, data: data, account: account)
+    // A login copy left by a pass that has not finished would otherwise come
+    // back through the fallback the moment this one is deleted.
+    if usesDataProtection, !migrationDone { try? legacyDelete(scope, account: account) }
+  }
+
+  private static func add(_ base: [String: Any], data: Data, account: String) throws {
+    var query = base
     query[kSecValueData as String] = data
     // The credential is needed whenever a tool call arrives, which may be while
     // the screen is locked — an agent working in the background is the normal
     // case, not the exception. `AfterFirstUnlock` is the weakest accessibility
-    // that survives that, and `ThisDeviceOnly` keeps it out of iCloud Keychain:
-    // a gateway credential has no business syncing to a phone.
+    // that survives that.
+    //
+    // `ThisDeviceOnly` keeps every item out of iCloud Keychain. The login
+    // keychain ignored the attribute; the data protection keychain honours it,
+    // so from this build on it is a fact rather than an intent. Phase 3 of the
+    // sync design lifts it for `.profile` alone, and only while the person has
+    // sync on: a gateway token, an OAuth token set or the audit key has no
+    // business on another device.
     query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+    // An add names one item, so it cannot carry `Any`. Not synchronizable.
+    if query[kSecUseDataProtectionKeychain as String] != nil {
+      query[kSecAttrSynchronizable as String] = false
+    }
     let added = SecItemAdd(query as CFDictionary, nil)
     guard added == errSecSuccess else { throw StoreError.keychain(added, "store \(account)") }
   }
@@ -214,7 +296,14 @@ nonisolated enum CredentialStore {
     // fixture profile would otherwise write, or sweep, the developer's own
     // items. See `accounts` below for the read side of the same rule.
     if DemoSeed.isEnabled { return }
-    let status = SecItemDelete(baseQuery(scope, account: account) as CFDictionary)
+    try rawDelete(baseQuery(scope, account: account), account: account)
+    // Both sides, always: a credential deleted only here would come back
+    // through the fallback from a login copy no pass had moved yet.
+    if usesDataProtection { try legacyDelete(scope, account: account) }
+  }
+
+  private static func rawDelete(_ query: [String: Any], account: String) throws {
+    let status = SecItemDelete(query as CFDictionary)
     guard status == errSecSuccess || status == errSecItemNotFound else {
       throw StoreError.keychain(status, "delete \(account)")
     }
@@ -232,7 +321,13 @@ nonisolated enum CredentialStore {
     // the developer's own, and a per-item ACL prompt is a modal dialog arriving
     // in the middle of a shutter.
     if DemoSeed.isEnabled { return [] }
-    var query = baseQuery(scope, account: nil)
+    let modern = rawAccounts(baseQuery(scope, account: nil))
+    guard usesDataProtection, !migrationDone else { return modern }
+    return KeychainMigration.union(modern: modern, legacy: legacyAccounts(scope))
+  }
+
+  private static func rawAccounts(_ base: [String: Any]) -> [String] {
+    var query = base
     query[kSecReturnAttributes as String] = true
     query[kSecMatchLimit as String] = kSecMatchLimitAll
 
@@ -241,6 +336,42 @@ nonisolated enum CredentialStore {
       let rows = item as? [[String: Any]]
     else { return [] }
     return rows.compactMap { $0[kSecAttrAccount as String] as? String }
+  }
+
+  // MARK: - The migration's primitives
+  //
+  // One side each, named for it, so `KeychainMigration.run` says which keychain
+  // every call reaches. Nothing else calls these.
+
+  static func legacyAccounts(_ scope: Scope) -> [String] {
+    rawAccounts(baseQuery(scope, account: nil, legacy: true))
+  }
+
+  static func legacyLookup(_ scope: Scope, account: String) throws -> String? {
+    try rawLookup(baseQuery(scope, account: account, legacy: true), account: account)
+  }
+
+  static func legacyDelete(_ scope: Scope, account: String) throws {
+    try rawDelete(baseQuery(scope, account: account, legacy: true), account: account)
+  }
+
+  /// For `KeychainSelfTest` alone, which seeds the login keychain to migrate.
+  static func legacyAdd(_ scope: Scope, account: String, value: String) throws {
+    try add(
+      baseQuery(scope, account: account, legacy: true), data: Data(value.utf8), account: account)
+  }
+
+  /// Adds on the data protection side and refuses to replace: a pass that
+  /// finds the account there already plans `.dropStale`, never `.move`.
+  static func modernAdd(_ scope: Scope, account: String, value: String) throws {
+    guard !value.isEmpty else { throw StoreError.emptyValue(account) }
+    try add(baseQuery(scope, account: account), data: Data(value.utf8), account: account)
+  }
+
+  /// The value on the data protection side only, for the read-back a pass
+  /// compares before it deletes the login copy.
+  static func modernLookup(_ scope: Scope, account: String) throws -> String? {
+    try rawLookup(baseQuery(scope, account: account), account: account)
   }
 
   /// The variable names one profile holds a secret for.
@@ -271,12 +402,27 @@ nonisolated enum CredentialStore {
     return storedVariables(in: accounts(.profile), profile: profile, server: server)
   }
 
-  private static func baseQuery(_ scope: Scope, account: String?) -> [String: Any] {
+  /// The query every call starts from, on the data protection keychain when
+  /// this build may use it, or on the login keychain when `legacy` asks for it.
+  ///
+  /// `kSecAttrSynchronizableAny` on every data protection query: a synced and an
+  /// unsynced item with the same service and account are two items, and a query
+  /// that omits the attribute matches only the unsynced one. Phase 3 writes
+  /// synced `.profile` items, and a lookup, a listing or a delete that missed
+  /// them would report a credential unset or leave one behind. `add` replaces
+  /// it with `false`, since an add names one item.
+  private static func baseQuery(_ scope: Scope, account: String?, legacy: Bool = false)
+    -> [String: Any]
+  {
     var query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: scope.service,
     ]
     if let account { query[kSecAttrAccount as String] = account }
+    if usesDataProtection && !legacy {
+      query[kSecUseDataProtectionKeychain as String] = true
+      query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
+    }
     return query
   }
 }
