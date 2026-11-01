@@ -368,6 +368,12 @@ nonisolated enum CredentialStore {
     try add(baseQuery(scope, account: account), data: Data(value.utf8), account: account)
   }
 
+  /// The account names on the data protection side only. A pass plans against
+  /// these: `accounts` lists both keychains while one is pending.
+  static func modernAccounts(_ scope: Scope) -> [String] {
+    rawAccounts(baseQuery(scope, account: nil))
+  }
+
   /// The value on the data protection side only, for the read-back a pass
   /// compares before it deletes the login copy.
   static func modernLookup(_ scope: Scope, account: String) throws -> String? {

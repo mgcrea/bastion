@@ -34,6 +34,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // `ICloudProbe`.
     if ICloudProbe.isRequested { ICloudProbe.run() }
 
+    // Every credential across to the data protection keychain, before anything
+    // asks for one. A no-op on Debug and once a pass has finished. A pass that
+    // keeps an item tries again next launch, and the item goes on working in
+    // the meantime through `CredentialStore`'s fallback. See
+    // `KeychainMigration`.
+    KeychainMigration.run()
+
     // Whether this build's notes count as read, decided once and never again.
     //
     // Has to happen before any view can ask `Changelog.hasUnseen`, and has to

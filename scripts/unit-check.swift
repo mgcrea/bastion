@@ -3209,6 +3209,11 @@ struct UnitCheck {
     check(
       "the union lists a name in both keychains once",
       KeychainMigration.union(modern: ["a", "c"], legacy: ["c", "b"]) == ["a", "b", "c"])
+    check(
+      "a refused read is a leftover, so the marker waits",
+      KeychainMigration.leftovers(after: [
+        "profile": [.moved("a"), .refused("b")], "oauth": [.dropped("c")],
+      ]) == ["profile": ["b"], "oauth": []])
   }
 
   // MARK: - The Debug build's import document

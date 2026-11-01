@@ -48,4 +48,21 @@ nonisolated enum KeychainMigration {
   static func union(modern: [String], legacy: [String]) -> [String] {
     Set(modern).union(legacy).sorted()
   }
+
+  /// What became of one account in a pass.
+  enum Outcome: Equatable {
+    case moved(String)
+    case dropped(String)
+    /// Could not be read (a denied or unanswered prompt, a keychain locked
+    /// since boot) or could not be written across. Left where it was.
+    case refused(String)
+  }
+
+  /// The accounts a pass left on the login side, by scope. Only a refusal
+  /// leaves one.
+  static func leftovers(after outcomes: [String: [Outcome]]) -> [String: [String]] {
+    outcomes.mapValues { results in
+      results.compactMap { if case .refused(let account) = $0 { account } else { nil } }
+    }
+  }
 }
