@@ -206,8 +206,13 @@ records the same finding from the other side — `Passwords.app` holds
 synchronizable data protection keychain item and one key-value pair named after the
 Mac, then lists every other Mac's it can see. On the first Mac, a `make bundle` build
 answered `keychain add: ok`, `keychain read: ok` and `kvs synchronize: true` — no
-`-34018`, so the entitlement and the profile are accepted. Run it on a second Mac on
-the same iCloud account to see sync itself.
+`-34018`, so the entitlement and the profile are accepted. The same answers came from
+the notarized, stapled `make build-release` build, unpacked from its zip, quarantined
+the way Safari marks a download and opened through LaunchServices (`open -n … --args
+-iCloudProbe YES`): `spctl` accepted it as `Notarized Developer ID`, it launched with
+its four restricted entitlements, and the probe passed. What one Mac cannot show is
+sync itself: run the probe on a second Mac on the same iCloud account, and each should
+list the other's entry.
 
 The only `kSecUseDataProtectionKeychain` in the tree is the probe's. The stores still
 use the login keychain, and existing credentials have never moved and need no
