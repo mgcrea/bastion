@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The Release build's entitlements, applied by `make sign` and validated at
+  launch against apps/apple/Bastion.provisionprofile, which is embedded beside
+  them. The app carried none until iCloud sync, and traded that claim on purpose
+  for exactly these four (docs/keychain.md). `make sign` and `make audit` both
+  assert the set is exactly this, so a fifth cannot arrive unnoticed.
+
+  Restricted, all four: a build that carries them without the profile is killed
+  at launch, which is why `make sign` refuses to sign without it.
+
+  - application-identifier and team-identifier: who the app is, which the
+    profile and the two below are checked against.
+  - keychain-access-groups: the data protection keychain, where Bastion's own
+    group is the only one it can reach, and where iCloud Keychain syncs from.
+  - ubiquity-kvstore-identifier: the iCloud key-value store the configuration
+    syncs through.
+
+  Literal values, not $(TeamIdentifierPrefix): codesign does not expand them.
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.application-identifier</key>
+  <string>75QE9PRT3V.io.mgcrea.bastion</string>
+  <key>com.apple.developer.team-identifier</key>
+  <string>75QE9PRT3V</string>
+  <key>keychain-access-groups</key>
+  <array>
+    <string>75QE9PRT3V.io.mgcrea.bastion</string>
+  </array>
+  <key>com.apple.developer.ubiquity-kvstore-identifier</key>
+  <string>75QE9PRT3V.io.mgcrea.bastion</string>
+</dict>
+</plist>

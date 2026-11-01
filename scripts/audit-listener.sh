@@ -76,12 +76,53 @@ else
   fail "$listeners listeners in the app source — this audit knows about two"
 fi
 
-# ── Rule 5, statically. An entitlements file that is empty by construction is a
-# checkable claim; one arrived at by deletion is not.
+# ── Rule 5, statically. An entitlement set that is exact by construction is a
+# checkable claim; one arrived at by deletion or by accretion is not.
+#
+# The app carried none until iCloud sync, and traded that claim on purpose for
+# exactly four (docs/keychain.md): its own identity, its team, its keychain
+# group, and its iCloud key-value store. The Release build gets them from
+# `make sign` and the embedded Developer ID profile, never from Xcode, so the
+# project still sets none and a Debug build still carries none.
+ENTITLEMENTS="$ROOT/apps/apple/Bastion.entitlements"
+EXPECTED="com.apple.application-identifier com.apple.developer.team-identifier com.apple.developer.ubiquity-kvstore-identifier keychain-access-groups"
+entitlement_keys() {
+  plutil -convert json -o - - 2>/dev/null \
+    | python3 -c 'import json,sys; print(" ".join(sorted(json.load(sys.stdin))))' 2>/dev/null
+}
 if grep -qn "CODE_SIGN_ENTITLEMENTS" "$ROOT/apps/apple/Bastion.xcodeproj/project.pbxproj"; then
-  fail "the app target has a CODE_SIGN_ENTITLEMENTS setting"
+  fail "the app target has a CODE_SIGN_ENTITLEMENTS setting — entitlements come from make sign only"
 else
   pass "no entitlements file on the app target"
+fi
+declared="$([ -f "$ENTITLEMENTS" ] && entitlement_keys <"$ENTITLEMENTS" || true)"
+if [ "$declared" = "$EXPECTED" ]; then
+  pass "Bastion.entitlements holds exactly the four iCloud sync needs"
+else
+  fail "Bastion.entitlements holds '$declared', not exactly '$EXPECTED'"
+fi
+if [ -f "$APP/Contents/embedded.provisionprofile" ]; then
+  signed="$(codesign -d --entitlements - --xml "$APP" 2>/dev/null | entitlement_keys || true)"
+  if [ "$signed" = "$EXPECTED" ]; then
+    pass "the signed build carries exactly those four"
+  else
+    fail "the signed build carries '$signed', not exactly '$EXPECTED'"
+  fi
+else
+  signed="$(codesign -d --entitlements - --xml "$APP" 2>/dev/null | entitlement_keys || true)"
+  # A development-signed Debug build carries `get-task-allow`, which Xcode
+  # adds so a debugger can attach and which needs no profile. What it must not
+  # carry is any of the four above: those are restricted, and without a
+  # profile to validate them the system kills the app at launch.
+  restricted=""
+  for key in $signed; do
+    case " $EXPECTED " in *" $key "*) restricted="$restricted $key" ;; esac
+  done
+  if [ -z "$restricted" ]; then
+    pass "a build with no embedded profile carries none of them"
+  else
+    fail "a build with no embedded profile carries$restricted — it would be killed at launch"
+  fi
 fi
 
 # ── The bridge holds no credential of its own, and the linker can prove it.

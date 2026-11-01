@@ -92,6 +92,10 @@ VERSION_ARGS += $(if $(findstring CURRENT_PROJECT_VERSION,$(XCARGS)),,$(if $(APP
 BUNDLE_ID := io.mgcrea.bastion$(if $(filter Debug,$(CONFIG)),.debug,)
 APP     ?= apps/apple/.build/Build/Products/$(CONFIG)/Bastion.app
 RELEASE_APP := apps/apple/.build/Build/Products/Release/Bastion.app
+# The Release build's entitlements and the Developer ID profile that validates
+# them. See the comment above `sign`.
+ENTITLEMENTS    := apps/apple/Bastion.entitlements
+SIGNING_PROFILE := apps/apple/Bastion.provisionprofile
 INSTALLED := /Applications/Bastion.app
 SUPPORT := $(HOME)/Library/Application Support/$(BUNDLE_ID)
 
@@ -305,12 +309,19 @@ bundle: node sparkle ## Build, stage, verify and sign a Release Bastion.app
 # a signature over its contents, so anything signed after the wrapper
 # invalidates it.
 #
-# No `--entitlements` on the app, and that is the claim rather than an omission.
-# Spawning children and binding loopback need none, and with the sandbox off
-# `com.apple.security.network.server` is unnecessary. An empty permission set
-# that is true by construction is checkable; one arrived at by deletion is not.
-# `make audit` asserts there is no entitlements file to begin with, and the
-# verification below asserts none ended up on the signed bundle anyway.
+# Exactly four entitlements on the app, from apps/apple/Bastion.entitlements, and
+# that is the claim. Spawning children and binding loopback need none; the app
+# carried none until iCloud sync, and traded that on purpose for its identity,
+# its team, its keychain group and its iCloud key-value store (docs/keychain.md).
+# A set that is exact by construction is checkable, so the verification below
+# asserts the signed bundle carries exactly those four, and `make audit` asserts
+# the file does.
+#
+# All four are restricted: without the embedded Developer ID profile to validate
+# them, the system kills the app at launch, on a user's Mac, long after
+# notarization passed. So a Developer ID signature refuses to go ahead without
+# the profile, and the Apple Development fallback, which cannot use it, signs
+# with no entitlements at all.
 #
 # The whole identity block is ONE shell invocation because `$$id` has to survive
 # across the codesign calls. Comments inside it must be shell comments on their
@@ -322,10 +333,17 @@ sign: ## Sign the Release bundle (Developer ID if present, else Apple Developmen
 	@# whenever the app's own signature, the last command, succeeded.
 	@set -e; \
 	id=$$(security find-identity -v -p codesigning | awk '/Developer ID Application/ {print $$2; exit}'); \
-	if [ -z "$$id" ]; then \
+	ent=""; \
+	if [ -n "$$id" ]; then \
+		test -f "$(SIGNING_PROFILE)" || { echo "  $(SIGNING_PROFILE) is missing — a build with these entitlements and no profile is killed at launch"; exit 1; }; \
+		cp "$(SIGNING_PROFILE)" "$(RELEASE_APP)/Contents/embedded.provisionprofile"; \
+		ent="--entitlements $(ENTITLEMENTS)"; \
+	else \
 		id=$$(security find-identity -v -p codesigning | awk '/Apple Development/ {print $$2; exit}'); \
 		echo "  !! no Developer ID Application certificate — signing with Apple Development."; \
-		echo "     This build will NOT notarize and will not run on another Mac."; \
+		echo "     This build will NOT notarize and will not run on another Mac,"; \
+		echo "     and carries no entitlements, so it cannot reach iCloud."; \
+		rm -f "$(RELEASE_APP)/Contents/embedded.provisionprofile"; \
 	fi; \
 	test -n "$$id" || { echo "  no codesigning identity at all"; exit 1; }; \
 	if [ -d "$(RELEASE_SPARKLE)" ]; then \
@@ -343,14 +361,20 @@ sign: ## Sign the Release bundle (Developer ID if present, else Apple Developmen
 	fi; \
 	codesign --force --options runtime --timestamp --sign "$$id" \
 		"$(RELEASE_APP)/Contents/Helpers/bastion-bridge"; \
-	codesign --force --options runtime --timestamp --sign "$$id" "$(RELEASE_APP)"
+	codesign --force --options runtime --timestamp --sign "$$id" $$ent "$(RELEASE_APP)"
 	@# Captured rather than piped: through `| sed` the line's status was sed's,
 	@# and a bundle that failed verification passed this target.
 	@out=$$(codesign --verify --deep --strict --verbose=1 "$(RELEASE_APP)" 2>&1); status=$$?; \
 	printf '%s\n' "$$out" | sed 's/^/  /'; exit $$status
-	@codesign -d --entitlements - --xml "$(RELEASE_APP)" 2>/dev/null | grep -q '<key>' \
-		&& { echo "  the app carries entitlements — it should carry none"; exit 1; } \
-		|| echo "  no entitlements on the app"
+	@if [ -f "$(RELEASE_APP)/Contents/embedded.provisionprofile" ]; then \
+		want="com.apple.application-identifier com.apple.developer.team-identifier com.apple.developer.ubiquity-kvstore-identifier keychain-access-groups"; \
+	else want=""; fi; \
+	got=$$(codesign -d --entitlements - --xml "$(RELEASE_APP)" 2>/dev/null | plutil -convert json -o - - 2>/dev/null \
+		| python3 -c 'import json,sys; print(" ".join(sorted(json.load(sys.stdin))))' 2>/dev/null || true); \
+	[ "$$got" = "$$want" ] \
+		|| { echo "  the app carries '$$got', not exactly '$$want'"; exit 1; }; \
+	if [ -n "$$want" ]; then echo "  entitlements are exactly the four sync needs, with the profile embedded"; \
+	else echo "  no entitlements on the app (no Developer ID profile in this build)"; fi
 	@# The hardened runtime is on and nothing disables library validation, so a
 	@# Sparkle signed by another team fails at dlopen — at launch, on a user's
 	@# Mac, long after this. Assert the team here, where the message is readable.
