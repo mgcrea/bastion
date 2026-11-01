@@ -3064,10 +3064,51 @@ struct UnitCheck {
       }
     }
 
+    reservedEnv()
+
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 {
       print("\(failures) failed")
       exit(1)
     }
+  }
+
+  // MARK: - Reserved environment names
+
+  /// The names no custom server may declare, because each one changes what
+  /// code a child runs. See `ReservedEnv`.
+  static func reservedEnv() {
+    print("\nReserved environment names")
+    check("PATH is reserved", ReservedEnv.isReserved("PATH"))
+    check("HOME is reserved", ReservedEnv.isReserved("HOME"))
+    check("NODE_OPTIONS is reserved", ReservedEnv.isReserved("NODE_OPTIONS"))
+    check("NODE_EXTRA_CA_CERTS is reserved", ReservedEnv.isReserved("NODE_EXTRA_CA_CERTS"))
+    check("NPM_CONFIG_USERCONFIG is reserved", ReservedEnv.isReserved("NPM_CONFIG_USERCONFIG"))
+    check("DYLD_INSERT_LIBRARIES is reserved", ReservedEnv.isReserved("DYLD_INSERT_LIBRARIES"))
+    check("XDG_CONFIG_HOME is reserved", ReservedEnv.isReserved("XDG_CONFIG_HOME"))
+    check(
+      "a lower-case npm_config_ name is reserved",
+      ReservedEnv.isReserved("npm_config_script_shell"))
+    check("a lower-case node_options is reserved", ReservedEnv.isReserved("node_options"))
+    check("PATHFINDER_TOKEN is not", !ReservedEnv.isReserved("PATHFINDER_TOKEN"))
+    check("HOMEASSISTANT_URL is not", !ReservedEnv.isReserved("HOMEASSISTANT_URL"))
+    check("NPM_TOKEN is not", !ReservedEnv.isReserved("NPM_TOKEN"))
+    check("NODE alone is not", !ReservedEnv.isReserved("NODE"))
+    check(
+      "firstReserved finds the first in order",
+      ReservedEnv.firstReserved(in: ["A_TOKEN", "NODE_OPTIONS", "PATH"]) == "NODE_OPTIONS")
+    check(
+      "firstReserved is nil for a clean list",
+      ReservedEnv.firstReserved(in: ["A", "B_C"]) == nil)
+    let custom = ReservedEnv.admit(
+      ["A": "1", "PATH": "/tmp", "NODE_OPTIONS": "x"], declaredByCatalog: false)
+    check("a custom server keeps its own names", custom.admitted == ["A": "1"])
+    check("and names what it skipped, sorted", custom.skipped == ["NODE_OPTIONS", "PATH"])
+    let catalog = ReservedEnv.admit(
+      ["NPM_CONFIG_USERCONFIG": "/x/.npmrc"], declaredByCatalog: true)
+    check(
+      "a catalog-declared reserved name is admitted",
+      catalog.admitted["NPM_CONFIG_USERCONFIG"] == "/x/.npmrc")
+    check("and nothing is skipped for the catalog", catalog.skipped.isEmpty)
   }
 }
