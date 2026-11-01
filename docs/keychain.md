@@ -139,10 +139,18 @@ typed and would rather not retype.
 
 ### Costs to weigh before committing
 
-- **Provisioning profile expiry is a new failure mode with no analogue today.** If
-  macOS stops honouring the restricted entitlement past the embedded profile's expiry,
-  every stored credential becomes unreadable on machines that never updated.
-  **Unverified.** Settle it before shipping, not after.
+- **Provisioning profile expiry is a new failure mode with no analogue today, and it
+  is worse than unreadable credentials: the app stops launching.** Apple: a Developer
+  ID profile "is also evaluated, both at app installation time and at every app
+  launch", and "if your Developer ID provisioning profile expires, the app will no
+  longer launch" ([Developer ID certificates][devid-help]). Profiles made after
+  2017-02-22 last 18 years from creation. Bastion's, made 2026-11-01, expires
+  **2044-10-27** (`TimeToLive` 6570 days), so the deadline for shipping a build with a
+  renewed profile is that date, for anyone who has not updated by then. The
+  certificate is not the limit: it expires 2031-08-21, and a build signed while it was
+  valid keeps launching after. Nothing found says what a re-signed build sees, but the
+  items belong to the access group, not to the profile, so a new profile for the same
+  App ID and team should read them. Unverified until a renewal happens.
 - **Items become invisible to Keychain Access.app and the `security` CLI.** Manual
   inspection and repair get harder.
 - **`ThisDeviceOnly` today also means credentials stop following a Migration
@@ -168,11 +176,14 @@ which is _unrestricted_: declare it, sign it, done. No App ID, no portal work, n
 embedded profile. It is a precedent for _"the app carries an entitlement"_ and **not**
 for _"the app is provisioned."_
 
-Nothing in this account has yet shipped a **Developer ID** provisioned Mac app. The
-provisioning profiles cached locally are all `Mac Team Provisioning Profile` or
-`Mac Team Store Provisioning Profile` — development and Mac App Store. The Developer
-ID kind is a separate profile type, created explicitly, and it is the one Bastion
-would need. Budget the portal work as new ground.
+Bastion is the first **Developer ID** provisioned Mac app in this account. Its profile,
+"Bastion Developer ID", is committed at `apps/apple/Bastion.provisionprofile` and
+embedded by `make sign`, which signs with exactly the four entitlements in
+`apps/apple/Bastion.entitlements` and refuses to sign without the profile. It grants
+`keychain-access-groups` and `ubiquity-kvstore-identifier` as `75QE9PRT3V.*`, and the
+App ID `io.mgcrea.bastion` has iCloud enabled. `io.mgcrea.bastion.debug` is registered
+too, with iCloud, but the Debug build carries no entitlements yet: restricted ones
+would need a development profile and a registered device for every `make run`.
 
 One thing an access group does **not** buy: access to anything but your own app's
 items. It cannot read another app's credentials. Cupertino's `docs/passwords.md`
@@ -181,12 +192,24 @@ records the same finding from the other side — `Passwords.app` holds
 
 ## Current state
 
-|                                                  |                                                           |
-| ------------------------------------------------ | --------------------------------------------------------- |
-| Presence-by-name, loud refusals, `run` ordering  | **Done.** Zero `kcacl` activity measured                  |
-| `keychain-access-groups` entitlement + migration | **Not started.** Needs App IDs and a Developer ID profile |
-| iCloud sync toggle                               | **Not started.** Blocked on the above                     |
+|                                                 |                                                                                  |
+| ----------------------------------------------- | -------------------------------------------------------------------------------- |
+| Presence-by-name, loud refusals, `run` ordering | **Done.** Zero `kcacl` activity measured                                         |
+| `keychain-access-groups` entitlement            | **Gate passed on one Mac, 2026-11-01.** Entitlements and profile ship; see below |
+| iCloud key-value storage                        | **Gate passed on one Mac, 2026-11-01.** Second Mac pending                       |
+| Data protection keychain migration              | **Not started.** Phase 1 of the sync design                                      |
+| iCloud sync toggle                              | **Not started.** Phases 2–3                                                      |
 
-No migration code exists, no `kSecUseDataProtectionKeychain` appears anywhere in the
-tree, and the app target carries no `CODE_SIGN_ENTITLEMENTS`. Existing credentials
-have never moved and need no re-entry.
+`make icloud-probe` runs the gate against the signed Release build: it writes one
+synchronizable data protection keychain item and one key-value pair named after the
+Mac, then lists every other Mac's it can see. On the first Mac, a `make bundle` build
+answered `keychain add: ok`, `keychain read: ok` and `kvs synchronize: true` — no
+`-34018`, so the entitlement and the profile are accepted. Run it on a second Mac on
+the same iCloud account to see sync itself.
+
+The only `kSecUseDataProtectionKeychain` in the tree is the probe's. The stores still
+use the login keychain, and existing credentials have never moved and need no
+re-entry. The sync design and its plan are in `docs/superpowers/specs/` and
+`docs/superpowers/plans/`, dated 2026-11-01.
+
+[devid-help]: https://developer.apple.com/help/account/certificates/create-developer-id-certificates/
