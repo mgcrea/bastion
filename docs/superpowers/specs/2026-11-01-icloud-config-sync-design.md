@@ -225,6 +225,21 @@ Everything else, `enabled` and the remaining profile values included, follows
 the sync freely. Approval is remembered per Mac, per server, per value: approving
 `url = X` does not approve a later `url = Y`.
 
+**The guard stops here** (owner's decision, 2026-11-01, after phase 0's review
+raised it). A catalog variable that chooses an endpoint — `KEYCLOAK_URL`,
+`GRAFANA_URL`, `NPM_REGISTRY`, `UNIFI_HOST` — syncs freely, even though an agent
+on one Mac could use it to point another Mac's server, credentials included, at
+a host of its choosing. The reasoning: this is one person's own devices on one
+iCloud account, and an agent able to do that on one Mac already holds those
+credentials there. The same goes for a custom server's variable names: no
+approval beyond mechanism 3. Phase 2 does not add a fourth mechanism.
+
+Separately from security, a value that is meaningless on another Mac — a
+simulator or device UDID (`IOS_SIMULATOR_ID`, `IOS_DEVICE_ID`), a keychain
+service name on this Mac (`NPM_TOTP_KEYCHAIN_SERVICE`), a `sqlite:` path in a
+DSN — is per-Mac by function, and phase 2 marks it `perMachine` when it audits
+the catalog, by the rule in mechanism 2.
+
 Approval state is local only and never synced, or approving on one Mac would
 approve on all and the guard would mean nothing. Where it is stored is left to
 the builder, with one requirement: an agent with a shell must not be able to
