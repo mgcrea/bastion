@@ -1,0 +1,51 @@
+import Foundation
+
+/// Moving every credential from the login keychain to the data protection
+/// keychain, once, and the decisions that move makes.
+///
+/// The Release build carries `keychain-access-groups`, so `CredentialStore`
+/// writes to the data protection keychain and reads through to the login one
+/// until this has run. A pass adds each item on the new side, reads it back,
+/// and only then deletes the old one, so no path through it loses a
+/// credential: a crash leaves at worst one account in both, and a refused read
+/// leaves it where it was, still readable through the fallback.
+///
+/// The decisions live here, Foundation only, so `scripts/unit-check.swift`
+/// compiles them. The pass that makes the keychain calls is in
+/// `KeychainMigrationRun.swift`, and `make keychain-selftest` proves it on the
+/// signed build.
+nonisolated enum KeychainMigration {
+  enum Action: Equatable {
+    /// Only in the login keychain: copy it across, then delete it there.
+    case move
+    /// In both. The modern copy can only have been written after a pass
+    /// started — every write goes there — so it is the newer one and wins.
+    case dropStale
+  }
+
+  struct Step: Equatable {
+    let account: String
+    let action: Action
+  }
+
+  /// One step per login keychain account, sorted so a pass reads the same in
+  /// the log every time.
+  static func plan(legacy: [String], modern: [String]) -> [Step] {
+    let present = Set(modern)
+    return Set(legacy).sorted().map {
+      Step(account: $0, action: present.contains($0) ? .dropStale : .move)
+    }
+  }
+
+  /// Whether a pass left nothing behind, which is the only time the marker is
+  /// written: while one item could not be read, the fallback has to stay on.
+  static func isComplete(leftover: [String: [String]]) -> Bool {
+    leftover.values.allSatisfy(\.isEmpty)
+  }
+
+  /// The account names across both keychains, each once, for the window in
+  /// which the fallback is on.
+  static func union(modern: [String], legacy: [String]) -> [String] {
+    Set(modern).union(legacy).sorted()
+  }
+}

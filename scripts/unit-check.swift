@@ -3067,6 +3067,7 @@ struct UnitCheck {
     reservedEnv()
     perMachineEnv()
     iCloudProbeArguments()
+    keychainMigration()
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 {
@@ -3178,5 +3179,34 @@ struct UnitCheck {
     check("a persisted default is never read", !ICloudProbe.isRequested)
     UserDefaults.standard.removeObject(forKey: "iCloudProbe")
     UserDefaults.standard.removeObject(forKey: "iCloudProbeClean")
+  }
+
+  // MARK: - Keychain migration
+
+  /// What moves from the login keychain to the data protection keychain, and
+  /// when the move counts as done. The keychain calls themselves are proven by
+  /// `make keychain-selftest` on the signed build.
+  static func keychainMigration() {
+    print("\nKeychain migration decisions")
+    let steps = KeychainMigration.plan(legacy: ["b", "a", "c"], modern: ["c"])
+    check(
+      "an account only in the login keychain moves",
+      steps.contains(.init(account: "a", action: .move)))
+    check(
+      "an account in both drops the login copy, the modern one wins",
+      steps.contains(.init(account: "c", action: .dropStale)))
+    check("one step per legacy account, sorted", steps.map(\.account) == ["a", "b", "c"])
+    check(
+      "nothing to do when the login keychain is empty",
+      KeychainMigration.plan(legacy: [], modern: ["x"]).isEmpty)
+    check(
+      "complete when every scope is empty",
+      KeychainMigration.isComplete(leftover: ["profile": [], "oauth": []]))
+    check(
+      "not complete while one item could not be read",
+      !KeychainMigration.isComplete(leftover: ["profile": [], "oauth": ["p/s/oauth"]]))
+    check(
+      "the union lists a name in both keychains once",
+      KeychainMigration.union(modern: ["a", "c"], legacy: ["c", "b"]) == ["a", "b", "c"])
   }
 }
