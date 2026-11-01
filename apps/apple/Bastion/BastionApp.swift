@@ -28,6 +28,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       return
     }
 
+    // The iCloud probe, and then exit. Here for the reason the capture mode
+    // above is: before any store loads, the gateway binds or Sparkle reaches
+    // the network, so it can run beside the copy somebody is working in. See
+    // `ICloudProbe`.
+    if ICloudProbe.isRequested { ICloudProbe.run() }
+
     // Whether this build's notes count as read, decided once and never again.
     //
     // Has to happen before any view can ask `Changelog.hasUnseen`, and has to

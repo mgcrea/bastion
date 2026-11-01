@@ -589,6 +589,17 @@ smoke: app ## Prove one supervised server end to end (PROFILE=prod SERVER=shopif
 dialect: app ## Assert Bastion serves both protocol eras (needs a profile)
 	@scripts/dialect-check.sh
 
+# The iCloud gate: one synchronizable keychain item and one key-value pair,
+# named after this Mac, then every other Mac's it can see. Run it on two Macs on
+# one iCloud account; each should list the other's. Needs a signed Release build
+# with the Developer ID profile (`make bundle` or `make build-release`).
+#
+# Not after `make stop`: that pkills every Bastion.app by path, the one in
+# /Applications included. The probe runs before the lock, the stores and the
+# gateway, so it runs beside the copy somebody is working in.
+icloud-probe: ## Prove the keychain and iCloud key-value store on the signed Release build (run on two Macs)
+	@"$(RELEASE_APP)/Contents/MacOS/Bastion" -iCloudProbe YES
+
 builtin: app ## Assert Bastion's own server: the write gate, and that no tool returns a secret
 	@scripts/builtin-check.sh
 
