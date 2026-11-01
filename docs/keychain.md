@@ -187,9 +187,10 @@ typed and would rather not retype.
   in a file without a prompt.
 - **Going back to 1.35.0 or earlier after migrating finds no credentials.** They were
   moved, not copied. Copying would have left a stale login copy for an old build to use.
-- **`ThisDeviceOnly` today also means credentials stop following a Migration
-  Assistant transfer** once the attribute is honoured. Arguably correct for a
-  credential vault, but it should be a decision, not a discovery.
+- **Credentials no longer follow a Migration Assistant transfer.** `ThisDeviceOnly` is
+  honoured on the data protection keychain, so a new Mac starts with none. Decided with
+  phase 1 and stated in its CHANGELOG entry: for a credential vault it is the right
+  default, and iCloud sync (phase 3, `.profile` only) is how they reach another Mac.
 - **A one-time round of ACL prompts on first launch after migrating.** Unavoidable —
   the values can only be read through the ACL guarding them — and it is the last one.
 

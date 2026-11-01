@@ -23,10 +23,18 @@ extension KeychainMigration {
       // `modernAccounts`, never `accounts`: while a pass is pending `accounts`
       // lists both keychains, so every login account would look moved already
       // and be dropped without a copy.
-      let steps = plan(
-        legacy: CredentialStore.legacyAccounts(scope),
-        modern: CredentialStore.modernAccounts(scope))
-      outcomes[scope.service] = steps.map { carry($0, in: scope) }
+      //
+      // And the checked listings: a locked login keychain refuses the search
+      // itself, and an unchecked listing would read that as an empty scope.
+      do {
+        let steps = plan(
+          legacy: try CredentialStore.checkedLegacyAccounts(scope),
+          modern: try CredentialStore.checkedModernAccounts(scope))
+        outcomes[scope.service] = steps.map { carry($0, in: scope) }
+      } catch {
+        hostLog("keychain", .error, error.localizedDescription)
+        outcomes[scope.service] = [.listingRefused]
+      }
     }
 
     let left = leftovers(after: outcomes)

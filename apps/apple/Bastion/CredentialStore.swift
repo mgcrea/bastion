@@ -297,9 +297,11 @@ nonisolated enum CredentialStore {
     // items. See `accounts` below for the read side of the same rule.
     if DemoSeed.isEnabled { return }
     try rawDelete(baseQuery(scope, account: account), account: account)
-    // Both sides, always: a credential deleted only here would come back
-    // through the fallback from a login copy no pass had moved yet.
-    if usesDataProtection { try legacyDelete(scope, account: account) }
+    // Both sides while a pass is pending: a credential deleted only here would
+    // come back through the fallback from a login copy no pass had moved yet.
+    // Not after: the login side is never read again, and on a locked login
+    // keychain a delete there could only prompt, or fail one that had worked.
+    if usesDataProtection, !migrationDone { try legacyDelete(scope, account: account) }
   }
 
   private static func rawDelete(_ query: [String: Any], account: String) throws {
@@ -326,6 +328,22 @@ nonisolated enum CredentialStore {
     return KeychainMigration.union(modern: modern, legacy: legacyAccounts(scope))
   }
 
+  /// The same, but a refusal is an error rather than an empty list. For the
+  /// migration pass, where "nothing there" and "could not look" lead to
+  /// opposite decisions. Only `errSecItemNotFound` is empty.
+  private static func checkedAccounts(_ base: [String: Any], scope: Scope) throws -> [String] {
+    var query = base
+    query[kSecReturnAttributes as String] = true
+    query[kSecMatchLimit as String] = kSecMatchLimitAll
+    var item: CFTypeRef?
+    let status = SecItemCopyMatching(query as CFDictionary, &item)
+    if status == errSecItemNotFound { return [] }
+    guard status == errSecSuccess, let rows = item as? [[String: Any]] else {
+      throw StoreError.keychain(status, "list \(scope.service)")
+    }
+    return rows.compactMap { $0[kSecAttrAccount as String] as? String }
+  }
+
   private static func rawAccounts(_ base: [String: Any]) -> [String] {
     var query = base
     query[kSecReturnAttributes as String] = true
@@ -345,6 +363,16 @@ nonisolated enum CredentialStore {
 
   static func legacyAccounts(_ scope: Scope) -> [String] {
     rawAccounts(baseQuery(scope, account: nil, legacy: true))
+  }
+
+  /// Both listings a pass plans from, each throwing on a refusal. See
+  /// `checkedAccounts`.
+  static func checkedLegacyAccounts(_ scope: Scope) throws -> [String] {
+    try checkedAccounts(baseQuery(scope, account: nil, legacy: true), scope: scope)
+  }
+
+  static func checkedModernAccounts(_ scope: Scope) throws -> [String] {
+    try checkedAccounts(baseQuery(scope, account: nil), scope: scope)
   }
 
   static func legacyLookup(_ scope: Scope, account: String) throws -> String? {
@@ -476,8 +504,10 @@ nonisolated enum GatewayToken {
   }
 
   static func revoke(_ client: String) throws {
+    // Forgotten even when the delete throws: it may have half-worked, and a
+    // revoked token must not go on being accepted from the cache.
+    defer { forget() }
     try CredentialStore.delete(.gatewayToken, account: client)
-    forget()
   }
 
   /// The issued tokens, held between requests.

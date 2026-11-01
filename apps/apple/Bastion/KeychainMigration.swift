@@ -56,13 +56,29 @@ nonisolated enum KeychainMigration {
     /// Could not be read (a denied or unanswered prompt, a keychain locked
     /// since boot) or could not be written across. Left where it was.
     case refused(String)
+    /// The scope could not even be listed: a locked login keychain refuses
+    /// the search itself, or shows an unlock dialog somebody cancels. Not the
+    /// same as an empty scope, and must never be read as one — an empty plan
+    /// would write the marker and end the fallback with every credential
+    /// still on the login side.
+    case listingRefused
   }
+
+  /// What a refused listing leaves in its scope's leftovers, so the scope is
+  /// incomplete without naming an account nobody could read.
+  static let unlistedScope = "(the listing was refused)"
 
   /// The accounts a pass left on the login side, by scope. Only a refusal
   /// leaves one.
   static func leftovers(after outcomes: [String: [Outcome]]) -> [String: [String]] {
     outcomes.mapValues { results in
-      results.compactMap { if case .refused(let account) = $0 { account } else { nil } }
+      results.compactMap {
+        switch $0 {
+        case .refused(let account): account
+        case .listingRefused: unlistedScope
+        case .moved, .dropped: nil
+        }
+      }
     }
   }
 }

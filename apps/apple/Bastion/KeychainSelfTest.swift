@@ -117,6 +117,16 @@ enum KeychainSelfTest {
       "a second pass changes nothing",
       before == CredentialStore.Scope.credentialScopes.map(CredentialStore.modernAccounts))
 
+    // Once the marker exists the login side is never read again, so a delete
+    // has no business there: on a locked login keychain it could only prompt,
+    // or fail a delete that had already worked.
+    try? CredentialStore.legacyAdd(.profile, account: "p/s/LATE", value: "late")
+    try? CredentialStore.delete(.profile, account: "p/s/LATE")
+    check(
+      "after the marker, a delete leaves the login keychain alone",
+      CredentialStore.legacyAccounts(.profile).contains("p/s/LATE"))
+    try? CredentialStore.legacyDelete(.profile, account: "p/s/LATE")
+
     let rows = attributes(.profile) + attributes(.oauth) + attributes(.gatewayToken)
     check("every moved item was found by attributes", rows.count == 4)
     check(

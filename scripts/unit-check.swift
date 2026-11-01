@@ -3214,6 +3214,11 @@ struct UnitCheck {
       KeychainMigration.leftovers(after: [
         "profile": [.moved("a"), .refused("b")], "oauth": [.dropped("c")],
       ]) == ["profile": ["b"], "oauth": []])
+    let unlisted = KeychainMigration.leftovers(after: ["profile": [.listingRefused]])
+    check("a scope whose listing failed is left over", unlisted["profile"]?.isEmpty == false)
+    check(
+      "so the marker waits rather than ending the fallback",
+      !KeychainMigration.isComplete(leftover: unlisted))
   }
 
   // MARK: - The Debug build's import document

@@ -26,7 +26,9 @@ are taken from this file, which is the curated summary.
   move out of the login keychain, each one copied, read back and only then deleted. macOS may
   ask once per item. An item that cannot be read yet stays where it is and keeps working, and
   the next launch tries again. They no longer show in Keychain Access, and going back to
-  1.35.0 or earlier afterwards finds none, because they were moved, not copied.
+  1.35.0 or earlier afterwards finds none, because they were moved, not copied. They also no
+  longer follow Migration Assistant to a new Mac: they belong to this Mac until iCloud sync
+  arrives, and on a new one they are entered again.
 
 ### Added
 
