@@ -428,6 +428,14 @@ nonisolated enum CredentialStore {
     if usesDataProtection && !legacy {
       query[kSecUseDataProtectionKeychain as String] = true
       query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
+    } else if usesDataProtection {
+      // `false`, stated, and never left out. In a process that carries
+      // `keychain-access-groups`, a query without the key reaches the data
+      // protection keychain as well: it lists those items, reads their values
+      // and deletes them. Measured by `make keychain-selftest` on 2026-11-01,
+      // where leaving it out made the pass's last step, deleting the login
+      // copy, delete the copy it had just moved as well.
+      query[kSecUseDataProtectionKeychain as String] = false
     }
     return query
   }

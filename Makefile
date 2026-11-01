@@ -601,6 +601,14 @@ dialect: app ## Assert Bastion serves both protocol eras (needs a profile)
 icloud-probe: ## Prove the keychain and iCloud key-value store on the signed Release build (run on two Macs)
 	@"$(RELEASE_APP)/Contents/MacOS/Bastion" -iCloudProbe YES
 
+# The keychain migration, run for real on the signed Release build against a
+# throwaway `<bundle id>.selftest` namespace, then cleaned up. The real pass
+# cannot be tried before a release: it would move this Mac's credentials out
+# from under the installed copy. Beside the installed copy, like icloud-probe,
+# and never after `make stop`.
+keychain-selftest: ## Run the keychain migration's self-test on the signed Release build
+	@"$(RELEASE_APP)/Contents/MacOS/Bastion" -keychainSelfTest YES
+
 builtin: app ## Assert Bastion's own server: the write gate, and that no tool returns a secret
 	@scripts/builtin-check.sh
 

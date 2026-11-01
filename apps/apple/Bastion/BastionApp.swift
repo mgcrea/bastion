@@ -33,6 +33,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // the network, so it can run beside the copy somebody is working in. See
     // `ICloudProbe`.
     if ICloudProbe.isRequested { ICloudProbe.run() }
+    // The keychain migration's self-test, and then exit. Before the real pass
+    // below, which would otherwise move this Mac's own credentials first. See
+    // `KeychainSelfTest`.
+    if KeychainSelfTest.isRequested { KeychainSelfTest.run() }
 
     // Every credential across to the data protection keychain, before anything
     // asks for one. A no-op on Debug and once a pass has finished. A pass that
