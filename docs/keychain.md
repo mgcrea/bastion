@@ -194,13 +194,13 @@ records the same finding from the other side — `Passwords.app` holds
 
 ## Current state
 
-|                                                 |                                                                                  |
-| ----------------------------------------------- | -------------------------------------------------------------------------------- |
-| Presence-by-name, loud refusals, `run` ordering | **Done.** Zero `kcacl` activity measured                                         |
-| `keychain-access-groups` entitlement            | **Gate passed on one Mac, 2026-11-01.** Entitlements and profile ship; see below |
-| iCloud key-value storage                        | **Gate passed on one Mac, 2026-11-01.** Second Mac pending                       |
-| Data protection keychain migration              | **Not started.** Phase 1 of the sync design                                      |
-| iCloud sync toggle                              | **Not started.** Phases 2–3                                                      |
+|                                                 |                                                                                   |
+| ----------------------------------------------- | --------------------------------------------------------------------------------- |
+| Presence-by-name, loud refusals, `run` ordering | **Done.** Zero `kcacl` activity measured                                          |
+| `keychain-access-groups` entitlement            | **Gate passed on two Macs, 2026-11-01.** Entitlements and profile ship; see below |
+| iCloud key-value storage                        | **Gate passed on two Macs, 2026-11-01.** See below                                |
+| Data protection keychain migration              | **Not started.** Phase 1 of the sync design                                       |
+| iCloud sync toggle                              | **Not started.** Phases 2–3                                                       |
 
 `make icloud-probe` runs the gate against the signed Release build: it writes one
 synchronizable data protection keychain item and one key-value pair named after the
@@ -210,9 +210,16 @@ answered `keychain add: ok`, `keychain read: ok` and `kvs synchronize: true` —
 the notarized, stapled `make build-release` build, unpacked from its zip, quarantined
 the way Safari marks a download and opened through LaunchServices (`open -n … --args
 -iCloudProbe YES`): `spctl` accepted it as `Notarized Developer ID`, it launched with
-its four restricted entitlements, and the probe passed. What one Mac cannot show is
-sync itself: run the probe on a second Mac on the same iCloud account, and each should
-list the other's entry.
+its four restricted entitlements, and the probe passed.
+
+Sync itself, across two Macs on one iCloud account (both macOS 27.0.1): the same
+notarized zip, copied to the second Mac and opened there the same way, listed the
+first Mac's keychain account and key-value pair (Gatekeeper again `Notarized Developer
+ID`). A run on the first Mac six seconds later listed the second's in both. So iCloud
+Keychain carries a synchronizable data protection item written by a Developer ID
+build, and the key-value store carries a pair, both within seconds. Both ran beside
+the installed Bastion on each Mac, which they never touched. `-iCloudProbeClean YES`
+removed the probe's entries afterwards.
 
 The only `kSecUseDataProtectionKeychain` in the tree is the probe's. The stores still
 use the login keychain, and existing credentials have never moved and need no
