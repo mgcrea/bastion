@@ -327,6 +327,10 @@ private struct GeneralPane: View {
 
       ClaudeProfilesSection()
 
+      #if !DEBUG
+        DebugExportSection()
+      #endif
+
       Section {
         Picker("Minimum package age", selection: $releaseAge) {
           Text("Whatever npm is configured to do").tag(-1)
@@ -505,6 +509,110 @@ private struct InternalHostsSection: View {
 /// mutable list state, and because every mutation has to reach
 /// `ClientWiring.forgetDiscoveredProfiles()` — one place to remember that is
 /// better than five.
+#if !DEBUG
+  /// Hand this Mac's profiles and gateway tokens to the Debug build, for
+  /// working on Bastion itself.
+  ///
+  /// `make dev-clone` used to read them with `security`, which cannot see the
+  /// data protection keychain the Release build now keeps them in. So the
+  /// Release build writes the Debug build's `import.json` itself, after a
+  /// click: no script, agent or tool of Bastion's own server can ask for every
+  /// credential on the machine in a file, which a launch argument or an MCP
+  /// tool would have allowed. Shown only when a Debug build has run on this
+  /// Mac, since the file goes into its Application Support directory and is
+  /// never created anywhere else.
+  private struct DebugExportSection: View {
+    @State private var result: String?
+
+    private static var debugSupport: URL {
+      AppSupport.directory.deletingLastPathComponent()
+        .appendingPathComponent("\(AppSupport.identifier).debug", isDirectory: true)
+    }
+
+    var body: some View {
+      if DevImportDocument.destination(debugSupport: Self.debugSupport) != nil {
+        Section {
+          Button("Export to the Debug Build…") { export() }
+          Text(
+            "Writes every profile, its credentials and the gateway tokens into the Debug "
+              + "build's import file, which it moves into its own Keychain on its next launch. "
+              + "OAuth sign-ins stay behind: a refresh token used by two builds signs one out."
+          )
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+          if let result {
+            Text(result).font(.caption).foregroundStyle(.secondary)
+          }
+        } header: {
+          Text("Debug build")
+        }
+      }
+    }
+
+    private func export() {
+      let alert = NSAlert()
+      alert.messageText = "Export credentials to the Debug build?"
+      alert.informativeText =
+        "Every profile's credentials and the gateway tokens go into the Debug build's import "
+        + "file, readable only by you, and into its own Keychain on its next launch."
+      alert.addButton(withTitle: "Export")
+      alert.addButton(withTitle: "Cancel")
+      guard alert.runModal() == .alertFirstButtonReturn,
+        let destination = DevImportDocument.destination(debugSupport: Self.debugSupport)
+      else { return }
+
+      let rows = ProfileStore.shared.profiles.map { profile in
+        var values = profile.values
+        for variable in ServerStore.shared.server(id: profile.serverID)?.env ?? []
+        where variable.isSecret {
+          let account = CredentialStore.account(
+            profile: profile.name, server: profile.serverID, variable: variable.name)
+          if let secret = CredentialStore.read(.profile, account: account) {
+            values[variable.name] = secret
+          }
+        }
+        return DevImportDocument.Row(
+          name: profile.name, server: profile.serverID, allowWrites: profile.allowWrites,
+          values: values)
+      }
+      var tokens: [String: String] = [:]
+      for client in CredentialStore.accounts(.gatewayToken) {
+        if let token = CredentialStore.read(.gatewayToken, account: client) {
+          tokens[client] = token
+        }
+      }
+      let document = DevImportDocument.export(profiles: rows, gatewayTokens: tokens)
+
+      do {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        // Created 0600 and renamed into place, rather than written and then
+        // narrowed: the file holds every credential, and should not exist for
+        // an instant with the umask's permissions.
+        let staging = destination.deletingLastPathComponent()
+          .appendingPathComponent(".import.json.\(UUID().uuidString)")
+        guard
+          FileManager.default.createFile(
+            atPath: staging.path, contents: try encoder.encode(document),
+            attributes: [.posixPermissions: 0o600])
+        else { throw CocoaError(.fileWriteUnknown) }
+        guard rename(staging.path, destination.path) == 0 else {
+          try? FileManager.default.removeItem(at: staging)
+          throw CocoaError(.fileWriteUnknown)
+        }
+        result =
+          "Wrote \(document.profiles.count) profile(s) and \(document.gatewayTokens?.count ?? 0) "
+          + "gateway token(s). Launch the Debug build to import them."
+        hostLog(
+          "settings", .info,
+          "exported \(document.profiles.count) profile(s) to the Debug build's import file")
+      } catch {
+        result = error.localizedDescription
+      }
+    }
+  }
+#endif
+
 private struct ClaudeProfilesSection: View {
   @AppStorage(ClaudeProfiles.detectKey) private var detect = true
   /// `@AppStorage` has no array form, so this is held in `@State` and written

@@ -22,14 +22,15 @@
 //                  300MB of trees costs almost nothing. It falls back to a real
 //                  copy where cloning is unsupported. Skipped with
 //                  --no-installs, in which case the Debug app downloads them.
-//   profiles       an `import.json` document, which is the mechanism the Debug
-//                  build already has for exactly this (see `DevSeed`). Secret
-//                  values are read out of the Release Keychain and written into
-//                  that file; the app moves them into the DEBUG Keychain on
-//                  next launch and strips the file to `imported.json`.
-//   gateway tokens the installed app's per-client tokens, through the same
-//                  file, so every config it wrote is accepted by the Debug
-//                  build too — both listen on the same port, one at a time.
+//   profiles and   NOT by this script any more. The Release build keeps its
+//   gateway tokens credentials in the data protection keychain, which `security`
+//                  cannot read, so the Release app writes the Debug build's
+//                  `import.json` itself: Settings › General › Export to the
+//                  Debug Build, after a click. The Debug app moves them into its
+//                  own Keychain on next launch, as before. This script names
+//                  the step at the end. The Debug profiles.json is left alone:
+//                  the import upserts over it, so a profile only the Debug build
+//                  has stays until you remove it there.
 //   settings       the Settings window's UserDefaults, key by key through
 //                  `defaults`. See `SETTINGS` below for which keys, and why the
 //                  rest stay.
@@ -41,11 +42,11 @@
 // checkout, so the Debug build runs what the Release app runs. The original
 // goes into the backup, and `make dev-config` writes it again.
 //
-// What deliberately does NOT move: OAuth token sets. See `oauthProfiles` below
-// — copying one risks signing the real app out, and re-authorizing in the Debug
-// build is one button.
+// What deliberately does NOT move: OAuth token sets. The export leaves them
+// behind too — copying one risks signing the real app out, and re-authorizing
+// in the Debug build is one button.
 //
-// No secret value is ever printed. Names only.
+// This script reads no credential at all.
 
 import { execFileSync } from "node:child_process";
 import {
@@ -122,19 +123,6 @@ if (debugPid !== null) {
 const manifest = JSON.parse(readFileSync(join(ROOT, "servers.json"), "utf8"));
 const catalog = new Map(manifest.servers.map((s) => [s.id, s]));
 
-/**
- * The variables a server treats as secret, by name.
- *
- * From the repo manifest for a catalog server, and from the stored definition
- * for a custom one — a custom server is not in the catalog by construction, and
- * reading its own `env` is the only way to know which of its variables are
- * secret rather than ordinary configuration.
- */
-const secretNames = (serverId, stored) => {
-  const env = catalog.get(serverId)?.env ?? stored?.definition?.env ?? [];
-  return new Set(env.filter((v) => v.secret || v.isSecret).map((v) => v.name));
-};
-
 // ─── read ────────────────────────────────────────────────────────────────────
 
 const readJSON = (path, fallback) =>
@@ -147,93 +135,6 @@ const storedById = new Map(releaseServers.map((s) => [s.id, s]));
 if (releaseProfiles.length === 0) {
   die(`No profiles in ${join(RELEASE, "profiles.json")}. Nothing to copy.`);
 }
-
-/** One generic password out of the Release keychain, or null if it is not there. */
-const keychain = (service, account) => {
-  try {
-    const out = execFileSync(
-      "security",
-      ["find-generic-password", "-s", service, "-a", account, "-w"],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
-    );
-    // Exactly one trailing newline, which `security` adds. Stripping all
-    // trailing whitespace would corrupt a PEM private key, which is one of the
-    // shapes stored here.
-    return out.endsWith("\n") ? out.slice(0, -1) : out;
-  } catch {
-    return null;
-  }
-};
-
-const PROFILE_SERVICE = "io.mgcrea.bastion.profile";
-const OAUTH_SERVICE = "io.mgcrea.bastion.oauth";
-const GATEWAY_SERVICE = "io.mgcrea.bastion.gateway";
-
-/**
- * The account names under one keychain service. Names only.
- *
- * `security dump-keychain` without `-d` prints each item's attributes and never
- * its secret, which is the only way to enumerate a service from the command
- * line — `find-generic-password` needs the account up front. Parsed per item
- * (items begin at a `keychain:` line) because an attribute's neighbours in the
- * output belong to a different item often enough to matter.
- */
-const accountsIn = (service) => {
-  let dump;
-  try {
-    dump = execFileSync("security", ["dump-keychain"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      maxBuffer: 64 * 1024 * 1024,
-    });
-  } catch {
-    return [];
-  }
-  const out = new Set();
-  for (const item of dump.split(/^keychain: /m)) {
-    const svce = item.match(/"svce"<blob>="([^"]*)"/)?.[1];
-    const acct = item.match(/"acct"<blob>="([^"]*)"/)?.[1];
-    if (svce === service && acct) out.add(acct);
-  }
-  return [...out].toSorted();
-};
-
-/**
- * The installed app's gateway tokens, by client — so the Debug build accepts
- * the tokens every client config already carries.
- *
- * Without this a Debug build is a 401 for every editor the moment it is the one
- * listening on the gateway port: the configs were written by the installed app,
- * and each build checks tokens against its own keychain service. A gateway token
- * never rotates, so unlike an OAuth token set this copy cannot sign anything
- * out.
- *
- * `dev` is the one account left alone. It is the Debug build's own scripting
- * identity: the smoke, builtin and dialect checks read it back from the
- * `dev-token` file beside it, as do `.mcp.json` files `make migrate` repointed,
- * and replacing the Keychain half would leave every one of them holding a token
- * the Debug build no longer accepts.
- */
-const gatewayTokens = {};
-for (const client of accountsIn(GATEWAY_SERVICE)) {
-  if (client === "dev") continue;
-  const token = keychain(GATEWAY_SERVICE, client);
-  if (token) gatewayTokens[client] = token;
-}
-
-/**
- * Profiles whose credential is an OAuth token set rather than a typed secret.
- *
- * Not copied, and that is a decision rather than an omission. A refresh token
- * is frequently single-use: the first build to refresh it rotates it, and the
- * copy the other build holds stops working. Copying would therefore risk
- * signing the REAL app out of Stripe or Cloudflare to save one button press in
- * the Debug one. Named in the summary instead, so it is a known next step
- * rather than a profile that silently does not answer.
- */
-const oauthProfiles = releaseProfiles
-  .filter((p) => keychain(OAUTH_SERVICE, `${p.name}/${p.server}/oauth`) !== null)
-  .map((p) => `${p.name}/${p.server}`);
 
 /**
  * The UserDefaults keys that are setup rather than state: the Settings window's
@@ -329,9 +230,6 @@ const pathNode =
 
 // ─── plan ────────────────────────────────────────────────────────────────────
 
-const rows = [];
-const found = [];
-const absent = [];
 /**
  * Profiles the import will refuse, because their server is neither installed
  * nor in the catalog.
@@ -346,30 +244,9 @@ const absent = [];
 const unresolvable = [];
 
 for (const profile of releaseProfiles) {
-  const stored = storedById.get(profile.server);
-  if (!stored && !catalog.has(profile.server)) {
+  if (!storedById.has(profile.server) && !catalog.has(profile.server)) {
     unresolvable.push(`${profile.name}/${profile.server}`);
   }
-  const secrets = secretNames(profile.server, stored);
-  const values = { ...profile.values };
-
-  for (const name of [...secrets].toSorted()) {
-    const account = `${profile.name}/${profile.server}/${name}`;
-    const value = keychain(PROFILE_SERVICE, account);
-    if (value === null) {
-      absent.push(account);
-      continue;
-    }
-    values[name] = value;
-    found.push(account);
-  }
-
-  rows.push({
-    name: profile.name,
-    server: profile.server,
-    allowWrites: profile.allowWrites ?? false,
-    values,
-  });
 }
 
 // ─── report ──────────────────────────────────────────────────────────────────
@@ -377,41 +254,17 @@ for (const profile of releaseProfiles) {
 say(`Release  ${RELEASE}`);
 say(`Debug    ${DEBUG}`);
 say("");
-say(`${releaseServers.length} server(s), ${releaseProfiles.length} profile(s) to copy.`);
+say(
+  `${releaseServers.length} server(s) to copy. The ${releaseProfiles.length} profile(s) come across through the export.`,
+);
 const custom = releaseServers.filter((s) => s.definition).map((s) => s.id);
 if (custom.length > 0) say(`  custom server definitions: ${custom.join(", ")}`);
-say("");
-say(`${found.length} secret(s) read from the Release keychain:`);
-for (const account of found) say(`    ${account}`);
-if (absent.length > 0) {
-  say("");
-  say(`${absent.length} secret(s) the manifest expects but the keychain does not hold:`);
-  for (const account of absent) say(`    ${account}`);
-  say("  (set them in the Debug app, or they were never set in the Release one)");
-}
-const adopted = Object.keys(gatewayTokens);
-say("");
-if (adopted.length > 0) {
-  say(`${adopted.length} client gateway token(s) carried across, so clients keep working when`);
-  say("the Debug build is the one listening:");
-  for (const client of adopted) say(`    ${client}`);
-} else {
-  say("No client gateway tokens found in the Release keychain; clients wired by the");
-  say("installed app will be refused by the Debug build until you press Configure there.");
-}
 if (unresolvable.length > 0) {
   say("");
   say(`${unresolvable.length} profile(s) name a server that is neither installed nor in the`);
   say("catalog, so the import will skip them:");
   for (const id of unresolvable) say(`    ${id}`);
   say("  (they are orphans in the Release app too — add the server to bring them back)");
-}
-if (oauthProfiles.length > 0) {
-  say("");
-  say(`${oauthProfiles.length} profile(s) authorize over OAuth and are NOT copied:`);
-  for (const id of oauthProfiles) say(`    ${id}`);
-  say("  Press Authorize on each in the Debug app. Copying a refresh token risks");
-  say("  rotating it out from under the Release app.");
 }
 say("");
 if (existsSync(releaseWorkspaces)) {
@@ -517,22 +370,6 @@ if (settingsToWrite.length + settingsToClear.length > 0) {
   say(`Copied ${settingsToWrite.length} setting(s), cleared ${settingsToClear.length}`);
 }
 
-// profiles.json is deliberately NOT copied. The import below rebuilds it
-// through `ProfileStore.upsert`, which is what routes each secret into the
-// Debug keychain — a file copy would carry the profiles across with every
-// secret still pointing at a keychain the Debug build cannot read.
-if (existsSync(join(DEBUG, "profiles.json"))) rmSync(join(DEBUG, "profiles.json"));
-
-// The profiles, as the document `DevSeed` already knows how to consume. Written
-// straight after the delete above and before the tree copy below, so nothing
-// that can fail sits between losing profiles.json and having its replacement.
-const document = { gatewayTokens, profiles: rows };
-const out = join(DEBUG, "import.json");
-writeFileSync(out, `${JSON.stringify(document, null, 2)}\n`, { mode: 0o600 });
-say(
-  `Wrote ${rows.length} profile(s) and ${adopted.length} gateway token(s) to import.json (mode 600)`,
-);
-
 // The downloaded npm trees. `/bin/cp` by absolute path deliberately: `-c` is
 // BSD cp's clonefile flag, and a GNU coreutils cp earlier on PATH — which is the
 // normal arrangement on a Homebrew Mac — has no such flag and would fail.
@@ -558,9 +395,14 @@ if (!NO_INSTALLS && existsSync(join(RELEASE, "servers"))) {
 }
 
 say("");
-say("Next: launch the Debug build. It consumes import.json on startup, moves every");
-say("secret and token into the Debug keychain, and leaves imported.json with the values");
-say("stripped. Both builds listen on the same port, so the installed app has to be quit");
-say("first — which `make run` does, since `make stop` matches both.");
+say("Next, for the profiles, their credentials and the gateway tokens: in the installed");
+say("Bastion, open Settings › General and press Export to the Debug Build. It writes the");
+say("Debug build's import.json (mode 600); OAuth sign-ins stay behind, so press Authorize");
+say("on those in the Debug app.");
+say("");
+say("Then launch the Debug build. It consumes import.json on startup, moves every secret");
+say("and token into the Debug keychain, and leaves imported.json with the values stripped.");
+say("Both builds listen on the same port, so the installed app has to be quit first —");
+say("which `make run` does, since `make stop` matches both.");
 say("");
 say("    make run");
