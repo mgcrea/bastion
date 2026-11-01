@@ -148,7 +148,9 @@ typed and would rather not retype.
   **2044-10-27** (`TimeToLive` 6570 days), so the deadline for shipping a build with a
   renewed profile is that date, for anyone who has not updated by then. The
   certificate is not the limit: it expires 2031-08-21, and a build signed while it was
-  valid keeps launching after. Nothing found says what a re-signed build sees, but the
+  valid keeps launching after. But the profile lists the certificates it accepts, so
+  every build signed with a renewed one needs a regenerated profile:
+  `scripts/profile-check.sh`, run by `make sign`, refuses to sign otherwise. Nothing found says what a re-signed build sees, but the
   items belong to the access group, not to the profile, so a new profile for the same
   App ID and team should read them. Unverified until a renewal happens.
 - **Items become invisible to Keychain Access.app and the `security` CLI.** Manual

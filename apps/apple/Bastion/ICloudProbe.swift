@@ -23,9 +23,30 @@ import Security
 /// gateway binds, and the lock the running copy holds is never asked for, so a
 /// probe can run beside the copy somebody is working in.
 enum ICloudProbe {
-  static var isRequested: Bool {
-    UserDefaults.standard.bool(forKey: "iCloudProbe")
-      || UserDefaults.standard.bool(forKey: "iCloudProbeClean")
+  /// The argument domain only, never `UserDefaults.standard` as a whole, for
+  /// the reason `DemoSeed.argument` gives: `standard` also reads the persisted
+  /// domain, and one `defaults write` of this key would make every launch of
+  /// a shipped build a probe that exits twenty seconds later.
+  nonisolated static var isRequested: Bool {
+    let arguments = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+    return requests("iCloudProbe", in: arguments) || requests("iCloudProbeClean", in: arguments)
+  }
+
+  /// Whether `key` is switched on in a set of launch arguments. `-key YES`
+  /// arrives as a string; a Bool or a number is read the same way.
+  nonisolated static func requests(_ key: String, in arguments: [String: Any]) -> Bool {
+    switch arguments[key] {
+    case let value as String: return ["yes", "true", "1"].contains(value.lowercased())
+    case let value as Bool: return value
+    case let value as NSNumber: return value.boolValue
+    default: return false
+    }
+  }
+
+  private static var cleaning: Bool {
+    requests(
+      "iCloudProbeClean",
+      in: UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain))
   }
 
   private static var service: String { "\(AppSupport.identifier).probe" }
@@ -33,7 +54,7 @@ enum ICloudProbe {
   private static var key: String { "probe/\(mac)" }
 
   @MainActor static func run() -> Never {
-    if UserDefaults.standard.bool(forKey: "iCloudProbeClean") { clean() }
+    if cleaning { clean() }
     let stamp = ISO8601DateFormatter().string(from: Date())
     var passed = true
 

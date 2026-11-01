@@ -3066,6 +3066,7 @@ struct UnitCheck {
 
     reservedEnv()
     perMachineEnv()
+    iCloudProbeArguments()
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 {
@@ -3160,5 +3161,22 @@ struct UnitCheck {
           s.perMachineEnv.contains($0.name)
         }
       })
+  }
+
+  // MARK: - The iCloud probe's switch
+
+  /// The probe exits the app, so only a launch argument may turn it on: a
+  /// persisted default would make every launch of a shipped build a probe.
+  static func iCloudProbeArguments() {
+    print("\nThe iCloud probe is a launch argument only")
+    check("YES asks for it", ICloudProbe.requests("iCloudProbe", in: ["iCloudProbe": "YES"]))
+    check("a Bool true asks for it", ICloudProbe.requests("iCloudProbe", in: ["iCloudProbe": true]))
+    check("NO does not", !ICloudProbe.requests("iCloudProbe", in: ["iCloudProbe": "NO"]))
+    check("absent does not", !ICloudProbe.requests("iCloudProbe", in: [:]))
+    UserDefaults.standard.set(true, forKey: "iCloudProbe")
+    UserDefaults.standard.set(true, forKey: "iCloudProbeClean")
+    check("a persisted default is never read", !ICloudProbe.isRequested)
+    UserDefaults.standard.removeObject(forKey: "iCloudProbe")
+    UserDefaults.standard.removeObject(forKey: "iCloudProbeClean")
   }
 }

@@ -336,6 +336,7 @@ sign: ## Sign the Release bundle (Developer ID if present, else Apple Developmen
 	ent=""; \
 	if [ -n "$$id" ]; then \
 		test -f "$(SIGNING_PROFILE)" || { echo "  $(SIGNING_PROFILE) is missing — a build with these entitlements and no profile is killed at launch"; exit 1; }; \
+		scripts/profile-check.sh "$(SIGNING_PROFILE)" "$$id" "$(ENTITLEMENTS)"; \
 		cp "$(SIGNING_PROFILE)" "$(RELEASE_APP)/Contents/embedded.provisionprofile"; \
 		ent="--entitlements $(ENTITLEMENTS)"; \
 	else \
@@ -708,6 +709,7 @@ unit: ## Assert the translation, the parser, call capture, the audit chain, the 
 		apps/apple/Bastion/Dialect.swift \
 		apps/apple/Bastion/ServerCatalog.swift \
 		apps/apple/Bastion/ReservedEnv.swift \
+		apps/apple/Bastion/ICloudProbe.swift \
 		apps/apple/Bastion/RemoteEndpoint.swift \
 		apps/apple/Bastion/InternalHosts.swift \
 		apps/apple/Bastion/HTTP.swift \
