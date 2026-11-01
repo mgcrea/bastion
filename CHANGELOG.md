@@ -7,6 +7,26 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.35.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Changed
+
+- **A custom server can no longer declare `PATH`, `HOME`, `NODE_*`, `NPM_CONFIG_*`, `DYLD_*` or
+  `XDG_*`.** Each of them changes what code a server runs: `NODE_OPTIONS` loads code before the
+  server's first line, and a `PATH` puts another `npm` in front of the bundled one. A custom entry
+  could already name only a package or an endpoint, never a command line, and these were the same
+  hole by another door. Saving a definition that lists one is refused with the variable's name. A
+  custom server that already declares one, in a row edited by hand, still starts without it, and
+  the log says which it left out. `NODE_EXTRA_CA_CERTS`, for a company certificate authority, is
+  the one most likely to be missed. Catalog servers are unaffected.
+
+### Added
+
+- **Variables whose value belongs to one Mac are marked as such** in the server docs: paths to a
+  key file or a kubeconfig, launch arguments, `NPM_BIN`, and every per-profile state path. Nothing
+  reads the mark yet. It is the list a later iCloud sync leaves out, so a path set on one Mac never
+  chooses code on another.
+
 ## [1.35.0] - 2026-10-31
 
 **Remote servers on your own network.** List a company host reached over a VPN, with the private

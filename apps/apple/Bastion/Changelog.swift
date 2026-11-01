@@ -292,6 +292,36 @@ nonisolated enum Changelog {
   /// `nil` in any tagged build: CI asserts the CHANGELOG's head section is the
   /// tag's version, so there is no `[Unreleased]` left to emit by then. The
   /// pane shows it in debug builds only, where it is true of what is running.
-  static let unreleased: Release? = nil
+  // swift-format-ignore
+  private static let unreleasedRelease: Release = Release(
+    version: "Unreleased",
+    date: "",
+    sections: [
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "A custom server can no longer declare `PATH`, `HOME`, `NODE_*`, `NPM_CONFIG_*`, `DYLD_*` or `XDG_*`.",
+            body: [
+              "Each of them changes what code a server runs: `NODE_OPTIONS` loads code before the server's first line, and a `PATH` puts another `npm` in front of the bundled one. A custom entry could already name only a package or an endpoint, never a command line, and these were the same hole by another door. Saving a definition that lists one is refused with the variable's name. A custom server that already declares one, in a row edited by hand, still starts without it, and the log says which it left out. `NODE_EXTRA_CA_CERTS`, for a company certificate authority, is the one most likely to be missed. Catalog servers are unaffected.",
+            ]),
+        ]),
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 1,
+            headline: "Variables whose value belongs to one Mac are marked as such",
+            body: [
+              "in the server docs: paths to a key file or a kubeconfig, launch arguments, `NPM_BIN`, and every per-profile state path. Nothing reads the mark yet. It is the list a later iCloud sync leaves out, so a path set on one Mac never chooses code on another.",
+            ]),
+        ]),
+    ])
+
+  // swift-format-ignore
+  static let unreleased: Release? = unreleasedRelease
   // </generated:changelog>
 }
