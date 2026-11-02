@@ -234,6 +234,7 @@ final class ProfileStore {
     // 0o600 explicitly, and after every write: `.atomic` replaces the file, so
     // permissions set once do not survive the next save.
     try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+    SyncHooks.didSave(.profile)
   }
 
   /// Save a profile, and stop any child still holding the old environment.
@@ -438,6 +439,131 @@ final class ProfileStore {
     // entry beside the new one.
     ClientWiring.rewire(retiring: [oldID])
     return renamed
+  }
+}
+
+// MARK: - Sync
+
+/// A profile travels as its name, server, write switch and the values that
+/// are neither secret nor per-Mac. Secrets stay in the Keychain; per-Mac values
+/// name code or a path on this Mac. See `SyncProjection`.
+extension ProfileStore: SyncedStore {
+  var syncKinds: [ConfigSync.Kind] { [.profile] }
+  func syncFile(_ kind: ConfigSync.Kind) -> URL { fileURL }
+  var syncUnreadable: Bool { unreadable != nil }
+  func syncKnownFields(_ kind: ConfigSync.Kind) -> Set<String> { SyncProjection.profileFields }
+
+  func syncEntities(_ kind: ConfigSync.Kind) -> [String: JSONValue] {
+    var out: [String: JSONValue] = [:]
+    let rows =
+      profiles.map { ($0.name, $0.serverID, $0.values, $0.allowWrites) }
+      + orphaned.map { ($0.name, $0.server, $0.values, $0.allowWrites) }
+    for (name, server, values, allowWrites) in rows {
+      out["\(name)/\(server)"] = SyncProjection.profileEntity(
+        name: name, server: server, values: Self.syncable(values, server: server),
+        allowWrites: allowWrites, perMachine: Self.perMachine(server))
+    }
+    return out
+  }
+
+  func applySynced(_ kind: ConfigSync.Kind, _ envelopes: [ConfigSync.Envelope]) -> Set<String> {
+    var held = Set<String>()
+    for envelope in envelopes {
+      do {
+        try applySynced(envelope)
+      } catch {
+        held.insert(envelope.id)
+        hostLog(
+          "sync", .error,
+          "kept profile '\(envelope.id)' from \(envelope.from) aside: \(error.localizedDescription)"
+        )
+      }
+    }
+    return held
+  }
+
+  private struct Synced: Decodable {
+    var name: String
+    var server: String
+    var values: [String: String]
+    var allowWrites: Bool
+  }
+
+  private func applySynced(_ envelope: ConfigSync.Envelope) throws {
+    guard let entity = envelope.entity, !envelope.deleted else {
+      if let existing = row(id: envelope.id) { try remove(existing) }
+      return
+    }
+    let synced = try entity.decode(Synced.self)
+    guard Profile.isValidName(synced.name), "\(synced.name)/\(synced.server)" == envelope.id
+    else { throw RenameError.invalidName(synced.name) }
+    // Renamed elsewhere: renamed here too, so this Mac's credentials move
+    // with it rather than being swept with a removal.
+    if let was = envelope.was, row(id: envelope.id) == nil,
+      let old = profiles.first(where: { $0.id == was }), old.serverID == synced.server
+    {
+      try rename(old, to: synced.name)
+    }
+    let incoming = Self.syncable(synced.values, server: synced.server)
+    if let existing = row(id: envelope.id) {
+      let values = SyncProjection.mergedValues(
+        remote: incoming, local: existing.values, perMachine: Self.perMachine(synced.server))
+      if profiles.contains(where: { $0.id == envelope.id }) {
+        try upsert(
+          Profile(
+            name: synced.name, serverID: synced.server, values: values,
+            allowWrites: synced.allowWrites, captureMode: existing.captureMode))
+      } else if let index = orphaned.firstIndex(where: {
+        $0.name == synced.name && $0.server == synced.server
+      }) {
+        orphaned[index].values = values
+        orphaned[index].allowWrites = synced.allowWrites
+        try save()
+      }
+      return
+    }
+    let values = SyncProjection.mergedValues(
+      remote: incoming, local: [:], perMachine: Self.perMachine(synced.server))
+    if ServerStore.lookup(synced.server) != nil {
+      try upsert(
+        Profile(
+          name: synced.name, serverID: synced.server, values: values,
+          allowWrites: synced.allowWrites, captureMode: nil))
+    } else {
+      // Its server is not on this Mac yet, so it waits in the file as any
+      // profile of an uninstalled server does, and comes back with it.
+      orphaned.append(
+        Stored(
+          name: synced.name, server: synced.server, values: values,
+          allowWrites: synced.allowWrites, captureMode: nil))
+      try save()
+    }
+  }
+
+  /// A profile or a set-aside row, as a `Profile`.
+  private func row(id: String) -> Profile? {
+    if let profile = profiles.first(where: { $0.id == id }) { return profile }
+    return orphaned.first(where: { "\($0.name)/\($0.server)" == id }).map {
+      Profile(
+        name: $0.name, serverID: $0.server, values: $0.values, allowWrites: $0.allowWrites,
+        captureMode: $0.captureMode)
+    }
+  }
+
+  private static func perMachine(_ server: String) -> Set<String> {
+    SyncProjection.perMachine(server: server, installed: ServerStore.lookup(server))
+  }
+
+  /// Values without a secret or the write gate, whichever way they travel. A
+  /// value typed before its variable became secret is still in the file, and
+  /// must not reach iCloud; the write gate is the toggle's, never a value.
+  private static func syncable(_ values: [String: String], server: String) -> [String: String] {
+    guard let definition = ServerStore.lookup(server) ?? ServerCatalog.byID[server] else {
+      return values
+    }
+    var out = definition.shareableValues(values)
+    if let gate = definition.writeGate { out[gate] = nil }
+    return out
   }
 }
 

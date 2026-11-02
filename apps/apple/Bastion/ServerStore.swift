@@ -359,6 +359,7 @@ final class ServerStore {
     // 0o600 explicitly, and after every write: `.atomic` replaces the file, so
     // permissions set once do not survive the next save.
     try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+    SyncHooks.didSave(.server)
   }
 
   private static func definition(of server: BastionServer) -> Definition {
@@ -477,9 +478,14 @@ final class ServerStore {
   ///
   /// `original` is the id being edited, so that renaming is expressible without
   /// a delete-then-add that would strand the profiles in between.
-  func upsert(custom id: String, definition: Definition, replacing original: String? = nil)
-    throws
-  {
+  ///
+  /// `arrivedFrom` names the Mac a synced definition came from. Such a save
+  /// is recorded as waiting for a yes here before it is published, rather
+  /// than as approved. See `ServerApprovals`.
+  func upsert(
+    custom id: String, definition: Definition, replacing original: String? = nil,
+    arrivedFrom: String? = nil
+  ) throws {
     guard Self.isValidID(id) else { throw StoreError.unusableID(id) }
     // Reserved, or a custom row would shadow the control plane on the next
     // load — `resolve` returns the built-in definition for this id whatever the
@@ -583,6 +589,11 @@ final class ServerStore {
       }
     }
 
+    // Before the save, which is what lets the supervisor find the server.
+    if let arrivedFrom {
+      try ServerApprovalStore.shared.arrived(
+        id, value: definition.approvalValue, from: arrivedFrom)
+    }
     let made = Self.make(id: id, from: definition)
     var edited: String?
     if let original, let index = servers.firstIndex(where: { $0.id == original }) {
@@ -602,8 +613,10 @@ final class ServerStore {
     // than thrown, because the save above has already happened and a server
     // that is not marked as waiting runs.
     do {
-      if let original, original != id { try ServerApprovalStore.shared.forget(original) }
-      try ServerApprovalStore.shared.approve(id, value: definition.approvalValue)
+      if arrivedFrom == nil {
+        if let original, original != id { try ServerApprovalStore.shared.forget(original) }
+        try ServerApprovalStore.shared.approve(id, value: definition.approvalValue)
+      }
     } catch {
       hostLog(
         "servers", .error, "could not record '\(id)' as allowed: \(error.localizedDescription)")
@@ -725,6 +738,93 @@ final class ServerStore {
       // keeps the order stable rather than leaving it to the sort.
       case .orderedSame: return a.id < b.id
       }
+    }
+  }
+
+  // MARK: - Sync
+
+  /// A server as it travels: its switch, and for a custom server its whole
+  /// definition. A catalog row carries no definition, so the package and the
+  /// endpoint always come from the catalog compiled into the receiving app.
+  private struct Synced: Codable {
+    var enabled: Bool?
+    var definition: Definition?
+  }
+}
+
+extension ServerStore: SyncedStore {
+  var syncKinds: [ConfigSync.Kind] { [.server] }
+  func syncFile(_ kind: ConfigSync.Kind) -> URL { fileURL }
+  var syncUnreadable: Bool { unreadable != nil }
+  func syncKnownFields(_ kind: ConfigSync.Kind) -> Set<String> { ["enabled", "definition"] }
+
+  func syncEntities(_ kind: ConfigSync.Kind) -> [String: JSONValue] {
+    var out: [String: JSONValue] = [:]
+    for server in servers {
+      let synced = Synced(
+        enabled: server.isEnabled,
+        definition: server.origin == .custom ? Self.definition(of: server) : nil)
+      out[server.id] = try? JSONValue(encoding: synced)
+    }
+    return out
+  }
+
+  func applySynced(_ kind: ConfigSync.Kind, _ envelopes: [ConfigSync.Envelope]) -> Set<String> {
+    var held = Set<String>()
+    for envelope in envelopes {
+      do {
+        try applySynced(envelope)
+      } catch {
+        held.insert(envelope.id)
+        hostLog(
+          "sync", .error,
+          "kept server '\(envelope.id)' from \(envelope.from) aside: \(error.localizedDescription)")
+      }
+    }
+    return held
+  }
+
+  private func applySynced(_ envelope: ConfigSync.Envelope) throws {
+    let id = envelope.id
+    guard let entity = envelope.entity, !envelope.deleted else {
+      // The control plane exists on every Mac and is never removed by sync.
+      guard id != BuiltinServer.id, let server = server(id: id) else { return }
+      try remove(server)
+      return
+    }
+    let synced = try entity.decode(Synced.self)
+    let enabled = synced.enabled ?? true
+    if id == BuiltinServer.id {
+      try setEnabled(enabled, for: id)
+      return
+    }
+    if let definition = synced.definition {
+      if server(id: id)?.origin == .catalog { throw StoreError.duplicateID(id) }
+      // Through the same checks as a definition typed here, and waiting for
+      // a yes on this Mac. A custom package is never installed by sync.
+      if let problem = ServerApprovalStore.shared.problem {
+        throw ServerApprovalStore.Unwritable(reason: problem)
+      }
+      try upsert(
+        custom: id, definition: definition, replacing: contains(id) ? id : nil,
+        arrivedFrom: envelope.from)
+      try setEnabled(enabled, for: id)
+      return
+    }
+    // A catalog row. An id this build does not ship is held, never dropped.
+    guard ServerCatalog.byID[id] != nil else { throw StoreError.unknownCatalogEntry(id) }
+    if let existing = server(id: id), existing.origin != .catalog {
+      throw StoreError.duplicateID(id)
+    }
+    if !contains(id) { try install(catalogEntry: id) }
+    try setEnabled(enabled, for: id)
+    // Installed and started here, because the catalog chooses the code: the
+    // package, its version range and its provenance are compiled into this
+    // app, and nothing synced names any of them.
+    if enabled, let server = server(id: id), server.package != nil,
+      !ServerInstaller.isInstalled(server)
+    {
+      Task { await ServerInstaller.shared.install(server) }
     }
   }
 }
