@@ -3071,6 +3071,7 @@ struct UnitCheck {
     devImportDocument()
     configSyncEnvelope()
     configSyncMerge()
+    syncProjection()
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 {
@@ -3498,5 +3499,107 @@ struct UnitCheck {
     check(
       "an old tombstone still deletes a stale copy here",
       oldTombLive.apply.map(\.deleted) == [true] && oldTombLive.prune.isEmpty)
+  }
+
+  // MARK: - Config sync: what each entity carries
+
+  static func syncProjection() {
+    print("\nConfig sync: projections")
+    let perMac: Set<String> = ["KUBECONFIG_PATH"]
+    let entity = SyncProjection.profileEntity(
+      name: "rgis", server: "keycloak",
+      values: ["KEYCLOAK_URL": "https://id.example", "KUBECONFIG_PATH": "/Users/o/.kube/x"],
+      allowWrites: true, perMachine: perMac)
+    check(
+      "a per-Mac value never leaves this Mac",
+      entity
+        == .object([
+          "name": .string("rgis"), "server": .string("keycloak"),
+          "values": .object(["KEYCLOAK_URL": .string("https://id.example")]),
+          "allowWrites": .bool(true),
+        ]))
+    check(
+      "the profile's fields are exactly the synced ones",
+      SyncProjection.profileFields == ["name", "server", "values", "allowWrites"])
+    let merged = SyncProjection.mergedValues(
+      remote: ["KEYCLOAK_URL": "https://new.example", "KUBECONFIG_PATH": "/evil"],
+      local: ["KEYCLOAK_URL": "https://old.example", "KUBECONFIG_PATH": "/Users/o/.kube/x"],
+      perMachine: perMac)
+    check(
+      "the remote value of a synced variable is taken",
+      merged["KEYCLOAK_URL"] == "https://new.example")
+    check(
+      "this Mac's per-Mac value is kept, whatever arrives",
+      merged["KUBECONFIG_PATH"] == "/Users/o/.kube/x")
+    check(
+      "a per-Mac value arriving with nothing here is ignored",
+      SyncProjection.mergedValues(
+        remote: ["KUBECONFIG_PATH": "/evil"], local: [:], perMachine: perMac
+      )
+      .isEmpty)
+    check(
+      "a synced value removed elsewhere goes here",
+      SyncProjection.mergedValues(remote: [:], local: ["KEYCLOAK_URL": "x"], perMachine: perMac)
+        .isEmpty)
+
+    let home = "/Users/o"
+    check(
+      "a folder under home is stored with a tilde",
+      SyncProjection.homeRelative("/Users/o/Projects/x", home: home) == "~/Projects/x")
+    check("home itself is a tilde", SyncProjection.homeRelative("/Users/o", home: home) == "~")
+    check(
+      "a sibling user's folder stays absolute",
+      SyncProjection.homeRelative("/Users/other/x", home: home) == "/Users/other/x")
+    check(
+      "a folder elsewhere stays absolute",
+      SyncProjection.homeRelative("/Volumes/Work/x", home: home) == "/Volumes/Work/x")
+    check(
+      "a tilde expands to this Mac's home",
+      SyncProjection.expandingHome("~/Projects/x", home: "/Users/eva") == "/Users/eva/Projects/x")
+    check(
+      "a bare tilde expands", SyncProjection.expandingHome("~", home: "/Users/eva") == "/Users/eva")
+    check(
+      "an absolute path is left alone",
+      SyncProjection.expandingHome("/Volumes/Work/x", home: "/Users/eva") == "/Volumes/Work/x")
+
+    func profile(_ name: String, _ url: String) -> JSONValue {
+      SyncProjection.profileEntity(
+        name: name, server: "keycloak", values: ["KEYCLOAK_URL": url], allowWrites: false,
+        perMachine: [])
+    }
+    check(
+      "a rename is inferred from a matching removal and addition",
+      SyncProjection.renames(
+        removed: ["old/keycloak": profile("old", "u")], added: ["new/keycloak": profile("new", "u")]
+      )
+        == ["new/keycloak": "old/keycloak"])
+    check(
+      "no rename when the values differ",
+      SyncProjection.renames(
+        removed: ["old/keycloak": profile("old", "u")], added: ["new/keycloak": profile("new", "v")]
+      ).isEmpty)
+    check(
+      "no rename when two candidates match",
+      SyncProjection.renames(
+        removed: ["old/keycloak": profile("old", "u"), "older/keycloak": profile("older", "u")],
+        added: ["new/keycloak": profile("new", "u")]
+      ).isEmpty)
+
+    func server(_ id: String) -> BastionServer? { ServerCatalog.byID[id] }
+    check(
+      "the simulator's UDID is per-Mac",
+      server("ios-simulator")?.perMachineEnv.contains("IOS_SIMULATOR_ID") == true)
+    check(
+      "the device's identifier is per-Mac",
+      server("ios-device")?.perMachineEnv.contains("IOS_DEVICE_ID") == true)
+    check(
+      "npm's TOTP keychain service is per-Mac",
+      server("npm")?.perMachineEnv.contains("NPM_TOTP_KEYCHAIN_SERVICE") == true)
+    check(
+      "an uninstalled catalog server's per-Mac set comes from the catalog",
+      SyncProjection.perMachine(server: "npm", installed: nil).contains("NPM_BIN"))
+    check(
+      "an unknown server has no per-Mac set",
+      SyncProjection.perMachine(server: "nope", installed: nil).isEmpty)
   }
 }

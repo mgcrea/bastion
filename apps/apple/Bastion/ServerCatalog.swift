@@ -1651,7 +1651,8 @@ nonisolated enum ServerCatalog {
           name: "NPM_TOTP_KEYCHAIN_SERVICE",
           isRequired: false,
           isSecret: false,
-          summary: "NPM_OTP_MODE=totp only: which keychain service the seed is stored under. Defaults to com.mgcrea.mcp-totp, which is where mcp-totp's own totp_import_uri writes it."),
+          summary: "NPM_OTP_MODE=totp only: which keychain service the seed is stored under. Defaults to com.mgcrea.mcp-totp, which is where mcp-totp's own totp_import_uri writes it.",
+          isPerMachine: true),
         .init(
           name: "NPM_AUTO_OPEN_BROWSER",
           isRequired: false,
@@ -2282,7 +2283,8 @@ nonisolated enum ServerCatalog {
           name: "IOS_DEVICE_ID",
           isRequired: false,
           isSecret: false,
-          summary: "CoreDevice identifier, UDID or name of the device to drive. Unset uses the only connected device; two connected and no value is an error that names them."),
+          summary: "CoreDevice identifier, UDID or name of the device to drive. Unset uses the only connected device; two connected and no value is an error that names them.",
+          isPerMachine: true),
         .init(
           name: "IOS_DEVICE_WDA_URL",
           isRequired: false,
@@ -2845,7 +2847,8 @@ nonisolated enum ServerCatalog {
           name: "IOS_SIMULATOR_ID",
           isRequired: false,
           isSecret: false,
-          summary: "UDID, name, or the literal `booted` of the simulator to drive. Unset uses the single booted simulator; two or more booted and no value is an error that names them, rather than the coin flip simctl's own `booted` performs."),
+          summary: "UDID, name, or the literal `booted` of the simulator to drive. Unset uses the single booted simulator; two or more booted and no value is an error that names them, rather than the coin flip simctl's own `booted` performs.",
+          isPerMachine: true),
         .init(
           name: "IOS_SIMULATOR_WDA_URL",
           isRequired: false,

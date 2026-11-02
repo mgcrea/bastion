@@ -606,7 +606,7 @@ token, so anything that can read that keychain item can publish.
 | `NPM_OTP` | — | yes | A one-time password, and the only thing NPM_OTP_MODE=static will start without complaining about. Rarely right: a code lasts about five minutes, so one set at spawn is dead before anything calls a tool. |
 | `NPM_TOTP_LABEL` | — | — | NPM_OTP_MODE=totp only: which stored seed to read, through @mgcrea/mcp-totp. Defaults to npm. |
 | `NPM_TOTP_SECRET` | — | yes | NPM_OTP_MODE=totp only: an otpauth:// URI or bare base32 key, used instead of the keychain. This is npm's SECOND FACTOR, so a profile holding it alongside the token holds both halves of the account — prefer the keychain, and prefer trusted publishing over OIDC where it applies, which needs no second factor at all. |
-| `NPM_TOTP_KEYCHAIN_SERVICE` | — | — | NPM_OTP_MODE=totp only: which keychain service the seed is stored under. Defaults to com.mgcrea.mcp-totp, which is where mcp-totp's own totp_import_uri writes it. |
+| `NPM_TOTP_KEYCHAIN_SERVICE` | — | — | NPM_OTP_MODE=totp only: which keychain service the seed is stored under. Defaults to com.mgcrea.mcp-totp, which is where mcp-totp's own totp_import_uri writes it. Per Mac — never synced. |
 | `NPM_AUTO_OPEN_BROWSER` | — | — | Whether the one-time-password flow launches a browser, or only prints the authorization URL. Boolean — unset means on. |
 | `NPM_ALLOW_WRITES` | — | — | Registers the write tools: publish and unpublish, dist-tags, deprecation, package access, org and team membership, tokens, trusted-publisher changes, and the browser login that puts a session token in front of every other credential for the life of the process. |
 | `NPM_BIN` | — | — | Path to npm's npm-cli.js, used by npm_publish to build the tarball with `npm pack`. Left unset the server finds npm beside the Node it is running under, which under Bastion is the bundled runtime. Set it to publish with a different npm than the one this app ships. Per Mac — never synced. |
@@ -956,7 +956,7 @@ they have.
 
 | Variable | Required | Secret | Meaning |
 | --- | --- | --- | --- |
-| `IOS_DEVICE_ID` | — | — | CoreDevice identifier, UDID or name of the device to drive. Unset uses the only connected device; two connected and no value is an error that names them. |
+| `IOS_DEVICE_ID` | — | — | CoreDevice identifier, UDID or name of the device to drive. Unset uses the only connected device; two connected and no value is an error that names them. Per Mac — never synced. |
 | `IOS_DEVICE_WDA_URL` | — | — | Explicit WebDriverAgent URL. Unset derives it from the device's CoreDevice tunnel, which is the normal path and needs no port forwarding. |
 | `IOS_DEVICE_LAUNCH_ARGS` | — | — | Launch arguments applied when a launch passes none, e.g. -CanopyDemoMode to open fixtures instead of the owner's real account. Per Mac — never synced. |
 | `IOS_DEVICE_OUTPUT_DIR` | — | — | Where saved screenshots and pulled app containers land. Defaults to a directory under TMPDIR. Per Mac — never synced. |
@@ -1220,7 +1220,7 @@ ui_tree works before it has ever run.
 
 | Variable | Required | Secret | Meaning |
 | --- | --- | --- | --- |
-| `IOS_SIMULATOR_ID` | — | — | UDID, name, or the literal `booted` of the simulator to drive. Unset uses the single booted simulator; two or more booted and no value is an error that names them, rather than the coin flip simctl's own `booted` performs. |
+| `IOS_SIMULATOR_ID` | — | — | UDID, name, or the literal `booted` of the simulator to drive. Unset uses the single booted simulator; two or more booted and no value is an error that names them, rather than the coin flip simctl's own `booted` performs. Per Mac — never synced. |
 | `IOS_SIMULATOR_WDA_URL` | — | — | Explicit WebDriverAgent URL. Unset builds one from IOS_SIMULATOR_WDA_PORT on the host's own loopback, which is the normal path. |
 | `IOS_SIMULATOR_WDA_PORT` | — | — | Port the runner was started on, default 8100, and it must match its USE_PORT. One port per simulator: they all bind the same host loopback, so two runners on one port drives the wrong simulator silently instead of colliding. |
 | `IOS_SIMULATOR_LAUNCH_ARGS` | — | — | Launch arguments applied when a launch passes none, e.g. -CanopyDemoMode to open fixtures instead of a real account. Per Mac — never synced. |
