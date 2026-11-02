@@ -612,6 +612,9 @@ keychain-selftest: ## Run the keychain migration's self-test on the signed Relea
 builtin: app ## Assert Bastion's own server: the write gate, and that no tool returns a secret
 	@scripts/builtin-check.sh
 
+sync-check: app ## Assert configuration sync end to end against a file-backed cloud
+	@scripts/sync-check.sh
+
 facade: app ## Assert the tool facade end to end: the saving, the way in, the audit, the gate
 	@scripts/facade-check.sh
 
