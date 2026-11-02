@@ -318,6 +318,23 @@ PY
 launch
 
 echo
+echo "A Mac with no configuration yet"
+# What a second Mac looks like the first time: no servers.json, nothing agreed.
+# Its only server is Bastion's own, off by default, and that default is not a
+# choice anybody made, so it must not win over the other Mac's.
+stop_app
+rm -f "${SUPPORT:?}/servers.json"
+python3 - "$SUPPORT/sync-state.json" <<'PY'
+import json, sys
+state = json.load(open(sys.argv[1]))
+state["snapshot"].pop("server", None)
+json.dump(state, open(sys.argv[1], "w"))
+PY
+launch
+check "a fresh Mac does not push its defaults over the other Mac's" "$(envelope server bastion)" '"enabled": true'
+check "and takes the other Mac's switch" "$(tool synccheck get_server '{"id":"bastion"}')" '"enabled":true'
+
+echo
 echo "Restraint"
 FUTURE_NOW="$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print([v for v in d.values() if 'synccheck-future' in v][0])" "$CLOUD")"
 if [ "$FUTURE" = "$FUTURE_NOW" ]; then ok "a newer Bastion's value is left byte for byte"; else bad "the v2 value changed: $FUTURE_NOW"; fi

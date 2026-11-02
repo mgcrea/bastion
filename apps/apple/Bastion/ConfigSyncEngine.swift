@@ -327,7 +327,12 @@ final class ConfigSyncEngine {
         (launch ? existedAtLaunch[file.lastPathComponent] : nil) ?? (modified != nil)
       var input = ConfigSync.Input(
         kind: kind, local: local, remote: remote[kind] ?? [:], snapshot: snapshot, mac: mac,
-        localAt: ConfigSync.timestamp(launch ? modified ?? now : now), now: now,
+        // At launch, the file's time. A file that does not exist holds nothing
+        // anybody chose, only defaults (Bastion's own server, off), so it is
+        // stamped as older than anything: a Mac's first launch never pushes its
+        // defaults over what another Mac set.
+        localAt: ConfigSync.timestamp(
+          launch ? modified ?? Date(timeIntervalSince1970: 0) : now), now: now,
         knownFields: known,
         localMissing: !existed && snapshot.values.contains { $0.entity != nil })
       input.retryHeld = launch
