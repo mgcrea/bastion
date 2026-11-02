@@ -128,4 +128,24 @@ and a paused state with its two buttons. "This build cannot reach iCloud." is a 
   Application Support and defaults. It cannot reach the Release-only paths: the real key-value
   store, its notifications and account token, and a skills reconcile at launch (linking is off in
   Debug).
-- Two Macs, on the signed Release build: pending, recorded below once run.
+- Two Macs, on the signed Release build, 2026-11-02: this Mac ("OlivierMacBookPro") and "MacBook Air de
+  Eva", both macOS 27.2, build 1.35.0 (616), notarized, installed as the everyday app. Passed:
+  - the migration moved all 37 credentials on the first launch, with no prompt, and every profile's
+    secrets read back;
+  - switching sync on in Settings sent 33 servers, 35 profiles and 4 workspaces, with no per-Mac
+    path or secret among the values;
+  - a fresh Mac took all of it, installed its 17 enabled catalog children from npm, and kept the
+    9 custom servers waiting for Allow;
+  - a catalog server switched off and on arrived on the other Mac within six seconds each way;
+  - a custom remote server added by hand on Eva waited here, marked as from Eva;
+  - a profile renamed here was renamed there, not removed and added;
+  - with sync off on Eva, a removal here did not arrive and Eva kept everything; switched back on,
+    the deletions made meanwhile arrived and nothing was resurrected;
+  - relaunches raised no account-change pause and wrote nothing.
+
+  It also found one bug, fixed in 616: build 615, on a Mac with no `servers.json`, stamped its
+  default (Bastion's own server, off) as new and switched Bastion's own server off on the other Mac.
+  `make sync-check` now holds that case.
+
+  Not exercised there: the first-run sheet (neither Mac had a differing local version), a quota
+  pause, an account change, and a hand-deleted `skills.json` (no skill sources on either Mac).
