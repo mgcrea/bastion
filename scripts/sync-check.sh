@@ -59,7 +59,10 @@ stop_app() {
 restore() {
   # The arrival leaves a waiting approval in the Debug keychain item; removing
   # the server is what forgets it.
-  if [ "${APP:-0}" != 0 ]; then tool synccheck remove_server '{"id":"synccheck-remote"}' >/dev/null 2>&1; fi
+  if [ "${APP:-0}" != 0 ]; then
+    tool synccheck remove_server '{"id":"synccheck-remote"}' >/dev/null 2>&1
+    tool synccheck remove_server '{"id":"synccheck-local"}' >/dev/null 2>&1
+  fi
   stop_app
   for f in $FILES; do
     if [ -f "$WORK/$f.backup" ]; then cp -p "$WORK/$f.backup" "$SUPPORT/$f"; else rm -f "$SUPPORT/$f"; fi
@@ -90,8 +93,14 @@ def load(name, default):
 servers = [r for r in load("servers.json", []) if r.get("id") not in ("bastion", "linear", "npm", "synccheck-remote")]
 servers.insert(0, {"id": "bastion", "enabled": True})
 # A catalog id this build does not ship: what an older or newer build left.
-servers = [r for r in servers if r.get("id") != "synccheck-retired"]
+servers = [r for r in servers if r.get("id") not in ("synccheck-retired", "synccheck-local")]
 servers.append({"id": "synccheck-retired", "enabled": True})
+# A custom server set up on this Mac before sync, never recorded as allowed.
+servers.append({"id": "synccheck-local", "enabled": True, "definition": {
+    "displayName": "Sync Check Local", "summary": "here", "url": "https://local.example.com/mcp",
+    "dialect": "2025-11-25", "stateEnv": [],
+    "env": [{"name": "SYNC_LOCAL_TOKEN", "required": False, "secret": True, "description": "token",
+             "header": {"name": "Authorization", "format": "Bearer {value}"}}]}})
 json.dump(servers, open(os.path.join(support, "servers.json"), "w"), indent=2)
 profiles = [p for p in load("profiles.json", []) if not p.get("name", "").startswith("synccheck")]
 profiles.append({"name": "synccheck", "server": "bastion", "values": {}, "allowWrites": True})
@@ -141,6 +150,12 @@ items = [
         "env": [{"name": "SYNC_CHECK_TOKEN", "required": False, "secret": True, "description": "token",
                  "header": {"name": "Authorization", "format": "Bearer {value}"}}]}}),
     env("profile", "synccheck/synccheck-remote", {"name": "synccheck", "server": "synccheck-remote", "allowWrites": False, "values": {}}),
+    # The same server as edited on the other Mac: same URL, another summary.
+    env("server", "synccheck-local", {"enabled": True, "definition": {
+        "displayName": "Sync Check Local", "summary": "edited elsewhere", "url": "https://local.example.com/mcp",
+        "dialect": "2025-11-25", "stateEnv": [],
+        "env": [{"name": "SYNC_LOCAL_TOKEN", "required": False, "secret": True, "description": "token",
+                 "header": {"name": "Authorization", "format": "Bearer {value}"}}]}}),
     env("server", "synccheck-future", {"enabled": True, "shape": "from a newer Bastion"}, v=2),
 ]
 cloud = {key(e["kind"], e["id"]): json.dumps(e, sort_keys=True) for e in items}
@@ -211,6 +226,10 @@ check "a workspace arrives" "$(tool synccheck list_workspaces '{}')" 'synccheck-
 waiting="$(rpc synccheck synccheck-remote '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')"
 check "a waiting server is refused before it is reached" "$waiting" 'has not been allowed on this Mac'
 
+
+local_server="$(tool synccheck get_server '{"id":"synccheck-local"}')"
+check "a server set up here takes the other Mac's edit" "$local_server" 'edited elsewhere'
+absent "and does not wait for a yes it already had" "$local_server" 'awaiting_approval'
 
 echo
 echo "What this build cannot read or resolve"

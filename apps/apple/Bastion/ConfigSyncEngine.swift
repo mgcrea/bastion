@@ -76,6 +76,9 @@ final class ConfigSyncEngine {
     /// The cloud's epoch this snapshot was made against. See
     /// `ConfigSync.epochKey`.
     var epoch: String?
+    /// Whether the custom servers set up here before sync first ran have
+    /// been recorded as allowed here.
+    var approvedExisting: Bool?
   }
 
   private var stateURL: URL { AppSupport.directory.appendingPathComponent("sync-state.json") }
@@ -139,6 +142,15 @@ final class ConfigSyncEngine {
       pause(.account)
       return
     }
+    // The first time sync runs on this Mac, however it was switched on:
+    // what is already here was set up here, so it is allowed here, and a copy
+    // of it edited on another Mac does not then wait for a yes. Not a server
+    // already waiting.
+    if state.approvedExisting != true {
+      ServerStore.shared.approveCurrentCustomServers()
+      state.approvedExisting = true
+      saveState()
+    }
     observe()
     cloud.synchronize()
     pass(launch: true, firstRun: firstRun)
@@ -189,8 +201,6 @@ final class ConfigSyncEngine {
       return
     }
     guard cloud != nil else { return }
-    // Everything already on this Mac was set up here, so it is allowed here.
-    ServerStore.shared.approveCurrentCustomServers()
     hostLog("sync", .info, "iCloud sync switched on")
     begin(firstRun: state.snapshot.isEmpty)
   }
