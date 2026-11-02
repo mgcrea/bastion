@@ -1,8 +1,11 @@
 # iCloud sync of Bastion's configuration
 
-Status: approved design, 2026-11-01. Implementation plan for phases 0a and 0:
-`docs/superpowers/plans/2026-11-01-icloud-config-sync.md`. Phases 1–3 are
-planned once phase 0's gate has passed. Builds on `docs/keychain.md`, whose data
+Status: approved design, 2026-11-01. Phases 0a, 0 and 1 are built (plans
+`docs/superpowers/plans/2026-11-01-icloud-config-sync.md` and
+`docs/superpowers/plans/2026-11-01-icloud-sync-phase1-keychain.md`); phase 2 is
+built (`docs/superpowers/plans/2026-11-02-icloud-sync-phase2-config.md`), and
+`docs/icloud-sync.md` describes it as shipped, including where it departs from
+the table below. Phase 3 is not planned yet. Builds on `docs/keychain.md`, whose data
 protection keychain migration and `.profile`-only sync rules this document
 adopts unchanged and schedules.
 
@@ -87,14 +90,14 @@ last writer wins).
 
 ### What syncs
 
-| Store                | Synced                                                             | Stays on this Mac                                                               |
-| -------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
-| `servers.json`       | which servers exist, custom `definition`, `enabled`                | installed code and its version                                                  |
-| `profiles.json`      | `name`, `server`, `values` except per-Mac variables, `allowWrites` | per-Mac variable values; `profiles/<server>/<name>/` state files children write |
-| Keychain `.profile`  | every value                                                        | —                                                                               |
-| `workspaces.json`    | every field; folder paths under the home folder stored as `~/…`    | —                                                                               |
-| `skill-sources.json` | every field and the order; paths as `~/…`                          | —                                                                               |
-| `skills.json`        | `choices`, `repositoryLinks` (paths as `~/…`)                      | the links on disk, which each Mac's reconcile makes                             |
+| Store                | Synced                                                               | Stays on this Mac                                                               |
+| -------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `servers.json`       | which servers exist, custom `definition`, `enabled`                  | installed code and its version                                                  |
+| `profiles.json`      | `name`, `server`, `values` except per-Mac variables, `allowWrites`   | per-Mac variable values; `profiles/<server>/<name>/` state files children write |
+| Keychain `.profile`  | every value                                                          | —                                                                               |
+| `workspaces.json`    | every field; folder paths under the home folder stored as `~/…`      | —                                                                               |
+| `skill-sources.json` | every field and the order; paths as `~/…`                            | —                                                                               |
+| `skills.json`        | `choices` (`repositoryLinks` stays local: see `docs/icloud-sync.md`) | `repositoryLinks`, and the links on disk, which each Mac's reconcile makes      |
 
 Not synced at all: client wiring and lockdown, `.gateway`, `.oauth`, `.audit`,
 `.internal-hosts`, `call-stats.json`, `tool-costs.json`, the licence, `dev.json`,

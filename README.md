@@ -284,29 +284,30 @@ audit asserts the setting is absent rather than empty.
 
 Built and verified:
 
-|                         |                                                                                       |
-| ----------------------- | ------------------------------------------------------------------------------------- |
-| **Gateway**             | loopback HTTP, `Origin` / `Host` / bearer, hand-written so the checks are auditable   |
-| **Supervisor**          | one child per profile, id remapping, backoff, circuit breaker, idle stop              |
-| **Dialect**             | dual-era: modern 2026-07-28 and legacy `initialize`, onto legacy children             |
-| **Catalog**             | thirty-four seeded servers, a generator, and a CI drift check                         |
-| **Server store**        | the user's own list, on-demand npm install, add, remove, and a per-server switch      |
-| **Remote servers**      | an https endpoint fronted like any other server — eleven of them in the catalog       |
-| **OAuth 2.1**           | discovery, dynamic registration, PKCE and refresh — one consent, every client         |
-| **Bastion's server**    | Bastion as one of its own servers, so an agent can manage it — off by default         |
-| **Keychain**            | per-profile credentials, per-client tokens                                            |
-| **Skills**              | one set of Agent Skills linked into every client's folder, globally or per workspace  |
-| **Activity window**     | what is running, who is attached, and every tool call with its arguments, live        |
-| **`bastion-bridge`**    | stdio hosts reach the gateway over HTTP; starts Bastion if it is not up               |
-| **Migration**           | four `.mcp.json` credential sets moved into the Keychain, configs repointed           |
-| **`make smoke`**        | four concurrent clients, colliding ids, exactly one child, `kill -9` recovery         |
-| **`make audit`**        | the five security rules, against the real bundle                                      |
-| **`make dialect`**      | 24 conformance checks across both eras                                                |
-| **`make builtin`**      | the write gate hides the write tools, and no tool returns a secret                    |
-| **`make unit`**         | dialect, HTTP parser, streamed replies, call capture and the audit chain — 513 checks |
-| **`make audit-check`**  | an export signature through a round trip, key loss included — 18 checks               |
-| **`make remote-check`** | where a remote server may live, the SSE reader, and the OAuth client — 100 checks     |
-| **`make skills-check`** | skill validation, the link plan, the exclude block and the applier — 126 checks       |
+|                         |                                                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------------------------------ |
+| **Gateway**             | loopback HTTP, `Origin` / `Host` / bearer, hand-written so the checks are auditable                    |
+| **Supervisor**          | one child per profile, id remapping, backoff, circuit breaker, idle stop                               |
+| **Dialect**             | dual-era: modern 2026-07-28 and legacy `initialize`, onto legacy children                              |
+| **Catalog**             | thirty-four seeded servers, a generator, and a CI drift check                                          |
+| **Server store**        | the user's own list, on-demand npm install, add, remove, and a per-server switch                       |
+| **Remote servers**      | an https endpoint fronted like any other server — eleven of them in the catalog                        |
+| **OAuth 2.1**           | discovery, dynamic registration, PKCE and refresh — one consent, every client                          |
+| **Bastion's server**    | Bastion as one of its own servers, so an agent can manage it — off by default                          |
+| **Keychain**            | per-profile credentials, per-client tokens                                                             |
+| **Skills**              | one set of Agent Skills linked into every client's folder, globally or per workspace                   |
+| **iCloud sync**         | servers, profiles, workspaces and skills across your Macs, off by default; [more](docs/icloud-sync.md) |
+| **Activity window**     | what is running, who is attached, and every tool call with its arguments, live                         |
+| **`bastion-bridge`**    | stdio hosts reach the gateway over HTTP; starts Bastion if it is not up                                |
+| **Migration**           | four `.mcp.json` credential sets moved into the Keychain, configs repointed                            |
+| **`make smoke`**        | four concurrent clients, colliding ids, exactly one child, `kill -9` recovery                          |
+| **`make audit`**        | the five security rules, against the real bundle                                                       |
+| **`make dialect`**      | 24 conformance checks across both eras                                                                 |
+| **`make builtin`**      | the write gate hides the write tools, and no tool returns a secret                                     |
+| **`make unit`**         | dialect, HTTP parser, streamed replies, call capture and the audit chain — 513 checks                  |
+| **`make audit-check`**  | an export signature through a round trip, key loss included — 18 checks                                |
+| **`make remote-check`** | where a remote server may live, the SSE reader, and the OAuth client — 100 checks                      |
+| **`make skills-check`** | skill validation, the link plan, the exclude block and the applier — 126 checks                        |
 
 Bastion is what the 2026-07-28 spec calls a **dual-era server**. A modern client declares its
 protocol version, identity and capabilities in each request's `_meta` and needs no handshake at

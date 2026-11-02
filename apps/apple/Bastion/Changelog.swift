@@ -320,12 +320,18 @@ nonisolated enum Changelog {
         entries: [
           Entry(
             ordinal: 2,
+            headline: "Sync with iCloud",
+            body: [
+              ", in Settings › General, off by default. Your servers and whether each is on, your profiles and their values, your workspaces and your skill sources and choices follow you to every Mac signed in to the same iCloud account. A value that names a file, a launch argument or a device on one Mac stays on that Mac. A server you added by hand on another Mac arrives waiting, and runs only once you allow it on this one; a catalog server arrives ready. Credentials are not synced yet: enter them on each Mac. A profile removed on one Mac is removed on the others, with its credentials there. If Bastion's data disappears from iCloud, or the iCloud account changes, sync pauses and asks rather than deleting anything.",
+            ]),
+          Entry(
+            ordinal: 3,
             headline: "Settings › General › Export to the Debug Build",
             body: [
               ", for working on Bastion itself. It writes the Debug build's import file with every profile, its credentials and the gateway tokens, after a click; `make dev-clone` can no longer read them from the data protection keychain.",
             ]),
           Entry(
-            ordinal: 3,
+            ordinal: 4,
             headline: "Variables whose value belongs to one Mac are marked as such",
             body: [
               "in the server docs: paths to a key file or a kubeconfig, launch arguments, `NPM_BIN`, and every per-profile state path. Nothing reads the mark yet. It is the list a later iCloud sync leaves out, so a path set on one Mac never chooses code on another.",
