@@ -3069,6 +3069,7 @@ struct UnitCheck {
     iCloudProbeArguments()
     keychainMigration()
     devImportDocument()
+    configSyncEnvelope()
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 {
@@ -3250,5 +3251,60 @@ struct UnitCheck {
       "import.json inside it when there is one",
       DevImportDocument.destination(debugSupport: URL(fileURLWithPath: NSTemporaryDirectory()))?
         .lastPathComponent == "import.json")
+  }
+
+  // MARK: - Config sync: keys and envelopes
+
+  static func configSyncEnvelope() {
+    print("\nConfig sync: keys and envelopes")
+    let long = String(repeating: "a-very-long-profile-name/", count: 6) + "server"
+    let key = ConfigSync.key(.profile, id: long)
+    check("a key fits the 64-byte limit however long the id", key.utf8.count <= 64)
+    check("a key is stable", key == ConfigSync.key(.profile, id: long))
+    check(
+      "kinds do not share keys",
+      ConfigSync.key(.server, id: "x") != ConfigSync.key(.profile, id: "x"))
+    check("a sync key is recognised", ConfigSync.isSyncKey(key))
+    check("the probe's key is not a sync key", !ConfigSync.isSyncKey("bastion.icloud-probe"))
+    check("a kind with a short hash is not a sync key", !ConfigSync.isSyncKey("profile/abc"))
+    let at = ConfigSync.timestamp(Date(timeIntervalSince1970: 1_800_000_000.123))
+    check("timestamps keep milliseconds", at.hasSuffix(".123Z"))
+    check("a timestamp reads back", ConfigSync.date(at).map(ConfigSync.timestamp) == at)
+    check(
+      "a later time wins",
+      ConfigSync.wins(
+        (at: "2026-11-02T10:00:01.000Z", from: "A"),
+        over: (at: "2026-11-02T10:00:00.000Z", from: "Z")
+      ))
+    check(
+      "a tie goes to the higher Mac name, on every Mac",
+      ConfigSync.wins((at: at, from: "Mac B"), over: (at: at, from: "Mac A"))
+        && !ConfigSync.wins((at: at, from: "Mac A"), over: (at: at, from: "Mac B")))
+    check("nothing beats itself", !ConfigSync.wins((at: at, from: "A"), over: (at: at, from: "A")))
+    let value = try? JSONValue(encoding: ["b": 1, "a": 2])
+    check(
+      "JSON objects compare by content",
+      value != nil && value == (try? JSONValue(encoding: ["a": 2, "b": 1])))
+    struct Row: Codable, Equatable {
+      var name: String
+      var on: Bool
+      var tags: [String]
+      var note: String?
+    }
+    let row = Row(name: "x", on: true, tags: ["a"], note: nil)
+    check(
+      "a value decodes back to its type", (try? JSONValue(encoding: row).decode(Row.self)) == row)
+    let envelope = ConfigSync.Envelope(
+      v: 1, kind: .workspace, id: "rgis", at: at, from: "A", deleted: true, entity: nil, was: nil)
+    let round = try? JSONDecoder().decode(
+      ConfigSync.Envelope.self, from: JSONEncoder().encode(envelope))
+    check("an envelope round-trips", round == envelope)
+    let live = ConfigSync.Envelope(
+      v: 1, kind: .profile, id: "a/b", at: at, from: "A", deleted: false,
+      entity: .object(["values": .object(["X": .string("1")])]), was: "c/b")
+    check(
+      "an envelope with an entity round-trips",
+      (try? JSONDecoder().decode(ConfigSync.Envelope.self, from: JSONEncoder().encode(live)))
+        == live)
   }
 }
