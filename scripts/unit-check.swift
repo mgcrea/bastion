@@ -3070,6 +3070,7 @@ struct UnitCheck {
     keychainMigration()
     devImportDocument()
     configSyncEnvelope()
+    configSyncMerge()
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 {
@@ -3306,5 +3307,196 @@ struct UnitCheck {
       "an envelope with an entity round-trips",
       (try? JSONDecoder().decode(ConfigSync.Envelope.self, from: JSONEncoder().encode(live)))
         == live)
+  }
+
+  // MARK: - Config sync: the merge
+
+  static let mergeNow = ConfigSync.date("2026-11-02T12:00:00.000Z")!
+  static func stamp(_ hoursAgo: Double) -> String {
+    ConfigSync.timestamp(mergeNow.addingTimeInterval(-hoursAgo * 3600))
+  }
+  static func ws(_ folder: String) -> JSONValue {
+    .object(["name": .string("rgis"), "folders": .array([.string(folder)])])
+  }
+  static func remote(
+    _ entity: JSONValue?, at: String, from: String = "Other", v: Int = 1, was: String? = nil,
+    id: String = "w"
+  ) -> ConfigSync.Envelope {
+    .init(
+      v: v, kind: .workspace, id: id, at: at, from: from, deleted: entity == nil, entity: entity,
+      was: was)
+  }
+  static func entry(_ entity: JSONValue?, at: String, from: String = "Other") -> ConfigSync.Entry {
+    .init(at: at, from: from, entity: entity, carry: [:], held: false, heldLocal: nil)
+  }
+  static func merge(
+    local: [String: JSONValue] = [:], snap: [String: ConfigSync.Entry] = [:],
+    remote: [String: ConfigSync.Envelope] = [:], localAt: String? = nil,
+    localMissing: Bool = false, known: Set<String> = ["name", "folders"]
+  ) -> ConfigSync.Plan {
+    ConfigSync.plan(
+      .init(
+        kind: .workspace, local: local, remote: remote, snapshot: snap, mac: "Here",
+        localAt: localAt ?? stamp(0), now: mergeNow, knownFields: known,
+        localMissing: localMissing))
+  }
+
+  static func configSyncMerge() {
+    print("\nConfig sync: the merge")
+    let a = ws("~/a")
+    let b = ws("~/b")
+
+    check("nothing anywhere, nothing to do", merge() == .init())
+    let quiet = merge(
+      local: ["w": a], snap: ["w": entry(a, at: stamp(5))], remote: ["w": remote(a, at: stamp(5))])
+    check("in agreement, nothing to do", quiet == .init())
+
+    let edited = merge(
+      local: ["w": b], snap: ["w": entry(a, at: stamp(5))], remote: ["w": remote(a, at: stamp(5))])
+    check("a local edit is pushed", edited.push.map(\.entity) == [b] && edited.apply.isEmpty)
+    check(
+      "a push is from this Mac, now",
+      edited.push.first?.from == "Here" && edited.push.first?.at == stamp(0))
+    let deletedHere = merge(
+      snap: ["w": entry(a, at: stamp(5))], remote: ["w": remote(a, at: stamp(5))])
+    check(
+      "a local deletion pushes a tombstone",
+      deletedHere.push.map(\.deleted) == [true] && deletedHere.push.first?.entity == nil)
+    let fresh = merge(local: ["w": a])
+    check("a new local entity is pushed", fresh.push.map(\.id) == ["w"])
+
+    let arrived = merge(
+      local: ["w": a], snap: ["w": entry(a, at: stamp(5))], remote: ["w": remote(b, at: stamp(1))])
+    check("a remote edit is applied", arrived.apply.map(\.entity) == [b] && arrived.push.isEmpty)
+    let deletedThere = merge(
+      local: ["w": a], snap: ["w": entry(a, at: stamp(5))], remote: ["w": remote(nil, at: stamp(1))]
+    )
+    check("a remote deletion is applied", deletedThere.apply.map(\.deleted) == [true])
+    let newThere = merge(remote: ["w": remote(a, at: stamp(1))])
+    check("a remote entity new to this Mac is applied", newThere.apply.map(\.id) == ["w"])
+    let vanished = merge(local: ["w": a], snap: ["w": entry(a, at: stamp(5))], remote: [:])
+    check(
+      "a key that vanished is a deletion",
+      vanished.apply.map(\.deleted) == [true] && vanished.apply.first?.at == stamp(5))
+
+    // The offline Mac: deleted elsewhere yesterday, this Mac comes back with an
+    // untouched copy from before. The tombstone stands.
+    let offline = merge(
+      local: ["w": a], snap: ["w": entry(a, at: stamp(48))],
+      remote: ["w": remote(nil, at: stamp(24))])
+    check(
+      "an offline Mac does not resurrect a deletion",
+      offline.apply.map(\.deleted) == [true] && offline.push.isEmpty)
+
+    let bothSame = merge(
+      local: ["w": b], snap: ["w": entry(a, at: stamp(5))], remote: ["w": remote(b, at: stamp(1))])
+    check(
+      "the same edit on both sides is adopted, not applied or pushed",
+      bothSame.adopt.map(\.id) == ["w"] && bothSame.apply.isEmpty && bothSame.push.isEmpty)
+    let bothDeleted = merge(
+      snap: ["w": entry(a, at: stamp(5))], remote: ["w": remote(nil, at: stamp(1))])
+    check(
+      "deleted on both sides is adopted",
+      bothDeleted.adopt.map(\.deleted) == [true] && bothDeleted.push.isEmpty)
+    let newerHere = merge(
+      local: ["w": b], snap: ["w": entry(a, at: stamp(5))],
+      remote: ["w": remote(ws("~/c"), at: stamp(2))], localAt: stamp(1))
+    check(
+      "both edited, the later local edit wins",
+      newerHere.push.map(\.entity) == [b] && newerHere.apply.isEmpty)
+    let newerThere = merge(
+      local: ["w": b], snap: ["w": entry(a, at: stamp(5))],
+      remote: ["w": remote(ws("~/c"), at: stamp(1))], localAt: stamp(2))
+    check(
+      "both edited, the later remote edit wins",
+      newerThere.apply.map(\.entity) == [ws("~/c")] && newerThere.push.isEmpty)
+    check("and the overwrite is reported", newerThere.overwrote == ["w"])
+    let tie = merge(
+      local: ["w": b], snap: ["w": entry(a, at: stamp(5))],
+      remote: ["w": remote(ws("~/c"), at: stamp(1), from: "Zed")], localAt: stamp(1))
+    check("a tie goes to the higher Mac name", tie.apply.count == 1 && tie.push.isEmpty)
+
+    // First switch-on: no snapshot. The newer side wins, entity by entity.
+    let first = merge(
+      local: ["w": a, "x": a],
+      remote: ["w": remote(b, at: stamp(1)), "y": remote(a, at: stamp(1), id: "y")],
+      localAt: stamp(10))
+    check(
+      "first switch-on: the newer remote version wins",
+      first.apply.map(\.id).sorted() == ["w", "y"])
+    check("first switch-on: what is only here is pushed", first.push.map(\.id) == ["x"])
+    check("first switch-on: a replaced local version is reported", first.overwrote == ["w"])
+    let firstSame = merge(
+      local: ["w": a], remote: ["w": remote(a, at: stamp(1))], localAt: stamp(10))
+    check(
+      "first switch-on: an identical entity is only adopted",
+      firstSame.adopt.count == 1 && firstSame.overwrote.isEmpty)
+
+    // Echo: apply, record what was agreed, plan again. Nothing moves.
+    let incoming = remote(b, at: stamp(1))
+    let agreed = ConfigSync.agreed(remote: incoming, local: b, knownFields: ["name", "folders"])
+    check(
+      "applying never echoes",
+      merge(local: ["w": b], snap: ["w": agreed], remote: ["w": incoming]) == .init())
+
+    // Held: a remote entity this Mac could not apply.
+    let unusable = remote(
+      .object(["name": .string("rgis"), "folders": .array([]), "future": .bool(true)]), at: stamp(1)
+    )
+    let held = ConfigSync.held(remote: unusable, local: nil, knownFields: ["name", "folders"])
+    check(
+      "a held entity missing here is not a deletion",
+      merge(snap: ["w": held], remote: ["w": unusable]) == .init())
+    let editedHeld = merge(local: ["w": a], snap: ["w": held], remote: ["w": unusable])
+    check("a held entity edited here still pushes", editedHeld.push.map(\.id) == ["w"])
+    check(
+      "a push carries forward fields this build does not know",
+      editedHeld.push.first?.entity
+        == .object([
+          "name": .string("rgis"), "folders": .array([.string("~/a")]), "future": .bool(true),
+        ]))
+    check(
+      "an agreed entry keeps the unknown fields to carry",
+      ConfigSync.agreed(remote: unusable, local: a, knownFields: ["name", "folders"]).carry == [
+        "future": .bool(true)
+      ])
+    check(
+      "carrying forward never overwrites a known field",
+      ConfigSync.carryForward(.object(["a": .number(1)]), ["a": .number(2), "b": .number(3)])
+        == .object(["a": .number(1), "b": .number(3)]))
+
+    let newerVersion = merge(
+      local: ["w": a], snap: ["w": entry(a, at: stamp(5))],
+      remote: ["w": remote(b, at: stamp(1), v: 2)])
+    check(
+      "a newer envelope is left alone",
+      newerVersion.newer == ["w"] && newerVersion.push.isEmpty && newerVersion.apply.isEmpty)
+
+    let missing = merge(
+      snap: ["w": entry(a, at: stamp(5)), "x": entry(a, at: stamp(5))],
+      remote: ["w": remote(a, at: stamp(5)), "x": remote(nil, at: stamp(4))], localMissing: true)
+    check("a missing file pushes nothing", missing.push.isEmpty)
+    check("a missing file is filled from the cloud", missing.apply.map(\.id) == ["w"])
+
+    check("the cloud emptied is told apart", ConfigSync.cloudEmptied(syncKeys: 0, liveSnapshot: 3))
+    check(
+      "one key left is not the cloud emptied",
+      !ConfigSync.cloudEmptied(syncKeys: 1, liveSnapshot: 3))
+    check(
+      "an empty cloud on a Mac with nothing synced is not emptied",
+      !ConfigSync.cloudEmptied(syncKeys: 0, liveSnapshot: 0))
+
+    check(
+      "an old tombstone is pruned",
+      merge(remote: ["w": remote(nil, at: stamp(31 * 24))]).prune == ["w"])
+    check(
+      "a recent tombstone is kept",
+      merge(remote: ["w": remote(nil, at: stamp(29 * 24))]).prune.isEmpty)
+    let oldTombLive = merge(
+      local: ["w": a], snap: ["w": entry(a, at: stamp(40 * 24))],
+      remote: ["w": remote(nil, at: stamp(31 * 24))])
+    check(
+      "an old tombstone still deletes a stale copy here",
+      oldTombLive.apply.map(\.deleted) == [true] && oldTombLive.prune.isEmpty)
   }
 }
