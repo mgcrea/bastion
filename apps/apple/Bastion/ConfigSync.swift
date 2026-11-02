@@ -248,8 +248,15 @@ nonisolated enum ConfigSync {
       case (_, let incoming?):
         let same =
           (incoming.deleted ? nil : incoming.entity.map { known($0, input.knownFields) }) == local
+        // Older than the version this Mac already agreed: a Mac that wrote
+        // its key before it had seen the cloud. The key-value store keeps the
+        // last write per key, not the latest version, so the newer one is
+        // written back here rather than lost.
+        let stale = snap.map { wins(($0.at, $0.from), over: (incoming.at, incoming.from)) } == true
         if same {
           plan.adopt.append(incoming)
+        } else if stale {
+          plan.push.append(outgoing)
         } else if !localChanged {
           plan.apply.append(incoming)
         } else if wins((input.localAt, input.mac), over: (incoming.at, incoming.from)) {

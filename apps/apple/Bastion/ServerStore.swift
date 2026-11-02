@@ -753,6 +753,21 @@ final class ServerStore {
 }
 
 extension ServerStore: SyncedStore {
+  /// Every custom server's current value, recorded as allowed here. When sync
+  /// is switched on: what is already on this Mac was set up on this Mac.
+  func approveCurrentCustomServers() {
+    for server in servers where server.origin == .custom {
+      do {
+        try ServerApprovalStore.shared.approve(
+          server.id, value: Self.definition(of: server).approvalValue)
+      } catch {
+        hostLog(
+          "sync", .error,
+          "could not record '\(server.id)' as allowed: \(error.localizedDescription)")
+      }
+    }
+  }
+
   var syncKinds: [ConfigSync.Kind] { [.server] }
   func syncFile(_ kind: ConfigSync.Kind) -> URL { fileURL }
   var syncUnreadable: Bool { unreadable != nil }

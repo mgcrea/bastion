@@ -468,7 +468,11 @@ extension ProfileStore: SyncedStore {
 
   func applySynced(_ kind: ConfigSync.Kind, _ envelopes: [ConfigSync.Envelope]) -> Set<String> {
     var held = Set<String>()
-    for envelope in envelopes {
+    // Renames first: the old id's tombstone in the same batch then finds
+    // nothing to remove, rather than sweeping the credentials the rename
+    // would have moved.
+    let ordered = envelopes.filter { $0.was != nil } + envelopes.filter { $0.was == nil }
+    for envelope in ordered {
       do {
         try applySynced(envelope)
       } catch {

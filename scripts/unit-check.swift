@@ -3418,6 +3418,17 @@ struct UnitCheck {
       remote: ["w": remote(ws("~/c"), at: stamp(1), from: "Zed")], localAt: stamp(1))
     check("a tie goes to the higher Mac name", tie.apply.count == 1 && tie.push.isEmpty)
 
+    // A Mac switching sync on writes its keys before it has seen the cloud,
+    // stamped with its file's older time. The version this Mac agreed is
+    // newer, so it is pushed back rather than replaced.
+    let stale = merge(
+      local: ["w": a], snap: ["w": entry(a, at: stamp(1), from: "Here")],
+      remote: ["w": remote(b, at: stamp(9))])
+    check("an older remote version than this Mac agreed is not applied", stale.apply.isEmpty)
+    check(
+      "and this Mac's version is pushed back",
+      stale.push.map(\.entity) == [a] && stale.push.first?.at == stamp(0))
+
     // First switch-on: no snapshot. The newer side wins, entity by entity.
     let first = merge(
       local: ["w": a, "x": a],

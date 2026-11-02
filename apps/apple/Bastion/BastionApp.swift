@@ -104,6 +104,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // no-op again on any launch that finds the configs already current.
     ClientWiring.migrateKeyScheme()
 
+    // Configuration sync, when switched on: a pass, then listening. After the
+    // gateway and the key-scheme migration, because what arrives is applied
+    // through the stores, and a store change rewires clients with the port.
+    // A no-op on a build that cannot reach iCloud. See `ConfigSyncEngine`.
+    ConfigSyncEngine.shared.start()
+
     // Builds nothing unless the user has already opted in. Sparkle starts a
     // scheduler the moment it is constructed, so this must not be a
     // constructor call guarded by a later check.
