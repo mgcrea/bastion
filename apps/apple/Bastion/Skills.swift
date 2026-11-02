@@ -160,6 +160,8 @@ final class SkillStore {
       // After every write: `.atomic` replaces the file.
       try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
+    // One save writes both files, so all three kinds are looked at.
+    SyncHooks.didSave(.skillSource)
   }
 
   // MARK: - Reading
@@ -489,5 +491,123 @@ final class SkillStore {
       targets: all, desired: desired, sources: sources, available: available,
       ledger: repositoryLinks, fs: fs)
     return (all, desired, plan)
+  }
+}
+
+// MARK: - Sync
+
+/// Sources, their order and the choices travel. `repositoryLinks` does not:
+/// it records the links Bastion made in a repository on THIS Mac, which is
+/// what entitles the reconcile to relink or remove them, and synced it would
+/// let another Mac remove a same-named link it never made. Each Mac's
+/// reconcile makes and records its own, from the workspaces' skill lists.
+extension SkillStore: SyncedStore {
+  /// The id of the one order entity.
+  static let orderID = "skillsources"
+
+  var syncKinds: [ConfigSync.Kind] { [.skillSource, .order, .skillChoice] }
+  func syncFile(_ kind: ConfigSync.Kind) -> URL { kind == .skillChoice ? skillsURL : sourcesURL }
+  var syncUnreadable: Bool { unreadable != nil }
+
+  func syncKnownFields(_ kind: ConfigSync.Kind) -> Set<String> {
+    switch kind {
+    case .skillSource: ["name", "path", "kind", "retired"]
+    case .order: ["names"]
+    default: ["targets"]
+    }
+  }
+
+  private struct Order: Codable { var names: [String] }
+  private struct Choice: Codable { var targets: [String] }
+
+  func syncEntities(_ kind: ConfigSync.Kind) -> [String: JSONValue] {
+    var out: [String: JSONValue] = [:]
+    switch kind {
+    case .skillSource:
+      for source in sources {
+        var travelling = source
+        travelling.path = SyncProjection.homeRelative(source.path, home: home)
+        out[source.name] = try? JSONValue(encoding: travelling)
+      }
+    case .order:
+      if !sources.isEmpty {
+        out[Self.orderID] = try? JSONValue(encoding: Order(names: sources.map(\.name)))
+      }
+    default:
+      for (skill, targets) in choices {
+        out[skill] = try? JSONValue(encoding: Choice(targets: targets.sorted()))
+      }
+    }
+    return out
+  }
+
+  func applySynced(_ kind: ConfigSync.Kind, _ envelopes: [ConfigSync.Envelope]) -> Set<String> {
+    guard !envelopes.isEmpty else { return [] }
+    // Written straight into the lists rather than through `commit` or
+    // `setTargets`: those check folders and skills against this Mac's disk,
+    // and a source whose folder is missing here is kept and listed as
+    // unavailable rather than refused. The reconcile below links only what
+    // resolves.
+    var held = Set<String>()
+    for envelope in envelopes {
+      do {
+        switch kind {
+        case .skillSource: try applySource(envelope)
+        case .order: try applyOrder(envelope)
+        default: try applyChoice(envelope)
+        }
+      } catch {
+        held.insert(envelope.id)
+        hostLog(
+          "sync", .error,
+          "kept \(kind.rawValue) '\(envelope.id)' from \(envelope.from) aside: "
+            + error.localizedDescription)
+      }
+    }
+    do {
+      try save()
+    } catch {
+      hostLog("sync", .error, "could not save skills: \(error.localizedDescription)")
+      return Set(envelopes.map(\.id))
+    }
+    reconcile()
+    return held
+  }
+
+  private func applySource(_ envelope: ConfigSync.Envelope) throws {
+    let index = sources.firstIndex { $0.name == envelope.id }
+    guard let entity = envelope.entity, !envelope.deleted else {
+      // Retired rather than dropped, as a removal here does, so the links it
+      // made are recognised and removed before the row goes.
+      if let index { sources[index].retired = true }
+      return
+    }
+    var source = try entity.decode(SkillSource.self)
+    guard source.name == envelope.id, SkillCatalog.isValidSourceName(source.name) else {
+      throw StoreError.unknownSource(source.name)
+    }
+    source.path = SyncProjection.expandingHome(source.path, home: home)
+    if let index { sources[index] = source } else { sources.append(source) }
+  }
+
+  private func applyOrder(_ envelope: ConfigSync.Envelope) throws {
+    guard let entity = envelope.entity, !envelope.deleted else { return }
+    let names = try entity.decode(Order.self).names
+    let rank = Dictionary(
+      names.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+    // Stable: a source the order does not name keeps its place after the rest.
+    sources = sources.enumerated().sorted { a, b in
+      (rank[a.element.name] ?? names.count + a.offset)
+        < (rank[b.element.name] ?? names.count + b.offset)
+    }.map(\.element)
+  }
+
+  private func applyChoice(_ envelope: ConfigSync.Envelope) throws {
+    guard let entity = envelope.entity, !envelope.deleted else {
+      choices[envelope.id] = nil
+      return
+    }
+    let targets = Set(try entity.decode(Choice.self).targets)
+    choices[envelope.id] = targets.isEmpty ? nil : targets
   }
 }

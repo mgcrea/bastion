@@ -54,6 +54,7 @@ struct SkillsCheck {
     ledgerHelpers()
     exactCoverSeeding()
     repositoryLedger()
+    syncedChoicesThisMacCannotResolve()
     nestedSourcesClaimBySlot()
     parentSourceClaimsNothingBelowItsSlots()
     globalAndProjectTargetsMergeAcrossTheHomeRepository()
@@ -1584,5 +1585,23 @@ struct SkillsCheck {
       !failures.isEmpty && failures.allSatisfy { $0.message.contains(theirs + "/" + $0.name) })
     check("and no .bastion-* entry is left", !leftovers())
     check("and nothing in either source is touched", fs.isFile(second.path + "/alpha/SKILL.md"))
+  }
+
+  /// Choices synced from another Mac can name a skill whose source is missing
+  /// here, or a Claude profile folder this Mac does not have. Neither may link
+  /// anything or stop the rest from linking.
+  static func syncedChoicesThisMacCannotResolve() {
+    print("choices from another Mac")
+    let (_, plan) = planned(
+      machine(),
+      choices: [
+        "elsewhere:gamma": ["claude-code"],
+        "global:alpha": ["claude-code@no-such-profile", "shared"],
+      ])
+    check(
+      "a skill or a folder this Mac does not have links nothing, and the rest still links",
+      Set(plan.actions) == [
+        .link(target: "shared", name: "alpha", destination: globalPath + "/alpha")
+      ])
   }
 }

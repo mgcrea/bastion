@@ -87,6 +87,7 @@ final class WorkspaceStore {
     // After every write: `.atomic` replaces the file, so permissions set once
     // do not survive the next save.
     try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+    SyncHooks.didSave(.workspace)
   }
 
   func rescan() {
@@ -241,5 +242,56 @@ final class WorkspaceStore {
       workspaces: workspaces, existing: Set(byID.keys),
       resolve: { resolved[$0.name] ?? [] })
     return map.mapValues { ids in ids.compactMap { byID[$0] }.sorted { $0.id < $1.id } }
+  }
+}
+
+// MARK: - Sync
+
+/// A workspace travels whole, its folders under the home folder as `~/…`. A
+/// folder missing on this Mac is kept as typed and reaches nothing until it
+/// exists, as a moved folder already does.
+extension WorkspaceStore: SyncedStore {
+  var syncKinds: [ConfigSync.Kind] { [.workspace] }
+  func syncFile(_ kind: ConfigSync.Kind) -> URL { fileURL }
+  var syncUnreadable: Bool { unreadable != nil }
+  func syncKnownFields(_ kind: ConfigSync.Kind) -> Set<String> {
+    ["name", "folders", "profiles", "skills"]
+  }
+
+  private var home: String { FileManager.default.homeDirectoryForCurrentUser.path }
+
+  func syncEntities(_ kind: ConfigSync.Kind) -> [String: JSONValue] {
+    var out: [String: JSONValue] = [:]
+    for workspace in workspaces {
+      var travelling = workspace
+      travelling.folders = workspace.folders.map { SyncProjection.homeRelative($0, home: home) }
+      out[workspace.name] = try? JSONValue(encoding: travelling)
+    }
+    return out
+  }
+
+  func applySynced(_ kind: ConfigSync.Kind, _ envelopes: [ConfigSync.Envelope]) -> Set<String> {
+    var held = Set<String>()
+    for envelope in envelopes {
+      do {
+        guard let entity = envelope.entity, !envelope.deleted else {
+          if workspaces.contains(where: { $0.name == envelope.id }) {
+            try remove(named: envelope.id)
+          }
+          continue
+        }
+        var workspace = try entity.decode(Workspace.self)
+        guard workspace.name == envelope.id else { throw StoreError.invalidName(workspace.name) }
+        workspace.folders = workspace.folders.map { SyncProjection.expandingHome($0, home: home) }
+        try upsert(workspace)
+      } catch {
+        held.insert(envelope.id)
+        hostLog(
+          "sync", .error,
+          "kept workspace '\(envelope.id)' from \(envelope.from) aside: \(error.localizedDescription)"
+        )
+      }
+    }
+    return held
   }
 }
