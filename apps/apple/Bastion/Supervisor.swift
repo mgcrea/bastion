@@ -45,6 +45,8 @@ nonisolated final class Supervisor: @unchecked Sendable {
     /// A custom server that arrived from another Mac through iCloud and has
     /// not been allowed here. See `ServerApprovals`.
     case awaitingApproval(server: String, from: String)
+    /// Which custom servers are allowed here could not be read, so none runs.
+    case approvalsUnreadable(String)
     case unknownProfile(profile: String, server: String)
     case notConfigured(profile: String, missing: [String])
     case startFailed(String)
@@ -73,6 +75,10 @@ nonisolated final class Supervisor: @unchecked Sendable {
         return
           "\(server) arrived from \(from) through iCloud and has not been allowed on this Mac. "
           + "Open Bastion and allow it there."
+      case .approvalsUnreadable(let server):
+        return
+          "\(server) is a custom server, and Bastion could not read which custom servers are "
+          + "allowed on this Mac, so it does not run until it can. Bastion tries again shortly"
       case .unknownProfile(let profile, let server):
         return "no profile '\(profile)' for \(server) — create it in Bastion"
       case .notConfigured(let profile, let missing):
@@ -170,8 +176,10 @@ nonisolated final class Supervisor: @unchecked Sendable {
     }
     // Before anything is spawned or reached: what a custom server runs or
     // reaches was chosen on another Mac until somebody here says yes.
-    if let waiting = ServerApprovalStore.pending(serverID) {
-      throw SupervisorError.awaitingApproval(server: serverID, from: waiting.from)
+    switch ServerApprovalStore.refusal(for: server) {
+    case .waiting(let from): throw SupervisorError.awaitingApproval(server: serverID, from: from)
+    case .unknown: throw SupervisorError.approvalsUnreadable(serverID)
+    case nil: break
     }
     guard let profile = ProfileStore.lookup(name: profileName, server: serverID) else {
       throw SupervisorError.unknownProfile(profile: profileName, server: serverID)
@@ -373,8 +381,10 @@ nonisolated final class Supervisor: @unchecked Sendable {
         throw SupervisorError.unknownProfile(profile: profile.name, server: server.id)
       }
       guard freshServer.isEnabled else { throw SupervisorError.serverDisabled(server.id) }
-      if let waiting = ServerApprovalStore.pending(server.id) {
-        throw SupervisorError.awaitingApproval(server: server.id, from: waiting.from)
+      switch ServerApprovalStore.refusal(for: freshServer) {
+      case .waiting(let from): throw SupervisorError.awaitingApproval(server: server.id, from: from)
+      case .unknown: throw SupervisorError.approvalsUnreadable(server.id)
+      case nil: break
       }
       let missing = ProfileEnvironment.missing(for: fresh, server: freshServer)
       guard missing.isEmpty else {

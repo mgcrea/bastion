@@ -197,19 +197,25 @@ final class SkillStore {
 
   // MARK: - Editing
 
-  /// Toggles one target, tolerating every OTHER stored id that no longer
-  /// resolves — a Claude profile's config folder removed since the choice was
-  /// saved, say. Dropping those here rather than leaving them for
-  /// `setTargets` to refuse is what keeps a vanished target from blocking
-  /// every future toggle on the skill; `targetID` itself is not filtered, so
-  /// toggling ON an id that does not resolve still reaches `setTargets` and
-  /// throws `unknownTarget`, which `update_skill` relies on.
+  /// Toggles one target. Only `targetID` is checked: toggling ON an id that
+  /// does not resolve throws `unknownTarget`, which `update_skill` relies on.
+  ///
+  /// Every other stored id is kept, including one this Mac cannot resolve: a
+  /// Claude profile folder removed since, or, with sync, a target on another
+  /// Mac, where dropping it would unlink the skill. A vanished id still never
+  /// blocks a toggle, because it is not checked; the reconcile links nothing
+  /// for it.
   func set(_ skillID: String, target targetID: String, on: Bool) throws {
-    var next = choices[skillID] ?? []
-    if on { next.insert(targetID) } else { next.remove(targetID) }
+    guard catalog.contains(where: { $0.id == skillID }) else {
+      throw StoreError.unknownSkill(skillID)
+    }
     let primary = primaryTargetIDs()
-    next = next.filter { $0 == targetID || primary[$0] != nil }
-    try setTargets(skillID, next)
+    if on, primary[targetID] == nil { throw StoreError.unknownTarget(targetID) }
+    let next = SkillLinks.toggled(
+      choices[skillID] ?? [], target: targetID, on: on, primary: primary)
+    choices[skillID] = next.isEmpty ? nil : next
+    try save()
+    reconcile()
   }
 
   func setTargets(_ skillID: String, _ ids: Set<String>) throws {

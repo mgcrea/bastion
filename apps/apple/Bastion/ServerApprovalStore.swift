@@ -23,16 +23,27 @@ final class ServerApprovalStore {
   private(set) var problem: String?
 
   private static let account = "servers"
-  private nonisolated static let published = OSAllocatedUnfairLock<
-    [String: ServerApprovals.Pending]
-  >(
-    initialState: [:])
+  private struct Published {
+    var pending: [String: ServerApprovals.Pending] = [:]
+    var unreadable = false
+  }
+  private nonisolated static let published = OSAllocatedUnfairLock(initialState: Published())
 
   /// The arrival a server is waiting on, read from any thread. Nil for every
   /// server that did not arrive from another Mac, which is every server on a
   /// Mac that has never synced.
   nonisolated static func pending(_ id: String) -> ServerApprovals.Pending? {
-    published.withLock { $0[id] }
+    published.withLock { $0.pending[id] }
+  }
+
+  /// Why the supervisor must not start or reach `server`, read from any
+  /// thread. Fails closed: while the item cannot be read, no custom server
+  /// runs, because whether it is waiting is unknown.
+  nonisolated static func refusal(for server: BastionServer) -> ServerApprovals.Refusal? {
+    let state = published.withLock { $0 }
+    return ServerApprovals.refusal(
+      custom: server.origin == .custom, pending: state.pending[server.id],
+      unreadable: state.unreadable)
   }
 
   init() { load() }
@@ -44,6 +55,12 @@ final class ServerApprovalStore {
       stored = try CredentialStore.lookup(.approvals, account: Self.account)
     } catch {
       fail("server approvals could not be read: \(error.localizedDescription)")
+      // Most often a keychain still locked at a login launch. Tried again, so
+      // custom servers do not stay refused until the next relaunch.
+      Task { [weak self] in
+        try? await Task.sleep(for: .seconds(30))
+        self?.load()
+      }
       return
     }
     guard let stored else {
@@ -81,6 +98,14 @@ final class ServerApprovalStore {
     }
   }
 
+  /// Every server set up here allowed at its current value, when sync is
+  /// switched on, except one that is waiting. See `ServerApprovals`.
+  func approveExisting(_ current: [String: String]) throws {
+    var next = approvals
+    next.approveExisting(current)
+    try replace(with: next)
+  }
+
   func forget(_ id: String) throws {
     guard approvals.approved[id] != nil || approvals.pending[id] != nil else { return }
     var next = approvals
@@ -113,7 +138,7 @@ final class ServerApprovalStore {
   }
 
   private func publish() {
-    let pending = approvals.pending
-    Self.published.withLock { $0 = pending }
+    let next = Published(pending: approvals.pending, unreadable: problem != nil)
+    Self.published.withLock { $0 = next }
   }
 }

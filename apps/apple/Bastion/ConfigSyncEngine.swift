@@ -22,9 +22,7 @@ final class ConfigSyncEngine {
     case paused(Pause)
   }
 
-  enum Pause: String, Codable, Equatable {
-    case account, quota, cloudEmptied
-  }
+  typealias Pause = ConfigSync.Pause
 
   /// One entity brought in from another Mac, for the status line.
   struct Change: Equatable, Identifiable {
@@ -52,6 +50,13 @@ final class ConfigSyncEngine {
   private var observer: NSObjectProtocol?
   private var scheduled: Task<Void, Never>?
   private var state = State()
+  /// Which store files existed before anything at launch could save one.
+  /// A file deleted by hand is then still "missing" to the launch pass, even
+  /// if a reconcile or a rewire has written an empty one since.
+  private var existedAtLaunch: [String: Bool] = [:]
+  private static let files = [
+    "servers.json", "profiles.json", "workspaces.json", "skill-sources.json", "skills.json",
+  ]
 
   /// The order kinds are passed in: a profile's server before the profile,
   /// a workspace's profiles before the workspace, sources before their order
@@ -68,11 +73,22 @@ final class ConfigSyncEngine {
     var pause: Pause?
     /// A digest of the iCloud account this snapshot belongs to.
     var account: String?
+    /// The cloud's epoch this snapshot was made against. See
+    /// `ConfigSync.epochKey`.
+    var epoch: String?
   }
 
   private var stateURL: URL { AppSupport.directory.appendingPathComponent("sync-state.json") }
 
   // MARK: - Starting
+
+  /// First thing at launch, before any store loads or saves.
+  func noteFilesAtLaunch() {
+    for name in Self.files {
+      existedAtLaunch[name] = FileManager.default.fileExists(
+        atPath: AppSupport.directory.appendingPathComponent(name).path)
+    }
+  }
 
   /// At launch. Decides whether this build can sync at all, and if sync is
   /// on, runs a pass and starts listening.
@@ -86,6 +102,13 @@ final class ConfigSyncEngine {
     SyncHooks.didSave = { [weak self] _ in self?.schedule() }
     loadState()
     guard isEnabled else {
+      // Off answers a full store or an emptied cloud, however it was
+      // switched off; never an account change.
+      if state.pause != state.pause?.afterSwitchingOff {
+        state.pause = state.pause?.afterSwitchingOff
+        saveState()
+      }
+      existedAtLaunch = [:]
       status = .off
       return
     }
@@ -159,6 +182,8 @@ final class ConfigSyncEngine {
     UserDefaults.standard.set(on, forKey: Self.enabledKey)
     guard on else {
       stop()
+      state.pause = state.pause?.afterSwitchingOff
+      saveState()
       status = cloud == nil ? .unavailable : .off
       hostLog("sync", .info, "iCloud sync switched off; this Mac keeps its configuration")
       return
@@ -194,6 +219,15 @@ final class ConfigSyncEngine {
       return
     }
     state.snapshot = [:]
+    state.epoch = nil
+    state.pause = nil
+    saveState()
+    begin(firstRun: false)
+  }
+
+  /// After iCloud's storage for Bastion was full: look again.
+  func retryAfterQuota() {
+    guard state.pause == .quota else { return }
     state.pause = nil
     saveState()
     begin(firstRun: false)
@@ -204,6 +238,7 @@ final class ConfigSyncEngine {
   func removeFromICloud() {
     if let cloud {
       for key in cloud.all().keys where ConfigSync.isSyncKey(key) { cloud.remove(key) }
+      cloud.remove(ConfigSync.epochKey)
       cloud.synchronize()
     }
     state = State()
@@ -233,13 +268,14 @@ final class ConfigSyncEngine {
     let mac = Self.macName()
 
     var remote: [ConfigSync.Kind: [String: ConfigSync.Envelope]] = [:]
-    var unreadableKeys = 0
-    let raw = cloud.all().filter { ConfigSync.isSyncKey($0.key) }
+    var unreadableKeys = Set<String>()
+    let everything = cloud.all()
+    let raw = everything.filter { ConfigSync.isSyncKey($0.key) }
     for (key, text) in raw {
       guard
         let envelope = try? JSONDecoder().decode(ConfigSync.Envelope.self, from: Data(text.utf8))
       else {
-        unreadableKeys += 1
+        unreadableKeys.insert(key)
         continue
       }
       // A value under a key its own id does not hash to is not one this
@@ -248,12 +284,19 @@ final class ConfigSyncEngine {
       remote[envelope.kind, default: [:]][envelope.id] = envelope
     }
     let live = state.snapshot.values.reduce(0) { $0 + $1.values.filter { $0.entity != nil }.count }
-    if ConfigSync.cloudEmptied(syncKeys: raw.count, liveSnapshot: live) {
+    switch ConfigSync.epoch(
+      cloud: everything[ConfigSync.epochKey], mine: state.epoch, fresh: UUID().uuidString,
+      syncKeys: raw.count, liveSnapshot: live)
+    {
+    case .pause:
       pause(.cloudEmptied)
       return
+    case .use(let epoch, let write):
+      if write { cloud.set(epoch, for: ConfigSync.epochKey) }
+      state.epoch = epoch
     }
 
-    var newerCount = unreadableKeys
+    var newerCount = unreadableKeys.count
     var overwrites: [String] = []
     var skippedFiles: [String] = []
     for kind in Self.kinds {
@@ -270,12 +313,19 @@ final class ConfigSyncEngine {
       let local = store.syncEntities(kind)
       let modified =
         (try? FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date
-      let plan = ConfigSync.plan(
-        .init(
-          kind: kind, local: local, remote: remote[kind] ?? [:], snapshot: snapshot, mac: mac,
-          localAt: ConfigSync.timestamp(launch ? modified ?? now : now), now: now,
-          knownFields: known,
-          localMissing: modified == nil && snapshot.values.contains { $0.entity != nil }))
+      let existed =
+        (launch ? existedAtLaunch[file.lastPathComponent] : nil) ?? (modified != nil)
+      var input = ConfigSync.Input(
+        kind: kind, local: local, remote: remote[kind] ?? [:], snapshot: snapshot, mac: mac,
+        localAt: ConfigSync.timestamp(launch ? modified ?? now : now), now: now,
+        knownFields: known,
+        localMissing: !existed && snapshot.values.contains { $0.entity != nil })
+      input.retryHeld = launch
+      // An id whose key is there but unreadable is left alone, never taken
+      // for a deletion because it is missing from what decoded.
+      input.untouchable = Set(
+        snapshot.keys.filter { unreadableKeys.contains(ConfigSync.key(kind, id: $0)) })
+      let plan = ConfigSync.plan(input)
 
       var pushes = plan.push
       if kind == .profile { Self.markRenames(&pushes, snapshot: snapshot) }
@@ -322,6 +372,8 @@ final class ConfigSyncEngine {
       newerCount += plan.newer.count
       state.snapshot[kind.rawValue] = snapshot
     }
+    // Once: a later switch-on looks at the files as they are then.
+    if launch { existedAtLaunch = [:] }
     recent = Array(recent.prefix(5))
     newer = newerCount
     skipped = skippedFiles
@@ -350,8 +402,11 @@ final class ConfigSyncEngine {
       }
     }
     let renames = SyncProjection.renames(removed: removed, added: added)
+    let renamedTo = Dictionary(renames.map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
     for index in pushes.indices {
       if let old = renames[pushes[index].id] { pushes[index].was = old }
+      // Both halves say so, because the other Mac may see either first.
+      if let new = renamedTo[pushes[index].id] { pushes[index].to = new }
     }
   }
 

@@ -206,6 +206,24 @@ nonisolated enum SkillLinks {
 
   // MARK: - Desired
 
+  /// A skill's stored targets after one is toggled. Ids this Mac knows are
+  /// stored as the folder they name; ids it does not, a Claude profile folder
+  /// only another Mac has, are kept as they are, so a toggle here never
+  /// unlinks the skill there once the choice syncs.
+  static func toggled(
+    _ stored: Set<String>, target: String, on: Bool, primary: [String: String]
+  ) -> Set<String> {
+    var next = Set(stored.map { primary[$0] ?? $0 })
+    let resolved = primary[target] ?? target
+    if on {
+      next.insert(resolved)
+    } else {
+      next.remove(resolved)
+      next.remove(target)
+    }
+    return next
+  }
+
   static func desired(
     skills: [Skill], choices: [String: Set<String>], scopes: [String: [String]],
     resolved: (String) -> Set<String>, targets: [SkillTarget]

@@ -85,9 +85,10 @@ struct ICloudSyncSection: View {
       }
     case .paused(.quota):
       note("Paused: iCloud's storage for Bastion is full.", warning: true)
+      Button("Try Again") { engine.retryAfterQuota() }
     case .paused(.cloudEmptied):
       note(
-        "Paused: Bastion's data is gone from iCloud, perhaps removed on another Mac.",
+        "Paused: Bastion's data in iCloud was removed or replaced, perhaps on another Mac.",
         warning: true)
       HStack {
         Button("Put This Mac's Back") { engine.resolveCloudEmptied(pushBack: true) }

@@ -45,6 +45,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // `KeychainMigration`.
     KeychainMigration.run()
 
+    // Before any store loads or saves: sync tells a store file somebody
+    // deleted from one a launch rewrote, which a reconcile or a rewire can do
+    // before the sync pass runs. See `ConfigSyncEngine.noteFilesAtLaunch`.
+    ConfigSyncEngine.shared.noteFilesAtLaunch()
+
     // Whether this build's notes count as read, decided once and never again.
     //
     // Has to happen before any view can ask `Changelog.hasUnseen`, and has to

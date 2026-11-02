@@ -3073,6 +3073,7 @@ struct UnitCheck {
     configSyncMerge()
     syncProjection()
     serverApprovals()
+    reviewFixes()
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 {
@@ -3650,5 +3651,111 @@ struct UnitCheck {
     check(
       "approvals round-trip",
       json.flatMap { try? JSONDecoder().decode(ServerApprovals.self, from: $0) } == approvals)
+  }
+
+  // MARK: - Config sync: the final review's findings
+
+  static func reviewFixes() {
+    print("\nConfig sync: review fixes")
+    let a = ws("~/a")
+    let b = ws("~/b")
+    let known: Set<String> = ["name", "folders"]
+    func run(
+      local: [String: JSONValue] = [:], snap: [String: ConfigSync.Entry] = [:],
+      remote: [String: ConfigSync.Envelope] = [:], retryHeld: Bool = false,
+      untouchable: Set<String> = []
+    ) -> ConfigSync.Plan {
+      var input = ConfigSync.Input(
+        kind: .workspace, local: local, remote: remote, snapshot: snap, mac: "Here",
+        localAt: stamp(10), now: mergeNow, knownFields: known, localMissing: false)
+      input.retryHeld = retryHeld
+      input.untouchable = untouchable
+      return ConfigSync.plan(input)
+    }
+
+    // I3: a held entity is offered again on a launch pass, once this build
+    // may be able to apply it.
+    let incoming = remote(a, at: stamp(5))
+    let held = ConfigSync.held(remote: incoming, local: nil, knownFields: known)
+    check(
+      "a held entity is not re-applied on an ordinary pass",
+      run(snap: ["w": held], remote: ["w": incoming]).apply.isEmpty)
+    check(
+      "a held entity is offered again on a launch pass",
+      run(snap: ["w": held], remote: ["w": incoming], retryHeld: true).apply.map(\.id) == ["w"])
+    check(
+      "but not over an edit made here since",
+      run(local: ["w": b], snap: ["w": held], remote: ["w": incoming], retryHeld: true).apply
+        .isEmpty)
+
+    // I5: a key this build could not read is left alone, never a deletion.
+    let unread = run(local: ["w": a], snap: ["w": entry(a, at: stamp(20))], untouchable: ["w"])
+    check(
+      "an unreadable key is not taken as a deletion", unread.apply.isEmpty && unread.push.isEmpty)
+    check("and is counted as from a newer Bastion", unread.newer == ["w"])
+
+    // I8: with no shared history, a tombstone is not an entity to apply.
+    let firstTomb = run(local: ["w": a], remote: ["w": remote(nil, at: stamp(1))])
+    check("first switch-on: a tombstone never deletes what is here", firstTomb.apply.isEmpty)
+    check("first switch-on: what is here is pushed over it", firstTomb.push.map(\.entity) == [a])
+
+    // I7: the epoch tells a Mac that iCloud was emptied or replaced while it
+    // was away, even when other Macs have written keys since.
+    check(
+      "no epoch, no keys, live here: pause",
+      ConfigSync.epoch(cloud: nil, mine: "E1", fresh: "N", syncKeys: 0, liveSnapshot: 3) == .pause)
+    check(
+      "no epoch on a first push: write a fresh one",
+      ConfigSync.epoch(cloud: nil, mine: nil, fresh: "N", syncKeys: 0, liveSnapshot: 0)
+        == .use("N", write: true))
+    check(
+      "the same epoch: carry on",
+      ConfigSync.epoch(cloud: "E1", mine: "E1", fresh: "N", syncKeys: 4, liveSnapshot: 3)
+        == .use("E1", write: false))
+    check(
+      "another epoch while this Mac remembers entities: pause",
+      ConfigSync.epoch(cloud: "E2", mine: "E1", fresh: "N", syncKeys: 4, liveSnapshot: 3) == .pause)
+    check(
+      "another epoch on a first switch-on: adopt it",
+      ConfigSync.epoch(cloud: "E2", mine: nil, fresh: "N", syncKeys: 4, liveSnapshot: 0)
+        == .use("E2", write: false))
+
+    // I4: switching sync off answers a quota or emptied-cloud pause, never an
+    // account change, which has its own question.
+    check("switching off clears a quota pause", ConfigSync.Pause.quota.afterSwitchingOff == nil)
+    check(
+      "switching off clears an emptied-cloud pause",
+      ConfigSync.Pause.cloudEmptied.afterSwitchingOff == nil)
+    check(
+      "switching off keeps the account question",
+      ConfigSync.Pause.account.afterSwitchingOff == .account)
+
+    // I1: switching sync on allows what is here, not what is waiting.
+    var approvals = ServerApprovals()
+    approvals.arrived("evil", value: "url:https://evil.example", from: "Eva")
+    approvals.approveExisting([
+      "evil": "url:https://evil.example", "mine": "url:https://mine.example",
+    ])
+    check(
+      "switching sync on does not allow a server that is waiting",
+      approvals.isPending("evil") != nil)
+    check(
+      "and allows the ones set up here", approvals.approved["mine"] == ["url:https://mine.example"])
+
+    // I2: an unreadable approvals item refuses custom servers, not every server.
+    check(
+      "a waiting custom server is refused",
+      ServerApprovals.refusal(
+        custom: true, pending: .init(value: "x", from: "Eva"), unreadable: false)
+        == .waiting(from: "Eva"))
+    check(
+      "an unreadable approvals item refuses a custom server",
+      ServerApprovals.refusal(custom: true, pending: nil, unreadable: true) == .unknown)
+    check(
+      "and leaves a catalog server alone",
+      ServerApprovals.refusal(custom: false, pending: nil, unreadable: true) == nil)
+    check(
+      "a custom server allowed here runs",
+      ServerApprovals.refusal(custom: true, pending: nil, unreadable: false) == nil)
   }
 }

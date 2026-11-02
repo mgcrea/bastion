@@ -89,18 +89,35 @@ def load(name, default):
         return default
 servers = [r for r in load("servers.json", []) if r.get("id") not in ("bastion", "linear", "npm", "synccheck-remote")]
 servers.insert(0, {"id": "bastion", "enabled": True})
+# A catalog id this build does not ship: what an older or newer build left.
+servers = [r for r in servers if r.get("id") != "synccheck-retired"]
+servers.append({"id": "synccheck-retired", "enabled": True})
 json.dump(servers, open(os.path.join(support, "servers.json"), "w"), indent=2)
 profiles = [p for p in load("profiles.json", []) if not p.get("name", "").startswith("synccheck")]
 profiles.append({"name": "synccheck", "server": "bastion", "values": {}, "allowWrites": True})
 json.dump(profiles, open(os.path.join(support, "profiles.json"), "w"), indent=2)
-workspaces = [w for w in load("workspaces.json", []) if w.get("name") != "synccheck"]
+workspaces = [w for w in load("workspaces.json", []) if w.get("name") not in ("synccheck", "synccheck-garbled")]
+workspaces.append({"name": "synccheck-garbled", "folders": [], "profiles": [], "skills": []})
 json.dump(workspaces, open(os.path.join(support, "workspaces.json"), "w"), indent=2)
 PY
-rm -f "$SUPPORT/sync-state.json"
+
+# What this Mac agreed with the cloud last time: both entities above, and the
+# epoch the cloud carries. Without it every check below would be a first run.
+EPOCH="synccheck-epoch-1"
+AGREED="2026-01-01T00:00:00.000Z"
+python3 - "$SUPPORT/sync-state.json" "$EPOCH" "$AGREED" <<'PY'
+import json, sys
+path, epoch, at = sys.argv[1:4]
+entry = lambda entity: {"at": at, "from": "Other Mac", "entity": entity, "carry": {}, "held": False}
+json.dump({"epoch": epoch, "snapshot": {
+    "server": {"synccheck-retired": entry({"enabled": True})},
+    "workspace": {"synccheck-garbled": entry({"name": "synccheck-garbled", "folders": [], "profiles": [], "skills": []})},
+}}, open(path, "w"))
+PY
 
 # Another Mac's writes. Stamped a minute ahead, so they are newer than the
 # files just written and win the first-run merge.
-python3 - "$CLOUD" <<'PY'
+python3 - "$CLOUD" "$EPOCH" "$AGREED" <<'PY'
 import json, sys, datetime
 def key(kind, ident):
     h = 0xcbf29ce484222325
@@ -126,7 +143,13 @@ items = [
     env("profile", "synccheck/synccheck-remote", {"name": "synccheck", "server": "synccheck-remote", "allowWrites": False, "values": {}}),
     env("server", "synccheck-future", {"enabled": True, "shape": "from a newer Bastion"}, v=2),
 ]
-json.dump({key(e["kind"], e["id"]): json.dumps(e, sort_keys=True) for e in items}, open(sys.argv[1], "w"), indent=2, sort_keys=True)
+cloud = {key(e["kind"], e["id"]): json.dumps(e, sort_keys=True) for e in items}
+retired = {"v": 1, "kind": "server", "id": "synccheck-retired", "at": sys.argv[3], "from": "Other Mac", "deleted": False, "entity": {"enabled": True}}
+cloud[key("server", "synccheck-retired")] = json.dumps(retired, sort_keys=True)
+# A value under a key this build cannot read at all.
+cloud[key("workspace", "synccheck-garbled")] = "not an envelope"
+cloud["epoch"] = sys.argv[2]
+json.dump(cloud, open(sys.argv[1], "w"), indent=2, sort_keys=True)
 PY
 FUTURE="$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print([v for v in d.values() if 'synccheck-future' in v][0])" "$CLOUD")"
 
@@ -159,8 +182,11 @@ envelope() {
 import json, sys
 cloud = json.load(open(sys.argv[1]))
 for value in cloud.values():
-    e = json.loads(value)
-    if e["kind"] == sys.argv[2] and e["id"] == sys.argv[3]:
+    try:
+        e = json.loads(value)
+    except ValueError:
+        continue  # the epoch, and a value no build can read
+    if isinstance(e, dict) and e.get("kind") == sys.argv[2] and e.get("id") == sys.argv[3]:
         print(json.dumps(e, sort_keys=True))
 PY
 }
@@ -185,6 +211,14 @@ check "a workspace arrives" "$(tool synccheck list_workspaces '{}')" 'synccheck-
 waiting="$(rpc synccheck synccheck-remote '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')"
 check "a waiting server is refused before it is reached" "$waiting" 'has not been allowed on this Mac'
 
+
+echo
+echo "What this build cannot read or resolve"
+check "a catalog id this build does not ship is never sent as a deletion" "$(envelope server synccheck-retired)" '"deleted": false'
+check "and stays in servers.json" "$(cat "$SUPPORT/servers.json")" 'synccheck-retired'
+check "an unreadable key is not taken as a deletion" "$(tool synccheck list_workspaces '{}')" 'synccheck-garbled'
+check "and is left as it was" "$(cat "$CLOUD")" 'not an envelope'
+
 echo
 echo "Sending"
 tool synccheck upsert_profile '{"name":"synccheck","server":"npm","values":{"NPM_REGISTRY":"https://changed.example"}}' >/dev/null
@@ -200,6 +234,69 @@ check "and carries was on the new one" "$(envelope profile synccheck-renamed/npm
 tool synccheck remove_profile '{"name":"synccheck-renamed","server":"npm"}' >/dev/null
 sleep 3
 check "a removal leaves a tombstone" "$(envelope profile synccheck-renamed/npm)" '"deleted": true'
+
+
+echo
+echo "A rename that arrives as its tombstone first"
+tool synccheck upsert_profile '{"name":"synccheck-r","server":"npm","values":{"NPM_REGISTRY":"https://r.example"}}' >/dev/null
+tool synccheck set_credential '{"profile":"synccheck-r","server":"npm","variable":"NPM_TOKEN","value":"synccheck-secret"}' >/dev/null
+sleep 3
+stop_app
+python3 - "$CLOUD" <<'PY'
+import json, sys, datetime
+cloud = json.load(open(sys.argv[1]))
+at = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=2)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+for k, v in list(cloud.items()):
+    try:
+        e = json.loads(v)
+    except Exception:
+        continue
+    if isinstance(e, dict) and e.get("kind") == "profile" and e.get("id") == "synccheck-r/npm":
+        cloud[k] = json.dumps({"v": 1, "kind": "profile", "id": "synccheck-r/npm", "at": at, "from": "Other Mac",
+                               "deleted": True, "to": "synccheck-r2/npm"}, sort_keys=True)
+json.dump(cloud, open(sys.argv[1], "w"), indent=2, sort_keys=True)
+PY
+launch
+renamed="$(tool synccheck list_profiles '{"server":"npm"}' | python3 -c 'import sys,json
+rows=json.load(sys.stdin)
+rows=rows if isinstance(rows,list) else rows.get("profiles",[])
+print(" ".join(sorted("%s:%s" % (r["name"], ",".join(r.get("secrets_set",[]))) for r in rows)))')"
+check "the profile is renamed here, not removed" "$renamed" 'synccheck-r2:'
+check "and its credential moved with it" "$renamed" 'synccheck-r2:NPM_TOKEN'
+tool synccheck remove_profile '{"name":"synccheck-r2","server":"npm"}' >/dev/null
+tool synccheck remove_profile '{"name":"synccheck-r","server":"npm"}' >/dev/null
+
+echo
+echo "An epoch this Mac does not know"
+stop_app
+python3 - "$CLOUD" <<'PY'
+import json, sys
+cloud = json.load(open(sys.argv[1]))
+cloud["epoch"] = "written-after-a-removal"
+json.dump(cloud, open(sys.argv[1], "w"), indent=2, sort_keys=True)
+PY
+launch
+tool synccheck upsert_profile '{"name":"synccheck-epoch","server":"npm","values":{"NPM_REGISTRY":"https://e.example"}}' >/dev/null
+sleep 3
+absent "sync pauses rather than reading missing keys as deletions" "$(envelope profile synccheck-epoch/npm)" 'synccheck-epoch'
+check "and this Mac keeps its profiles" "$(tool synccheck list_profiles '{"server":"npm"}')" 'synccheck-epoch'
+tool synccheck remove_profile '{"name":"synccheck-epoch","server":"npm"}' >/dev/null
+stop_app
+python3 - "$CLOUD" "$EPOCH" <<'PY'
+import json, sys
+cloud = json.load(open(sys.argv[1]))
+cloud["epoch"] = sys.argv[2]
+json.dump(cloud, open(sys.argv[1], "w"), indent=2, sort_keys=True)
+PY
+# The pause outlives a relaunch, so it is cleared the way a person would:
+# by switching sync off, which answers an emptied-cloud question.
+python3 - "$SUPPORT/sync-state.json" <<'PY'
+import json, sys
+state = json.load(open(sys.argv[1]))
+state.pop("pause", None)
+json.dump(state, open(sys.argv[1], "w"))
+PY
+launch
 
 echo
 echo "Restraint"

@@ -474,6 +474,15 @@ extension ProfileStore: SyncedStore {
     let ordered = envelopes.filter { $0.was != nil } + envelopes.filter { $0.was == nil }
     for envelope in ordered {
       do {
+        // The old id of a rename that could not be applied: its tombstone is
+        // held too, or the removal would sweep what the rename was to move.
+        if envelope.deleted,
+          held.contains(where: { id in
+            ordered.contains { $0.id == id && $0.was == envelope.id }
+          })
+        {
+          throw RenameError.noSuchProfile(envelope.id)
+        }
         try applySynced(envelope)
       } catch {
         held.insert(envelope.id)
@@ -495,7 +504,20 @@ extension ProfileStore: SyncedStore {
 
   private func applySynced(_ envelope: ConfigSync.Envelope) throws {
     guard let entity = envelope.entity, !envelope.deleted else {
-      if let existing = row(id: envelope.id) { try remove(existing) }
+      guard let existing = row(id: envelope.id) else { return }
+      // Renamed elsewhere, and the tombstone arrived first: renamed here, so
+      // this Mac's credentials move rather than being swept. A set-aside
+      // row cannot be renamed, so its tombstone is held and nothing is lost.
+      if let to = envelope.to {
+        let name = String(to.prefix { $0 != "/" })
+        guard row(id: to) == nil else { return try remove(existing) }
+        guard profiles.contains(where: { $0.id == existing.id }),
+          "\(name)/\(existing.serverID)" == to
+        else { throw RenameError.noSuchProfile(existing.id) }
+        try rename(existing, to: name)
+        return
+      }
+      try remove(existing)
       return
     }
     let synced = try entity.decode(Synced.self)

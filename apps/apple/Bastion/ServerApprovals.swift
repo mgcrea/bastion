@@ -55,4 +55,25 @@ nonisolated struct ServerApprovals: Codable, Equatable, Sendable {
   }
 
   func isPending(_ id: String) -> Pending? { pending[id] }
+
+  /// Every server set up on this Mac allowed at its current value, when sync
+  /// is switched on. Not one that is waiting: switching sync off and on again
+  /// must not be a way to allow what arrived from another Mac.
+  mutating func approveExisting(_ current: [String: String]) {
+    for (id, value) in current where pending[id] == nil { approve(id, value: value) }
+  }
+
+  enum Refusal: Equatable, Sendable {
+    case waiting(from: String)
+    /// The approvals could not be read, so whether this custom server is
+    /// waiting is unknown, and it does not run until they can.
+    case unknown
+  }
+
+  /// Why the supervisor must not start or reach a server, or nil.
+  static func refusal(custom: Bool, pending: Pending?, unreadable: Bool) -> Refusal? {
+    guard custom else { return nil }
+    if let pending { return .waiting(from: pending.from) }
+    return unreadable ? .unknown : nil
+  }
 }

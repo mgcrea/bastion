@@ -44,6 +44,13 @@ final class ServerStore {
   /// is, so the original is never written over with what little survived —
   /// see `StoreFile`.
   private(set) var unreadable: StoreFile.Unreadable?
+  /// Catalog rows whose id this build does not ship: written by a newer
+  /// build, or by an older one before the entry was retired. Out of the list,
+  /// and kept in the file, as `ProfileStore` keeps a profile whose server is
+  /// not installed. Dropped from the file, they would also read to sync as a
+  /// removal, and every other Mac would remove the server with its profiles
+  /// and their credentials.
+  private var unresolved: [Stored] = []
 
   /// The same list, readable without a hop to the main actor.
   ///
@@ -234,12 +241,19 @@ final class ServerStore {
     }
 
     var seen = Set<String>()
+    unresolved = []
     servers = rows.compactMap { row -> BastionServer? in
       guard !seen.contains(row.id) else {
         hostLog("servers", .error, "ignoring duplicate server '\(row.id)'")
         return nil
       }
-      guard let resolved = Self.resolve(row) else { return nil }
+      guard let resolved = Self.resolve(row) else {
+        if row.definition == nil, Self.isValidID(row.id), row.id != BuiltinServer.id {
+          unresolved.append(row)
+          seen.insert(row.id)
+        }
+        return nil
+      }
       seen.insert(row.id)
       return resolved
     }
@@ -342,17 +356,18 @@ final class ServerStore {
     if DemoSeed.isEnabled { return }
     refreshSnapshot()
     AppSupport.ensureDirectory()
-    let rows = servers.map { server -> Stored in
-      switch server.origin {
-      // A built-in row carries nothing but its id and its switch. Writing a
-      // definition would freeze this build's idea of it into the file.
-      case .catalog, .builtin:
-        Stored(id: server.id, definition: nil, enabled: server.isEnabled)
-      case .custom:
-        Stored(
-          id: server.id, definition: Self.definition(of: server), enabled: server.isEnabled)
-      }
-    }
+    let rows =
+      servers.map { server -> Stored in
+        switch server.origin {
+        // A built-in row carries nothing but its id and its switch. Writing a
+        // definition would freeze this build's idea of it into the file.
+        case .catalog, .builtin:
+          Stored(id: server.id, definition: nil, enabled: server.isEnabled)
+        case .custom:
+          Stored(
+            id: server.id, definition: Self.definition(of: server), enabled: server.isEnabled)
+        }
+      } + unresolved.filter { row in !servers.contains { $0.id == row.id } }
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     try encoder.encode(rows).write(to: fileURL, options: .atomic)
@@ -756,15 +771,16 @@ extension ServerStore: SyncedStore {
   /// Every custom server's current value, recorded as allowed here. When sync
   /// is switched on: what is already on this Mac was set up on this Mac.
   func approveCurrentCustomServers() {
+    var current: [String: String] = [:]
     for server in servers where server.origin == .custom {
-      do {
-        try ServerApprovalStore.shared.approve(
-          server.id, value: Self.definition(of: server).approvalValue)
-      } catch {
-        hostLog(
-          "sync", .error,
-          "could not record '\(server.id)' as allowed: \(error.localizedDescription)")
-      }
+      current[server.id] = Self.definition(of: server).approvalValue
+    }
+    do {
+      try ServerApprovalStore.shared.approveExisting(current)
+    } catch {
+      hostLog(
+        "sync", .error,
+        "could not record this Mac's servers as allowed: \(error.localizedDescription)")
     }
   }
 
@@ -780,6 +796,10 @@ extension ServerStore: SyncedStore {
         enabled: server.isEnabled,
         definition: server.origin == .custom ? Self.definition(of: server) : nil)
       out[server.id] = try? JSONValue(encoding: synced)
+    }
+    // As they were, so they are neither a removal nor an edit made here.
+    for row in unresolved where out[row.id] == nil {
+      out[row.id] = try? JSONValue(encoding: Synced(enabled: row.enabled, definition: nil))
     }
     return out
   }
@@ -803,8 +823,13 @@ extension ServerStore: SyncedStore {
     let id = envelope.id
     guard let entity = envelope.entity, !envelope.deleted else {
       // The control plane exists on every Mac and is never removed by sync.
-      guard id != BuiltinServer.id, let server = server(id: id) else { return }
-      try remove(server)
+      guard id != BuiltinServer.id else { return }
+      if let server = server(id: id) {
+        try remove(server)
+      } else if unresolved.contains(where: { $0.id == id }) {
+        unresolved.removeAll { $0.id == id }
+        try save()
+      }
       return
     }
     let synced = try entity.decode(Synced.self)

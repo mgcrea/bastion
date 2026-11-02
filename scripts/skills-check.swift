@@ -55,6 +55,7 @@ struct SkillsCheck {
     exactCoverSeeding()
     repositoryLedger()
     syncedChoicesThisMacCannotResolve()
+    togglingKeepsAnotherMacsTargets()
     nestedSourcesClaimBySlot()
     parentSourceClaimsNothingBelowItsSlots()
     globalAndProjectTargetsMergeAcrossTheHomeRepository()
@@ -1603,5 +1604,28 @@ struct SkillsCheck {
       Set(plan.actions) == [
         .link(target: "shared", name: "alpha", destination: globalPath + "/alpha")
       ])
+  }
+
+  /// A choice synced from another Mac can name a target only that Mac has. A
+  /// toggle here changes the target toggled and keeps the rest, or the next
+  /// push would unlink the skill there.
+  static func togglingKeepsAnotherMacsTargets() {
+    print("toggling a choice another Mac shares")
+    let primary = [
+      "claude-code": "claude-code", "claude-code@skitrust": "claude-code", "shared": "shared",
+    ]
+    let stored: Set<String> = ["claude-code", "claude-code@elsewhere"]
+    check(
+      "turning a target on keeps a target this Mac does not have",
+      SkillLinks.toggled(stored, target: "shared", on: true, primary: primary)
+        == ["claude-code", "claude-code@elsewhere", "shared"])
+    check(
+      "turning one off keeps it too",
+      SkillLinks.toggled(stored, target: "claude-code", on: false, primary: primary)
+        == ["claude-code@elsewhere"])
+    check(
+      "an alias is stored as the folder it names",
+      SkillLinks.toggled([], target: "claude-code@skitrust", on: true, primary: primary)
+        == ["claude-code"])
   }
 }

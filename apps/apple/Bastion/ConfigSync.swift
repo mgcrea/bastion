@@ -115,6 +115,9 @@ nonisolated enum ConfigSync {
     var deleted: Bool
     var entity: JSONValue?
     var was: String?
+    /// On a profile's tombstone, the id it was renamed to, so a Mac that
+    /// sees the tombstone first renames rather than removes it.
+    var to: String? = nil
   }
 
   /// ISO 8601, UTC, with milliseconds. Compared as dates, matched as strings.
@@ -173,6 +176,12 @@ nonisolated enum ConfigSync {
     /// The store's file is gone while the snapshot remembers entities: fill
     /// it from the cloud and push nothing, rather than tombstone everything.
     var localMissing: Bool
+    /// Offer held entities again, unchanged here since: a launch pass, when
+    /// this build may now ship the catalog id or read the approvals.
+    var retryHeld = false
+    /// Ids whose key is in the cloud but could not be read: left alone like a
+    /// newer envelope, and never taken as a deletion.
+    var untouchable: Set<String> = []
   }
 
   struct Plan: Equatable {
@@ -204,6 +213,10 @@ nonisolated enum ConfigSync {
         plan.newer.append(id)
         continue
       }
+      if input.untouchable.contains(id) {
+        plan.newer.append(id)
+        continue
+      }
       let theirs = remote.flatMap { $0.deleted ? nil : $0.entity }.map {
         known($0, input.knownFields)
       }
@@ -215,6 +228,12 @@ nonisolated enum ConfigSync {
         at < input.now.addingTimeInterval(-tombstoneLifetime)
       {
         plan.prune.append(id)
+        continue
+      }
+      if let snap, snap.held, input.retryHeld, local == snap.heldLocal, let remote,
+        remote.at == snap.at, remote.from == snap.from
+      {
+        plan.apply.append(remote)
         continue
       }
       let localChanged: Bool
@@ -253,9 +272,12 @@ nonisolated enum ConfigSync {
         // last write per key, not the latest version, so the newer one is
         // written back here rather than lost.
         let stale = snap.map { wins(($0.at, $0.from), over: (incoming.at, incoming.from)) } == true
+        // No shared history: a deletion this Mac never saw the entity of is
+        // not one to apply over what is here. First switch-on is a union.
+        let unrelatedDeletion = snap == nil && incoming.deleted && local != nil
         if same {
           plan.adopt.append(incoming)
-        } else if stale {
+        } else if stale || unrelatedDeletion {
           plan.push.append(outgoing)
         } else if !localChanged {
           plan.apply.append(incoming)
@@ -308,5 +330,41 @@ nonisolated enum ConfigSync {
   private static func unknown(_ entity: JSONValue?, _ fields: Set<String>) -> [String: JSONValue] {
     guard case .object(let all)? = entity, !fields.isEmpty else { return [:] }
     return all.filter { !fields.contains($0.key) }
+  }
+
+  // MARK: - The epoch and pauses
+
+  /// The key holding the epoch: a random value written by the first Mac to
+  /// push after iCloud held nothing of Bastion's. "Remove from iCloud" takes
+  /// it away, so a Mac that was asleep through a removal, and wakes to keys
+  /// other Macs have written since, sees an epoch it does not know and asks,
+  /// rather than reading every key it misses as a deletion.
+  static let epochKey = "epoch"
+
+  enum EpochStep: Equatable {
+    case use(String, write: Bool)
+    case pause
+  }
+
+  static func epoch(
+    cloud: String?, mine: String?, fresh: String, syncKeys: Int, liveSnapshot: Int
+  ) -> EpochStep {
+    guard let cloud else {
+      return cloudEmptied(syncKeys: syncKeys, liveSnapshot: liveSnapshot)
+        ? .pause : .use(mine ?? fresh, write: true)
+    }
+    if mine == cloud || mine == nil || liveSnapshot == 0 { return .use(cloud, write: false) }
+    return .pause
+  }
+
+  /// Why sync stopped on this Mac. Kept across a relaunch.
+  enum Pause: String, Codable, Equatable, Sendable {
+    case account, quota, cloudEmptied
+
+    /// What is left after sync is switched off. Off answers a full store or
+    /// an emptied one (switching back on looks again), but an account change
+    /// has its own question, and switching off and on again must not merge
+    /// into another account's configuration without it.
+    var afterSwitchingOff: Pause? { self == .account ? .account : nil }
   }
 }
