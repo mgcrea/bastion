@@ -42,6 +42,9 @@ nonisolated final class Supervisor: @unchecked Sendable {
   enum SupervisorError: LocalizedError {
     case unknownServer(String)
     case serverDisabled(String)
+    /// A custom server that arrived from another Mac through iCloud and has
+    /// not been allowed here. See `ServerApprovals`.
+    case awaitingApproval(server: String, from: String)
     case unknownProfile(profile: String, server: String)
     case notConfigured(profile: String, missing: [String])
     case startFailed(String)
@@ -66,6 +69,10 @@ nonisolated final class Supervisor: @unchecked Sendable {
         return
           "'\(id)' is switched off in Bastion. Its profiles and credentials are untouched — turn "
           + "it back on in the Bastion window"
+      case .awaitingApproval(let server, let from):
+        return
+          "\(server) arrived from \(from) through iCloud and has not been allowed on this Mac. "
+          + "Open Bastion and allow it there."
       case .unknownProfile(let profile, let server):
         return "no profile '\(profile)' for \(server) — create it in Bastion"
       case .notConfigured(let profile, let missing):
@@ -160,6 +167,11 @@ nonisolated final class Supervisor: @unchecked Sendable {
     // informative possible rendering of a sentence that says exactly what to do.
     guard server.isEnabled else {
       throw SupervisorError.serverDisabled(serverID)
+    }
+    // Before anything is spawned or reached: what a custom server runs or
+    // reaches was chosen on another Mac until somebody here says yes.
+    if let waiting = ServerApprovalStore.pending(serverID) {
+      throw SupervisorError.awaitingApproval(server: serverID, from: waiting.from)
     }
     guard let profile = ProfileStore.lookup(name: profileName, server: serverID) else {
       throw SupervisorError.unknownProfile(profile: profileName, server: serverID)
@@ -361,6 +373,9 @@ nonisolated final class Supervisor: @unchecked Sendable {
         throw SupervisorError.unknownProfile(profile: profile.name, server: server.id)
       }
       guard freshServer.isEnabled else { throw SupervisorError.serverDisabled(server.id) }
+      if let waiting = ServerApprovalStore.pending(server.id) {
+        throw SupervisorError.awaitingApproval(server: server.id, from: waiting.from)
+      }
       let missing = ProfileEnvironment.missing(for: fresh, server: freshServer)
       guard missing.isEmpty else {
         throw SupervisorError.notConfigured(profile: fresh.name, missing: missing)

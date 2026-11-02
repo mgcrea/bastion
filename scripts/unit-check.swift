@@ -3072,6 +3072,7 @@ struct UnitCheck {
     configSyncEnvelope()
     configSyncMerge()
     syncProjection()
+    serverApprovals()
 
     print("\n\(checks - failures)/\(checks) passed")
     if failures > 0 {
@@ -3601,5 +3602,42 @@ struct UnitCheck {
     check(
       "an unknown server has no per-Mac set",
       SyncProjection.perMachine(server: "nope", installed: nil).isEmpty)
+  }
+
+  // MARK: - Config sync: approvals
+
+  static func serverApprovals() {
+    print("\nConfig sync: approvals for servers from another Mac")
+    let x = ServerApprovals.value(npmName: nil, binName: nil, url: "https://x.example/mcp")
+    let y = ServerApprovals.value(npmName: nil, binName: nil, url: "https://y.example/mcp")
+    var approvals = ServerApprovals()
+    approvals.approve("corp", value: x)
+    approvals.arrived("corp", value: x, from: "Eva")
+    check("a value approved once does not wait again", approvals.isPending("corp") == nil)
+    approvals.arrived("corp", value: y, from: "Eva")
+    check(
+      "a different URL waits, although another was approved",
+      approvals.isPending("corp")?.value == y)
+    check("and says which Mac it came from", approvals.isPending("corp")?.from == "Eva")
+    approvals.approve("corp", value: y)
+    check("approving clears the wait", approvals.isPending("corp") == nil)
+    check("and remembers both values", approvals.approved["corp"]?.sorted() == [x, y].sorted())
+    approvals.arrived("new", value: x, from: "Eva")
+    check("a server new to this Mac waits", approvals.isPending("new") != nil)
+    approvals.forget("new")
+    approvals.forget("corp")
+    check("forgetting removes both halves", approvals == ServerApprovals())
+    check(
+      "a package and its binary are one value",
+      ServerApprovals.value(npmName: "@a/b", binName: "b", url: nil) == "npm:@a/b|b")
+    check(
+      "a changed binary is a changed value",
+      ServerApprovals.value(npmName: "@a/b", binName: "b", url: nil)
+        != ServerApprovals.value(npmName: "@a/b", binName: "c", url: nil))
+    check("a URL is its own value", x == "url:https://x.example/mcp")
+    let json = try? JSONEncoder().encode(approvals)
+    check(
+      "approvals round-trip",
+      json.flatMap { try? JSONDecoder().decode(ServerApprovals.self, from: $0) } == approvals)
   }
 }

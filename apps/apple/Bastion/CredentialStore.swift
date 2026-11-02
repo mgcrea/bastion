@@ -63,6 +63,12 @@ nonisolated enum CredentialStore {
     /// the fallback off while credentials are still on the login side. See
     /// `KeychainMigration`.
     case migration
+    /// Which custom servers that arrived from another Mac this Mac has
+    /// allowed, as one JSON item. In the Keychain for the reason
+    /// `.internalHosts` is: an approval a shell could forge by editing a file
+    /// would make the wait mean nothing. Never synced. See
+    /// `ServerApprovalStore`.
+    case approvals
 
     /// Every scope that holds credentials, which is every scope a migration
     /// pass moves.
@@ -79,6 +85,7 @@ nonisolated enum CredentialStore {
       case .auditSigning: return "\(base).audit"
       case .internalHosts: return "\(base).internal-hosts"
       case .migration: return "\(base).migration"
+      case .approvals: return "\(base).approvals"
       }
     }
   }

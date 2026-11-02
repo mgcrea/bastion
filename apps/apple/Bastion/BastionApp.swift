@@ -85,6 +85,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // reads the published copy off the main thread and never constructs the
     // store, so a listed host would be refused until Settings was first opened.
     _ = InternalHostStore.shared
+    // And for the same reason: the supervisor reads which servers wait for a
+    // yes from a published copy, so an unconstructed store would let a server
+    // that arrived from another Mac run before anybody allowed it.
+    _ = ServerApprovalStore.shared
     #if DEBUG
       DevSeed.runIfPresent()
     #endif

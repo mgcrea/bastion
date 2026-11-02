@@ -129,6 +129,11 @@ final class ServerStore {
     var stateEnv: [String]
     var env: [Variable]
 
+    /// What this definition runs or reaches, as `ServerApprovals` compares it.
+    var approvalValue: String {
+      ServerApprovals.value(npmName: npmName, binName: binName, url: url)
+    }
+
     struct Variable: Codable, Hashable {
       var name: String
       var required: Bool
@@ -592,6 +597,17 @@ final class ServerStore {
     }
     sort()
     try save()
+    // Saved here, so allowed here: only an arrival from another Mac waits for
+    // a click. See `ServerApprovals`. A refusal to record it is logged rather
+    // than thrown, because the save above has already happened and a server
+    // that is not marked as waiting runs.
+    do {
+      if let original, original != id { try ServerApprovalStore.shared.forget(original) }
+      try ServerApprovalStore.shared.approve(id, value: definition.approvalValue)
+    } catch {
+      hostLog(
+        "servers", .error, "could not record '\(id)' as allowed: \(error.localizedDescription)")
+    }
     // A running child or remote session holds the definition it was started
     // from: its command line, or its URL, headers and `writeTools`. Left
     // running, an edit would not reach it until a relaunch, so a tool newly
@@ -629,6 +645,7 @@ final class ServerStore {
     ServerInstaller.removeInstall(id: server.id)
     servers.removeAll { $0.id == server.id }
     try save()
+    try? ServerApprovalStore.shared.forget(server.id)
     hostLog("servers", .info, "removed '\(server.id)' and everything it owned")
   }
 

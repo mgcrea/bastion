@@ -641,6 +641,9 @@ enum BuiltinTools {
         "profiles": profiles.filter { $0.serverID == server.id }.count,
         "running": running.filter { $0.id.hasSuffix("/\(server.id)") }.count,
       ]
+      if let waiting = ServerApprovalStore.pending(server.id) {
+        row["awaiting_approval"] = ["from": waiting.from]
+      }
       if server.origin == .builtin {
         row["installed"] = true
         row["note"] = "runs inside Bastion; nothing to install"
@@ -682,6 +685,13 @@ enum BuiltinTools {
       },
       "profiles": ProfileStore.shared.profiles.filter { $0.serverID == server.id }.map(\.name),
     ]
+    if let waiting = ServerApprovalStore.pending(server.id) {
+      out["awaiting_approval"] = [
+        "from": waiting.from,
+        "note":
+          "Arrived from another Mac through iCloud. It runs only once allowed in the Bastion window.",
+      ]
+    }
     // The transport, said in whatever terms make sense for it. An agent asking
     // about a remote server wants the endpoint and the fact that there is
     // nothing to install; npm fields would be four nulls it has to interpret.

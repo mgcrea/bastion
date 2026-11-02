@@ -738,6 +738,7 @@ unit: ## Assert the translation, the parser, call capture, the audit chain, the 
 		apps/apple/Bastion/StoreFile.swift \
 		apps/apple/Bastion/ConfigSync.swift \
 		apps/apple/Bastion/SyncProjection.swift \
+		apps/apple/Bastion/ServerApprovals.swift \
 		apps/apple/Bastion/ChildLifecycle.swift \
 		scripts/unit-check.swift
 	@apps/apple/.build/unit-check
