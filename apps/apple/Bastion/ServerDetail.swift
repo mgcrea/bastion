@@ -55,6 +55,7 @@ struct ServerDetail: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
           header
+          SyncArrivalBanner(server: server)
           // Once, here, rather than on each card: whichever card the
           // transport picks, its "Remove server" asks the same question.
           packageCard

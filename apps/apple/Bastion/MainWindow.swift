@@ -800,6 +800,14 @@ private struct ServerBadge: View {
         .foregroundStyle(.secondary)
         .frame(width: Self.slot, height: Self.slot)
         .help("Disabled")
+    } else if let waiting = ServerApprovalStore.shared.approvals.isPending(server.id) {
+      // Next, because nothing below can happen until somebody here says yes:
+      // a server that arrived from another Mac does not run or install.
+      Image(systemName: "icloud.and.arrow.down")
+        .font(.caption2)
+        .foregroundStyle(.orange)
+        .frame(width: Self.slot, height: Self.slot)
+        .help("From \(waiting.from). Open it to allow it on this Mac.")
     } else if let first = failing.first {
       // Ahead of a live sibling: one profile answering does not help the
       // client wired to the one that is not, and this is the row it has to

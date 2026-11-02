@@ -251,6 +251,8 @@ private struct GeneralPane: View {
 
       InternalHostsSection()
 
+      ICloudSyncSection()
+
       Section {
         Toggle("Load tools on demand", isOn: $lazyTools)
         Text(
