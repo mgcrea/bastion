@@ -126,16 +126,13 @@ value must be validated against a provisioning profile, so a Developer ID build 
 an embedded `Contents/embedded.provisionprofile` and a registered App ID. Without it,
 `SecItemAdd` returns `-34018` (`errSecMissingEntitlement`).
 
-**That ends a documented security claim.** The app currently carries _no_
-entitlements, asserted twice on every build:
-
-- `make sign` fails if `codesign -d --entitlements -` finds any `<key>`
-- [`scripts/audit-listener.sh`](../scripts/audit-listener.sh) fails if
-  `CODE_SIGN_ENTITLEMENTS` appears anywhere in the pbxproj
-
-An empty permission set that is true by construction is checkable; one arrived at by
-deletion is not. Both assertions would have to be rewritten to assert the entitlement
-set is _exactly_ `keychain-access-groups` — narrower, but still checkable.
+**That ended a documented security claim.** Until 2026-11-01 the app carried _no_
+entitlements, asserted on every build. Both assertions now assert the set is _exactly_
+four (identity, team, `keychain-access-groups`, `ubiquity-kvstore-identifier`) — narrower
+than "none", but still checkable: `make sign` compares the signed keys, and
+[`scripts/audit-listener.sh`](../scripts/audit-listener.sh) checks
+`apps/apple/Bastion.entitlements` and that the pbxproj still sets no
+`CODE_SIGN_ENTITLEMENTS`.
 
 ### The real justification: iCloud sync
 
@@ -146,10 +143,10 @@ thing that makes the trade worth it. Three consequences:
 
 - **`ThisDeviceOnly` must go.** It is incompatible with sync. This reverses the stance
   written into `CredentialStore.write` — _"a gateway credential has no business
-  syncing to a phone"_ — so that comment must be rewritten, not preserved. Note the
-  file-based keychain **ignores `kSecAttrAccessible` entirely**, so today that comment
-  describes an intent the code does not actually have. The attribute only starts
-  meaning something after the migration.
+  syncing to a phone"_ — so that comment must be rewritten, not preserved. The
+  file-based keychain **ignores `kSecAttrAccessible` entirely**; the data protection
+  keychain honours it, so since phase 1 `ThisDeviceOnly` is a fact, and phase 3 lifts
+  it for `.profile` alone.
 - **`kSecAttrSynchronizable` is part of the primary key.** A synced and an unsynced
   item with the same service + account are two _distinct_ items, and a query omitting
   the attribute matches only unsynced ones. Every query would need
@@ -196,10 +193,9 @@ typed and would rather not retype.
 
 ### The gate to check first
 
-Before writing any migration code, confirm a `SecItemAdd` with
-`kSecUseDataProtectionKeychain: true` returns `errSecSuccess` rather than `-34018`. If
-it returns `-34018` the App ID or profile is wrong and everything downstream is wasted
-effort.
+A `SecItemAdd` with `kSecUseDataProtectionKeychain: true` must return `errSecSuccess`,
+not `-34018`; `-34018` means the App ID or profile is wrong. Passed 2026-11-01, and
+`make icloud-probe` re-checks it on any signed build (see "Current state").
 
 ## Restricted vs unrestricted entitlements
 

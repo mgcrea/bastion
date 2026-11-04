@@ -275,10 +275,14 @@ URL — 45 checks, no app and no network — and `make remote-live-check` assert
 Stripe's real server, which needs no credential because an unauthenticated `initialize` is answered
 with a 401 that exercises every step but the last.
 
-The app ships with **no entitlements file at all**. Spawning children and binding loopback need
-none, and with the sandbox off `com.apple.security.network.server` is unnecessary. An empty
-permission set that is true by construction is checkable; one arrived at by deletion is not, so the
-audit asserts the setting is absent rather than empty.
+The Release build carries **exactly four entitlements**, from
+[`apps/apple/Bastion.entitlements`](apps/apple/Bastion.entitlements): its identity, its team, its
+keychain group and its iCloud key-value store, validated by the embedded Developer ID profile.
+Spawning children and binding loopback need none, and with the sandbox off
+`com.apple.security.network.server` is unnecessary. The app carried none until iCloud sync, and traded
+that on purpose ([`docs/keychain.md`](docs/keychain.md)). A set that is exact by construction is
+checkable, so `make sign` and `make audit` assert it is exactly those four, and the Xcode project
+still sets none: the Debug build carries no entitlements.
 
 ## Status
 
@@ -438,8 +442,8 @@ Keychain items are scoped by app identity, so a shared identifier means a debug 
 overwrites and deletes the credentials the real app is holding.
 
 [`docs/keychain.md`](docs/keychain.md) covers the rest: which scope holds what, why keychain prompts
-happened and what actually fixed them, and what adopting the data protection keychain would cost —
-including why the entitlement is worth having for iCloud sync and _not_ worth having to stop prompts.
+happened and what actually fixed them, and what moving to the data protection keychain cost —
+including why the entitlement was worth having for iCloud sync and _not_ worth having to stop prompts.
 
 ### Seeding a Debug build from a file
 
