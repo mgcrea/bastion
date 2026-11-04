@@ -44,7 +44,11 @@ final class ConfigSyncEngine {
   /// some of this Mac's. The sheet that lists them clears it.
   var firstRunOverwrites: [String]?
 
-  var isEnabled: Bool { UserDefaults.standard.bool(forKey: Self.enabledKey) }
+  /// Off in demo mode, whatever this Mac chose: a capture shares the real
+  /// app's defaults, and must neither show nor change its switch.
+  var isEnabled: Bool {
+    !DemoSeed.isEnabled && UserDefaults.standard.bool(forKey: Self.enabledKey)
+  }
 
   private var cloud: SyncCloud?
   private var observer: NSObjectProtocol?
@@ -191,6 +195,7 @@ final class ConfigSyncEngine {
   // MARK: - The switch and the questions
 
   func setEnabled(_ on: Bool) {
+    guard !DemoSeed.isEnabled else { return }
     UserDefaults.standard.set(on, forKey: Self.enabledKey)
     guard on else {
       stop()
