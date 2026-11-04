@@ -3369,6 +3369,78 @@
         "GRAFANA_API_KEY, which Grafana's own mcp-grafana reads, is accepted as an",
         "alias for the token but is left out here so a profile has one place for it."
       ]
+    },
+    {
+      "id": "loki",
+      "displayName": "Loki",
+      "summary": "Grafana Loki HTTP API: LogQL log and metric queries merged across streams, labels, detected fields, volume, stats and patterns, shaped to fit a context window.",
+      "transport": {
+        "kind": "child",
+        "npmName": "@mgcrea/mcp-loki",
+        "binName": "loki-mcp",
+        "distribution": "npm",
+        "localPath": "mcp-loki",
+        "vendor": "mgcrea",
+        "provenance": true
+      },
+      "docsUrl": "https://github.com/mgcrea/mcp-loki",
+      "dialect": "2025-11-25",
+      "writeGate": null,
+      "gateBypass": [],
+      "authModes": [],
+      "stateEnv": [],
+      "callbackEnv": [],
+      "env": [
+        {
+          "name": "LOKI_URL",
+          "required": true,
+          "secret": false,
+          "description": "Base URL of the gateway, query-frontend or single binary, including any path prefix, e.g. https://loki.example.com. No credentials in it."
+        },
+        {
+          "name": "LOKI_USERNAME",
+          "required": false,
+          "secret": false,
+          "description": "Basic auth user. Behind the Loki Helm chart's nginx gateway the username is the tenant. Set with LOKI_PASSWORD, or leave both empty."
+        },
+        {
+          "name": "LOKI_PASSWORD",
+          "required": false,
+          "secret": true,
+          "description": "Basic auth password."
+        },
+        {
+          "name": "LOKI_TOKEN",
+          "required": false,
+          "secret": true,
+          "description": "Bearer token instead of basic auth, e.g. Grafana Cloud or an OAuth proxy. Setting both is refused."
+        },
+        {
+          "name": "LOKI_TENANT_ID",
+          "required": false,
+          "secret": false,
+          "description": "Sent as X-Scope-OrgID, for a multi-tenant Loki reached directly. A gateway that maps the basic-auth username overrides it."
+        },
+        {
+          "name": "LOKI_HEADERS",
+          "required": false,
+          "secret": true,
+          "description": "Extra request headers as a JSON object, e.g. a Cloudflare Access service token."
+        }
+      ],
+      "notes": [
+        "No write gate because there is no write path, and the claim is meant: every",
+        "tool is annotated read-only, Loki's push, delete-request and ruler-write",
+        "endpoints are not wrapped, and loki_request only sends GET.",
+        "",
+        "No auth modes, because a local Loki needs no credential at all, the same",
+        "shape as Prometheus: a profile with only LOKI_URL is complete.",
+        "",
+        "Loki never says which tenant answered. Behind the chart's nginx gateway the",
+        "basic-auth username becomes X-Scope-OrgID and overwrites any the client",
+        "sends, so the username is the tenant. loki_auth_status, the startup line",
+        "and every data response name the tenant and where it came from."
+      ]
     }
   ]
 }

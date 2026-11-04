@@ -3424,6 +3424,69 @@ nonisolated enum ServerCatalog {
           isSecret: false,
           summary: "Registers the write tools: save_dashboard, delete_dashboard, create_annotation, create_silence, expire_silence, and any method on grafana_request. The destructive ones also take confirm: true."),
       ]),
+    // No write gate because there is no write path, and the claim is meant: every
+    // tool is annotated read-only, Loki's push, delete-request and ruler-write
+    // endpoints are not wrapped, and loki_request only sends GET.
+    //
+    // No auth modes, because a local Loki needs no credential at all, the same
+    // shape as Prometheus: a profile with only LOKI_URL is complete.
+    //
+    // Loki never says which tenant answered. Behind the chart's nginx gateway the
+    // basic-auth username becomes X-Scope-OrgID and overwrites any the client
+    // sends, so the username is the tenant. loki_auth_status, the startup line
+    // and every data response name the tenant and where it came from.
+    BastionServer(
+      id: "loki",
+      displayName: "Loki",
+      summary: "Grafana Loki HTTP API: LogQL log and metric queries merged across streams, labels, detected fields, volume, stats and patterns, shaped to fit a context window.",
+      transport: .child(
+        .init(
+          npmName: "@mgcrea/mcp-loki",
+          binName: "loki-mcp",
+          distribution: .npm,
+          localPath: "mcp-loki",
+          vendor: .mgcrea,
+          provenance: true)),
+      docsURL: URL(string: "https://github.com/mgcrea/mcp-loki"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: [],
+      gateBypass: [],
+      authModes: [],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "LOKI_URL",
+          isRequired: true,
+          isSecret: false,
+          summary: "Base URL of the gateway, query-frontend or single binary, including any path prefix, e.g. https://loki.example.com. No credentials in it."),
+        .init(
+          name: "LOKI_USERNAME",
+          isRequired: false,
+          isSecret: false,
+          summary: "Basic auth user. Behind the Loki Helm chart's nginx gateway the username is the tenant. Set with LOKI_PASSWORD, or leave both empty."),
+        .init(
+          name: "LOKI_PASSWORD",
+          isRequired: false,
+          isSecret: true,
+          summary: "Basic auth password."),
+        .init(
+          name: "LOKI_TOKEN",
+          isRequired: false,
+          isSecret: true,
+          summary: "Bearer token instead of basic auth, e.g. Grafana Cloud or an OAuth proxy. Setting both is refused."),
+        .init(
+          name: "LOKI_TENANT_ID",
+          isRequired: false,
+          isSecret: false,
+          summary: "Sent as X-Scope-OrgID, for a multi-tenant Loki reached directly. A gateway that maps the basic-auth username overrides it."),
+        .init(
+          name: "LOKI_HEADERS",
+          isRequired: false,
+          isSecret: true,
+          summary: "Extra request headers as a JSON object, e.g. a Cloudflare Access service token."),
+      ]),
   ]
   // </generated:servers>
 

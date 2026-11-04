@@ -516,6 +516,17 @@ export const SERVERS: Server[] = [
     provenance: true,
     dialect: "2025-11-25",
   },
+  {
+    id: "loki",
+    displayName: "Loki",
+    summary: "Grafana Loki HTTP API: LogQL log and metric queries merged across streams, labels, detected fields, volume, stats and patterns, shaped to fit a context window.",
+    writeGate: null,
+    gatesByName: false,
+    transport: "child",
+    vendor: "mgcrea",
+    provenance: true,
+    dialect: "2025-11-25",
+  },
 ];
 // </generated:servers>
 

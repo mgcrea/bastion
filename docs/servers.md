@@ -74,7 +74,7 @@ sets no variable in it: a system command takes no credentials, and its write
 gate is a filter over tool names.
 
 Bastion curates lightly, and only to fill the first screen. The catalog seeds
-forty-one entries — seventeen servers written here, twelve somebody else
+forty-two entries — eighteen servers written here, twelve somebody else
 publishes, eleven endpoints their own vendors operate, and one command that
 ships with a developer tool on the Mac — because a catalog
 that opens with nothing recognisable in it teaches nobody what the app is for.
@@ -168,7 +168,7 @@ declares its protocol version, identity and capabilities in each request's
 shared server instance correct rather than a hack, and it is why Bastion fronts
 clients with it.
 
-None of the catalog entries below are modern. The seventeen children written here
+None of the catalog entries below are modern. The eighteen children written here
 run an SDK whose newest protocol is `2025-11-25`, and `server/discover` against
 one returns `-32601` — the exact signal the spec names for recognising a legacy
 server. The twelve third-party children were measured at the same revision, and
@@ -255,6 +255,7 @@ asserts both eras against a running build.
 | [Langfuse](https://github.com/mgcrea/mcp-langfuse) | `langfuse` | `langfuse-mcp` | `@mgcrea/mcp-langfuse` (npm, provenance) | `LANGFUSE_ALLOW_WRITES` | 2 |
 | [Prometheus](https://github.com/mgcrea/mcp-prometheus) | `prometheus` | `prometheus-mcp` | `@mgcrea/mcp-prometheus` (npm, provenance) | `PROMETHEUS_ALLOW_WRITES` | 3 |
 | [Grafana](https://github.com/mgcrea/mcp-grafana) | `grafana` | `grafana-mcp` | `@mgcrea/mcp-grafana` (npm, provenance) | `GRAFANA_ALLOW_WRITES` | 3 |
+| [Loki](https://github.com/mgcrea/mcp-loki) | `loki` | `loki-mcp` | `@mgcrea/mcp-loki` (npm, provenance) | read-only | 3 |
 
 ### App Store Connect
 
@@ -1479,4 +1480,29 @@ alias for the token but is left out here so a profile has one place for it.
 | `GRAFANA_ALLOW_WRITES` | — | — | Registers the write tools: save_dashboard, delete_dashboard, create_annotation, create_silence, expire_silence, and any method on grafana_request. The destructive ones also take confirm: true. |
 
 Satisfy exactly one of: **Service account token** (`GRAFANA_SERVICE_ACCOUNT_TOKEN`), **Username and password** (`GRAFANA_USERNAME` + `GRAFANA_PASSWORD`)
+
+### Loki
+
+Grafana Loki HTTP API: LogQL log and metric queries merged across streams, labels, detected fields, volume, stats and patterns, shaped to fit a context window.
+
+No write gate because there is no write path, and the claim is meant: every
+tool is annotated read-only, Loki's push, delete-request and ruler-write
+endpoints are not wrapped, and loki_request only sends GET.
+
+No auth modes, because a local Loki needs no credential at all, the same
+shape as Prometheus: a profile with only LOKI_URL is complete.
+
+Loki never says which tenant answered. Behind the chart's nginx gateway the
+basic-auth username becomes X-Scope-OrgID and overwrites any the client
+sends, so the username is the tenant. loki_auth_status, the startup line
+and every data response name the tenant and where it came from.
+
+| Variable | Required | Secret | Meaning |
+| --- | --- | --- | --- |
+| `LOKI_URL` | yes | — | Base URL of the gateway, query-frontend or single binary, including any path prefix, e.g. https://loki.example.com. No credentials in it. |
+| `LOKI_USERNAME` | — | — | Basic auth user. Behind the Loki Helm chart's nginx gateway the username is the tenant. Set with LOKI_PASSWORD, or leave both empty. |
+| `LOKI_PASSWORD` | — | yes | Basic auth password. |
+| `LOKI_TOKEN` | — | yes | Bearer token instead of basic auth, e.g. Grafana Cloud or an OAuth proxy. Setting both is refused. |
+| `LOKI_TENANT_ID` | — | — | Sent as X-Scope-OrgID, for a multi-tenant Loki reached directly. A gateway that maps the basic-auth username overrides it. |
+| `LOKI_HEADERS` | — | yes | Extra request headers as a JSON object, e.g. a Cloudflare Access service token. |
 <!-- </generated:servers> -->
