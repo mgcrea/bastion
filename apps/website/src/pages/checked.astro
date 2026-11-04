@@ -68,8 +68,8 @@ const SUITES = [
         how: "`profiles.json` is read back off disk and asserted to hold no value for any variable the server's manifest marks secret. What goes in a client config is a revocable loopback token; the credential stays in the Keychain.",
       },
       {
-        what: "There is no entitlements file",
-        how: "Asserted absent rather than empty. An empty permission set that is true by construction is checkable; one arrived at by deleting lines is not.",
+        what: "The entitlements are exactly four",
+        how: "The app's identity, its team, its keychain group and its iCloud key-value store, asserted exact in the file and in the signed app, and absent from a build without the Developer ID profile. Nothing that spawns servers or binds loopback needs one; a fifth fails the check rather than shipping.",
       },
     ],
   },

@@ -4,10 +4,14 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.35.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.36.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.36.0] - 2026-11-04
+
+**Your setup on every Mac.** Sync with iCloud brings your servers, profiles, workspaces and skills
+to every Mac on your account, and credentials move to the data protection keychain. Loki joins
+the catalog.
 
 ### Changed
 
@@ -30,6 +34,10 @@ are taken from this file, which is the curated summary.
   longer follow Migration Assistant to a new Mac: they belong to this Mac until iCloud sync
   arrives, and on a new one they are entered again.
 
+- **The app carries four entitlements**, after shipping with none: its identity, its team, its
+  keychain group and its iCloud key-value store, which the data protection keychain and sync need.
+  `make audit` asserts the set is exactly those four, in the file and in the signed app.
+
 ### Added
 
 - **Sync with iCloud**, in Settings › General, off by default. Your servers and whether each is
@@ -44,9 +52,29 @@ are taken from this file, which is the curated summary.
   the Debug build's import file with every profile, its credentials and the gateway tokens,
   after a click; `make dev-clone` can no longer read them from the data protection keychain.
 - **Variables whose value belongs to one Mac are marked as such** in the server docs: paths to a
-  key file or a kubeconfig, launch arguments, `NPM_BIN`, and every per-profile state path. Nothing
-  reads the mark yet. It is the list a later iCloud sync leaves out, so a path set on one Mac never
-  chooses code on another.
+  key file or a kubeconfig, launch arguments, `NPM_BIN`, and every per-profile state path. It is
+  the list iCloud sync leaves out, so a path set on one Mac never chooses code on another.
+- **Loki is in the catalog**: LogQL log and metric queries merged across streams, labels, detected
+  fields, volume, stats and patterns, with results shaped to fit a context window. Read-only: its
+  push, delete and ruler endpoints are not wrapped.
+- **Apple Ads installs.** It was listed as not published; its package is now on npm, with a
+  provenance attestation tying it to its source.
+
+### Internal
+
+- `make sync-check` runs the Debug build end to end against a JSON file standing in for iCloud,
+  and `make unit` covers the merge, what each entity carries and the approvals.
+  `docs/icloud-sync.md` says what travels, what waits and how the merge decides, with the two-Mac
+  test on the signed build.
+- `make keychain-selftest` runs the migration on the signed build in a throwaway namespace, and
+  `make icloud-probe` proves the keychain and key-value store on it. `make sign` refuses an
+  embedded profile that has expired, does not list the signing certificate or does not cover every
+  entitlement, each of which otherwise passes notarization and is killed at launch.
+  `docs/keychain.md` records the data protection keychain and what moving to it costs.
+- Two videos, for workspaces and for 1.35.0's internal hosts, from video-only stages that leave the
+  seven plates unchanged.
+- The website lists Drakar in More apps, and says what the four entitlements are where it said
+  there were none.
 
 ## [1.35.0] - 2026-10-31
 

@@ -204,12 +204,13 @@ const AUDIT_LINES = [
           </div>
 
           <p class="mt-auto mb-0 text-[13px] leading-[1.6] text-ink/50 text-pretty">
-            The app ships with no entitlements file at all — <a
+            The app holds exactly four entitlements, its identity, its team, its keychain and iCloud
+            sync, and <a
               href={DOCS.audit}
               rel="noopener"
               class="text-danger underline decoration-danger/30 underline-offset-2">the audit</a
-            > asserts the setting is <em>absent</em>, because an empty permission set that is true by
-            construction is checkable and one arrived at by deletion is not. <a
+            > asserts the set is <em>exact</em>, in the file and in the signed app, because a list
+            checked whole is a claim and one that grew a line at a time is not. <a
               href="/checked"
               class="text-danger underline decoration-danger/30 underline-offset-2"
               >Every claim and the command that checks it</a
