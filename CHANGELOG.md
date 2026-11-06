@@ -4,8 +4,31 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.36.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.36.1` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
+
+## [1.36.1] - 2026-11-06
+
+**An expired sign-in now asks to be renewed.** When a server such as Cloudflare or Stripe stops
+accepting a profile's sign-in, Bastion lets it go and asks you to authorize again, rather than
+retrying it on every request.
+
+### Fixed
+
+- **A sign-in the server no longer accepts is dropped, and the profile asks to be authorized
+  again.** When a server's token endpoint refuses a refresh with `invalid_grant` (Cloudflare says
+  "Grant not found", Stripe "Invalid refresh token"), the grant behind it is gone and no refresh
+  can succeed. Bastion kept the dead tokens, so the profile went on reading as authorized, every
+  request tried the same refresh again, and clients saw only the provider's wording. Now the
+  tokens are discarded, the profile shows as needing authorization, and the error names it and
+  says to authorize it again in Bastion. A sign-in completed while the refused request was in
+  flight is kept. Any other refusal, such as a server that is briefly down, still leaves the
+  tokens in place for the next try.
+
+### Internal
+
+- The README, `docs/keychain.md` and `docs/remote-servers.md` describe the four entitlements and
+  the keychain migration as shipped in 1.36.0, rather than as decisions still to make.
 
 ## [1.36.0] - 2026-11-04
 

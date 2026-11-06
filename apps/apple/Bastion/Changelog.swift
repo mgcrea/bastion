@@ -66,7 +66,25 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_36_0, v1_35_0, v1_34_0, v1_33_0, v1_32_0]
+  static let releases: [Release] = [v1_36_1, v1_36_0, v1_35_0, v1_34_0, v1_33_0]
+
+  // swift-format-ignore
+  private static let v1_36_1: Release = Release(
+    version: "1.36.1",
+    date: "2026-11-06",
+    sections: [
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "A sign-in the server no longer accepts is dropped, and the profile asks to be authorized again.",
+            body: [
+              "When a server's token endpoint refuses a refresh with `invalid_grant` (Cloudflare says \"Grant not found\", Stripe \"Invalid refresh token\"), the grant behind it is gone and no refresh can succeed. Bastion kept the dead tokens, so the profile went on reading as authorized, every request tried the same refresh again, and clients saw only the provider's wording. Now the tokens are discarded, the profile shows as needing authorization, and the error names it and says to authorize it again in Bastion. A sign-in completed while the refused request was in flight is kept. Any other refusal, such as a server that is briefly down, still leaves the tokens in place for the next try.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_36_0: Release = Release(
@@ -277,37 +295,6 @@ nonisolated enum Changelog {
             headline: "Yahoo Finance takes its cookie from a file.",
             body: [
               "From 0.7.0 the server reads `YAHOO_FINANCE_COOKIE_IMPORT_FILE`, the path of a file holding the same cookie header `YAHOO_FINANCE_COOKIE` takes, at startup. Set one or the other, not both. A missing or empty file stops the server with an error naming the path. Cupertino's Safari server can write that file from a signed-in tab. From 0.6.0 the session Yahoo renews is kept in that profile's own folder, so it survives a restart.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_32_0: Release = Release(
-    version: "1.32.0",
-    date: "2026-10-28",
-    sections: [
-      Section(
-        name: "Changed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Loading tools on demand is on by default, and Bastion decides which servers it applies to.",
-            body: [
-              "The per-server Default/On/Off picker is gone. Every server goes through the size check that already existed: a listing is replaced by Bastion's search, describe and call tools only when it has at least twice as many tools as they are, and costs at least twice as many tokens. So App Store Connect's listing is replaced and Context7's two tools are not, and a server that grows past the bar starts being fronted with nobody touching anything. The one switch left is in Settings › General.",
-              "On a Mac where that switch was never touched, it is now on. Claude Code and Claude Desktop are unaffected, because they load tool schemas on demand themselves and Bastion never fronts them. Cursor, VS Code, Codex and LM Studio are, and the trade is the one the switch has always carried: their per-tool approval rules then see `bastion_call_tool` for a server's reads and `bastion_call_write_tool` for its writes, rather than each tool. Turn the switch off in Settings › General, or set a client to \"defers schemas\" in its own pane, to keep the full listings there. Anybody who had turned the switch off keeps it off.",
-              "A choice made per server before this release is dropped, on or off. Bastion's own MCP server follows: `list_servers`, `get_server` and `list_profiles` no longer report `lazy_tools`, `status` reports the switch instead, and `upsert_profile` refuses a `lazy_tools` argument and says where the switch is rather than ignoring it.",
-            ]),
-        ]),
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 1,
-            headline: "A failing server's red mark lines up with the green dots.",
-            body: [
-              "It sat a few points off the dots in the sidebar rows around it. Every status mark there now centres on one column.",
             ]),
         ]),
     ])
