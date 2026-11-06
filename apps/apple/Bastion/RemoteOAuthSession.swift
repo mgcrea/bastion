@@ -158,6 +158,27 @@ nonisolated final class RemoteOAuthSession: @unchecked Sendable {
 
     let (status, json) = try sendJSON(request)
     guard (200..<300).contains(status) else {
+      if RemoteOAuth.grantIsDead(json) {
+        let said =
+          (json["error_description"] as? String).map { " (\"\($0)\")" } ?? ""
+        // Kept, the dead set would be refreshed again on every request and
+        // the profile would go on reading as authorized. Deleted only while
+        // the store still holds the token that was refused: authorizing is
+        // not behind this gate, and a sign-in that landed during the request
+        // must not be wiped by its predecessor's failure.
+        if CredentialStore.readTokens(profile: profile.name, server: server.id)?.refreshToken
+          == refreshToken
+        {
+          try? CredentialStore.deleteTokens(profile: profile.name, server: server.id)
+        }
+        hostLog(
+          profile.id, .error,
+          "\(server.id) refused the refresh token\(said). The grant is gone, so its tokens "
+            + "were discarded")
+        throw RemoteOAuth.OAuthError.tokenFailed(
+          "\(server.id) no longer accepts the \(profile.name) profile's authorization\(said), "
+            + "so it has to be authorized again in Bastion")
+      }
       throw RemoteOAuth.OAuthError.tokenFailed(
         (json["error_description"] as? String) ?? (json["error"] as? String)
           ?? "HTTP \(status) from the token endpoint")

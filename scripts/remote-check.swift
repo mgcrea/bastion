@@ -574,6 +574,19 @@ struct RemoteCheck {
       (try? RemoteOAuth.tokenSet(
         from: ["error": "invalid_grant"], clientID: "c",
         issuer: URL(string: "https://as.example")!, previous: nil)) == nil)
+    // RFC 6749 §5.2: `invalid_grant` on a refresh means the refresh token or
+    // the grant behind it is gone. Cloudflare words it "Grant not found",
+    // Stripe "Invalid refresh token". Kept, the dead set is refreshed again
+    // on every request and the profile still reads as authorized.
+    check(
+      "invalid_grant means the grant is dead",
+      RemoteOAuth.grantIsDead([
+        "error": "invalid_grant", "error_description": "Grant not found",
+      ]))
+    check(
+      "another refusal does not",
+      !RemoteOAuth.grantIsDead(["error": "temporarily_unavailable"]))
+    check("nor does a body with no error", !RemoteOAuth.grantIsDead([:]))
     check(
       "a response with no access token throws",
       (try? RemoteOAuth.tokenSet(

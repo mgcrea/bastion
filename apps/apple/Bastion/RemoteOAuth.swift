@@ -357,6 +357,18 @@ nonisolated enum RemoteOAuth {
     }
   }
 
+  /// Whether a token endpoint's refusal of a refresh means no refresh will
+  /// ever succeed again.
+  ///
+  /// RFC 6749 §5.2's `invalid_grant`: the refresh token, or the grant behind
+  /// it, is expired, revoked or unknown. Only the code is read. Providers each
+  /// word the description their own way (Cloudflare "Grant not found", Stripe
+  /// "Invalid refresh token"), and any other code, such as a server that is
+  /// briefly down, is worth trying again.
+  static func grantIsDead(_ json: [String: Any]) -> Bool {
+    (json["error"] as? String) == "invalid_grant"
+  }
+
   /// Build a token set from a token-endpoint response.
   static func tokenSet(
     from json: [String: Any], clientID: String, issuer: URL, previous: TokenSet?
