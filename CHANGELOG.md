@@ -4,8 +4,29 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.36.1` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.37.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
+
+## [1.37.0] - 2026-11-07
+
+**Only Bastion keeps up with new servers.** A server added to a Claude Code profile outside
+Bastion, from another app or with claude mcp add, is allowed about a second later rather than
+staying hidden until Bastion next launches.
+
+### Changed
+
+- **Only Bastion follows servers added outside Bastion.** With the switch on, a server another app
+  writes into the profile's `.claude.json` (Cupertino switching on a surface, `claude mcp add`)
+  was refused by the allowlist until Bastion next launched or its own servers changed, and Claude
+  Code left it out of `/mcp` without saying why. Bastion now watches that file and adds the server
+  to the list about a second after it lands. Only a list that is missing a server it should allow
+  is rewritten: one you edited by hand is left alone, as before, and a write that keeps failing is
+  logged once rather than on every Claude Code session.
+
+### Internal
+
+- `make config-watch-check` drives the new config file watcher against real files, written in
+  place, replaced atomically and created after the watch began, and runs in CI.
 
 ## [1.36.1] - 2026-11-06
 

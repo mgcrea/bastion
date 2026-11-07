@@ -66,7 +66,25 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_36_1, v1_36_0, v1_35_0, v1_34_0, v1_33_0]
+  static let releases: [Release] = [v1_37_0, v1_36_1, v1_36_0, v1_35_0, v1_34_0]
+
+  // swift-format-ignore
+  private static let v1_37_0: Release = Release(
+    version: "1.37.0",
+    date: "2026-11-07",
+    sections: [
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Only Bastion follows servers added outside Bastion.",
+            body: [
+              "With the switch on, a server another app writes into the profile's `.claude.json` (Cupertino switching on a surface, `claude mcp add`) was refused by the allowlist until Bastion next launched or its own servers changed, and Claude Code left it out of `/mcp` without saying why. Bastion now watches that file and adds the server to the list about a second after it lands. Only a list that is missing a server it should allow is rewritten: one you edited by hand is left alone, as before, and a write that keeps failing is logged once rather than on every Claude Code session.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_36_1: Release = Release(
@@ -277,24 +295,6 @@ nonisolated enum Changelog {
             headline: "A custom server at an address on this Mac is tagged local, in blue",
             body: [
               ", rather than custom, in its pane's header.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_33_0: Release = Release(
-    version: "1.33.0",
-    date: "2026-10-30",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Yahoo Finance takes its cookie from a file.",
-            body: [
-              "From 0.7.0 the server reads `YAHOO_FINANCE_COOKIE_IMPORT_FILE`, the path of a file holding the same cookie header `YAHOO_FINANCE_COOKIE` takes, at startup. Set one or the other, not both. A missing or empty file stops the server with an error naming the path. Cupertino's Safari server can write that file from a signed-in tab. From 0.6.0 the session Yahoo renews is kept in that profile's own folder, so it survives a restart.",
             ]),
         ]),
     ])
