@@ -108,6 +108,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // every check script that spawns one — see `ClientWiring.autoWires` — and a
     // no-op again on any launch that finds the configs already current.
     ClientWiring.migrateKeyScheme()
+    // After that pass brought every list current: from here on, a server
+    // another app adds to a switched-on profile is allowed as it lands.
+    LockdownWatcher.update()
 
     // Configuration sync, when switched on: a pass, then listening. After the
     // gateway and the key-scheme migration, because what arrives is applied

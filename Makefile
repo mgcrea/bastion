@@ -655,6 +655,13 @@ wiring-check: ## Assert the config merge leaves other people's files alone
 		scripts/wiring-check.swift
 	@apps/apple/.build/wiring-check
 
+config-watch-check: ## Assert a client config written in place, replaced or created is noticed
+	@mkdir -p apps/apple/.build
+	@swiftc -O -o apps/apple/.build/config-watch-check \
+		apps/apple/Bastion/ConfigFileWatcher.swift \
+		scripts/config-watch-check.swift
+	@apps/apple/.build/config-watch-check
+
 # Read-only. Parses your actual client configs, merges in memory, and asserts
 # every pre-existing key comes back deep-equal. Fixtures only cover the shapes
 # somebody thought of; this covers the ones nobody would have invented.
@@ -1201,7 +1208,7 @@ typecheck: ## tsc the Worker and astro check the website
 .PHONY: help app run stop dev-config clean \
 	sparkle sparkle-keys appcast node bundle sign notarize build-release \
 	install install-release install-from uninstall \
-	smoke dialect builtin facade wiring-check wiring-check-real skills-check skills-check-real remote-check remote-live-check unit license-check revocations audit audit-check migrate servers servers-check changelog changelog-check catalog-check provenance provenance-check discover icon \
+	smoke dialect builtin facade wiring-check wiring-check-real config-watch-check skills-check skills-check-real remote-check remote-live-check unit license-check revocations audit audit-check migrate servers servers-check changelog changelog-check catalog-check provenance provenance-check discover icon \
 	screenshots screenshots-capture screenshots-check screenshots-update \
 	screenshots-seal screenshots-selftest screenshots-appstore \
 	screenshots-website screenshots-compose screenshots-doctor screenshots-clean video site-video \

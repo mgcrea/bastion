@@ -148,6 +148,18 @@ enum ClientLockdown {
     }
   }
 
+  /// Whether a change to the profile's `.claude.json` should rewrite the
+  /// allowlist unasked. Only `stale`: the switch is on, the list is Bastion's,
+  /// and a rule it now wants is missing (another app wired a server, or
+  /// `claude mcp add` ran). Not `drifted`, which is a hand edit the card asks
+  /// about, and not `unreadable`, which the splice refuses. Claude Code rewrites
+  /// that file on every session, so anything that refuses would be logged on
+  /// every session too.
+  static func refreshesOnChange(_ state: State) -> Bool {
+    if case .stale = state { return true }
+    return false
+  }
+
   static func state(settings: [String: Any], plan: Plan, enabled: Bool) -> State {
     let allowed = settings[allowedKey]
     let ours = isBastionShaped(allowedKey, allowed)

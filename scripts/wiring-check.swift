@@ -156,6 +156,7 @@ struct WiringCheck {
     lockdownPlanIsBastionPlusTheConfig()
     lockdownRecognisesItsOwnPattern()
     lockdownStateTable()
+    lockdownRefreshesOnlyWhenStale()
     lockdownEnablingAndDisabling()
     lockdownRecordRoundTrips()
     lockdownSplicesIntoARealShape()
@@ -3310,6 +3311,22 @@ struct WiringCheck {
       ClientLockdown.State.stale(missing: ["local-db"]).summary
         == "stale — local-db not allowed")
     check("on reads as on", ClientLockdown.State.on.summary == "on")
+  }
+
+  static func lockdownRefreshesOnlyWhenStale() {
+    print("\nOnly Bastion: what a change to .claude.json may rewrite")
+    check(
+      "stale: brought current",
+      ClientLockdown.refreshesOnChange(.stale(missing: ["cupertino-desktop"])))
+    check("on: nothing to write", !ClientLockdown.refreshesOnChange(.on))
+    check("off: not Bastion's to write", !ClientLockdown.refreshesOnChange(.off))
+    check("left behind: not Bastion's to write", !ClientLockdown.refreshesOnChange(.leftBehind))
+    check(
+      "drifted: a hand edit is asked about, never overwritten unasked",
+      !ClientLockdown.refreshesOnChange(.drifted(["allowedMcpServers"])))
+    check(
+      "unreadable: nothing the splice could write",
+      !ClientLockdown.refreshesOnChange(.unreadable("trailing comma")))
   }
 
   static func lockdownEnablingAndDisabling() {

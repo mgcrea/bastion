@@ -195,6 +195,17 @@ shape, and logs the ones it left.
 rules on the next launch or profile change, and nothing in it is removed except
 an old Bastion wildcard; a Debug build never does this unasked.
 
+Between those, `LockdownWatcher` watches each switched-on profile's
+`.claude.json`. When another app adds a server to it (Cupertino switching on a
+surface, `claude mcp add`), the list is `stale` about a second later and is
+brought current the same way. Claude Code hides a server its allowlist refuses,
+with nothing in `/mcp` saying why, so waiting for the next launch meant a server
+that was configured and silently absent. Only `stale` is acted on: Claude Code
+rewrites that file on every session, and a `drifted` or `unreadable` list
+would otherwise log a refusal every time. The watcher is vnode sources on the
+file and its folder rather than FSEvents, because the default profile's file
+sits in the home folder; `make config-watch-check` drives it against real files.
+
 ### Release check
 
 With the switch on for a profile:
