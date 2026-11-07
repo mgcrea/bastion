@@ -321,6 +321,10 @@ jobs:
         run: make unit
       - name: Client wiring 🔍
         run: make wiring-check
+      # vnode sources on a throwaway folder: a config written in place,
+      # replaced or created must be noticed, and a dropped watch must not be.
+      - name: Client config watcher 🔍
+        run: make config-watch-check
       # The skills linker writes symlinks and git exclude blocks into the
       # user's own folders and repositories, and its rules are pure: discovery,
       # the link plan, the ledger, the exclude block. No app, no network.

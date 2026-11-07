@@ -103,6 +103,8 @@ extension ClientWiring {
     } else {
       ClientLockdown.forget(client.id)
     }
+    // The record just decided which configs are watched.
+    LockdownWatcher.update()
     ClientConfigRevision.shared.bump()
     hostLog(
       "wiring", .info,
@@ -110,6 +112,37 @@ extension ClientWiring {
         + (backup.map { " (backup at \($0.lastPathComponent))" } ?? ""))
     return backup
   }
+
+  /// For `LockdownWatcher`: bring current only the allowlists a change to
+  /// `.claude.json` left stale. Unlike `refreshLockdowns`, a list in any other
+  /// state is left alone without trying, so a hand edit or a file the splice
+  /// refuses is not logged as an error on every Claude Code session.
+  static func refreshStaleLockdowns() {
+    let records = ClientLockdown.records()
+    for client in all where records[client.id] != nil {
+      guard let lockdown = lockdown(of: client),
+        ClientLockdown.refreshesOnChange(lockdown.state)
+      else { continue }
+      do {
+        try setLockdown(client, on: true)
+        lastRefreshFailure[client.id] = nil
+        hostLog(
+          "wiring", .info,
+          "\(client.displayName): Only Bastion brought current after its config changed")
+      } catch {
+        // A write that keeps failing (a read-only settings.json) would
+        // otherwise be logged again on every Claude Code session.
+        let why = error.localizedDescription
+        guard lastRefreshFailure[client.id] != why else { continue }
+        lastRefreshFailure[client.id] = why
+        hostLog("wiring", .error, "\(client.displayName): Only Bastion left stale — \(why)")
+      }
+    }
+  }
+
+  /// The last failure `refreshStaleLockdowns` logged per client, so it is
+  /// logged once until it changes or a refresh succeeds.
+  private static var lastRefreshFailure: [String: String] = [:]
 
   /// For `rewire`: bring every switched-on profile's allowlist up to date.
   /// Logged, never raised, for the same reason `rewire` is silent.
