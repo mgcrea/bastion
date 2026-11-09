@@ -1222,6 +1222,36 @@ struct UnitCheck {
     let reddit = catalog.first { $0.id == "reddit" }
     check("reddit offers a sign-in", reddit?.authModes.contains { $0.isInteractive } == true)
 
+    print("\nCustom entries: auth modes")
+    typealias Var = BastionServer.AuthMode.CustomVariable
+    let key = Var(name: "ACME_KEY", isRequired: false, isSecret: true)
+    let tenant = Var(name: "ACME_TENANT", isRequired: true, isSecret: false)
+    let pinned = Var(name: "ACME_PINNED", isRequired: true, isSecret: true)
+    check(
+      "off: a custom entry makes no claim",
+      BastionServer.AuthMode.custom(oauth: false, isRemote: true, variables: [key]).isEmpty)
+    check(
+      "a package never gets a sign in, even asked",
+      BastionServer.AuthMode.custom(oauth: true, isRemote: false, variables: [key]).isEmpty)
+    let bare = BastionServer.AuthMode.custom(oauth: true, isRemote: true, variables: [])
+    check(
+      "nothing to type: the sign in is the only way in",
+      bare.map(\.kind) == [.oauth] && bare.first?.env.isEmpty == true)
+    let both = BastionServer.AuthMode.custom(
+      oauth: true, isRemote: true, variables: [key, tenant, pinned])
+    check(
+      "an optional secret is the alternative to signing in",
+      both.map(\.kind) == [.oauth, .env] && both.last?.env == ["ACME_KEY"])
+    // A required variable is required in every mode, so naming it in one
+    // would make the sign in unsatisfiable until it was typed anyway.
+    check(
+      "a required variable is never offered as the alternative",
+      !both.contains { $0.env.contains("ACME_TENANT") || $0.env.contains("ACME_PINNED") })
+    check(
+      "only required or non-secret variables: still only the sign in",
+      BastionServer.AuthMode.custom(oauth: true, isRemote: true, variables: [tenant, pinned])
+        .map(\.kind) == [.oauth])
+
     print("\nThe catalog: system commands")
     // The one transport that names a command line. The generator holds these
     // rules too; asserting them on the compiled catalog is what catches a

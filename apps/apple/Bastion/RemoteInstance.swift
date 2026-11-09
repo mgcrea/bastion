@@ -587,6 +587,10 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     let body: Data
     let contentType: String
     let sessionID: String?
+    /// `WWW-Authenticate`, kept for the one sentence that depends on it: a 401
+    /// naming `resource_metadata` is a server asking to be signed in to, not
+    /// one refusing a key.
+    var challenge: String? = nil
 
     /// One JSON-RPC object, however it arrived.
     ///
@@ -772,7 +776,8 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
             status: http.statusCode,
             body: data ?? Data(),
             contentType: (http.value(forHTTPHeaderField: "Content-Type") ?? "").lowercased(),
-            sessionID: http.value(forHTTPHeaderField: "Mcp-Session-Id")))
+            sessionID: http.value(forHTTPHeaderField: "Mcp-Session-Id"),
+            challenge: http.value(forHTTPHeaderField: "WWW-Authenticate")))
       }
     }
     guard let task = created else {
@@ -815,7 +820,9 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
     }
 
     guard (200..<300).contains(response.status) else {
-      throw Self.upstreamError(response, server: server.id, profile: profile.name)
+      throw Self.upstreamError(
+        response, server: server, profile: profile.name,
+        signedIn: CredentialStore.readTokens(profile: profile.name, server: server.id) != nil)
     }
     return response
   }
@@ -826,10 +833,26 @@ nonisolated final class RemoteInstance: @unchecked Sendable {
   /// error, the same way `Supervisor.SupervisorError` already does, because a 500 renders
   /// in a client as "connection failed" — the least informative possible
   /// rendering of a sentence that says exactly what to do.
-  private static func upstreamError(_ response: Response, server: String, profile: String)
-    -> Supervisor.SupervisorError
-  {
+  private static func upstreamError(
+    _ response: Response, server definition: BastionServer, profile: String, signedIn: Bool
+  ) -> Supervisor.SupervisorError {
+    let server = definition.id
     switch response.status {
+    // A profile that never signed in, refused by a server that says where to
+    // sign in. Telling this person to check a key sent them to replace a
+    // placeholder they only typed because the form wanted a variable.
+    case 401
+    where !signedIn
+      && RemoteOAuth.resourceMetadataURL(fromChallenge: response.challenge ?? "") != nil:
+      if definition.authModes.contains(where: { $0.kind == .oauth }) {
+        return .remoteRefused(
+          "\(server) needs the \(profile) profile signed in (HTTP 401). Open the profile in "
+            + "Bastion and choose Sign in.")
+      }
+      return .remoteRefused(
+        "\(server) asks for an OAuth sign in (HTTP 401), and its entry in Bastion does not offer "
+          + "one. Edit the server, turn on Sign in with OAuth, then sign the \(profile) profile "
+          + "in.")
     case 401, 403:
       return .remoteRefused(
         "\(server) refused the \(profile) profile's credential (HTTP \(response.status)). Check "
