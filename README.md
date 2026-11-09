@@ -105,8 +105,8 @@ the id resolves against the list the _user_ installed, or it 404s. Nothing arriv
 can name a package, a path or an argv, and a custom entry supplies a package and a bin name rather
 than a command line.
 
-Bastion curates lightly, and only to fill the first screen. The catalog seeds thirty-eight entries —
-fourteen servers written here, twelve somebody else publishes, eleven endpoints their own vendors
+Bastion curates lightly, and only to fill the first screen. The catalog seeds forty-three entries —
+eighteen servers written here, twelve somebody else publishes, twelve endpoints their own vendors
 operate, and one command that ships with a developer tool on the Mac — because a catalog that opens with nothing recognisable in it teaches nobody what the app
 is for. The middle group is named rather than folded into the first: Bastion installs those from
 npm and runs them on your machine with a profile's credentials in their environment, and what it
@@ -295,7 +295,7 @@ Built and verified:
 | **Dialect**             | dual-era: modern 2026-07-28 and legacy `initialize`, onto legacy children                              |
 | **Catalog**             | thirty-four seeded servers, a generator, and a CI drift check                                          |
 | **Server store**        | the user's own list, on-demand npm install, add, remove, and a per-server switch                       |
-| **Remote servers**      | an https endpoint fronted like any other server — eleven of them in the catalog                        |
+| **Remote servers**      | an https endpoint fronted like any other server — twelve of them in the catalog                        |
 | **OAuth 2.1**           | discovery, dynamic registration, PKCE and refresh — one consent, every client                          |
 | **Bastion's server**    | Bastion as one of its own servers, so an agent can manage it — off by default                          |
 | **Keychain**            | per-profile credentials, per-client tokens                                                             |
@@ -333,10 +333,10 @@ Context7, build on the 2.0 SDK that _knows_ `2026-07-28` and still negotiate leg
 revision an SDK knows is not the one a server speaks, which is the whole reason this is measured
 rather than read off a dependency.
 
-**Ten of the eleven remote entries carry a seeded dialect, not a measured one.** They all refuse
+**Ten of the twelve remote entries carry a seeded dialect, not a measured one.** They all refuse
 `initialize` without a credential, so `2025-11-25` is a starting point in the manifest and the first
 real handshake is what will measure them — `RemoteInstance` logs `dialect drift` and Activity shows
-what was actually negotiated. Cloudflare Docs is the exception: it answers unauthenticated, and was
+what was actually negotiated. Cloudflare Docs and Product Hunt are the exceptions: both answer unauthenticated, and were
 measured at `2025-11-25`. Vercel advertises `2026-07-28`, which would make it the first modern server
 in the file, but proposing a version a server does not take fails the connection, so that number
 goes in after somebody measures it and not before.

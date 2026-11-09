@@ -222,7 +222,14 @@ const validate = (servers) => {
     for (const key of ["gateBypass", "authModes", "stateEnv", "callbackEnv", "env", "notes"]) {
       if (!Array.isArray(s[key])) p(`${key} must be an array`);
     }
-    if (!isSystem && Array.isArray(s.env) && s.env.length === 0) p("env must not be empty");
+    // A catch for an entry whose variables were forgotten, not a rule that a
+    // server must have some. Two shapes honestly have none: a command that
+    // ships with the Mac, and a remote server whose only way in is a sign in
+    // Bastion runs, which names no variable by definition (Product Hunt).
+    const signsIn = Array.isArray(s.authModes) && s.authModes.some((m) => m.kind === "oauth");
+    if (!isSystem && !signsIn && Array.isArray(s.env) && s.env.length === 0) {
+      p("env must not be empty (unless the entry is a system command or signs in with oauth)");
+    }
 
     // ── the naming rule
     //

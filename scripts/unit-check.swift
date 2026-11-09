@@ -1222,6 +1222,26 @@ struct UnitCheck {
     let reddit = catalog.first { $0.id == "reddit" }
     check("reddit offers a sign-in", reddit?.authModes.contains { $0.isInteractive } == true)
 
+    // No variables is allowed in two shapes only, the same two the generator
+    // lets through. Anything else with an empty list is an entry whose
+    // variables were forgotten.
+    for server in catalog where server.env.isEmpty {
+      check(
+        "\(server.id): no variables, because it is a system command or signs in",
+        server.command != nil || server.authModes.contains { $0.kind == .oauth })
+    }
+    let producthunt = catalog.first { $0.id == "producthunt" }
+    check(
+      "producthunt signs in and offers nothing to type",
+      producthunt?.authModes.map(\.kind) == [.oauth] && producthunt?.env.isEmpty == true)
+    // The five tools its own annotations call writes, measured 2026-11-09.
+    check(
+      "producthunt hides its five write tools with writes off",
+      Set(producthunt?.writeTools ?? []) == [
+        "prepare_launch_asset", "start_launch", "submit_feedback", "submit_launch",
+        "update_launch",
+      ])
+
     print("\nCustom entries: auth modes")
     typealias Var = BastionServer.AuthMode.CustomVariable
     let key = Var(name: "ACME_KEY", isRequired: false, isSecret: true)

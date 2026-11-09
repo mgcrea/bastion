@@ -527,6 +527,17 @@ export const SERVERS: Server[] = [
     provenance: true,
     dialect: "2025-11-25",
   },
+  {
+    id: "producthunt",
+    displayName: "Product Hunt",
+    summary: "Product Hunt's own remote MCP server: leaderboards, product research and alternatives, and the launches you own.",
+    writeGate: null,
+    gatesByName: true,
+    transport: "remote",
+    vendor: null,
+    provenance: false,
+    dialect: "2025-11-25",
+  },
 ];
 // </generated:servers>
 

@@ -74,8 +74,8 @@ sets no variable in it: a system command takes no credentials, and its write
 gate is a filter over tool names.
 
 Bastion curates lightly, and only to fill the first screen. The catalog seeds
-forty-two entries — eighteen servers written here, twelve somebody else
-publishes, eleven endpoints their own vendors operate, and one command that
+forty-three entries — eighteen servers written here, twelve somebody else
+publishes, twelve endpoints their own vendors operate, and one command that
 ships with a developer tool on the Mac — because a catalog
 that opens with nothing recognisable in it teaches nobody what the app is for.
 The middle group is named rather than folded into the first: those are installed
@@ -177,10 +177,10 @@ measuring them meant asking the right question: a handshake requesting
 while requesting `2026-07-28` — a revision none of them supports — makes each
 one answer with its own newest. DBHub and Context7 build on the 2.0 SDK that
 *knows* `2026-07-28` and negotiate legacy anyway, which is why this is measured
-rather than read off a dependency. The eleven remote entries carry that revision as a seeded starting point; ten of them
+rather than read off a dependency. The twelve remote entries carry that revision as a seeded starting point; ten of them
 refuse `initialize` without a credential, so the first real handshake through a
-profile is what measures each one, and Cloudflare Docs, which answers
-unauthenticated, was measured at `2025-11-25`. Bastion is
+profile is what measures each one, and Cloudflare Docs and Product Hunt, which answer
+unauthenticated, were measured at `2025-11-25`. Bastion is
 therefore what the spec calls a **dual-era server**: it answers modern requests
 statelessly and legacy `initialize` handshakes too, and translates either onto
 the one handshake it performed with the child at spawn.
@@ -256,6 +256,7 @@ asserts both eras against a running build.
 | [Prometheus](https://github.com/mgcrea/mcp-prometheus) | `prometheus` | `prometheus-mcp` | `@mgcrea/mcp-prometheus` (npm, provenance) | `PROMETHEUS_ALLOW_WRITES` | 3 |
 | [Grafana](https://github.com/mgcrea/mcp-grafana) | `grafana` | `grafana-mcp` | `@mgcrea/mcp-grafana` (npm, provenance) | `GRAFANA_ALLOW_WRITES` | 3 |
 | [Loki](https://github.com/mgcrea/mcp-loki) | `loki` | `loki-mcp` | `@mgcrea/mcp-loki` (npm, provenance) | read-only | 3 |
+| [Product Hunt](https://www.producthunt.com/mcp/install) | `producthunt` | — | `https://mcp.producthunt.com/mcp` (remote) | `prepare_launch_asset`, `start_launch`, `submit_feedback`, `submit_launch`, `update_launch` (by name) | — |
 
 ### App Store Connect
 
@@ -1505,4 +1506,40 @@ and every data response name the tenant and where it came from.
 | `LOKI_TOKEN` | — | yes | Bearer token instead of basic auth, e.g. Grafana Cloud or an OAuth proxy. Setting both is refused. |
 | `LOKI_TENANT_ID` | — | — | Sent as X-Scope-OrgID, for a multi-tenant Loki reached directly. A gateway that maps the basic-auth username overrides it. |
 | `LOKI_HEADERS` | — | yes | Extra request headers as a JSON object, e.g. a Cloudflare Access service token. |
+
+### Product Hunt
+
+Product Hunt's own remote MCP server: leaderboards, product research and alternatives, and the launches you own.
+
+REMOTE, and OAuth is the only way in. Its protected-resource document names
+https://www.producthunt.com/mcp/oauth, whose metadata sits at the RFC 8414
+path-insertion URL, offers dynamic registration, S256 and a public client
+(token_endpoint_auth_methods_supported: ["none"]). There is no API key the
+endpoint accepts as a bearer, so there is no env mode and no variable.
+
+DIALECT MEASURED 2025-11-25, by asking for 2026-07-28 and reading the answer
+(2026-11-09). initialize and tools/list answer without a token.
+
+SEVEN TOOLS WORK SIGNED OUT. Each tool's _meta.securitySchemes says so:
+get_categories, get_products, find_alternatives, get_product_profile,
+search_launches, semantic_product_search and get_leaderboard are noauth; the
+account, launch and investor tools need mcp:account and the launches
+scopes. A single oauth mode makes a profile unusable until it signs in, so
+the anonymous seven are not reachable through Bastion without one. That is
+the price of the rule that a mode names a variable or a sign in; an
+anonymous profile would need a way to say "no credential" that the catalog
+does not have.
+
+writeTools are the five tools whose annotations say readOnlyHint: false,
+read from a live tools/list on 2026-11-09. submit_feedback is among them
+because it sends text to Product Hunt. Bastion asks for every scope the
+authorization server lists, ads:write and launches:write included, so the
+consent page is the real boundary, not this list.
+
+| Variable | Required | Secret | Sent as | Meaning |
+| --- | --- | --- | --- | --- |
+
+Hidden with writes off: `prepare_launch_asset`, `start_launch`, `submit_feedback`, `submit_launch`, `update_launch` — and any tool the server annotates as not read-only. This filters what Bastion forwards; it does not bind the server, so the credential's own scopes remain the real boundary.
+
+Satisfy exactly one of: **Sign in with Product Hunt** (no variables — Bastion holds the token)
 <!-- </generated:servers> -->
