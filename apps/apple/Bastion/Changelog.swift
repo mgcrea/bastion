@@ -66,7 +66,53 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_37_0, v1_36_1, v1_36_0, v1_35_0, v1_34_0]
+  static let releases: [Release] = [v1_38_0, v1_37_0, v1_36_1, v1_36_0, v1_35_0]
+
+  // swift-format-ignore
+  private static let v1_38_0: Release = Release(
+    version: "1.38.0",
+    date: "2026-11-10",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "A remote server you add yourself can sign in with OAuth.",
+            body: [
+              "Add Server's remote form has a Sign in with OAuth switch, which turns itself on when the address you type advertises an OAuth sign-in, and never overrides a choice you made. Each profile of that server then gets a Sign in button, as a catalog server's does, and Bastion keeps its tokens in the Keychain. A secret you list without marking it required is offered as the alternative to signing in. Agents can do the same with `add_custom_server` and `oauth: true`.",
+            ]),
+          Entry(
+            ordinal: 1,
+            headline: "Product Hunt is in the catalog.",
+            body: [
+              "Its profiles sign in with Product Hunt, which takes no API key in its place. With writes off, the five tools that start, submit or change a launch, or send feedback, are hidden. Product Hunt answers its discovery tools (leaderboard, search, product profiles) without an account, but in Bastion they still wait for the profile to sign in.",
+            ]),
+        ]),
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 2,
+            headline: "A server you add no longer needs a variable.",
+            body: [
+              "Add Server and `add_custom_server` refused a server with none, so a server that takes no credential, or signs in instead, had to carry a placeholder. With Sync with iCloud on, update every Mac: an earlier version sets such a server aside, and drops the sign-in switch from a server it saves again.",
+            ]),
+        ]),
+      Section(
+        name: "Fixed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 3,
+            headline: "A server that wants a sign-in says so.",
+            body: [
+              "When a remote server refuses a profile that never signed in and its answer points at an OAuth sign-in, the error now says to sign the profile in, or, for a server you added without the switch, to turn on Sign in with OAuth. It used to read like a key that had stopped working.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_37_0: Release = Release(
@@ -230,71 +276,6 @@ nonisolated enum Changelog {
             headline: "The URL field for a remote server",
             body: [
               "says a private address is let through when its host is listed under Internal hosts.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_34_0: Release = Release(
-    version: "1.34.0",
-    date: "2026-10-30",
-    sections: [
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "Workspaces live in the sidebar.",
-            body: [
-              "Once a workspace exists, the server list has a section per workspace and an Everywhere section for the profiles every client gets. Drag a server between sections to move its profiles, or use Move to on its right-click menu to move one profile of a server that has several. A server split between sections shows in each, with its profile names beside it. Sections collapse, and stay collapsed.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "New workspace, under Add server.",
-            body: [
-              "It asks for a name and at least one folder, since a workspace that reaches no folder would take every profile dropped into it out of every client.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "A page per workspace",
-            body: [
-              "in the main window, with its folders, the folders Claude Code is given, its profiles and its skills. Rename and Delete are there and on the section header's menu.",
-            ]),
-          Entry(
-            ordinal: 3,
-            headline: "A Scope menu in the profile editor",
-            body: [
-              "puts a profile in one workspace, or in none.",
-            ]),
-        ]),
-      Section(
-        name: "Changed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 4,
-            headline: "A workspace now reaches the plain folders between its folder and the repositories below it.",
-            body: [
-              "Claude Code applies a block outside git to that exact folder only, so a session started in, say, `~/Projects/rgis/rgis-ai` got none of the workspace's servers. It does now.",
-            ]),
-          Entry(
-            ordinal: 5,
-            headline: "A repository cloned under a workspace's folder gets its servers within seconds",
-            body: [
-              ", without pressing Rescan. Bastion watches the workspace folders and rewires when a repository appears or disappears below them.",
-            ]),
-          Entry(
-            ordinal: 6,
-            headline: "Settings → Workspaces is gone",
-            body: [
-              "; everything it held is on the workspace pages.",
-            ]),
-          Entry(
-            ordinal: 7,
-            headline: "A custom server at an address on this Mac is tagged local, in blue",
-            body: [
-              ", rather than custom, in its pane's header.",
             ]),
         ]),
     ])

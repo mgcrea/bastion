@@ -4,8 +4,48 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.37.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.38.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
+
+## [1.38.0] - 2026-11-10
+
+**Sign in to any remote server.** A remote server you add yourself can now sign in with OAuth,
+the way Cloudflare and Stripe do, and needs no variable to be added. Product Hunt joins the
+catalog.
+
+### Added
+
+- **A remote server you add yourself can sign in with OAuth.** Add Server's remote form has a
+  Sign in with OAuth switch, which turns itself on when the address you type advertises an OAuth
+  sign-in, and never overrides a choice you made. Each profile of that server then gets a Sign in
+  button, as a catalog server's does, and Bastion keeps its tokens in the Keychain. A secret you
+  list without marking it required is offered as the alternative to signing in. Agents can do the
+  same with `add_custom_server` and `oauth: true`.
+- **Product Hunt is in the catalog.** Its profiles sign in with Product Hunt, which takes no API
+  key in its place. With writes off, the five tools that start, submit or change a launch, or send
+  feedback, are hidden. Product Hunt answers its discovery tools (leaderboard, search, product
+  profiles) without an account, but in Bastion they still wait for the profile to sign in.
+
+### Changed
+
+- **A server you add no longer needs a variable.** Add Server and `add_custom_server` refused a
+  server with none, so a server that takes no credential, or signs in instead, had to carry a
+  placeholder. With Sync with iCloud on, update every Mac: an earlier version sets such a server
+  aside, and drops the sign-in switch from a server it saves again.
+
+### Fixed
+
+- **A server that wants a sign-in says so.** When a remote server refuses a profile that never
+  signed in and its answer points at an OAuth sign-in, the error now says to sign the profile in,
+  or, for a server you added without the switch, to turn on Sign in with OAuth. It used to read
+  like a key that had stopped working.
+
+### Internal
+
+- The catalog generator accepts an entry with no variables when it signs in with OAuth, and
+  `make unit` checks that an empty list only ever means a system command or a sign-in. The server
+  counts in the README, `docs/servers.md` and `llms.txt` are up to date, the README's having been
+  stale since thirty-eight.
 
 ## [1.37.0] - 2026-11-07
 
