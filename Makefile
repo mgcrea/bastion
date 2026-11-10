@@ -726,6 +726,7 @@ unit: ## Assert the translation, the parser, call capture, the audit chain, the 
 	@swiftc -O -o apps/apple/.build/unit-check \
 		apps/apple/Bastion/Dialect.swift \
 		apps/apple/Bastion/ServerCatalog.swift \
+		apps/apple/Bastion/CustomAuthModes.swift \
 		apps/apple/Bastion/ReservedEnv.swift \
 		apps/apple/Bastion/ICloudProbe.swift \
 		apps/apple/Bastion/KeychainMigration.swift \

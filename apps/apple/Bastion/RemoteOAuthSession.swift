@@ -201,6 +201,14 @@ nonisolated final class RemoteOAuthSession: @unchecked Sendable {
     guard let endpoint = server.endpoint else {
       throw RemoteOAuth.OAuthError.discoveryFailed("\(server.id) is not a remote server")
     }
+    return try discover(endpoint: endpoint, dialect: server.dialect)
+  }
+
+  /// Discovery against an endpoint no server is defined for yet: the Add
+  /// Server sheet asking a URL being typed whether it has a Sign in. The same
+  /// walk and the same checks, because a probe that skipped them would be a
+  /// way to reach a host the sign in itself would refuse.
+  func discover(endpoint: URL, dialect: BastionServer.Dialect) throws -> RemoteOAuth.Metadata {
     try RemoteEndpoint.preflight(endpoint)
 
     // The two URLs below come from the server's own answers, so the internal-
@@ -219,7 +227,7 @@ nonisolated final class RemoteOAuthSession: @unchecked Sendable {
     probe.httpBody = try JSONSerialization.data(withJSONObject: [
       "jsonrpc": "2.0", "id": "bastion-probe", "method": "initialize",
       "params": [
-        "protocolVersion": server.dialect.rawValue, "capabilities": [:],
+        "protocolVersion": dialect.rawValue, "capabilities": [:],
         "clientInfo": ["name": "bastion", "version": AppInfo.version],
       ],
     ])

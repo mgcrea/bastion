@@ -3487,6 +3487,55 @@ nonisolated enum ServerCatalog {
           isSecret: true,
           summary: "Extra request headers as a JSON object, e.g. a Cloudflare Access service token."),
       ]),
+    // REMOTE, and OAuth is the only way in. Its protected-resource document names
+    // https://www.producthunt.com/mcp/oauth, whose metadata sits at the RFC 8414
+    // path-insertion URL, offers dynamic registration, S256 and a public client
+    // (token_endpoint_auth_methods_supported: ["none"]). There is no API key the
+    // endpoint accepts as a bearer, so there is no env mode and no variable.
+    //
+    // DIALECT MEASURED 2025-11-25, by asking for 2026-07-28 and reading the answer
+    // (2026-11-09). initialize and tools/list answer without a token.
+    //
+    // SEVEN TOOLS WORK SIGNED OUT. Each tool's _meta.securitySchemes says so:
+    // get_categories, get_products, find_alternatives, get_product_profile,
+    // search_launches, semantic_product_search and get_leaderboard are noauth; the
+    // account, launch and investor tools need mcp:account and the launches
+    // scopes. A single oauth mode makes a profile unusable until it signs in, so
+    // the anonymous seven are not reachable through Bastion without one. That is
+    // the price of the rule that a mode names a variable or a sign in; an
+    // anonymous profile would need a way to say "no credential" that the catalog
+    // does not have.
+    //
+    // writeTools are the five tools whose annotations say readOnlyHint: false,
+    // read from a live tools/list on 2026-11-09. submit_feedback is among them
+    // because it sends text to Product Hunt. Bastion asks for every scope the
+    // authorization server lists, ads:write and launches:write included, so the
+    // consent page is the real boundary, not this list.
+    BastionServer(
+      id: "producthunt",
+      displayName: "Product Hunt",
+      summary: "Product Hunt's own remote MCP server: leaderboards, product research and alternatives, and the launches you own.",
+      transport: .remote(endpoint: URL(string: "https://mcp.producthunt.com/mcp")!),
+      docsURL: URL(string: "https://www.producthunt.com/mcp/install"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: ["prepare_launch_asset", "start_launch", "submit_feedback", "submit_launch", "update_launch"],
+      gateBypass: [],
+      authModes: [
+        .init(
+          id: "oauth2",
+          displayName: "Sign in with Product Hunt",
+          kind: .oauth,
+          env: [],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+      ],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+
+      ]),
   ]
   // </generated:servers>
 

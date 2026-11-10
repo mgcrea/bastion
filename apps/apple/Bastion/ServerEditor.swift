@@ -61,6 +61,9 @@ struct ServerEditor: View {
   /// Filters the catalog tab only, and survives a trip to Custom and back —
   /// switching tabs to check a package name is not a reason to retype it.
   @State private var catalogQuery = ""
+  /// What discovery found at the URL being typed: the authorization server's
+  /// issuer, or nil while there is nothing to say.
+  @State private var discoveredIssuer: String?
   @FocusState private var searchFocused: Bool
 
   private enum Tab: Hashable {
@@ -85,6 +88,11 @@ struct ServerEditor: View {
     var docsUrl = ""
     var dialect = BastionServer.Dialect.v2025_11_25
     var writeGate = ""
+    /// Remote only: the server has a Sign in, and Bastion runs the OAuth flow.
+    var oauth = false
+    /// Whether the person has set `oauth` themselves. Discovery only ever
+    /// switches it on, and never over a choice somebody made.
+    var oauthTouched = false
     var variables: [Variable] = [Variable()]
 
     enum Kind: Hashable { case child, remote }
@@ -305,6 +313,39 @@ struct ServerEditor: View {
 
   // MARK: - Custom
 
+  private var oauthHelp: String {
+    if let discoveredIssuer {
+      return "This server advertises sign-in at \(discoveredIssuer). Each profile signs in on "
+        + "its own, from the profile, and Bastion keeps the token in the Keychain."
+    }
+    return "For a server that signs its users in rather than taking a key. Each profile signs "
+      + "in on its own, from the profile. Variables below are then optional: a secret not "
+      + "marked required is the alternative to signing in."
+  }
+
+  /// Asks the URL being typed whether it advertises OAuth, and switches the
+  /// toggle on when it does, unless the person already chose.
+  ///
+  /// Debounced by the task's own restart: `task(id:)` cancels the previous run
+  /// on every keystroke, so only a URL left alone for a moment is probed. The
+  /// probe is discovery itself, with every check it makes before a real sign
+  /// in, so the editor cannot reach anywhere a sign in could not.
+  private func probeOAuth() async {
+    discoveredIssuer = nil
+    let raw = draft.url.trimmed
+    guard draft.kind == .remote, let endpoint = URL(string: raw), endpoint.host() != nil
+    else { return }
+    try? await Task.sleep(for: .milliseconds(700))
+    guard !Task.isCancelled else { return }
+    let dialect = draft.dialect
+    let metadata = try? await Task.detached {
+      try RemoteOAuthSession.shared.discover(endpoint: endpoint, dialect: dialect)
+    }.value
+    guard !Task.isCancelled, let metadata else { return }
+    discoveredIssuer = metadata.issuer.absoluteString
+    if !draft.oauthTouched { draft.oauth = true }
+  }
+
   private var customForm: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 14) {
@@ -349,6 +390,17 @@ struct ServerEditor: View {
               )
               .font(.caption2).foregroundStyle(.secondary)
               .fixedSize(horizontal: false, vertical: true)
+              Toggle(
+                "Sign in with OAuth",
+                isOn: Binding(
+                  get: { draft.oauth },
+                  set: {
+                    draft.oauth = $0
+                    draft.oauthTouched = true
+                  }))
+              Text(oauthHelp)
+                .font(.caption2).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             }
             Field("Docs URL", text: $draft.docsUrl, placeholder: "https://…")
             HStack {
@@ -411,6 +463,7 @@ struct ServerEditor: View {
       }
       .padding(16)
     }
+    .task(id: draft.kind == .remote ? draft.url.trimmed : "") { await probeOAuth() }
   }
 
   private struct VariableRow: View {
@@ -579,6 +632,10 @@ struct ServerEditor: View {
       docsUrl: server.docsURL?.absoluteString ?? "",
       dialect: server.dialect,
       writeGate: server.writeGate ?? "",
+      // Touched, so discovery on opening an existing server never flips what
+      // was saved.
+      oauth: server.authModes.contains { $0.kind == .oauth },
+      oauthTouched: true,
       variables: server.env.map {
         .init(
           name: $0.name, summary: $0.summary, isRequired: $0.isRequired, isSecret: $0.isSecret,
@@ -661,7 +718,8 @@ struct ServerEditor: View {
           // carries a credential. Same rule the manifest generator applies.
           boolean: !isRemote && variable.isBoolean
             ? .init(default: variable.booleanDefault) : nil)
-      })
+      },
+      oauth: isRemote && draft.oauth ? true : nil)
 
     // A gate the server never reads gates nothing, and it would read as off in
     // every UI while the server did whatever it liked. Same check the manifest

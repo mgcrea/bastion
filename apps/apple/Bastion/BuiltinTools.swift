@@ -308,7 +308,9 @@ enum BuiltinTools {
         + "arguments or a path; and a url must be https to a public host, or http(s) to the literal "
         + "127.0.0.1 or [::1] for a server on this machine (never Bastion's own port). localhost, "
         + "private, link-local and names resolving to them are refused. A catalog server's id, "
-        + "or the id of a server that already has profiles, is refused too.",
+        + "or the id of a server that already has profiles, is refused too. A remote server that "
+        + "signs its users in takes oauth: true and needs no variables; each profile then signs "
+        + "in from the Bastion window.",
       properties: [
         "id": schema("string", "Kebab-case. Becomes a URL path segment and a directory name."),
         "display_name": schema("string", "Shown in the window."),
@@ -323,6 +325,13 @@ enum BuiltinTools {
             + "installed and no process is started. Every variable then needs a header, because "
             + "there is no environment to put it in."),
         "docs_url": schema("string", "Optional documentation URL."),
+        "oauth": schema(
+          "boolean",
+          "REMOTE servers only: the server signs its users in with OAuth (it answers 401 with a "
+            + "WWW-Authenticate naming resource_metadata, or serves "
+            + "/.well-known/oauth-protected-resource). Bastion runs the flow and holds the "
+            + "token; a person signs each profile in from the window, never from here. Any "
+            + "secret variable not marked required becomes the alternative to signing in."),
         "dialect": schema(
           "string",
           "Optional MCP revision the server speaks. Defaults to 2025-11-25, which is what an SDK "
@@ -347,7 +356,10 @@ enum BuiltinTools {
         ],
         "env": [
           "type": "array",
-          "description": "The environment variables the server reads. At least one.",
+          "description":
+            "The environment variables the server reads, or for a remote server the headers it "
+            + "takes. Optional: a server with nothing to set, or one that signs in with oauth, "
+            + "lists none.",
           "items": [
             "type": "object",
             "properties": [
@@ -375,7 +387,7 @@ enum BuiltinTools {
           ],
         ],
       ],
-      required: ["id", "display_name", "env"], mutates: true),
+      required: ["id", "display_name"], mutates: true),
 
     Declaration(
       "remove_server", title: "Remove a server",
@@ -1657,8 +1669,18 @@ enum BuiltinTools {
       }
     }
 
-    guard let rawEnv = arguments["env"] as? [[String: Any]], !rawEnv.isEmpty else {
-      throw ToolError.badArgument(name: "env", expected: "a non-empty array of variable objects")
+    // Absent and empty are the same answer: nothing to set. Present and the
+    // wrong shape is still refused, so a malformed list is not read as none.
+    let rawEnv: [[String: Any]]
+    switch arguments["env"] {
+    case nil: rawEnv = []
+    case let list as [[String: Any]]: rawEnv = list
+    default: throw ToolError.badArgument(name: "env", expected: "an array of variable objects")
+    }
+    let oauth = arguments["oauth"] as? Bool ?? false
+    if oauth, !isRemote {
+      throw ToolError.badArgument(
+        name: "oauth", expected: "a url: Bastion can run a sign in only for a remote server")
     }
 
     let env = try rawEnv.map { entry -> ServerStore.Definition.Variable in
@@ -1692,7 +1714,8 @@ enum BuiltinTools {
       writeGate: isRemote ? nil : arguments["write_gate"] as? String,
       writeTools: isRemote ? arguments["write_tools"] as? [String] : nil,
       stateEnv: isRemote ? [] : (arguments["state_env"] as? [String] ?? []),
-      env: env)
+      env: env,
+      oauth: oauth ? true : nil)
 
     try ServerStore.shared.upsert(
       custom: id, definition: definition,
@@ -1708,7 +1731,11 @@ enum BuiltinTools {
       "id": id, "added": true,
       "note": isRemote
         ? "'\(id)' is in your list and points at \(url ?? ""). Nothing is downloaded and no "
-          + "process is started. It needs a profile before any client can reach it."
+          + "process is started. It needs a profile before any client can reach it"
+          + (oauth
+            ? ", and that profile needs signing in, which the person does from the Bastion "
+              + "window: Sign in, on the profile."
+            : ".")
         : "'\(id)' is in your list and \(npmName ?? id) is downloading. It needs a profile "
           + "before any client can reach it.",
     ]

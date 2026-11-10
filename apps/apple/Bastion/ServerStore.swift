@@ -135,6 +135,18 @@ final class ServerStore {
     var writeTools: [String]?
     var stateEnv: [String]
     var env: [Variable]
+    /// Remote only: the server signs its users in with OAuth, and Bastion runs
+    /// the flow. Optional and last, so a `servers.json` written before it
+    /// existed decodes unchanged and every existing initialiser call compiles
+    /// with it absent, which means "no".
+    ///
+    /// A switch and not a mode list, because the one claim a person adding a
+    /// server by hand can make is "this server has a Sign in". Which subsets of
+    /// the variables are enough on their own is still not theirs to state, so
+    /// `make` derives the rest: every secret variable not marked required
+    /// becomes the alternative to signing in, the way an API key is beside
+    /// Linear's sign-in.
+    var oauth: Bool?
 
     /// What this definition runs or reaches, as `ServerApprovals` compares it.
     var approvalValue: String {
@@ -309,10 +321,11 @@ final class ServerStore {
   /// - `gateBypass` is always empty. It is the mechanism for neutralising a
   ///   variable the *manifest* knows about; a user-supplied list of variables
   ///   to force to `"0"` would be a footgun with no upside.
-  /// - `authModes` is always empty. A mode set is a claim that some subsets of
-  ///   the variables are individually sufficient, which nobody can state for a
-  ///   server they are adding by hand — so a custom entry says what is required
-  ///   and stops there.
+  /// - `authModes` is empty unless the entry says it signs in with OAuth. A
+  ///   mode set is a claim that some subsets of the variables are individually
+  ///   sufficient, which nobody can state for a server they are adding by hand
+  ///   — so a custom entry says what is required and stops there, and the only
+  ///   claim it can add is `oauth`. `customAuthModes` says what that becomes.
   /// - `callbackEnv` is always empty, for the same reason: Bastion surfaces
   ///   those with a warning it cannot honestly attach to a variable it has not
   ///   seen.
@@ -336,7 +349,7 @@ final class ServerStore {
       writeGate: definition.writeGate,
       writeTools: definition.writeTools ?? [],
       gateBypass: [],
-      authModes: [],
+      authModes: customAuthModes(definition),
       stateEnv: definition.stateEnv,
       callbackEnv: [],
       env: definition.env.map {
@@ -346,6 +359,16 @@ final class ServerStore {
           booleanDefault: $0.boolean?.default)
       },
       origin: .custom)
+  }
+
+  /// See `BastionServer.AuthMode.custom`, which holds the rule apart from the
+  /// store so `make unit` can assert it.
+  static func customAuthModes(_ definition: Definition) -> [BastionServer.AuthMode] {
+    BastionServer.AuthMode.custom(
+      oauth: definition.oauth == true, isRemote: definition.url != nil,
+      variables: definition.env.map {
+        .init(name: $0.name, isRequired: $0.required, isSecret: $0.secret)
+      })
   }
 
   private func save() throws {
@@ -394,7 +417,11 @@ final class ServerStore {
           name: $0.name, required: $0.isRequired, secret: $0.isSecret, description: $0.summary,
           header: $0.header.map { .init(name: $0.name, format: $0.format) },
           boolean: $0.booleanDefault.map { .init(default: $0) })
-      })
+      },
+      // Read back from the modes `customAuthModes` made, the only place a
+      // custom entry's `.oauth` can come from. Absent rather than false when
+      // off, so a row that never had it is written exactly as before.
+      oauth: server.authModes.contains { $0.kind == .oauth } ? true : nil)
   }
 
   // MARK: - Editing
@@ -406,9 +433,9 @@ final class ServerStore {
     case unusablePackage(String)
     case unusableEndpoint(String)
     case unusableVariable(String)
+    case oauthNeedsEndpoint
     case reservedVariable(String)
     case contradictoryVariable(name: String, detail: String)
-    case noVariables
     case renameWouldStrand(from: String, to: String, profiles: Int)
     case cannotRemoveBuiltin
     case reservedID(String)
@@ -438,8 +465,10 @@ final class ServerStore {
           "\(name) is set by Bastion, or can change what code a server runs, so a custom server cannot declare it"
       case .contradictoryVariable(let name, let detail):
         return "'\(name)' \(detail)"
-      case .noVariables:
-        return "a server needs at least one environment variable"
+      case .oauthNeedsEndpoint:
+        return
+          "Sign in with OAuth is for a remote server. A package that signs itself in does it "
+          + "through its own tools, and Bastion cannot run that flow for it"
       case .cannotRemoveBuiltin:
         return
           "Bastion's own server is part of the app and cannot be removed. Switch it off instead — "
@@ -535,7 +564,11 @@ final class ServerStore {
       // `spawn(whatever_you_typed)`.
       throw StoreError.catalogOnlyCommand
     }
-    guard !definition.env.isEmpty else { throw StoreError.noVariables }
+    // No variables is a server with nothing to set: a public endpoint, a
+    // package that reads no configuration, or one that signs in with OAuth.
+    // This used to be refused, from before remote servers existed, and it
+    // forced a placeholder variable onto exactly the servers that need none.
+    if definition.oauth == true, definition.url == nil { throw StoreError.oauthNeedsEndpoint }
     for variable in definition.env where !Self.isValidVariable(variable.name) {
       throw StoreError.unusableVariable(variable.name)
     }
