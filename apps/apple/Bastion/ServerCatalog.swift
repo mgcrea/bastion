@@ -3536,6 +3536,154 @@ nonisolated enum ServerCatalog {
       env: [
 
       ]),
+    // The server signs itself in. A Google Desktop app client accepts any
+    // 127.0.0.1 port without a registered redirect URI, so the callback port is
+    // ephemeral and there is no callbackEnv: two profiles cannot collide on it.
+    // The refresh token lives in the profile’s own XDG config directory.
+    //
+    // The token picks the channel, not a variable. A Google account that owns a
+    // Brand Account channel gets a “Choose an account” step at consent, and
+    // the channel picked there is the one every call acts as.
+    // youtube_auth_status, the startup line and every response name it, and
+    // YOUTUBE_CHANNEL_ID turns a mismatch into a refusal.
+    //
+    // A consent screen left in Testing makes Google expire refresh tokens after
+    // seven days, which surfaces as invalid_grant and a request to sign in again.
+    // Publishing the app (unverified is fine for your own account) avoids it.
+    //
+    // YOUTUBE_REFRESH_TOKEN, for a container with no writable disk, is left out:
+    // under Bastion the server keeps its own token file.
+    BastionServer(
+      id: "youtube",
+      displayName: "YouTube",
+      summary: "YouTube Data API v3: resumable chunked video uploads run as background jobs, metadata edits that merge instead of overwrite, thumbnails, playlists and the channel’s own videos.",
+      transport: .child(
+        .init(
+          npmName: "@mgcrea/mcp-youtube",
+          binName: "youtube-mcp",
+          distribution: .npm,
+          localPath: "mcp-youtube",
+          vendor: .mgcrea,
+          provenance: true)),
+      docsURL: URL(string: "https://github.com/mgcrea/mcp-youtube"),
+      dialect: .v2025_11_25,
+      writeGate: "YOUTUBE_ALLOW_WRITES",
+      writeTools: [],
+      gateBypass: [],
+      authModes: [
+        .init(
+          id: "oauth2",
+          displayName: "Sign in with Google",
+          kind: .childOAuth,
+          env: [],
+          loginTool: "youtube_auth_login",
+          statusTool: "youtube_auth_status",
+          logoutTool: "youtube_auth_logout"),
+      ],
+      stateEnv: ["YOUTUBE_CONFIG", "YOUTUBE_TOKEN_FILE"],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "YOUTUBE_CLIENT_ID",
+          isRequired: true,
+          isSecret: false,
+          summary: "OAuth client id of a Desktop app client in your own Google Cloud project, with the YouTube Data API v3 enabled. No redirect URI to register."),
+        .init(
+          name: "YOUTUBE_CLIENT_SECRET",
+          isRequired: true,
+          isSecret: true,
+          summary: "That client’s secret. Google’s token endpoint wants it even with PKCE."),
+        .init(
+          name: "YOUTUBE_CHANNEL_ID",
+          isRequired: false,
+          isSecret: false,
+          summary: "Expected channel (UC…, 24 characters). Every call is refused if the signed-in token acts as another channel, which a Brand Account login makes easy to get wrong."),
+        .init(
+          name: "YOUTUBE_TOKEN_FILE",
+          isRequired: false,
+          isSecret: false,
+          summary: "Where the refresh token is stored. Per-profile, or two profiles share one channel login."),
+        .init(
+          name: "YOUTUBE_CONFIG",
+          isRequired: false,
+          isSecret: false,
+          summary: "Config file path. Bastion points this at the profile’s own directory."),
+        .init(
+          name: "YOUTUBE_ALLOW_WRITES",
+          isRequired: false,
+          isSecret: false,
+          summary: "Registers the write tools: upload_video, update_video, set_thumbnail, delete_video, create_playlist, add_to_playlist, and non-GET methods on youtube_request. Uploads default to private. Signing in with it on asks Google for the youtube scope instead of youtube.readonly."),
+      ]),
+    // REMOTE. Hugging Face operates this one, from the source at
+    // github.com/huggingface/hf-mcp-server (0.4.34 when measured, 2026-11-13).
+    //
+    // DIALECT MEASURED 2025-11-25, by asking for 2026-07-28 and reading the
+    // answer. The endpoint issues an Mcp-Session-Id and refuses tools/list
+    // without it.
+    //
+    // BOTH SIGN-INS MEASURED UP TO THE CONSENT PAGE. The protected-resource
+    // document names https://huggingface.co as the authorization server. Its
+    // metadata lists only client_secret_basic and client_secret_post, and
+    // dynamic registration accepts a public client
+    // (token_endpoint_auth_method: none) all the same, with S256. The metadata
+    // has no scopes_supported, so Bastion sends no scope, and the authorize
+    // endpoint then fills in every scope the client registered with:
+    // read-repos, contribute-repos, jobs and inference-api included. The
+    // consent page is the real boundary, not the write gate. A bad bearer token
+    // gets a 401; nobody has completed either sign-in from here.
+    //
+    // IT ALSO ANSWERS ANONYMOUSLY, rate limited, with four read tools
+    // (hf_whoami, hub_repo_search, hub_repo_details, hf_fs). A mode names a
+    // variable or a sign in, so that path is not reachable through Bastion
+    // without one. Same price Product Hunt pays.
+    //
+    // THE TOOL LIST IS PER ACCOUNT. huggingface.co/settings/mcp is where each
+    // user switches built-in tools on and adds Spaces as tools, so no two
+    // signed-in lists need match. writeTools are the seven built-ins whose
+    // annotations in the source say readOnlyHint: false, read from the
+    // repository and not from a live signed-in tools/list. hf_jobs and the
+    // sandbox tools run compute billed to the account. A Space added as a tool
+    // gets a generated name nobody can list here; the server annotates every
+    // one of those readOnlyHint: false, so Bastion's annotation gate holds
+    // them.
+    BastionServer(
+      id: "huggingface",
+      displayName: "Hugging Face",
+      summary: "Hugging Face's own remote MCP server: search and read models, datasets, Spaces, papers and docs on the Hub, and with writes on, create repos, write files, run Spaces, Jobs and sandboxes.",
+      transport: .remote(endpoint: URL(string: "https://huggingface.co/mcp")!),
+      docsURL: URL(string: "https://huggingface.co/docs/hub/hf-mcp-server"),
+      dialect: .v2025_11_25,
+      writeGate: nil,
+      writeTools: ["create_repo", "dynamic_space", "hf_fs_write", "hf_jobs", "hf_sandbox", "hf_sandbox_exec", "hf_sandbox_fs"],
+      gateBypass: [],
+      authModes: [
+        .init(
+          id: "oauth2",
+          displayName: "Sign in with Hugging Face",
+          kind: .oauth,
+          env: [],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+        .init(
+          id: "token",
+          displayName: "Access token",
+          kind: .env,
+          env: ["HF_TOKEN"],
+          loginTool: nil,
+          statusTool: nil,
+          logoutTool: nil),
+      ],
+      stateEnv: [],
+      callbackEnv: [],
+      env: [
+        .init(
+          name: "HF_TOKEN",
+          isRequired: false,
+          isSecret: true,
+          summary: "Hugging Face access token (hf_…), sent as the bearer token. A read token is enough for search and reading; a fine-grained one keeps it to the repositories you name. The write gate filters what Bastion forwards, it cannot take back a permission the token already grants.",
+          header: .init(name: "Authorization", format: "Bearer {value}")),
+      ]),
   ]
   // </generated:servers>
 

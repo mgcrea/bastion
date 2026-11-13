@@ -538,6 +538,28 @@ export const SERVERS: Server[] = [
     provenance: false,
     dialect: "2025-11-25",
   },
+  {
+    id: "youtube",
+    displayName: "YouTube",
+    summary: "YouTube Data API v3: resumable chunked video uploads run as background jobs, metadata edits that merge instead of overwrite, thumbnails, playlists and the channel’s own videos.",
+    writeGate: "YOUTUBE_ALLOW_WRITES",
+    gatesByName: false,
+    transport: "child",
+    vendor: "mgcrea",
+    provenance: true,
+    dialect: "2025-11-25",
+  },
+  {
+    id: "huggingface",
+    displayName: "Hugging Face",
+    summary: "Hugging Face's own remote MCP server: search and read models, datasets, Spaces, papers and docs on the Hub, and with writes on, create repos, write files, run Spaces, Jobs and sandboxes.",
+    writeGate: null,
+    gatesByName: true,
+    transport: "remote",
+    vendor: null,
+    provenance: false,
+    dialect: "2025-11-25",
+  },
 ];
 // </generated:servers>
 
