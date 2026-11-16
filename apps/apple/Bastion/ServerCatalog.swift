@@ -1220,7 +1220,7 @@ nonisolated enum ServerCatalog {
           name: "UNIFI_ALLOW_WRITES",
           isRequired: false,
           isSecret: false,
-          summary: "Enables the mutating tools: WLANs, port profiles, firewall rules, device adoption."),
+          summary: "Enables restarts, PoE power-cycles, guest access, vouchers, client blocks and raw API writes."),
       ]),
     // REMOTE. This entry used to be a placeholder for @mgcrea/mcp-stripe, a
     // package that was never written and never published. Stripe operates a

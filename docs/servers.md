@@ -437,7 +437,7 @@ questions, one gated for changes - is the shape this is built for.
 | `UNIFI_MAX_PAGES` | — | — | Pagination ceiling. Defaults to 20. |
 | `UNIFI_MAX_RETRIES` | — | — | Retries on a transient failure. Defaults to 3. |
 | `UNIFI_CONFIG` | — | — | Config file path. Bastion points this at the profile's own directory. Per Mac — never synced. |
-| `UNIFI_ALLOW_WRITES` | — | — | Enables the mutating tools: WLANs, port profiles, firewall rules, device adoption. |
+| `UNIFI_ALLOW_WRITES` | — | — | Enables restarts, PoE power-cycles, guest access, vouchers, client blocks and raw API writes. |
 
 Satisfy exactly one of: **Console API key** (`UNIFI_HOST` + `UNIFI_API_KEY`), **Cloud API key** (`UNIFI_API_KEY` + `UNIFI_CONSOLE_ID`), **Local admin account** (`UNIFI_HOST` + `UNIFI_USERNAME` + `UNIFI_PASSWORD`)
 

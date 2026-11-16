@@ -865,7 +865,7 @@
           "name": "UNIFI_ALLOW_WRITES",
           "required": false,
           "secret": false,
-          "description": "Enables the mutating tools: WLANs, port profiles, firewall rules, device adoption."
+          "description": "Enables restarts, PoE power-cycles, guest access, vouchers, client blocks and raw API writes."
         }
       ],
       "notes": [
