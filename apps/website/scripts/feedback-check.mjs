@@ -30,6 +30,13 @@
  *    eight sibling sites have their own layouts and have not been fixed, so the
  *    assertion travels with the template.
  *
+ * And one that fails before anyone can send at all:
+ *
+ * 6. **The slug is this site's own subdomain.** Since contract 0.4.0 the Worker
+ *    accepts `app` only when it equals the posting page's subdomain, and answers
+ *    403 otherwise — so a slug that disagrees with `SITE_URL` renders a form
+ *    whose every submission fails. It is checked here, where the fix is one line.
+ *
  * Run after `astro build`. Reads `dist/` only — it never starts a server, so it
  * is safe in CI and says which assertion broke rather than "the page is wrong".
  */
@@ -37,9 +44,9 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { PARAM } from "@mgcrea/feedback-contract";
+import { appSlugFromOrigin, PARAM } from "@mgcrea/feedback-contract";
 
-import { FEEDBACK_API } from "../src/config.ts";
+import { APP_SLUG, FEEDBACK_API, SITE_URL } from "../src/config.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const page = join(root, "dist", "feedback", "index.html");
@@ -88,6 +95,17 @@ if (!html.includes('name="website"')) failures.push('the "website" honeypot is m
 
 for (const [key, param] of Object.entries(PARAM)) {
   if (!param) failures.push(`contract PARAM.${key} is empty`);
+}
+
+// 6. The slug the form posts as `app` must be the one the Worker will accept
+// from this site: its own subdomain.
+const allowed = appSlugFromOrigin(SITE_URL);
+if (allowed !== APP_SLUG) {
+  failures.push(
+    `APP_SLUG "${APP_SLUG}" is not this site's subdomain (${SITE_URL} allows "${allowed}").\n` +
+      `    The Worker only accepts the posting site's own slug, so every submission would be 403.\n` +
+      `    fix: make APP_SLUG match SITE_URL, and SupportApp(slug:) in the app`,
+  );
 }
 
 // The promise, enforced.
@@ -174,7 +192,7 @@ if (failures.length) {
   process.exit(1);
 }
 console.log(
-  `feedback:check ok — ${bodyFields.length} fields, honeypot, editable diagnostics, ` +
+  `feedback:check ok — slug "${APP_SLUG}", ${bodyFields.length} fields, honeypot, editable diagnostics, ` +
     `${csp ? `${FEEDBACK_API} in connect-src` : "no CSP on this site"}, ` +
     `linked from ${linkers.length} page(s)`,
 );

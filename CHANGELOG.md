@@ -4,8 +4,62 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.38.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.39.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
+
+## [1.39.0] - 2026-11-18
+
+**Four more servers, and November's Node fixes.** YouTube, Hugging Face, Google Search Console
+and Bing Webmaster Tools join the catalog, and the Node runtime every downloaded server runs on
+takes Node's November security release.
+
+### Added
+
+- **YouTube is in the catalog.** Its profiles sign in with Google, and the channel chosen at
+  consent is the one every call acts as. Uploads run as resumable background jobs and default to
+  private, and metadata edits merge rather than overwrite. With writes off, uploading, editing,
+  deleting, thumbnails and playlist changes are hidden, and the sign-in asks Google for read-only
+  access.
+- **Hugging Face is in the catalog**, as Hugging Face's own remote server. Its profiles sign in
+  with Hugging Face or take an access token, and search and read models, datasets, Spaces, papers
+  and docs on the Hub. With writes off, the seven tools that create repos, write files, or run
+  Spaces, Jobs and sandboxes (the last two billed to the account) are hidden. Which tools it lists
+  is set per account at huggingface.co/settings/mcp.
+- **Google Search Console is in the catalog.** Its profiles sign in with Google, and read clicks,
+  impressions, CTR and position by query, page, country or date, URL Inspection and sitemaps for
+  the properties that account can see. With writes off, submitting and deleting sitemaps is hidden,
+  and the sign-in asks for read-only access; turning writes on later needs a fresh sign-in.
+- **Bing Webmaster Tools is in the catalog.** A profile is your Bing Webmaster API key, which
+  reaches every site you have verified there. With writes off, URL and sitemap submission, sitemap
+  removal and fetch are hidden. URL submission spends the site's daily quota.
+
+### Changed
+
+- **Updates come through Sparkle 2.10.1**, up from 2.9.6. A download whose server sends no size
+  now shows its progress instead of an indeterminate bar, and when Bastion sits in a folder whose
+  name has accented characters, an update no longer installs before the app has quit.
+
+### Fixed
+
+- **UniFi Network's write switch says what it turns on**: device restarts, PoE power-cycles,
+  guest access, vouchers, client blocks and raw requests. It used to list WLANs, port profiles,
+  firewall rules and device adoption, which the server has no dedicated tools for.
+
+### Security
+
+- **The embedded Node runtime is 24.22.3**, up from 24.22.1, for Node's November 2026 security
+  release: a TLS server crash reachable from the network, several http2 stream and memory bugs, and
+  TLS session resumption or renegotiation changing the server name, with undici, llhttp, brotli and
+  SQLite updated. Every server Bastion downloads runs on this runtime, holding its profile's
+  credentials. npm stays at 11.19.1.
+
+### Internal
+
+- swift-support-kit moves to 1.27.0 and swift-mcp-kit to 1.7.0.
+- The website takes `@mgcrea/feedback-contract` 0.4.0, and `feedback:check` fails the build when
+  `APP_SLUG` is not the site's own subdomain, which the feedback Worker now requires.
+- `make catalog-check` reads a write gate parsed as `parseBool("GATE", env.GATE, ...)` as a
+  boolean.
 
 ## [1.38.0] - 2026-11-10
 

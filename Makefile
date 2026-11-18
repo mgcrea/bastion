@@ -23,8 +23,10 @@ TEAM_ID := 75QE9PRT3V
 # versions available` — a sentence that reads as if the package does not exist.
 # 24.20.0 is the first v24 carrying npm 11.19.0, which honours it. 24.22.1 is
 # the October 2026 security release (Brotli RCE, TLS hostname-check bypasses,
-# undici and the CA bundle) and carries npm 11.19.1, so the floor still holds.
-NODE_VERSION ?= 24.22.1
+# undici and the CA bundle); 24.22.3 is the November one (TLS server crash, http2
+# stream and memory bugs, SNI changing on resumption) and carries the same npm
+# 11.19.1, so the floor still holds.
+NODE_VERSION ?= 24.22.3
 # arm64 ONLY, and this is not a size optimisation dressed up as one. The app
 # itself has no x86_64 slice — a Release build of Bastion and bastion-bridge is
 # arm64, measured, so an Intel Mac cannot launch the process that would spawn
@@ -54,8 +56,8 @@ STAGED       := apps/apple/.build/staged
 # into a process holding every credential the user owns, and `sign` asserts the
 # team that signed it, so a version that drifted under that allowance would be
 # trusted for something nobody measured.
-SPARKLE_VERSION   ?= 2.9.6
-SPARKLE_SHA256    := 8d5fb41d960b43f4a68aa14126bf62b098544ec8d191cdcc73eb14e63a8e7606
+SPARKLE_VERSION   ?= 2.10.1
+SPARKLE_SHA256    := 4c2e48a3e50ebcc2c88a58a4c7264a1a99c3c31857ce754357afb9cdb323022a
 SPARKLE_VENDOR    := apps/apple/Vendor
 SPARKLE_FRAMEWORK := $(SPARKLE_VENDOR)/Sparkle.framework
 SPARKLE_TOOLS     := apps/apple/.build/sparkle-cache/bin
@@ -216,7 +218,7 @@ $(SPARKLE_STAMP):
 # rather than going unpinned.
 NODE_SUMS := apps/apple/.build/node-cache/SHASUMS256-v$(NODE_VERSION).txt
 NODE_PINS ?= \
-	24.22.1-arm64:89c682593d76cd44233fa53b1563264e7de9cbb189cad169135c5b4fadfbc0a7
+	24.22.3-arm64:ff6e17d4874b76d272212b908cc020d6e815fba5a6c7eaaa06add725840307fd
 
 node: ## Download, verify and stage the embedded node runtime and npm
 	@mkdir -p $(STAGED) apps/apple/.build/node-cache

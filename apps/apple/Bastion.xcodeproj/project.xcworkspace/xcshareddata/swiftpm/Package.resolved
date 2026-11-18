@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mgcrea/swift-mcp-kit.git",
       "state" : {
-        "revision" : "774f1eddc0c75873fb2dc75b3d98903d2dbca55c",
-        "version" : "1.2.0"
+        "revision" : "d2440da40f2cc5fb88e50be05cfb93db09074bbe",
+        "version" : "1.7.0"
       }
     },
     {
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mgcrea/swift-support-kit.git",
       "state" : {
-        "revision" : "d3d1e1c01417efd66c3bcf92b316ae3637e607ee",
-        "version" : "1.20.1"
+        "revision" : "d26dc3b7753b13a3ec0d224ce5609253b18b12ba",
+        "version" : "1.27.0"
       }
     }
   ],

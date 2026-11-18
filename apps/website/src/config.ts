@@ -42,9 +42,11 @@ export const ISSUES_URL = `${REPO_URL}/issues`;
 /**
  * This project's slug in the shared feedback contract.
  *
- * Must be one of `APP_SLUGS` in `@mgcrea/feedback-contract`, and must match
- * `Support.app.slug` in apps/apple/Bastion/Support.swift. The Worker answers any
- * other value with a 400, so a typo here is a form that fails on every submit.
+ * Must be this site's own subdomain (`SITE_DOMAIN`), and must match
+ * `Support.app.slug` in apps/apple/Bastion/Support.swift. Since contract 0.4.0
+ * the Worker accepts only the posting page's subdomain and answers anything
+ * else with a 403, so a typo here is a form that fails on every submit;
+ * `feedback:check` catches it at build time.
  */
 export const APP_SLUG = "bastion";
 
@@ -335,7 +337,7 @@ export const TRIAL = {
  * before it. CI holds it to the pbxproj's MARKETING_VERSION, and
  * `src/data/changelog.ts` to a released section of CHANGELOG.md.
  */
-export const APP_VERSION = "1.38.0";
+export const APP_VERSION = "1.39.0";
 
 /**
  * The MCP clients Bastion can wire in one click.
