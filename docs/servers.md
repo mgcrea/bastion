@@ -74,7 +74,7 @@ sets no variable in it: a system command takes no credentials, and its write
 gate is a filter over tool names.
 
 Bastion curates lightly, and only to fill the first screen. The catalog seeds
-forty-five entries — nineteen servers written here, twelve somebody else
+forty-seven entries — twenty-one servers written here, twelve somebody else
 publishes, thirteen endpoints their own vendors operate, and one command that
 ships with a developer tool on the Mac — because a catalog
 that opens with nothing recognisable in it teaches nobody what the app is for.
@@ -168,7 +168,7 @@ declares its protocol version, identity and capabilities in each request's
 shared server instance correct rather than a hack, and it is why Bastion fronts
 clients with it.
 
-None of the catalog entries below are modern. The nineteen children written here
+None of the catalog entries below are modern. The twenty-one children written here
 run an SDK whose newest protocol is `2025-11-25`, and `server/discover` against
 one returns `-32601` — the exact signal the spec names for recognising a legacy
 server. The twelve third-party children were measured at the same revision, and
@@ -259,6 +259,8 @@ asserts both eras against a running build.
 | [Product Hunt](https://www.producthunt.com/mcp/install) | `producthunt` | — | `https://mcp.producthunt.com/mcp` (remote) | `prepare_launch_asset`, `start_launch`, `submit_feedback`, `submit_launch`, `update_launch` (by name) | — |
 | [YouTube](https://github.com/mgcrea/mcp-youtube) | `youtube` | `youtube-mcp` | `@mgcrea/mcp-youtube` (npm, provenance) | `YOUTUBE_ALLOW_WRITES` | 1 |
 | [Hugging Face](https://huggingface.co/docs/hub/hf-mcp-server) | `huggingface` | — | `https://huggingface.co/mcp` (remote) | `create_repo`, `dynamic_space`, `hf_fs_write`, `hf_jobs`, `hf_sandbox`, `hf_sandbox_exec`, `hf_sandbox_fs` (by name) | 1 |
+| [Google Search Console](https://github.com/mgcrea/mcp-google-search-console) | `google-search-console` | `google-search-console-mcp` | `@mgcrea/mcp-google-search-console` (npm, provenance) | `GSC_ALLOW_WRITES` | 1 |
+| [Bing Webmaster Tools](https://github.com/mgcrea/mcp-bing-webmaster) | `bing-webmaster` | `bing-webmaster-mcp` | `@mgcrea/mcp-bing-webmaster` (npm, provenance) | `BING_WEBMASTER_ALLOW_WRITES` | 1 |
 
 ### App Store Connect
 
@@ -1624,4 +1626,80 @@ them.
 Hidden with writes off: `create_repo`, `dynamic_space`, `hf_fs_write`, `hf_jobs`, `hf_sandbox`, `hf_sandbox_exec`, `hf_sandbox_fs` — and any tool the server annotates as not read-only. This filters what Bastion forwards; it does not bind the server, so the credential's own scopes remain the real boundary.
 
 Satisfy exactly one of: **Sign in with Hugging Face** (no variables — Bastion holds the token), **Access token** (`HF_TOKEN`)
+
+### Google Search Console
+
+Google Search Console: clicks, impressions, CTR and position by query, page, country or date, period-over-period comparisons, URL Inspection and sitemaps, for the properties the signed-in account can see.
+
+The server signs itself in, the way YouTube does. A Google Desktop app
+client accepts any 127.0.0.1 port without a registered redirect URI, so
+the callback port is ephemeral and there is no callbackEnv: two profiles
+cannot collide on it. The refresh token lives in the profile’s own XDG
+config directory.
+
+The Google account that signs in decides which properties exist, so it
+must have access to the property in Search Console itself (Settings →
+Users and permissions). The login asks for openid and email beside the
+API scope only so gsc_auth_status, the startup line and every response
+can name the account. There is no expected-account variable: every data
+tool takes an explicit site, and the wrong account fails with “no
+property matches” and the list it can see, rather than answering for
+another tenant.
+
+A consent screen left in Testing makes Google expire refresh tokens after
+seven days, which surfaces as invalid_grant and a request to sign in again.
+Publishing the app (unverified is fine for your own account) avoids it.
+
+A login made with writes off holds webmasters.readonly only. Turning
+writes on afterwards leaves it short of the webmasters scope;
+gsc_auth_status reports the missing scope, and signing in again fixes it.
+
+URL Inspection spends a quota of 2,000 inspections a day per property.
+gsc_inspect_urls reports quota_used and stops at the first quota error.
+
+GSC_REFRESH_TOKEN, for a container with no writable disk, is left out:
+under Bastion the server keeps its own token file.
+
+| Variable | Required | Secret | Meaning |
+| --- | --- | --- | --- |
+| `GSC_CLIENT_ID` | yes | — | OAuth client id (….apps.googleusercontent.com) of a Desktop app client in your own Google Cloud project, with the Google Search Console API enabled. No redirect URI to register. |
+| `GSC_CLIENT_SECRET` | yes | yes | That client’s secret. Google’s token endpoint wants it even with PKCE. |
+| `GSC_TOKEN_FILE` | — | — | Where the refresh token is stored. Per-profile, or two profiles share one Google login. Per Mac — never synced. |
+| `GSC_CONFIG` | — | — | Config file path. Bastion points this at the profile’s own directory. Per Mac — never synced. |
+| `GSC_ALLOW_WRITES` | — | — | Registers the write tools: submit_sitemap and delete_sitemap (which also takes confirm: true), and POST, PUT and DELETE on gsc_request, where adding or removing a property stays refused. Signing in with it on asks Google for the webmasters scope instead of webmasters.readonly. |
+
+Satisfy exactly one of: **Sign in with Google** (no variables — the server holds its own token)
+
+Per-profile state: `GSC_CONFIG`, `GSC_TOKEN_FILE`
+
+### Bing Webmaster Tools
+
+Bing Webmaster Tools: traffic, top queries and pages over a date window the API itself lacks, crawl issues, URL info, sitemaps, inbound links and keyword research, and with writes on, URL submission.
+
+One API key per user, not per site: it reaches every site that user has
+verified in Bing Webmaster Tools and can do anything the user can there.
+Every tool takes an explicit site and refuses one the key cannot see,
+listing the ones it can. Regenerating the key breaks every other app
+using it, so reuse the existing one.
+
+No auth modes and no stateEnv: configuration is environment only and the
+server persists nothing, so a profile is the key and the write gate.
+
+Bing puts the key in the request URL. The server never logs or returns a
+request URL, and masks the key in upstream text that echoes it.
+BING_WEBMASTER_API_URL, a proxy override that would receive the key, is
+left out.
+
+URL submission spends a per-site quota, daily and monthly, that Bing sizes
+by the site’s age and standing. bing_webmaster_get_url_submission_quota
+shows what is left. A submission is never retried automatically, so after
+a timeout check before resubmitting: it may already have spent quota.
+
+The AI Performance report (Copilot citations) has no API, so no tool
+reads it. It exists only as a CSV export from the dashboard.
+
+| Variable | Required | Secret | Meaning |
+| --- | --- | --- | --- |
+| `BING_WEBMASTER_API_KEY` | yes | yes | The user’s API key, from Settings → API Access at bing.com/webmasters. One key per user, reaching every site that user has verified; regenerating it breaks every other app that uses it. |
+| `BING_WEBMASTER_ALLOW_WRITES` | — | — | Registers the write tools: submit_urls, submit_sitemap, remove_sitemap and fetch_url, and lets bing_webmaster_request call any non-Get method, AddSite, RemoveSite and crawl settings included. remove_sitemap and a non-Get request also take confirm: true, and submit_urls spends the site’s daily quota. |
 <!-- </generated:servers> -->

@@ -560,6 +560,28 @@ export const SERVERS: Server[] = [
     provenance: false,
     dialect: "2025-11-25",
   },
+  {
+    id: "google-search-console",
+    displayName: "Google Search Console",
+    summary: "Google Search Console: clicks, impressions, CTR and position by query, page, country or date, period-over-period comparisons, URL Inspection and sitemaps, for the properties the signed-in account can see.",
+    writeGate: "GSC_ALLOW_WRITES",
+    gatesByName: false,
+    transport: "child",
+    vendor: "mgcrea",
+    provenance: true,
+    dialect: "2025-11-25",
+  },
+  {
+    id: "bing-webmaster",
+    displayName: "Bing Webmaster Tools",
+    summary: "Bing Webmaster Tools: traffic, top queries and pages over a date window the API itself lacks, crawl issues, URL info, sitemaps, inbound links and keyword research, and with writes on, URL submission.",
+    writeGate: "BING_WEBMASTER_ALLOW_WRITES",
+    gatesByName: false,
+    transport: "child",
+    vendor: "mgcrea",
+    provenance: true,
+    dialect: "2025-11-25",
+  },
 ];
 // </generated:servers>
 

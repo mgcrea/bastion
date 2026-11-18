@@ -300,9 +300,16 @@ const AMBIENT = new Set([
 const UNDETERMINABLE = "could not be determined from the server's source";
 
 /**
- * Whether `gate` is read AS A BOOLEAN, in either of the two shapes our servers
- * write it in: `parseBool(env.GATE)` directly, or `bool("GATE")` through a
- * helper proven above to index `env` and to call `parseBool`.
+ * Whether `gate` is read AS A BOOLEAN, in any of the three shapes our servers
+ * write it in: `parseBool(env.GATE)` directly, `parseBool("GATE", env.GATE,
+ * issues)` with the name passed along so a bad value can be reported, or
+ * `bool("GATE")` through a helper proven above to index `env` and to call
+ * `parseBool`.
+ *
+ * The named form only counts when the name and the read agree, so a
+ * copy-pasted `parseBool("A_ALLOW_WRITES", env.B_ALLOW_WRITES, …)` is not
+ * taken as a read of A. mcp-prometheus and mcp-google-search-console write it
+ * this way, and both failed here as "read, but not as a boolean".
  *
  * The distinction matters and is not pedantry: Bastion writes "1" and "0", and
  * a parser that is not `parseBool` may well read "0" as on — which turns the
@@ -310,6 +317,9 @@ const UNDETERMINABLE = "could not be determined from the server's source";
  */
 const readsAsBool = (config, gate, boolHelpers) => {
   if (new RegExp(`parseBool\\(env\\.${gate}\\)`).test(config)) return true;
+  if (new RegExp(`parseBool\\(\\s*["'\`]${gate}["'\`]\\s*,\\s*env\\.${gate}\\b`).test(config)) {
+    return true;
+  }
   if (!boolHelpers.length) return false;
   return new RegExp(`\\b(?:${boolHelpers.join("|")})\\(\\s*["'\`]${gate}["'\`]\\s*\\)`).test(
     config,

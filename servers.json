@@ -3669,6 +3669,157 @@
         "one of those readOnlyHint: false, so Bastion's annotation gate holds",
         "them."
       ]
+    },
+    {
+      "id": "google-search-console",
+      "displayName": "Google Search Console",
+      "summary": "Google Search Console: clicks, impressions, CTR and position by query, page, country or date, period-over-period comparisons, URL Inspection and sitemaps, for the properties the signed-in account can see.",
+      "transport": {
+        "kind": "child",
+        "npmName": "@mgcrea/mcp-google-search-console",
+        "binName": "google-search-console-mcp",
+        "distribution": "npm",
+        "localPath": "mcp-google-search-console",
+        "vendor": "mgcrea",
+        "provenance": true
+      },
+      "docsUrl": "https://github.com/mgcrea/mcp-google-search-console",
+      "dialect": "2025-11-25",
+      "writeGate": "GSC_ALLOW_WRITES",
+      "gateBypass": [],
+      "authModes": [
+        {
+          "id": "oauth2",
+          "displayName": "Sign in with Google",
+          "kind": "childOAuth",
+          "loginTool": "gsc_auth_login",
+          "statusTool": "gsc_auth_status",
+          "logoutTool": "gsc_auth_logout",
+          "env": []
+        }
+      ],
+      "stateEnv": ["GSC_CONFIG", "GSC_TOKEN_FILE"],
+      "callbackEnv": [],
+      "env": [
+        {
+          "name": "GSC_CLIENT_ID",
+          "required": true,
+          "secret": false,
+          "description": "OAuth client id (….apps.googleusercontent.com) of a Desktop app client in your own Google Cloud project, with the Google Search Console API enabled. No redirect URI to register."
+        },
+        {
+          "name": "GSC_CLIENT_SECRET",
+          "required": true,
+          "secret": true,
+          "description": "That client’s secret. Google’s token endpoint wants it even with PKCE."
+        },
+        {
+          "name": "GSC_TOKEN_FILE",
+          "required": false,
+          "secret": false,
+          "description": "Where the refresh token is stored. Per-profile, or two profiles share one Google login."
+        },
+        {
+          "name": "GSC_CONFIG",
+          "required": false,
+          "secret": false,
+          "description": "Config file path. Bastion points this at the profile’s own directory."
+        },
+        {
+          "name": "GSC_ALLOW_WRITES",
+          "required": false,
+          "secret": false,
+          "description": "Registers the write tools: submit_sitemap and delete_sitemap (which also takes confirm: true), and POST, PUT and DELETE on gsc_request, where adding or removing a property stays refused. Signing in with it on asks Google for the webmasters scope instead of webmasters.readonly."
+        }
+      ],
+      "notes": [
+        "The server signs itself in, the way YouTube does. A Google Desktop app",
+        "client accepts any 127.0.0.1 port without a registered redirect URI, so",
+        "the callback port is ephemeral and there is no callbackEnv: two profiles",
+        "cannot collide on it. The refresh token lives in the profile’s own XDG",
+        "config directory.",
+        "",
+        "The Google account that signs in decides which properties exist, so it",
+        "must have access to the property in Search Console itself (Settings →",
+        "Users and permissions). The login asks for openid and email beside the",
+        "API scope only so gsc_auth_status, the startup line and every response",
+        "can name the account. There is no expected-account variable: every data",
+        "tool takes an explicit site, and the wrong account fails with “no",
+        "property matches” and the list it can see, rather than answering for",
+        "another tenant.",
+        "",
+        "A consent screen left in Testing makes Google expire refresh tokens after",
+        "seven days, which surfaces as invalid_grant and a request to sign in again.",
+        "Publishing the app (unverified is fine for your own account) avoids it.",
+        "",
+        "A login made with writes off holds webmasters.readonly only. Turning",
+        "writes on afterwards leaves it short of the webmasters scope;",
+        "gsc_auth_status reports the missing scope, and signing in again fixes it.",
+        "",
+        "URL Inspection spends a quota of 2,000 inspections a day per property.",
+        "gsc_inspect_urls reports quota_used and stops at the first quota error.",
+        "",
+        "GSC_REFRESH_TOKEN, for a container with no writable disk, is left out:",
+        "under Bastion the server keeps its own token file."
+      ]
+    },
+    {
+      "id": "bing-webmaster",
+      "displayName": "Bing Webmaster Tools",
+      "summary": "Bing Webmaster Tools: traffic, top queries and pages over a date window the API itself lacks, crawl issues, URL info, sitemaps, inbound links and keyword research, and with writes on, URL submission.",
+      "transport": {
+        "kind": "child",
+        "npmName": "@mgcrea/mcp-bing-webmaster",
+        "binName": "bing-webmaster-mcp",
+        "distribution": "npm",
+        "localPath": "mcp-bing-webmaster",
+        "vendor": "mgcrea",
+        "provenance": true
+      },
+      "docsUrl": "https://github.com/mgcrea/mcp-bing-webmaster",
+      "dialect": "2025-11-25",
+      "writeGate": "BING_WEBMASTER_ALLOW_WRITES",
+      "gateBypass": [],
+      "authModes": [],
+      "stateEnv": [],
+      "callbackEnv": [],
+      "env": [
+        {
+          "name": "BING_WEBMASTER_API_KEY",
+          "required": true,
+          "secret": true,
+          "description": "The user’s API key, from Settings → API Access at bing.com/webmasters. One key per user, reaching every site that user has verified; regenerating it breaks every other app that uses it."
+        },
+        {
+          "name": "BING_WEBMASTER_ALLOW_WRITES",
+          "required": false,
+          "secret": false,
+          "description": "Registers the write tools: submit_urls, submit_sitemap, remove_sitemap and fetch_url, and lets bing_webmaster_request call any non-Get method, AddSite, RemoveSite and crawl settings included. remove_sitemap and a non-Get request also take confirm: true, and submit_urls spends the site’s daily quota."
+        }
+      ],
+      "notes": [
+        "One API key per user, not per site: it reaches every site that user has",
+        "verified in Bing Webmaster Tools and can do anything the user can there.",
+        "Every tool takes an explicit site and refuses one the key cannot see,",
+        "listing the ones it can. Regenerating the key breaks every other app",
+        "using it, so reuse the existing one.",
+        "",
+        "No auth modes and no stateEnv: configuration is environment only and the",
+        "server persists nothing, so a profile is the key and the write gate.",
+        "",
+        "Bing puts the key in the request URL. The server never logs or returns a",
+        "request URL, and masks the key in upstream text that echoes it.",
+        "BING_WEBMASTER_API_URL, a proxy override that would receive the key, is",
+        "left out.",
+        "",
+        "URL submission spends a per-site quota, daily and monthly, that Bing sizes",
+        "by the site’s age and standing. bing_webmaster_get_url_submission_quota",
+        "shows what is left. A submission is never retried automatically, so after",
+        "a timeout check before resubmitting: it may already have spent quota.",
+        "",
+        "The AI Performance report (Copilot citations) has no API, so no tool",
+        "reads it. It exists only as a CSV export from the dashboard."
+      ]
     }
   ]
 }

@@ -105,8 +105,8 @@ the id resolves against the list the _user_ installed, or it 404s. Nothing arriv
 can name a package, a path or an argv, and a custom entry supplies a package and a bin name rather
 than a command line.
 
-Bastion curates lightly, and only to fill the first screen. The catalog seeds forty-five entries —
-nineteen servers written here, twelve somebody else publishes, thirteen endpoints their own vendors
+Bastion curates lightly, and only to fill the first screen. The catalog seeds forty-seven entries —
+twenty-one servers written here, twelve somebody else publishes, thirteen endpoints their own vendors
 operate, and one command that ships with a developer tool on the Mac — because a catalog that opens with nothing recognisable in it teaches nobody what the app
 is for. The middle group is named rather than folded into the first: Bastion installs those from
 npm and runs them on your machine with a profile's credentials in their environment, and what it
