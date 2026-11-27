@@ -350,7 +350,7 @@ export const APP_VERSION = "1.39.0";
  *
  * Codex is one entry and three surfaces — ChatGPT, the Codex CLI and the IDE
  * extension share a single TOML config, which is why it is spliced rather than
- * re-serialised like the JSON six.
+ * re-serialised like the JSON seven.
  */
 export const CLIENTS = [
   { name: "Claude Code", config: "~/.claude.json" },
@@ -360,6 +360,7 @@ export const CLIENTS = [
   { name: "LM Studio", config: "~/.lmstudio/mcp.json", viaBridge: true },
   { name: "Windsurf", config: "windsurf/mcp_config.json", viaBridge: true },
   { name: "ChatGPT & Codex", config: "~/.codex/config.toml" },
+  { name: "Antigravity CLI", config: "~/.gemini/config/mcp_config.json" },
 ] as const;
 
 /** macOS 26 or later: the icon is an Icon Composer bundle, which nothing older renders. */

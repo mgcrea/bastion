@@ -1,17 +1,17 @@
 # Clients
 
 `docs/servers.md` describes what Bastion runs and `docs/remote-servers.md` the
-transport under the remote half of it. This describes the other end: the seven
+transport under the remote half of it. This describes the other end: the eight
 MCP clients Bastion knows how to configure, why they do not all get the same
 entry, and what the client pane can and cannot tell you about a file it does not
 own.
 
-Seven **clients**, which is not quite seven rows. Claude Code reads
+Eight **clients**, which is not quite eight rows. Claude Code reads
 `CLAUDE_CONFIG_DIR`, so one Mac can run several of its profiles side by side and
 each gets a row of its own — see [Claude Code's config
 directories](#claude-codes-config-directories).
 
-## The seven clients
+## The eight clients
 
 | Client          | Config                                                            | Root key      | Format | Transport  |
 | --------------- | ----------------------------------------------------------------- | ------------- | ------ | ---------- |
@@ -22,6 +22,7 @@ directories](#claude-codes-config-directories).
 | LM Studio       | `~/.lmstudio/mcp.json`                                            | `mcpServers`  | JSON   | **bridge** |
 | Windsurf        | `~/.codeium/windsurf/mcp_config.json`                             | `mcpServers`  | JSON   | **bridge** |
 | ChatGPT & Codex | `~/.codex/config.toml`                                            | `mcp_servers` | TOML   | HTTP       |
+| Antigravity CLI | `~/.gemini/config/mcp_config.json`                                | `mcpServers`  | JSON   | HTTP       |
 
 Three disagreements shape the whole design, and none is Bastion's to fix.
 Clients disagree about **where servers live** in the file — `mcpServers` here,
@@ -66,6 +67,26 @@ HTTP entry a client silently ignores is a client that does not work, with nothin
 on either side saying why. Either row moves to `.http` the moment somebody
 watches a header carry a token into it.
 
+Antigravity CLI (`agy`) is the case where somebody did, before the row
+existed. Its own `agy mcp add` writes a remote server the Windsurf way, a
+`serverUrl` and `headers` with no `type`, but it reads `type`/`url`/`headers`
+too: against agy 1.5.18, a probe server on loopback saw
+`Authorization: Bearer …` on `server/discover`, `initialize` and `tools/list`
+from an entry of either shape. So it gets `.http`. Its own edits keep the entry
+as written: `agy mcp disable` adds `disabled: true` beside Bastion's keys, which
+a rewire then leaves alone. Two things it does that the other rows do not:
+
+- **It rewrites the file `0644`.** Any `agy mcp add`, `enable` or `disable`
+  replaces the `0600` file Bastion wrote with a world-readable one, token
+  included, and nothing puts it back until Bastion next writes it.
+- **The row is the CLI only.** The Antigravity IDE is a separate application,
+  and nothing has yet shown it reading `~/.gemini/config/mcp_config.json`, so
+  the row has no bundle id and draws the terminal glyph.
+
+Skills are a separate question. agy reads a repository's `.agents/skills`,
+which Bastion already links, and a global `~/.gemini/config/skills`, which it
+does not.
+
 ## Claude Code's config directories
 
 Every other client here is one application reading one file, and the table above
@@ -91,7 +112,7 @@ directory earns a row only if it already holds a `.claude.json`; a directory
 named by hand in Settings earns one either way, because somebody asked for it.
 `~/.claude` offered explicitly is dropped rather than duplicated: two rows over
 one file would mean two gateway tokens overwriting each other in it, which is the
-same trap [the ChatGPT & Codex row](#the-seven-clients) exists to avoid.
+same trap [the ChatGPT & Codex row](#the-eight-clients) exists to avoid.
 
 Each row is a full client. Its id is `claude-code@<name>`, it gets **its own
 gateway token**, its own entry in the audit log, and its own Configure button.

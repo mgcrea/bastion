@@ -17,7 +17,7 @@ import Foundation
 
 /// How a client id spells "the same client, a different config file".
 ///
-/// General rather than Claude's: nothing here knows what a Claude is. The seven
+/// General rather than Claude's: nothing here knows what a Claude is. The eight
 /// ids that exist today carry no separator, so `family(of:)` is the identity
 /// function on every one of them and this type changes nothing until a profile
 /// row appears.

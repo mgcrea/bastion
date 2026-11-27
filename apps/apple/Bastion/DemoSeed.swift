@@ -759,8 +759,12 @@ enum DemoSeed {
 
   // MARK: - Clients
 
-  /// The same seven clients the real list holds, rooted somewhere that is
-  /// nobody's home directory.
+  /// Seven of the real list's clients, rooted somewhere that is nobody's home
+  /// directory.
+  ///
+  /// Antigravity CLI is the one left out, deliberately: a client row costs the
+  /// sidebar 32pt (see `contentSize`) and moves every main-window golden, so it
+  /// joins the fixture when the plates are next recomposed, not with the row.
   ///
   /// `/Users/you` is the whole trick. `ClientDetail.fileCard` prints
   /// `configURL.path` verbatim and `abbreviate` shortens it with

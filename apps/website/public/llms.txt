@@ -33,11 +33,11 @@ whole app, not a crippled version.
 http://127.0.0.1:8720/s/<profile>/<server>
 ```
 
-Loopback only. Claude Code, VS Code, Cursor and ChatGPT & Codex reach that URL directly. Claude
-Desktop, LM Studio and Windsurf are wired through `bastion-bridge`, a stdio shim that starts Bastion
-on demand. Bastion writes those entries itself, one click per client, carries a revocable bearer
-token in each one rather than a credential, and rewrites every wired client when a profile is added
-or removed. Each extra Claude Code config directory (`~/.claude-<name>`) gets a row and a token of
+Loopback only. Claude Code, VS Code, Cursor, ChatGPT & Codex and Antigravity CLI reach that URL
+directly. Claude Desktop, LM Studio and Windsurf are wired through `bastion-bridge`, a stdio shim
+that starts Bastion on demand. Bastion writes those entries itself, one click per client, carries a
+revocable bearer token in each one rather than a credential, and rewrites every wired client when a
+profile is added or removed. Each extra Claude Code config directory (`~/.claude-<name>`) gets a row and a token of
 its own. A workspace scopes profiles to folders: its profiles are written into Claude Code's
 per-folder project blocks instead of the global list, so a session in one account's repository sees
 only that account's servers. Workspaces are Claude Code only for now.

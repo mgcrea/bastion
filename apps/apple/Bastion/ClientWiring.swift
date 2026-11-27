@@ -93,8 +93,8 @@ enum ClientWiring {
     /// The client this row is a profile of.
     ///
     /// Computed rather than stored, and that is not a shortcut. A stored field
-    /// defaulting to `id` would put a line on all seven literals below plus
-    /// seven in `DemoSeed`, and would let a row exist whose family disagrees
+    /// defaulting to `id` would put a line on every literal below and in
+    /// `DemoSeed`, and would let a row exist whose family disagrees
     /// with its own id — a class of bug with no symptom. Derived from the id,
     /// it cannot drift, and it is the same answer `ToolFacade` reaches from the
     /// gateway's thread, where no `Client` exists to ask.
@@ -310,6 +310,23 @@ enum ClientWiring {
         // the CLI's name, and it is the same row here for the same reason: they
         // read one file. Somebody who has only the CLI gets the terminal glyph.
         bundleID: "com.openai.codex",
+        symbol: "terminal"),
+      Client(
+        id: "antigravity",
+        displayName: "Antigravity CLI",
+        // What `agy mcp add` writes to, measured against agy 1.5.18. Its own
+        // remote shape is `serverUrl` + `headers`, Windsurf's, but it reads
+        // `type`/`url`/`headers` just as well: a probe server saw the bearer
+        // header on `initialize` and `tools/list` from both shapes. So it gets
+        // `.http` and no bridge, and its own edits (`agy mcp disable`) keep the
+        // entry's keys as written.
+        configURL: home.appendingPathComponent(".gemini/config/mcp_config.json"),
+        rootKey: "mcpServers",
+        transport: .http,
+        caveat: nil,
+        // A command with no app bundle. The Antigravity IDE is a separate
+        // application, and nothing yet says it reads this file.
+        bundleID: nil,
         symbol: "terminal"),
     ]
   }

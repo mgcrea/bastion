@@ -2500,6 +2500,7 @@ struct UnitCheck {
     // this type free to add.
     for id in [
       "claude-code", "claude-desktop", "vscode", "cursor", "lm-studio", "windsurf", "codex",
+      "antigravity",
     ] {
       check("'\(id)' is its own family", ClientIdentity.family(of: id) == id)
       check("and has no profile suffix", ClientIdentity.suffix(of: id) == nil)
