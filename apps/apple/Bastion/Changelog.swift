@@ -66,7 +66,25 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_39_0, v1_38_0, v1_37_0, v1_36_1, v1_36_0]
+  static let releases: [Release] = [v1_40_0, v1_39_0, v1_38_0, v1_37_0, v1_36_1]
+
+  // swift-format-ignore
+  private static let v1_40_0: Release = Release(
+    version: "1.40.0",
+    date: "2026-11-27",
+    sections: [
+      Section(
+        name: "Added",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Antigravity CLI is a client.",
+            body: [
+              "Configure writes Bastion's entries into `~/.gemini/config/mcp_config.json`, the file `agy mcp add` writes to, and agy connects to Bastion's URL directly with its own revocable token, the way Claude Code and Codex do. Its own `agy mcp disable` keeps working on those entries. Two things to know: any `agy mcp add`, `enable` or `disable` rewrites the file readable by every user on the Mac, token included, until Bastion next writes it; and the row is the CLI only, since nothing yet shows the Antigravity IDE reading that file.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_39_0: Release = Release(
@@ -215,71 +233,6 @@ nonisolated enum Changelog {
             headline: "A sign-in the server no longer accepts is dropped, and the profile asks to be authorized again.",
             body: [
               "When a server's token endpoint refuses a refresh with `invalid_grant` (Cloudflare says \"Grant not found\", Stripe \"Invalid refresh token\"), the grant behind it is gone and no refresh can succeed. Bastion kept the dead tokens, so the profile went on reading as authorized, every request tried the same refresh again, and clients saw only the provider's wording. Now the tokens are discarded, the profile shows as needing authorization, and the error names it and says to authorize it again in Bastion. A sign-in completed while the refused request was in flight is kept. Any other refusal, such as a server that is briefly down, still leaves the tokens in place for the next try.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_36_0: Release = Release(
-    version: "1.36.0",
-    date: "2026-11-04",
-    sections: [
-      Section(
-        name: "Changed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "A custom server can no longer declare `PATH`, `HOME`, `NODE_*`, `NPM_CONFIG_*`, `DYLD_*` or `XDG_*`.",
-            body: [
-              "Each of them changes what code a server runs: `NODE_OPTIONS` loads code before the server's first line, and a `PATH` puts another `npm` in front of the bundled one. A custom entry could already name only a package or an endpoint, never a command line, and these were the same hole by another door. Saving a definition that lists one, or names one as its write gate, is refused with the variable's name. A custom server saved with one by an earlier version still starts without it, and the log says which it left out. Remote servers are unaffected: their variables are headers. `NODE_EXTRA_CA_CERTS`, for a company certificate authority, is the one most likely to be missed. Catalog servers are unaffected.",
-            ]),
-          Entry(
-            ordinal: 1,
-            headline: "Credentials move to the data protection keychain on first launch.",
-            body: [
-              "Every profile credential, OAuth sign-in, gateway token, the audit signing key and the internal-host list move out of the login keychain, each one copied, read back and only then deleted. macOS may ask once per item. An item that cannot be read yet stays where it is and keeps working, and the next launch tries again. They no longer show in Keychain Access, and going back to 1.35.0 or earlier afterwards finds none, because they were moved, not copied. They also no longer follow Migration Assistant to a new Mac: they belong to this Mac until iCloud sync arrives, and on a new one they are entered again.",
-            ]),
-          Entry(
-            ordinal: 2,
-            headline: "The app carries four entitlements",
-            body: [
-              ", after shipping with none: its identity, its team, its keychain group and its iCloud key-value store, which the data protection keychain and sync need. `make audit` asserts the set is exactly those four, in the file and in the signed app.",
-            ]),
-        ]),
-      Section(
-        name: "Added",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 3,
-            headline: "Sync with iCloud",
-            body: [
-              ", in Settings › General, off by default. Your servers and whether each is on, your profiles and their values, your workspaces and your skill sources and choices follow you to every Mac signed in to the same iCloud account. A value that names a file, a launch argument or a device on one Mac stays on that Mac. A server you added by hand on another Mac arrives waiting, and runs only once you allow it on this one; a catalog server arrives ready. Credentials are not synced yet: enter them on each Mac. A profile removed on one Mac is removed on the others, with its credentials there. If Bastion's data disappears from iCloud, or the iCloud account changes, sync pauses and asks rather than deleting anything.",
-            ]),
-          Entry(
-            ordinal: 4,
-            headline: "Settings › General › Export to the Debug Build",
-            body: [
-              ", for working on Bastion itself. It writes the Debug build's import file with every profile, its credentials and the gateway tokens, after a click; `make dev-clone` can no longer read them from the data protection keychain.",
-            ]),
-          Entry(
-            ordinal: 5,
-            headline: "Variables whose value belongs to one Mac are marked as such",
-            body: [
-              "in the server docs: paths to a key file or a kubeconfig, launch arguments, `NPM_BIN`, and every per-profile state path. It is the list iCloud sync leaves out, so a path set on one Mac never chooses code on another.",
-            ]),
-          Entry(
-            ordinal: 6,
-            headline: "Loki is in the catalog",
-            body: [
-              ": LogQL log and metric queries merged across streams, labels, detected fields, volume, stats and patterns, with results shaped to fit a context window. Read-only: its push, delete and ruler endpoints are not wrapped.",
-            ]),
-          Entry(
-            ordinal: 7,
-            headline: "Apple Ads installs.",
-            body: [
-              "It was listed as not published; its package is now on npm, with a provenance attestation tying it to its source.",
             ]),
         ]),
     ])

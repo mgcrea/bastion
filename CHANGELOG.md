@@ -4,8 +4,28 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.39.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.40.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
+
+## [1.40.0] - 2026-11-27
+
+**Antigravity CLI joins the clients.** Bastion now wires Google's Antigravity CLI with one click,
+the eighth client it configures, and agy reaches your servers over loopback with no bridge.
+
+### Added
+
+- **Antigravity CLI is a client.** Configure writes Bastion's entries into
+  `~/.gemini/config/mcp_config.json`, the file `agy mcp add` writes to, and agy connects to
+  Bastion's URL directly with its own revocable token, the way Claude Code and Codex do. Its own
+  `agy mcp disable` keeps working on those entries. Two things to know: any `agy mcp add`,
+  `enable` or `disable` rewrites the file readable by every user on the Mac, token included, until
+  Bastion next writes it; and the row is the CLI only, since nothing yet shows the Antigravity IDE
+  reading that file.
+
+### Internal
+
+- The website's client list and `llms.txt` name Antigravity CLI, and `docs/clients.md` records
+  what was measured against agy 1.5.18.
 
 ## [1.39.0] - 2026-11-18
 
