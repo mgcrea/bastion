@@ -7,6 +7,17 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.40.1` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Security
+
+- **A client config holding Bastion's token is never readable by another user, even for a
+  moment.** Writing a client's config used to stage the new file at the default mode and set
+  0600 only after swapping it in, and a swap hands the new file the old one's mode: a 0644
+  `mcp.json` held the new token at 0644 from the swap until the chmod after it. The staged file is
+  now created 0600, and an existing config is made 0600 before the swap. From swift-mcp-kit
+  1.11.0, which took this from Cupertino.
+
 ## [1.40.1] - 2026-11-28
 
 **Shared client configuration code.** Bastion now uses the same client catalog and
