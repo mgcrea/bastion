@@ -182,7 +182,7 @@ claude.ai's settings.
 
 **The file is spliced, not serialised.** `settings.json` is hand-edited, so
 `ClientSettingsSplice` finds the two members and replaces only their bytes,
-the way `ClientWiringTOML` treats Codex. A file it cannot round-trip (a
+the way swift-mcp-kit's `WiringTOML` treats Codex. A file it cannot round-trip (a
 comment, a trailing comma, a key set twice) reads as `unreadable`, and nothing
 is written. Foundation accepts a trailing comma; the splice's own lexer does
 not, and its word is the one that counts. A non-empty object comes back byte
@@ -485,7 +485,8 @@ prose, with the MCP servers a small part of it.
 
 So there is no TOML library here, and that is the same objection that keeps VS
 Code on `mcp.json`: **round-tripping somebody's hand-written file through any
-serialiser reformats it and deletes its comments.** `ClientWiringTOML` instead
+serialiser reformats it and deletes its comments.** swift-mcp-kit's `WiringTOML`
+(Bastion's own `ClientWiringTOML` before it moved to the kit, fixes included) instead
 locates the lines that hold MCP servers, replaces those, and quotes every other
 byte of the file verbatim. A wire against the real config produces a `diff` with
 one hunk in it, and that hunk is a pure addition.
@@ -1006,10 +1007,13 @@ unwire is the original file, a hand-written entry is never re-rendered, a refusa
 never writes, and — over every fixture — **a splice can never write a name
 twice**.
 
-`ClientWiringMerge.swift` and `ClientWiringTOML.swift` import nothing but
-Foundation precisely so those two targets can compile them beside
-`scripts/wiring-check.swift` and run the result —
-which is the whole test story for a project with no test target. Everything
+`ClientWiringMerge.swift` imports nothing but Foundation and swift-mcp-kit's
+`MCPKitWiring` (the splice and the file I/O) precisely so those targets can
+compile it beside `scripts/wiring-check.swift` and run the result, which is
+the whole test story for a project with no test target. `make
+kit-wiring-module` builds the kit's module first, at the version
+`Package.resolved` pins, with testing on so the check can read the splice's
+spans. Everything
 policy-shaped — which clients exist, where their configs live, which key and
 which transport each gets — stays in `ClientWiring.swift`, which can keep
 importing AppKit.

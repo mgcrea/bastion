@@ -1,4 +1,5 @@
 import Foundation
+import MCPKitWiring
 
 /// The part of client wiring that touches somebody else's file, with the app
 /// taken out of it: no AppKit, no `ServerCatalog`, no `Bundle`, no logging.
@@ -40,33 +41,13 @@ enum ClientWiringMerge {
 
   // MARK: - Reading
 
-  enum ReadError: LocalizedError {
-    case notJSONObject(URL)
+  // `WiringFile.readJSON`, swift-mcp-kit's: an empty file looked at twice, and a root that is
+  // not an object refused by name. It was this file's until the kit took the I/O.
 
-    var errorDescription: String? {
-      switch self {
-      case .notJSONObject(let url):
-        return "\(url.lastPathComponent) is not a JSON object; leaving it alone"
-      }
-    }
-  }
-
-  static func readJSON(_ url: URL) throws -> [String: Any] {
-    let data = try settledContents(of: url)
-    if data.isEmpty { return [:] }
-    guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-      throw ReadError.notJSONObject(url)
-    }
-    return object
-  }
-
-  /// A config's bytes, read a second time when the first read finds none.
-  ///
-  /// Empty is also what a config looks like halfway through another process
-  /// rewriting it — truncate, then write — and read as empty there, the merge
-  /// wrote back a file holding only Bastion's entries. One more look, a moment
-  /// later, tells that apart from a file that really is empty. The TOML reader
-  /// takes the same look, for the same reason.
+  /// A file's bytes, looked at twice when the first read finds it empty: a client mid-write
+  /// truncates before it fills, and an empty read written back replaces the whole file.
+  /// `WiringFile` keeps its own to itself; `settings.json`, which is Bastion's alone to
+  /// splice, reads through this one.
   static func settledContents(of url: URL) throws -> Data {
     let data = try Data(contentsOf: url)
     guard data.isEmpty else { return data }
@@ -295,16 +276,11 @@ enum ClientWiringMerge {
   /// it. `merged` and `reconciledProjects` both write through here.
   private static func overlaid(_ entry: [String: Any], on existing: Any?) -> [String: Any] {
     guard let existing = existing as? [String: Any], isOurs(existing) else { return entry }
-    return existing.filter { !ownedKeys.contains($0.key) }.merging(entry) { _, new in new }
+    // The keys of the three shapes `entry` builds, swift-mcp-kit's list: dropped before the
+    // new entry is laid over the old, so switching transport leaves no key of the old shape.
+    return existing.filter { !WiringMerge.ownedKeys.contains($0.key) }
+      .merging(entry) { _, new in new }
   }
-
-  /// Every key Bastion writes into an entry, across the three shapes `entry`
-  /// builds: `type`/`url`/`headers`, `url`/`http_headers`, and
-  /// `command`/`args`/`env`. Dropped before the new entry is laid over the old,
-  /// so switching transport leaves no key of the old shape behind.
-  static let ownedKeys: Set<String> = [
-    "type", "url", "headers", "http_headers", "command", "args", "env",
-  ]
 
   /// `target(of:)` flattened to something hashable, for comparing entries.
   ///
@@ -503,164 +479,64 @@ enum ClientWiringMerge {
 
   // MARK: - Writing
 
-  enum WriteError: LocalizedError {
-    /// The file moved on between the read and the swap, so the merge in hand
-    /// was computed from bytes that are no longer there.
-    case changedUnderneath(URL)
+  // The stamp, the guard against a file changed underneath, the backup at 0600 and the
+  // swap are `WiringFile`'s, swift-mcp-kit's. What stays here is the JSON comparison below.
 
-    var errorDescription: String? {
-      switch self {
-      case .changedUnderneath(let url):
-        return "\(url.lastPathComponent) changed while it was being read; nothing was written"
-      }
-    }
-  }
-
-  /// What a config looked like when the caller read it, so a write can refuse to
-  /// land a merge computed from bytes somebody has since replaced.
+  /// `root`, serialised and written through `WiringFile.write`, unless the file already holds
+  /// the same values.
   ///
-  /// The stakes here are not the ones the backup covers. Bastion's entries carry
-  /// a bearer token, so a write that loses the race does not leave a server
-  /// merely missing — it leaves a client reaching the endpoint and failing to
-  /// authenticate, which reads as Bastion being broken. And one of the five
-  /// configs has a documented concurrent writer: the row for `~/.codex/config.toml`
-  /// says the ChatGPT app rewrites it on launch.
-  ///
-  /// Size and modification date rather than a hash of the contents: the question
-  /// is only "did anything touch it", which two `stat` fields answer for free.
-  ///
-  /// `absent` is a state and not an error. A file that does not exist yet is
-  /// exactly as legitimate a precondition as one that does — and a config
-  /// created in the window between the two is precisely what this is for.
-  enum Stamp: Equatable {
-    case absent
-    case present(size: Int, modified: Date)
-  }
-
-  /// `FileManager`, deliberately, and not `URL.resourceValues`: an `NSURL`
-  /// caches the values it has already been asked for, so two stamps taken from
-  /// the same `URL` around a write come back identical and the precondition this
-  /// exists for silently passes.
-  static func stamp(of url: URL) -> Stamp {
-    // Of the file, not of a symlink to it: `attributesOfItem` does not follow
-    // one, and a link's own size and date never move when the file does.
-    let url = url.resolvingSymlinksInPath()
-    guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
-      let size = attributes[.size] as? Int, let modified = attributes[.modificationDate] as? Date
-    else { return .absent }
-    return .present(size: size, modified: modified)
-  }
-
-  /// Backup, atomic temp, swap. Returns the backup URL if one was made.
-  ///
-  /// Four properties this has to hold, because the file belongs to someone
-  /// else: every unrelated key survives, the previous contents are
-  /// recoverable, a crash mid-write cannot leave a truncated config, and a
-  /// merge is never landed on bytes it was not computed from.
-  ///
-  /// The fourth is `expecting`, and it narrows a window rather than closing
-  /// one. A mismatch means the file changed since the caller read it, and the
-  /// merge in hand would drop that change; `ClientWiring.retryingIfChanged`
-  /// re-reads and runs the whole operation again. What no writer can promise is
-  /// the last word — a process holding its own copy of the file, Claude Code
-  /// for the length of a session or the ChatGPT app on launch, still wins by
-  /// writing after us.
-  ///
-  /// Takes bytes rather than a root object, because the two config formats this
-  /// app writes disagree about everything except this. A JSON client's file is
-  /// serialised from a dictionary; Codex's is spliced from the text already on
-  /// disk. Backup, atomicity and mode are the same question either way, and
-  /// asking it twice is how the second one ends up subtly weaker.
-  @discardableResult
-  static func write(
-    _ data: Data,
-    to url: URL,
-    backupSuffix: String,
-    expecting: Stamp? = nil,
-    sameContent: ((Data) -> Bool)? = nil
-  ) throws -> URL? {
-    let fm = FileManager.default
-    var backup: URL?
-    // A config that is a symlink — into a dotfiles repository, most often —
-    // is written through: backed up, swapped and stamped at the file it points
-    // at, and the link left as it was. Against the link itself `replaceItemAt`
-    // refused, and `copyItem` made a "backup" that was a second link to the
-    // live file rather than a copy of it. The backup stays beside the path
-    // the client reads, not beside the file: inside a dotfiles repository a
-    // stray `.bastion-backup` holding a bearer token is one `git add .` from
-    // being published.
-    let configured = url
-    let url = url.resolvingSymlinksInPath()
-
-    // Before the backup: a write that is not going to happen must not leave a
-    // new `.bastion-backup` behind claiming it did.
-    if let expecting, stamp(of: url) != expecting { throw WriteError.changedUnderneath(url) }
-
-    // Neither must one that would change nothing. The TOML splice has refused
-    // this since it was written — a write to somebody else's file is a new
-    // backup, a new mtime and a client told to restart for no reason — and the
-    // JSON half wanted the same guard the moment anything started rewiring on
-    // its own rather than only when somebody pressed Configure.
-    if let current = try? Data(contentsOf: url), current == data || sameContent?(current) == true {
-      return nil
-    }
-
-    if fm.fileExists(atPath: url.path) {
-      backup = configured.appendingPathExtension(backupSuffix)
-      try? fm.removeItem(at: backup!)
-      try fm.copyItem(at: url, to: backup!)
-      // Same 0600 the target gets below, and for a stronger reason: a copy
-      // inherits the mode of what it copied, so re-wiring a client that was
-      // world-readable left a sibling file holding the PREVIOUS bearer token at
-      // that mode, indefinitely, where nobody thinks to look for it. The token
-      // in it stays valid until it is revoked.
-      try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup!.path)
-    } else {
-      try fm.createDirectory(
-        at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-    }
-
-    // Write beside the target, then swap: a config half-written because the
-    // machine slept is worse than one not written at all.
-    let temp = url.deletingLastPathComponent()
-      .appendingPathComponent(".bastion-\(UUID().uuidString).tmp")
-    try data.write(to: temp, options: .atomic)
-    do {
-      _ = try fm.replaceItemAt(url, withItemAt: temp)
-    } catch {
-      // `replaceItemAt` consumes the temp on success only. A failure here would
-      // otherwise leave a dotfile in someone's config directory forever.
-      try? fm.removeItem(at: temp)
-      throw error
-    }
-    // The file now carries a bearer token. It did not necessarily before.
-    // A no-op for Codex, whose `config.toml` and `auth.json` are both already
-    // `-rw-------`; nothing here loosened them.
-    try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-    return backup
-  }
-
-  /// The JSON half: serialise, then write the bytes.
+  /// The file on disk was last written by its client, in its own formatting, so its bytes
+  /// never equal these even when nothing changed, and a byte comparison would back it up and
+  /// rewrite it on every unattended rewire. Compared as this would write it instead.
   @discardableResult
   static func write(
     _ root: [String: Any],
     to url: URL,
     backupSuffix: String,
-    expecting: Stamp? = nil
+    expecting: WiringFile.Stamp? = nil
   ) throws -> URL? {
     let options: JSONSerialization.WritingOptions = [
       .prettyPrinted, .sortedKeys, .withoutEscapingSlashes,
     ]
     let data = try JSONSerialization.data(withJSONObject: root, options: options)
-    // The file on disk was last written by its client, in its own formatting,
-    // so its bytes never equal these even when nothing changed. Compared as
-    // this would write it instead.
-    return try write(
-      data, to: url, backupSuffix: backupSuffix, expecting: expecting,
-      sameContent: { current in
-        (try? JSONSerialization.jsonObject(with: current))
-          .flatMap { try? JSONSerialization.data(withJSONObject: $0, options: options) } == data
-      })
+    if let expecting, WiringFile.stamp(of: url) != expecting {
+      throw WiringFile.WriteError.changedUnderneath(url)
+    }
+    if let current = try? Data(contentsOf: url.resolvingSymlinksInPath()),
+      let parsed = try? JSONSerialization.jsonObject(with: current),
+      (try? JSONSerialization.data(withJSONObject: parsed, options: options)) == data
+    {
+      return nil
+    }
+    return try WiringFile.write(
+      data, to: url, backupSuffix: backupSuffix, expecting: expecting)
+  }
+
+  /// `entries`, each laid over the Codex block of ours it replaces, so the user's own keys
+  /// come through a rewire: `enabled = false`, a timeout, a tool list.
+  ///
+  /// The TOML half of `overlaid`. Our block is re-rendered rather than edited in place, so
+  /// what is carried has to be something the scanner read and the renderer can write back;
+  /// swift-mcp-kit's `WiringTOML.checkCarriable` refuses, by line, a block that would lose
+  /// anything else. A block that is not ours is not merged into: it is replaced whole, which
+  /// `wire` has already refused unless forced.
+  static func carried(
+    _ document: WiringTOML.Document, upserting entries: [String: [String: Any]]
+  ) throws -> [String: [String: Any]] {
+    var out: [String: [String: Any]] = [:]
+    for (name, entry) in entries {
+      guard let table = document.tables[name], isOurs(table.value) else {
+        out[name] = entry
+        continue
+      }
+      let merged = table.value.filter { !WiringMerge.ownedKeys.contains($0.key) }
+        .merging(entry) { _, new in new }
+      // The new entry, not `merged`: the merged one holds the user's readable keys too, and
+      // a readable `tools.get_shop` would wave through the `tools.timeout = 1.5` beside it.
+      try WiringTOML.checkCarriable(document, name: name, entry: entry)
+      out[name] = merged
+    }
+    return out
   }
 
   /// The servers a Claude Code **project**-scope entry holds for one folder.

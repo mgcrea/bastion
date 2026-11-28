@@ -529,7 +529,7 @@
 			repositoryURL = "https://github.com/mgcrea/swift-mcp-kit.git";
 			requirement = {
 				kind = upToNextMinorVersion;
-				minimumVersion = 1.7.0;
+				minimumVersion = 1.10.1;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

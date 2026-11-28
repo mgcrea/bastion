@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import MCPKitWiring
 
 /// Bumped whenever Bastion writes a client config.
 ///
@@ -62,7 +63,7 @@ enum ClientWiring {
   /// is TOML.
   enum Format {
     case json
-    /// `ClientWiringTOML`, which edits the `[mcp_servers]` blocks in place and
+    /// swift-mcp-kit's `WiringTOML`, which edits the `[mcp_servers]` blocks in place and
     /// leaves every other byte of somebody's hand-written file alone.
     case toml
   }
@@ -122,6 +123,18 @@ enum ClientWiring {
       self.format = format
       self.bundleID = bundleID
       self.symbol = symbol
+    }
+
+    /// A row from swift-mcp-kit's catalog, which holds each client's file, root key, format,
+    /// bundle id and glyph. What a row adds is Bastion's: the caveat it shows, and the
+    /// transport, which follows whether the client is known to take a URL with a header.
+    init(_ wiring: WiringClient, displayName: String? = nil, caveat: String?) {
+      self.init(
+        id: wiring.id, displayName: displayName ?? wiring.displayName,
+        configURL: wiring.configURL, rootKey: wiring.rootKey,
+        transport: wiring.acceptsHTTP ? .http : .bridge, caveat: caveat,
+        format: wiring.format == .toml ? .toml : .json, bundleID: wiring.bundleID,
+        symbol: wiring.symbol)
     }
 
     /// Whether the client appears to be installed at all.
@@ -188,146 +201,63 @@ enum ClientWiring {
     // developer's home directory.
     if DemoSeed.isEnabled { return DemoSeed.clients }
     let home = FileManager.default.homeDirectoryForCurrentUser
-    let support = home.appendingPathComponent("Library/Application Support")
     // Claude Code's other config directories, immediately after its default
     // row, so the sidebar groups them. Everything else about them is the
     // default row's — same file format, same root key, same transport — and the
     // only thing that varies is which file they point at.
     let profiles = discoveredProfiles.map { profile in
       Client(
-        id: profile.id,
-        displayName: profile.displayName,
-        configURL: profile.configURL,
-        rootKey: "mcpServers",
-        transport: .http,
+        .claudeCode(
+          configURL: profile.configURL, id: profile.id, displayName: profile.displayName),
         caveat:
-          "a second Claude Code config directory — CLAUDE_CONFIG_DIR=\(profile.directory.path)",
-        bundleID: nil,
-        symbol: "terminal")
+          "a second Claude Code config directory — CLAUDE_CONFIG_DIR=\(profile.directory.path)")
     }
     return [
+      // Outside `~/.claude`, and that is Claude Code's own layout rather than an oversight:
+      // the default profile keeps its MCP config beside the folder, while every directory
+      // named by `CLAUDE_CONFIG_DIR` holds its own. See `ClaudeProfiles.configName` — a recent
+      // Claude Code also leaves a `~/.claude/.claude.json` holding first-run bookkeeping and no
+      // servers, so this row never comes through discovery.
       Client(
-        id: "claude-code",
-        displayName: "Claude Code",
-        // Outside `~/.claude`, and that is Claude Code's own layout rather than
-        // an oversight: the default profile keeps its MCP config here, while
-        // every directory named by `CLAUDE_CONFIG_DIR` holds its own. See
-        // `ClaudeProfiles.configName` — a recent Claude Code also leaves a
-        // `~/.claude/.claude.json` holding first-run bookkeeping and no
-        // servers, so this row is a literal and never comes through discovery.
-        configURL: home.appendingPathComponent(".claude.json"),
-        rootKey: "mcpServers",
-        transport: .http,
-        caveat: nil,
-        // A command, not an app: there is nothing for LaunchServices to find,
-        // and `terminal` is what it is.
-        bundleID: nil,
-        symbol: "terminal")
+        .claudeCode(configURL: WiringClient.claudeCodeConfigURL(directory: nil, home: home)),
+        caveat: nil)
     ] + profiles + [
+      // Every entry in this file is a `command`; it has no `type: http` among them. That is
+      // the whole reason `bastion-bridge` exists.
       Client(
-        id: "claude-desktop",
-        displayName: "Claude Desktop",
-        configURL: support.appendingPathComponent("Claude/claude_desktop_config.json"),
-        rootKey: "mcpServers",
-        // Every entry in this file is a `command`; it has no `type: http` among
-        // them. That is the whole reason `bastion-bridge` exists.
-        transport: .bridge,
-        caveat: "spawns bastion-bridge, which starts Bastion on demand",
-        bundleID: "com.anthropic.claudefordesktop",
-        symbol: "sparkles"),
+        .claudeDesktop(home: home),
+        caveat: "spawns bastion-bridge, which starts Bastion on demand"),
+      // `User/mcp.json`, never `User/settings.json`, which is JSONC: the kit's row says why.
+      Client(.visualStudioCode(home: home), displayName: "VS Code", caveat: nil),
+      Client(.cursor(home: home), caveat: nil),
+      // The bridge, and not because LM Studio cannot take a URL: its own config may hold
+      // remote servers, but as a bare `url` with no header anywhere in the file, so an entry
+      // carrying a token is unverified there. An entry a client quietly ignores is worse than
+      // one that spawns a process. Moves to `.http` once somebody has watched a header work.
       Client(
-        id: "vscode",
-        displayName: "VS Code",
-        // `User/mcp.json`, NOT `User/settings.json`. settings.json is JSONC —
-        // it has comments and trailing commas — and round-tripping it through
-        // JSONSerialization would silently delete every comment in a file the
-        // user hand-wrote. mcp.json is strict JSON and is where VS Code keeps
-        // MCP servers anyway.
-        configURL: support.appendingPathComponent("Code/User/mcp.json"),
-        rootKey: "servers",
-        transport: .http,
-        caveat: nil,
-        bundleID: "com.microsoft.VSCode",
-        symbol: "chevron.left.forwardslash.chevron.right"),
+        .lmStudio(home: home),
+        caveat: "spawns bastion-bridge; LM Studio's header shape is unverified"),
+      // Same reasoning, less evidence: Windsurf's documented remote shape is a `serverUrl`,
+      // which this does not write. stdio is the shape every MCP client agrees on.
       Client(
-        id: "cursor",
-        displayName: "Cursor",
-        configURL: home.appendingPathComponent(".cursor/mcp.json"),
-        rootKey: "mcpServers",
-        transport: .http,
-        caveat: nil,
-        // Cursor ships under its Electron packager's id rather than anything
-        // resembling its name, so this cannot be derived and has to be quoted.
-        bundleID: "com.todesktop.230313mzl4w4u92",
-        symbol: "cursorarrow"),
-      Client(
-        id: "lm-studio",
-        displayName: "LM Studio",
-        configURL: home.appendingPathComponent(".lmstudio/mcp.json"),
-        rootKey: "mcpServers",
-        // The bridge, and not because LM Studio cannot take a URL — its own
-        // config on the machine this was added from holds three remote servers.
-        // It is that those three are a bare `url` with no `type` and no header
-        // anywhere in the file, so the shape this app writes for `.http` — `type`,
-        // `url`, `headers` — is unverified here, and an entry a client quietly
-        // ignores is worse than one that spawns a process. Move it to `.http`
-        // once somebody has watched a token-carrying header work.
-        transport: .bridge,
-        caveat: "spawns bastion-bridge; LM Studio's header shape is unverified",
-        bundleID: "ai.elementlabs.lmstudio",
-        symbol: "cpu"),
-      Client(
-        id: "windsurf",
-        displayName: "Windsurf",
-        configURL: home.appendingPathComponent(".codeium/windsurf/mcp_config.json"),
-        rootKey: "mcpServers",
-        // Same reasoning, less evidence: Windsurf was not installed on the
-        // machine this was added from, and its documented remote shape is a
-        // `serverUrl` key this app does not write. stdio is the shape every MCP
-        // client agrees on.
-        transport: .bridge,
+        .windsurf(home: home),
         caveat:
-          "spawns bastion-bridge; Windsurf's remote shape is a serverUrl, which this does not write",
-        bundleID: "com.exafunction.windsurf",
-        symbol: "wind"),
+          "spawns bastion-bridge; Windsurf's remote shape is a serverUrl, which this does not write"
+      ),
+      // One client, not three: the ChatGPT desktop app, the Codex CLI and the Codex IDE
+      // extension read this same file, so three rows would mean three tokens overwriting each
+      // other's and an unwire of any one of them taking the other two out. It reaches a URL,
+      // so no bridge: it runs on this machine, unlike Claude Desktop's connectors, which dial
+      // from Anthropic's cloud and cannot see loopback at all.
       Client(
-        id: "codex",
-        displayName: "ChatGPT & Codex",
-        // One client, not three. The ChatGPT desktop app, the Codex CLI and the
-        // Codex IDE extension read this same file, so three rows would mean
-        // three tokens overwriting each other's and an unwire of any one of
-        // them taking the other two out.
-        configURL: home.appendingPathComponent(".codex/config.toml"),
-        rootKey: ClientWiringTOML.rootKey,
-        // Codex reaches a URL, so no bridge: it runs on this machine, unlike
-        // Claude Desktop's connectors, which dial from Anthropic's cloud and
-        // cannot see loopback at all.
-        transport: .http,
+        .codex(home: home),
         caveat: "the ChatGPT app, the Codex CLI and the IDE extension all read this one file, "
-          + "and the ChatGPT app rewrites it on launch",
-        format: .toml,
-        // The ChatGPT app's, which is `com.openai.codex` — the desktop app took
-        // the CLI's name, and it is the same row here for the same reason: they
-        // read one file. Somebody who has only the CLI gets the terminal glyph.
-        bundleID: "com.openai.codex",
-        symbol: "terminal"),
-      Client(
-        id: "antigravity",
-        displayName: "Antigravity CLI",
-        // What `agy mcp add` writes to, measured against agy 1.5.18. Its own
-        // remote shape is `serverUrl` + `headers`, Windsurf's, but it reads
-        // `type`/`url`/`headers` just as well: a probe server saw the bearer
-        // header on `initialize` and `tools/list` from both shapes. So it gets
-        // `.http` and no bridge, and its own edits (`agy mcp disable`) keep the
-        // entry's keys as written.
-        configURL: home.appendingPathComponent(".gemini/config/mcp_config.json"),
-        rootKey: "mcpServers",
-        transport: .http,
-        caveat: nil,
-        // A command with no app bundle. The Antigravity IDE is a separate
-        // application, and nothing yet says it reads this file.
-        bundleID: nil,
-        symbol: "terminal"),
+          + "and the ChatGPT app rewrites it on launch"),
+      // `agy mcp add` writes Windsurf's `serverUrl` + `headers` shape, but agy 1.5.18 reads
+      // `type`/`url`/`headers` as well: a probe server saw the bearer header on `initialize`
+      // and `tools/list` from both. So it gets `.http`, and its own `agy mcp disable` keeps
+      // the entry's keys as written.
+      Client(.antigravity(home: home), caveat: nil),
     ]
   }
 
@@ -554,11 +484,11 @@ enum ClientWiring {
     if DemoSeed.isEnabled { return DemoSeed.config(for: client) }
     switch client.format {
     case .json:
-      let root = try ClientWiringMerge.readJSON(client.configURL)
+      let root = try WiringFile.readJSON(client.configURL)
       return Config(
         servers: root[client.rootKey] as? [String: Any] ?? [:], root: root, disabled: [])
     case .toml:
-      let document = try ClientWiringTOML.read(client.configURL)
+      let document = try WiringTOML.read(client.configURL)
       return Config(servers: document.servers, root: nil, disabled: document.disabled)
     }
   }
@@ -639,13 +569,13 @@ enum ClientWiring {
   static func retryingIfChanged<T>(_ url: URL, _ body: () throws -> T) throws -> T {
     let attempts = 2
     for attempt in 1...attempts {
-      do { return try body() } catch ClientWiringMerge.WriteError.changedUnderneath(_)
+      do { return try body() } catch WiringFile.WriteError.changedUnderneath(_)
         where attempt < attempts
       {
         continue
       }
     }
-    throw ClientWiringMerge.WriteError.changedUnderneath(url)
+    throw WiringFile.WriteError.changedUnderneath(url)
   }
 
   /// `force` overwrites entries Bastion did not write. Off by default, and the
@@ -704,16 +634,16 @@ enum ClientWiring {
     //
     // The stamp is taken first, before either read, so it describes the bytes
     // this merge is computed from. Every write below is conditional on it.
-    let stamp = ClientWiringMerge.stamp(of: client.configURL)
+    let stamp = WiringFile.stamp(of: client.configURL)
     let exists = stamp != .absent
-    var document = ClientWiringTOML.empty
+    var document = WiringTOML.empty
     var root: [String: Any] = [:]
     switch client.format {
     case .toml:
-      if exists { document = try ClientWiringTOML.read(client.configURL) }
+      if exists { document = try WiringTOML.read(client.configURL) }
       root = [client.rootKey: document.servers]
     case .json:
-      if exists { root = try ClientWiringMerge.readJSON(client.configURL) }
+      if exists { root = try WiringFile.readJSON(client.configURL) }
     }
 
     // Before the token, so a refusal does not leave a Keychain item behind for a
@@ -762,10 +692,10 @@ enum ClientWiring {
     switch client.format {
     case .toml:
       // Laid over our existing blocks, so the user's own keys survive the
-      // re-render. See `ClientWiringTOML.carried`.
+      // re-render. See `ClientWiringMerge.carried`.
       backup = try splice(
         client, document, into: servers(merged, client.rootKey),
-        upserting: try ClientWiringTOML.carried(document, upserting: entries),
+        upserting: try ClientWiringMerge.carried(document, upserting: entries),
         expecting: stamp)
     case .json:
       backup = try ClientWiringMerge.write(
@@ -950,18 +880,18 @@ enum ClientWiring {
   }
 
   private static func unwireOnce(_ client: Client) throws -> URL? {
-    let stamp = ClientWiringMerge.stamp(of: client.configURL)
+    let stamp = WiringFile.stamp(of: client.configURL)
     guard stamp != .absent else { return nil }
     let backup: URL?
     switch client.format {
     case .toml:
-      let document = try ClientWiringTOML.read(client.configURL)
+      let document = try WiringTOML.read(client.configURL)
       let stripped = ClientWiringMerge.unmerged(
         from: [client.rootKey: document.servers], rootKey: client.rootKey)
       backup = try splice(
         client, document, into: servers(stripped, client.rootKey), expecting: stamp)
     case .json:
-      let root = try ClientWiringMerge.readJSON(client.configURL)
+      let root = try WiringFile.readJSON(client.configURL)
       var stripped = ClientWiringMerge.unmerged(from: root, rootKey: client.rootKey)
       if client.supportsProjectScope {
         stripped = ClientWiringMerge.reconciledProjects(stripped, desired: [:])
@@ -1041,20 +971,20 @@ enum ClientWiring {
 
   private static func removeStaleEntriesOnce(_ client: Client, serving: Set<String>) throws -> URL?
   {
-    let stamp = ClientWiringMerge.stamp(of: client.configURL)
+    let stamp = WiringFile.stamp(of: client.configURL)
     guard stamp != .absent else { return nil }
     let backup: URL?
     let removed: Int
     switch client.format {
     case .toml:
-      let document = try ClientWiringTOML.read(client.configURL)
+      let document = try WiringTOML.read(client.configURL)
       let stripped = ClientWiringMerge.removingStale(
         from: [client.rootKey: document.servers], rootKey: client.rootKey, serving: serving)
       removed = document.servers.count - servers(stripped, client.rootKey).count
       backup = try splice(
         client, document, into: servers(stripped, client.rootKey), expecting: stamp)
     case .json:
-      let root = try ClientWiringMerge.readJSON(client.configURL)
+      let root = try WiringFile.readJSON(client.configURL)
       let before = (root[client.rootKey] as? [String: Any])?.count ?? 0
       let stripped = ClientWiringMerge.removingStale(
         from: root, rootKey: client.rootKey, serving: serving)
@@ -1094,7 +1024,7 @@ enum ClientWiring {
     from client: Client,
     inProject folder: String?
   ) throws -> URL? {
-    let stamp = ClientWiringMerge.stamp(of: client.configURL)
+    let stamp = WiringFile.stamp(of: client.configURL)
     guard stamp != .absent else { return nil }
     let backup: URL?
     switch client.format {
@@ -1102,13 +1032,13 @@ enum ClientWiring {
       // Through `removing` rather than around it. Its refusal of a key `isOurs`
       // claims is what keeps this door and `unwire`'s from doing each other's
       // job, and that has to have exactly one implementation.
-      let document = try ClientWiringTOML.read(client.configURL)
+      let document = try WiringTOML.read(client.configURL)
       let stripped = ClientWiringMerge.removing(
         key: key, from: [client.rootKey: document.servers], rootKey: client.rootKey)
       backup = try splice(
         client, document, into: servers(stripped, client.rootKey), expecting: stamp)
     case .json:
-      let root = try ClientWiringMerge.readJSON(client.configURL)
+      let root = try WiringFile.readJSON(client.configURL)
       let stripped =
         folder.map { ClientWiringMerge.removing(key: key, inProject: $0, from: root) }
         ?? ClientWiringMerge.removing(key: key, from: root, rootKey: client.rootKey)
@@ -1139,17 +1069,17 @@ enum ClientWiring {
   /// wrong door. There is one implementation and this reads its answer.
   private static func splice(
     _ client: Client,
-    _ document: ClientWiringTOML.Document,
+    _ document: WiringTOML.Document,
     into after: [String: Any],
     upserting entries: [String: [String: Any]] = [:],
-    expecting: ClientWiringMerge.Stamp? = nil
+    expecting: WiringFile.Stamp? = nil
   ) throws -> URL? {
     let removed = Set(document.tables.keys).subtracting(after.keys)
-    let text = ClientWiringTOML.spliced(document, removing: removed, upserting: entries)
+    let text = WiringTOML.spliced(document, removing: removed, upserting: entries)
     // A write that changes nothing is still a write to somebody else's file:
     // a new backup, a new mtime, and a client told to restart for no reason.
     guard text != document.text else { return nil }
-    return try ClientWiringMerge.write(
+    return try WiringFile.write(
       Data(text.utf8), to: client.configURL, backupSuffix: "bastion-backup", expecting: expecting)
   }
 

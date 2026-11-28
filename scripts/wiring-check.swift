@@ -1,5 +1,9 @@
 import Foundation
 
+// The file I/O and the Codex TOML splice are swift-mcp-kit's, built by `make
+// kit-wiring-module` with testing on, so the scanner's spans and anchor can be checked.
+@testable import MCPKitWiring
+
 /// Asserts the properties `ClientWiringMerge` promises about somebody else's
 /// config file.
 ///
@@ -205,7 +209,7 @@ struct WiringCheck {
 
   static func realFileSurvives(_ url: URL) {
     print("\n\(url.path)")
-    guard let before = try? ClientWiringMerge.readJSON(url) else {
+    guard let before = try? WiringFile.readJSON(url) else {
       return check("reads as a JSON object", false)
     }
 
@@ -463,14 +467,14 @@ struct WiringCheck {
     DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
       try? Data(#"{"theirs":1}"#.utf8).write(to: url)
     }
-    let root = try? ClientWiringMerge.readJSON(url)
+    let root = try? WiringFile.readJSON(url)
     check(
       "a file that fills in a moment later is read as what it became", root?["theirs"] as? Int == 1)
 
     try? Data().write(to: url)
     check(
       "a file that stays empty is still an empty config",
-      (try? ClientWiringMerge.readJSON(url))?.isEmpty == true)
+      (try? WiringFile.readJSON(url))?.isEmpty == true)
 
     // Codex's config.toml, where the same race is worse: the splice copies
     // every byte it does not own out of the document it read, so an empty read
@@ -482,7 +486,7 @@ struct WiringCheck {
     DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
       try? Data("model = \"theirs\"\n".utf8).write(to: toml)
     }
-    let document = try? ClientWiringTOML.read(toml)
+    let document = try? WiringTOML.read(toml)
     check(
       "a config.toml that fills in a moment later is read as what it became",
       document?.text.contains("theirs") == true)
@@ -490,7 +494,7 @@ struct WiringCheck {
     try? Data().write(to: toml)
     check(
       "a config.toml that stays empty is still an empty document",
-      (try? ClientWiringTOML.read(toml))?.text.isEmpty == true)
+      (try? WiringTOML.read(toml))?.text.isEmpty == true)
   }
 
   /// A config that is a symlink into somebody's dotfiles repository.
@@ -511,11 +515,11 @@ struct WiringCheck {
     try? Data(#"{"old":true}"#.utf8).write(to: real)
     try? fm.createSymbolicLink(at: link, withDestinationURL: real)
 
-    let stamp = ClientWiringMerge.stamp(of: link)
+    let stamp = WiringFile.stamp(of: link)
     var backup: URL?
     var threw: Error?
     do {
-      backup = try ClientWiringMerge.write(
+      backup = try WiringFile.write(
         Data(#"{"new":true}"#.utf8), to: link, backupSuffix: "bastion-backup", expecting: stamp)
     } catch {
       threw = error
@@ -534,11 +538,11 @@ struct WiringCheck {
       backedUp && backup.flatMap { try? Data(contentsOf: $0) } == Data(#"{"old":true}"#.utf8))
 
     // The stamp follows the link too, so a change to the real file is seen.
-    let before = ClientWiringMerge.stamp(of: link)
+    let before = WiringFile.stamp(of: link)
     try? Data(#"{"changed by someone else":true,"padding":"xxxxxxxx"}"#.utf8).write(to: real)
     check(
       "a change to the file behind the link moves its stamp",
-      ClientWiringMerge.stamp(of: link) != before)
+      WiringFile.stamp(of: link) != before)
   }
 
   /// Both entry shapes survive a write and read back as configured.
@@ -704,7 +708,7 @@ struct WiringCheck {
     try? #"{"mcpServers":{"github":{"url":"https://x"}}}"#
       .write(to: config, atomically: true, encoding: .utf8)
 
-    guard let root = try? ClientWiringMerge.readJSON(config) else {
+    guard let root = try? WiringFile.readJSON(config) else {
       return check("fixture reads back", false)
     }
     let merged = ClientWiringMerge.merged(
@@ -716,7 +720,7 @@ struct WiringCheck {
 
     // Re-read, re-merge, re-write: the path a second launch actually takes.
     let again = ClientWiringMerge.merged(
-      into: (try? ClientWiringMerge.readJSON(config)) ?? [:], rootKey: "mcpServers",
+      into: (try? WiringFile.readJSON(config)) ?? [:], rootKey: "mcpServers",
       entries: entries { httpReach($0) })
     let second = try? ClientWiringMerge.write(again, to: config, backupSuffix: "bastion-backup")
 
@@ -743,7 +747,7 @@ struct WiringCheck {
 
       """
     try? theirs.write(to: foreign, atomically: true, encoding: .utf8)
-    let unchanged = (try? ClientWiringMerge.readJSON(foreign)) ?? [:]
+    let unchanged = (try? WiringFile.readJSON(foreign)) ?? [:]
     let noop = try? ClientWiringMerge.write(unchanged, to: foreign, backupSuffix: "bastion-backup")
     check("a client-formatted file with nothing to change makes no backup", noop == nil)
     check(
@@ -944,13 +948,13 @@ struct WiringCheck {
       let url = directory.appendingPathComponent("\(UUID().uuidString).json")
       try? contents.write(to: url, atomically: true, encoding: .utf8)
       var threw = false
-      do { _ = try ClientWiringMerge.readJSON(url) } catch { threw = true }
+      do { _ = try WiringFile.readJSON(url) } catch { threw = true }
       check("\(label) throws rather than being overwritten", threw)
     }
 
     let empty = directory.appendingPathComponent("empty.json")
     try? "".write(to: empty, atomically: true, encoding: .utf8)
-    check("an empty file reads as {}", (try? ClientWiringMerge.readJSON(empty))?.isEmpty == true)
+    check("an empty file reads as {}", (try? WiringFile.readJSON(empty))?.isEmpty == true)
   }
 
   static func backupAndNoLitter() {
@@ -965,7 +969,7 @@ struct WiringCheck {
     let original = #"{"mcpServers":{"github":{"url":"https://x"}},"preferences":{"theme":"dark"}}"#
     try? original.write(to: config, atomically: true, encoding: .utf8)
 
-    guard let root = try? ClientWiringMerge.readJSON(config) else {
+    guard let root = try? WiringFile.readJSON(config) else {
       return check("fixture reads back", false)
     }
     let merged = ClientWiringMerge.merged(
@@ -977,10 +981,10 @@ struct WiringCheck {
       "the backup holds the original bytes",
       (try? String(contentsOf: backup!, encoding: .utf8)) == original)
     check(
-      "the config was replaced", (try? ClientWiringMerge.readJSON(config))?["mcpServers"] != nil)
+      "the config was replaced", (try? WiringFile.readJSON(config))?["mcpServers"] != nil)
     check(
       "the unrelated key survived the round trip",
-      ((try? ClientWiringMerge.readJSON(config))?["preferences"] as? [String: Any]) != nil)
+      ((try? WiringFile.readJSON(config))?["preferences"] as? [String: Any]) != nil)
 
     let mode = (try? fm.attributesOfItem(atPath: config.path))?[.posixPermissions] as? NSNumber
     check("the written config is 0600 — it now carries a token", mode?.intValue == 0o600)
@@ -1304,20 +1308,20 @@ struct WiringCheck {
 
     """
 
-  static func scanned(_ text: String) -> ClientWiringTOML.Document? {
-    try? ClientWiringTOML.scan(text)
+  static func scanned(_ text: String) -> WiringTOML.Document? {
+    try? WiringTOML.scan(text)
   }
 
   /// A server's spans as 1-based inclusive line pairs, for readable checks.
-  static func spans(_ document: ClientWiringTOML.Document, _ name: String) -> [[Int]] {
+  static func spans(_ document: WiringTOML.Document, _ name: String) -> [[Int]] {
     (document.tables[name]?.ranges ?? []).map { [$0.lowerBound + 1, $0.upperBound] }
   }
 
-  static func line(_ document: ClientWiringTOML.Document, _ index: Int) -> String {
+  static func line(_ document: WiringTOML.Document, _ index: Int) -> String {
     index < document.lines.count ? String(document.text[document.lines[index]]) : ""
   }
 
-  static func names(_ document: ClientWiringTOML.Document?) -> [String] {
+  static func names(_ document: WiringTOML.Document?) -> [String] {
     (document?.tables.keys.map { $0 } ?? []).sorted()
   }
 
@@ -1517,8 +1521,8 @@ struct WiringCheck {
       return
     }
     let fresh = ["shopify": tomlEntry("shopify", token: "new")]
-    let carried = try? ClientWiringTOML.carried(doc, upserting: fresh)
-    let rewritten = carried.map { ClientWiringTOML.spliced(doc, removing: [], upserting: $0) }
+    let carried = try? ClientWiringMerge.carried(doc, upserting: fresh)
+    let rewritten = carried.map { WiringTOML.spliced(doc, removing: [], upserting: $0) }
     let block = rewritten.flatMap(scanned)?.tables["shopify"]?.value
     check("the user's `enabled = false` survives", block?["enabled"] as? Bool == false)
     check("and their timeout", block?["startup_timeout_sec"] as? Int == 20)
@@ -1530,9 +1534,28 @@ struct WiringCheck {
     let float = text + "\ntool_timeout_sec = 60.5\n"
     var refused = false
     if let floatDoc = scanned(float) {
-      do { _ = try ClientWiringTOML.carried(floatDoc, upserting: fresh) } catch { refused = true }
+      do { _ = try ClientWiringMerge.carried(floatDoc, upserting: fresh) } catch { refused = true }
     }
     check("a value it cannot read back is refused, not dropped", refused)
+
+    // A readable sibling under the same parent once hid an unreadable one: the merged entry
+    // held `tools`, so the float beside `get_shop` was dropped rather than refused.
+    for (label, extra) in [
+      (
+        "a float beside a readable dotted sibling",
+        "\ntools.get_shop = \"keep\"\ntools.timeout = 1.5\n"
+      ),
+      (
+        "a float beside a string in a subtable of ours",
+        "\n[mcp_servers.shopify.tools.get_shop]\napproval = \"never\"\nweight = 2.5\n"
+      ),
+    ] {
+      var refusedHere = false
+      if let doc = scanned(text + extra) {
+        do { _ = try ClientWiringMerge.carried(doc, upserting: fresh) } catch { refusedHere = true }
+      }
+      check("\(label) is refused, not dropped", refusedHere)
+    }
   }
 
   /// What it refuses, and why a refusal is enough: every write path begins with
@@ -1541,7 +1564,7 @@ struct WiringCheck {
     print("\nShapes this refuses rather than guesses at")
     func refuses(_ label: String, _ text: String) {
       var threw = false
-      do { _ = try ClientWiringTOML.scan(text) } catch { threw = true }
+      do { _ = try WiringTOML.scan(text) } catch { threw = true }
       check(label, threw)
     }
 
@@ -1580,7 +1603,7 @@ struct WiringCheck {
         try? Data([0xFF, 0xFE, 0x00]).write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
         do {
-          _ = try ClientWiringTOML.read(url)
+          _ = try WiringTOML.read(url)
           return false
         } catch {
           return true
@@ -1591,7 +1614,7 @@ struct WiringCheck {
       "a refusal names the line, because the remedy is a person looking at it",
       {
         do {
-          _ = try ClientWiringTOML.scan("model = \"x\"\n[mcp_servers]\nfoo.bar = 1\n")
+          _ = try WiringTOML.scan("model = \"x\"\n[mcp_servers]\nfoo.bar = 1\n")
           return false
         } catch {
           return error.localizedDescription.contains("line 3")
@@ -1620,12 +1643,12 @@ struct WiringCheck {
 
   static func wire(_ text: String, _ ids: [String] = ["shopify", "stripe"]) -> String? {
     guard let doc = scanned(text) else { return nil }
-    return ClientWiringTOML.spliced(doc, removing: [], upserting: tomlEntries(ids))
+    return WiringTOML.spliced(doc, removing: [], upserting: tomlEntries(ids))
   }
 
   static func unwire(_ text: String, _ ids: [String] = ["shopify", "stripe"]) -> String? {
     guard let doc = scanned(text) else { return nil }
-    return ClientWiringTOML.spliced(doc, removing: Set(ids), upserting: [:])
+    return WiringTOML.spliced(doc, removing: Set(ids), upserting: [:])
   }
 
   /// The headline claim: a wire adds lines and changes none.
@@ -1798,7 +1821,7 @@ struct WiringCheck {
   /// shape and the escaping it has to survive.
   static func tomlRendersOnlyOurOwnShape() {
     print("\nWhat a rendered TOML block says")
-    let block = ClientWiringTOML.render(
+    let block = WiringTOML.render(
       name: "stripe", entry: tomlEntry("stripe"), newline: "\n")
     check("it is a table header for the server", block.hasPrefix("[mcp_servers.stripe]\n"))
     check(
@@ -1833,7 +1856,7 @@ struct WiringCheck {
 
     // A token is a secret Bastion did not choose the alphabet of.
     let hostile = "a\"b\\c\nd\te"
-    let escaped = ClientWiringTOML.render(
+    let escaped = WiringTOML.render(
       name: "a", entry: ["url": "http://x/", "http_headers": ["Authorization": hostile]],
       newline: "\n")
     check(
@@ -1845,7 +1868,7 @@ struct WiringCheck {
     // characters matched neither "\n" nor "\r" and wrote a raw line break
     // into a basic string. TOML also requires DEL escaped.
     let crlf = "a\r\nb\u{7F}c"
-    let broken = ClientWiringTOML.render(
+    let broken = WiringTOML.render(
       name: "a", entry: ["url": "http://x/", "http_headers": ["Authorization": crlf]],
       newline: "\n")
     check(
@@ -1854,7 +1877,7 @@ struct WiringCheck {
         as? String) == crlf)
     check("and DEL is escaped", !broken.unicodeScalars.contains("\u{7F}"))
 
-    let odd = ClientWiringTOML.render(name: "my server", entry: ["url": "http://x/"], newline: "\n")
+    let odd = WiringTOML.render(name: "my server", entry: ["url": "http://x/"], newline: "\n")
     check("a name needing quotes is quoted", odd.hasPrefix("[mcp_servers.\"my server\"]"))
     check("and comes back unquoted", scanned(odd)?.tables["my server"] != nil)
   }
@@ -1917,7 +1940,7 @@ struct WiringCheck {
       }
       // Write over everything, including a key somebody else owns -- the shape
       // `force` produces, and the one most able to duplicate a name.
-      let out = ClientWiringTOML.spliced(doc, removing: [], upserting: tomlEntries())
+      let out = WiringTOML.spliced(doc, removing: [], upserting: tomlEntries())
       guard let rescanned = scanned(out) else {
         check("\(label): the result still scans", false)
         continue
@@ -1953,11 +1976,11 @@ struct WiringCheck {
     let config = directory.appendingPathComponent("config.toml")
     try? codexConfig.write(to: config, atomically: true, encoding: .utf8)
 
-    guard let document = try? ClientWiringTOML.read(config) else {
+    guard let document = try? WiringTOML.read(config) else {
       return check("the fixture reads back", false)
     }
-    let text = ClientWiringTOML.spliced(document, removing: [], upserting: tomlEntries())
-    let backup = try? ClientWiringMerge.write(
+    let text = WiringTOML.spliced(document, removing: [], upserting: tomlEntries())
+    let backup = try? WiringFile.write(
       Data(text.utf8), to: config, backupSuffix: "bastion-backup")
 
     check("a backup was made", backup != nil)
@@ -1969,7 +1992,7 @@ struct WiringCheck {
       (try? String(contentsOf: config, encoding: .utf8)) == text)
     check(
       "and it reads back with our entries in it",
-      names(try? ClientWiringTOML.read(config)) == [
+      names(try? WiringTOML.read(config)) == [
         "computer-use", "node_repl", "shopify", "stripe",
       ])
 
@@ -1982,15 +2005,15 @@ struct WiringCheck {
 
     // A `~/.codex` that does not exist yet is the ordinary first-run case.
     let fresh = directory.appendingPathComponent("nested/.codex/config.toml")
-    let blocks = ClientWiringTOML.spliced(
-      ClientWiringTOML.empty, removing: [], upserting: tomlEntries())
-    let none = try? ClientWiringMerge.write(
+    let blocks = WiringTOML.spliced(
+      WiringTOML.empty, removing: [], upserting: tomlEntries())
+    let none = try? WiringFile.write(
       Data(blocks.utf8), to: fresh, backupSuffix: "bastion-backup")
     check("no backup for a file that did not exist", none == nil)
     check("parent directories created", fm.fileExists(atPath: fresh.path))
     check(
       "and the new file is exactly our blocks",
-      names(try? ClientWiringTOML.read(fresh)) == ["shopify", "stripe"])
+      names(try? WiringTOML.read(fresh)) == ["shopify", "stripe"])
   }
 
   /// Read-only. Parses a real settings.json, turns the switch on in memory
@@ -2038,9 +2061,9 @@ struct WiringCheck {
   /// holds the ones nobody would have invented.
   static func realTOMLFileSurvives(_ url: URL) {
     print("\n\(url.path)")
-    let document: ClientWiringTOML.Document
+    let document: WiringTOML.Document
     do {
-      document = try ClientWiringTOML.read(url)
+      document = try WiringTOML.read(url)
     } catch {
       return check("it scans (\(error.localizedDescription))", false)
     }
@@ -2060,13 +2083,13 @@ struct WiringCheck {
         return (name, ["url": url, "http_headers": ["Authorization": "Bearer tok"]])
       })
     do {
-      let carried = try ClientWiringTOML.carried(document, upserting: rewires)
-      let rewired = try ClientWiringTOML.scan(
-        ClientWiringTOML.spliced(document, removing: [], upserting: carried))
+      let carried = try ClientWiringMerge.carried(document, upserting: rewires)
+      let rewired = try WiringTOML.scan(
+        WiringTOML.spliced(document, removing: [], upserting: carried))
       let kept = rewires.keys.allSatisfy { name in
         let before =
           document.tables[name]?.value.filter {
-            !ClientWiringMerge.ownedKeys.contains($0.key)
+            !WiringMerge.ownedKeys.contains($0.key)
           } ?? [:]
         let after = rewired.tables[name]?.value ?? [:]
         return before.allSatisfy { deepEqual($0.value, after[$0.key]) }
@@ -2077,20 +2100,20 @@ struct WiringCheck {
     }
 
     let written = tomlEntries()
-    let out = ClientWiringTOML.spliced(document, removing: [], upserting: written)
+    let out = WiringTOML.spliced(document, removing: [], upserting: written)
 
     // The claim, against a file nobody wrote for a test.
     check(
       "taking our blocks back out gives the file back, to the byte",
-      ClientWiringTOML.spliced(
-        try! ClientWiringTOML.scan(out), removing: Set(written.keys), upserting: [:])
+      WiringTOML.spliced(
+        try! WiringTOML.scan(out), removing: Set(written.keys), upserting: [:])
         == document.text)
     check(
       "wiring it twice changes nothing the second time",
-      ClientWiringTOML.spliced(
-        try! ClientWiringTOML.scan(out), removing: [], upserting: written) == out)
+      WiringTOML.spliced(
+        try! WiringTOML.scan(out), removing: [], upserting: written) == out)
 
-    let rescanned = try? ClientWiringTOML.scan(out)
+    let rescanned = try? WiringTOML.scan(out)
     check("the result still scans", rescanned != nil)
     check(
       "every server it held is still there",
@@ -2219,8 +2242,8 @@ struct WiringCheck {
     let config = directory.appendingPathComponent("mcp.json")
     try? "{\"theme\":\"dark\"}".write(to: config, atomically: true, encoding: .utf8)
 
-    let before = ClientWiringMerge.stamp(of: config)
-    let root = (try? ClientWiringMerge.readJSON(config)) ?? [:]
+    let before = WiringFile.stamp(of: config)
+    let root = (try? WiringFile.readJSON(config)) ?? [:]
     let merged = ClientWiringMerge.merged(
       into: root, rootKey: "mcpServers", entries: entries { httpReach($0) })
 
@@ -2232,12 +2255,12 @@ struct WiringCheck {
     do {
       _ = try ClientWiringMerge.write(
         merged, to: config, backupSuffix: "bastion-backup", expecting: before)
-    } catch ClientWiringMerge.WriteError.changedUnderneath(_) {
+    } catch WiringFile.WriteError.changedUnderneath(_) {
       refused = true
     } catch {
     }
     check("a changed file is refused", refused)
-    let after = (try? ClientWiringMerge.readJSON(config)) ?? [:]
+    let after = (try? WiringFile.readJSON(config)) ?? [:]
     check("their write survived", after["numStartups"] as? Int == 9)
     check("nothing of ours was written", after["mcpServers"] == nil)
     check(
@@ -2245,14 +2268,14 @@ struct WiringCheck {
       !fm.fileExists(atPath: config.appendingPathExtension("bastion-backup").path))
 
     // What the second attempt does: stamp the file as it is now, and land.
-    let fresh = ClientWiringMerge.stamp(of: config)
+    let fresh = WiringFile.stamp(of: config)
     let second = try? ClientWiringMerge.write(
       ClientWiringMerge.merged(
-        into: (try? ClientWiringMerge.readJSON(config)) ?? [:], rootKey: "mcpServers",
+        into: (try? WiringFile.readJSON(config)) ?? [:], rootKey: "mcpServers",
         entries: entries { httpReach($0) }),
       to: config, backupSuffix: "bastion-backup", expecting: fresh)
     check("a current stamp writes", second != nil)
-    let final = (try? ClientWiringMerge.readJSON(config)) ?? [:]
+    let final = (try? WiringFile.readJSON(config)) ?? [:]
     check("their key is still there", final["numStartups"] as? Int == 9)
     check(
       "and ours arrived",
@@ -2262,7 +2285,7 @@ struct WiringCheck {
     // first-run case, where a client writing one in the window is exactly what
     // must not be flattened.
     let unborn = directory.appendingPathComponent("nothing-here.json")
-    let absent = ClientWiringMerge.stamp(of: unborn)
+    let absent = WiringFile.stamp(of: unborn)
     check("a missing file stamps as absent", absent == .absent)
     try? "{\"mcpServers\":{\"theirs\":{\"command\":\"npx\"}}}".write(
       to: unborn, atomically: true, encoding: .utf8)
@@ -2270,14 +2293,14 @@ struct WiringCheck {
     do {
       _ = try ClientWiringMerge.write(
         ["mcpServers": [:]], to: unborn, backupSuffix: "bastion-backup", expecting: absent)
-    } catch ClientWiringMerge.WriteError.changedUnderneath(_) {
+    } catch WiringFile.WriteError.changedUnderneath(_) {
       caught = true
     } catch {
     }
     check("a file created in the window is refused", caught)
     check(
       "and the file it created is untouched",
-      ((try? ClientWiringMerge.readJSON(unborn))?["mcpServers"] as? [String: Any])?["theirs"]
+      ((try? WiringFile.readJSON(unborn))?["mcpServers"] as? [String: Any])?["theirs"]
         != nil)
   }
 
@@ -2298,11 +2321,11 @@ struct WiringCheck {
     let config = directory.appendingPathComponent("config.toml")
     try? codexConfig.write(to: config, atomically: true, encoding: .utf8)
 
-    let before = ClientWiringMerge.stamp(of: config)
-    guard let document = try? ClientWiringTOML.read(config) else {
+    let before = WiringFile.stamp(of: config)
+    guard let document = try? WiringTOML.read(config) else {
       return check("the fixture reads back", false)
     }
-    let text = ClientWiringTOML.spliced(document, removing: [], upserting: tomlEntries())
+    let text = WiringTOML.spliced(document, removing: [], upserting: tomlEntries())
 
     // The ChatGPT app rewrites the file while the splice is being computed.
     let theirs = codexConfig + "\n[mcp_servers.something_new]\ncommand = \"npx\"\n"
@@ -2310,9 +2333,9 @@ struct WiringCheck {
 
     var refused = false
     do {
-      _ = try ClientWiringMerge.write(
+      _ = try WiringFile.write(
         Data(text.utf8), to: config, backupSuffix: "bastion-backup", expecting: before)
-    } catch ClientWiringMerge.WriteError.changedUnderneath(_) {
+    } catch WiringFile.WriteError.changedUnderneath(_) {
       refused = true
     } catch {
     }
@@ -2322,7 +2345,7 @@ struct WiringCheck {
       (try? String(contentsOf: config, encoding: .utf8)) == theirs)
     check(
       "and the splice that would have dropped it never landed",
-      names(try? ClientWiringTOML.read(config)) == [
+      names(try? WiringTOML.read(config)) == [
         "computer-use", "node_repl", "something_new",
       ])
   }
@@ -3160,7 +3183,7 @@ struct WiringCheck {
         try? Data("{\"a\": 1, \"b\": 2}".utf8).write(to: racy)
         return lockdownEdits
       }
-    } catch ClientWiringMerge.WriteError.changedUnderneath(_) {
+    } catch WiringFile.WriteError.changedUnderneath(_) {
       raced = true
     } catch {}
     check("a write over a file that moved is refused", raced)

@@ -7,6 +7,19 @@ Notable changes to this repository. The format follows
 The signed macOS app is tagged per release, `app-v1.40.0` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
+## [Unreleased]
+
+### Internal
+
+- **The Codex TOML splice and the config file I/O come from swift-mcp-kit.** `ClientWiringTOML`
+  is gone: the splicer, now `WiringTOML` in the kit, is the same code with this file's fixes
+  ported back, and the read, the stamp, the backup at 0600 and the swap are `WiringFile`. The
+  client rows' paths, bundle ids and glyphs come from the kit's catalog, which Cupertino, Armada
+  and Drakar share. Bastion's own rules (which entries are its, renames, retired profiles, stale
+  entries, folder blocks, lockdown) stay here. `make wiring-check` builds the pinned kit's
+  `MCPKitWiring` first, with testing on, and passes 612 of 612 against it. swift-mcp-kit goes
+  from 1.7.0 to 1.10.1.
+
 ## [1.40.0] - 2026-11-27
 
 **Antigravity CLI joins the clients.** Bastion now wires Google's Antigravity CLI with one click,

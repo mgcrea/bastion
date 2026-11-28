@@ -1,4 +1,5 @@
 import AppKit
+import MCPKitWiring
 import SwiftUI
 
 /// Screenshot mode: the app photographed instead of the app used.
@@ -818,7 +819,7 @@ enum DemoSeed {
       ClientWiring.Client(
         id: "codex", displayName: "ChatGPT & Codex",
         configURL: home.appendingPathComponent(".codex/config.toml"),
-        rootKey: ClientWiringTOML.rootKey, transport: .http,
+        rootKey: WiringTOML.rootKey, transport: .http,
         caveat: "the ChatGPT app, the Codex CLI and the IDE extension all read this one file, "
           + "and the ChatGPT app rewrites it on launch",
         format: .toml, bundleID: "com.openai.codex", symbol: "terminal"),

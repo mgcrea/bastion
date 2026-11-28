@@ -1,4 +1,5 @@
 import Foundation
+import MCPKitWiring
 
 /// Editing top-level members of a Claude Code `settings.json` without
 /// re-encoding the rest of it.
@@ -11,7 +12,7 @@ import Foundation
 /// re-serialises with sorted keys and its own indentation. That is fine for
 /// `.claude.json`, which Claude Code writes itself, and not for a file somebody
 /// arranged by hand. So this does for top-level JSON members what
-/// `ClientWiringTOML` does for `[mcp_servers]` tables: the lexer finds where
+/// swift-mcp-kit's `WiringTOML` does for `[mcp_servers]` tables: the lexer finds where
 /// each member starts and ends, an edit replaces only the spans it names, and
 /// every other byte is quoted back verbatim. On followed by off returns the
 /// original file.
@@ -317,19 +318,19 @@ enum ClientSettingsSplice {
   /// `edits` is handed the file's current values and returns the changes, so
   /// a decision is always made against the bytes the write is conditional on.
   /// A refusal, from the parse or from `edits`, throws before anything is
-  /// written. The write itself is `ClientWiringMerge.write`: backup,
+  /// written. The write itself is swift-mcp-kit's `WiringFile.write`: backup,
   /// temp-and-swap, 0600, nothing when the bytes would not change, and
   /// `changedUnderneath` when the file moved since the read.
   @discardableResult
   static func rewrite(
     _ url: URL, backupSuffix: String, edits: ([String: Any]) throws -> [Edit]
   ) throws -> URL? {
-    let stamp = ClientWiringMerge.stamp(of: url)
+    let stamp = WiringFile.stamp(of: url)
     let data = stamp == .absent ? Data() : try ClientWiringMerge.settledContents(of: url)
     let document = try parse(data)
     let changes = try edits(document.values)
     guard !changes.isEmpty else { return nil }
-    return try ClientWiringMerge.write(
+    return try WiringFile.write(
       applying(changes, to: data), to: url, backupSuffix: backupSuffix, expecting: stamp)
   }
 }

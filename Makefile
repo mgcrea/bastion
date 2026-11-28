@@ -644,11 +644,31 @@ audit-check: ## Prove an export signature survives a round trip, with no app and
 		scripts/audit-check.swift
 	@apps/apple/.build/audit-check
 
-wiring-check: ## Assert the config merge leaves other people's files alone
+# swift-mcp-kit's MCPKitWiring, at the version Package.resolved pins, for the checks that
+# compile app files with swiftc: the file I/O and the Codex TOML splice are the kit's, and
+# Bastion's merge rules sit on top of them. Built with testing enabled, so a check can read
+# the splice's internals (`@testable import`). Resolved into .build rather than DerivedData,
+# so the path is known and CI, which has no checkout of the kit, fetches the pinned one.
+KIT_RESOLVED = apps/apple/Bastion.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+KIT_PACKAGES = apps/apple/.build/SourcePackages
+KIT_MODULE = apps/apple/.build/kit-module
+
+$(KIT_MODULE)/MCPKitWiring.swiftmodule: $(KIT_RESOLVED)
+	@mkdir -p $(KIT_MODULE)
+	@xcodebuild -resolvePackageDependencies -project apps/apple/Bastion.xcodeproj -scheme Bastion \
+		-clonedSourcePackagesDirPath $(KIT_PACKAGES) > $(KIT_MODULE)/resolve.log 2>&1 \
+		|| { cat $(KIT_MODULE)/resolve.log; exit 1; }
+	@swiftc -O -enable-testing -swift-version 6 -parse-as-library -module-name MCPKitWiring \
+		-emit-module -emit-module-path $(KIT_MODULE)/MCPKitWiring.swiftmodule \
+		-emit-library -static -o $(KIT_MODULE)/libMCPKitWiring.a \
+		$(KIT_PACKAGES)/checkouts/swift-mcp-kit/Sources/MCPKitWiring/*.swift
+
+kit-wiring-module: $(KIT_MODULE)/MCPKitWiring.swiftmodule ## Build the pinned kit's MCPKitWiring for the swiftc checks
+
+wiring-check: $(KIT_MODULE)/MCPKitWiring.swiftmodule ## Assert the config merge leaves other people's files alone
 	@mkdir -p apps/apple/.build
-	@swiftc -O -o apps/apple/.build/wiring-check \
+	@swiftc -O -I $(KIT_MODULE) -L $(KIT_MODULE) -lMCPKitWiring -o apps/apple/.build/wiring-check \
 		apps/apple/Bastion/ClientWiringMerge.swift \
-		apps/apple/Bastion/ClientWiringTOML.swift \
 		apps/apple/Bastion/ClientSettingsSplice.swift \
 		apps/apple/Bastion/ClientLockdown.swift \
 		apps/apple/Bastion/WorkspaceScope.swift \
@@ -1209,6 +1229,7 @@ typecheck: ## tsc the Worker and astro check the website
 	@pnpm typecheck
 
 .PHONY: help app run stop dev-config clean \
+	kit-wiring-module \
 	sparkle sparkle-keys appcast node bundle sign notarize build-release \
 	install install-release install-from uninstall \
 	smoke dialect builtin facade wiring-check wiring-check-real config-watch-check skills-check skills-check-real remote-check remote-live-check unit license-check revocations audit audit-check migrate servers servers-check changelog changelog-check catalog-check provenance provenance-check discover icon \

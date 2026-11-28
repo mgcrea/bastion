@@ -1,4 +1,5 @@
 import Foundation
+import MCPKitWiring
 
 /// Only Bastion for the Claude Code rows: where each profile's `settings.json`
 /// is, what state it is in, and the one path that writes it. The policy is
@@ -46,7 +47,7 @@ extension ClientWiring {
 
   /// The allowlist this client's `.claude.json` calls for right now.
   static func lockdownPlan(of client: Client) throws -> ClientLockdown.Plan {
-    let root = hasConfig(client) ? try ClientWiringMerge.readJSON(client.configURL) : [:]
+    let root = hasConfig(client) ? try WiringFile.readJSON(client.configURL) : [:]
     return ClientLockdown.plan(claudeConfig: root, port: Int(Gateway.shared.port))
   }
 
