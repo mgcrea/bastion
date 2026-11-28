@@ -4,10 +4,18 @@ Notable changes to this repository. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every published artifact follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The signed macOS app is tagged per release, `app-v1.40.0` being the newest. GitHub release notes
+The signed macOS app is tagged per release, `app-v1.40.1` being the newest. GitHub release notes
 are taken from this file, which is the curated summary.
 
-## [Unreleased]
+## [1.40.1] - 2026-11-28
+
+**Shared client configuration code.** Bastion now uses the same client catalog and
+configuration file handling as Cupertino, Armada and Drakar.
+
+### Changed
+
+- **Client setup uses swift-mcp-kit's configuration tools.** When Bastion updates
+  Codex, it still preserves comments and formatting outside its own entries.
 
 ### Internal
 

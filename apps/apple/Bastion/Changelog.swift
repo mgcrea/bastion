@@ -66,7 +66,25 @@ nonisolated enum Changelog {
   /// literal, and this one is releases of sections of entries of strings — the
   /// exact shape that turns into a multi-second type-check with no diagnostic.
   // swift-format-ignore
-  static let releases: [Release] = [v1_40_0, v1_39_0, v1_38_0, v1_37_0, v1_36_1]
+  static let releases: [Release] = [v1_40_1, v1_40_0, v1_39_0, v1_38_0, v1_37_0]
+
+  // swift-format-ignore
+  private static let v1_40_1: Release = Release(
+    version: "1.40.1",
+    date: "2026-11-28",
+    sections: [
+      Section(
+        name: "Changed",
+        lead: [],
+        entries: [
+          Entry(
+            ordinal: 0,
+            headline: "Client setup uses swift-mcp-kit's configuration tools.",
+            body: [
+              "When Bastion updates Codex, it still preserves comments and formatting outside its own entries.",
+            ]),
+        ]),
+    ])
 
   // swift-format-ignore
   private static let v1_40_0: Release = Release(
@@ -215,24 +233,6 @@ nonisolated enum Changelog {
             headline: "Only Bastion follows servers added outside Bastion.",
             body: [
               "With the switch on, a server another app writes into the profile's `.claude.json` (Cupertino switching on a surface, `claude mcp add`) was refused by the allowlist until Bastion next launched or its own servers changed, and Claude Code left it out of `/mcp` without saying why. Bastion now watches that file and adds the server to the list about a second after it lands. Only a list that is missing a server it should allow is rewritten: one you edited by hand is left alone, as before, and a write that keeps failing is logged once rather than on every Claude Code session.",
-            ]),
-        ]),
-    ])
-
-  // swift-format-ignore
-  private static let v1_36_1: Release = Release(
-    version: "1.36.1",
-    date: "2026-11-06",
-    sections: [
-      Section(
-        name: "Fixed",
-        lead: [],
-        entries: [
-          Entry(
-            ordinal: 0,
-            headline: "A sign-in the server no longer accepts is dropped, and the profile asks to be authorized again.",
-            body: [
-              "When a server's token endpoint refuses a refresh with `invalid_grant` (Cloudflare says \"Grant not found\", Stripe \"Invalid refresh token\"), the grant behind it is gone and no refresh can succeed. Bastion kept the dead tokens, so the profile went on reading as authorized, every request tried the same refresh again, and clients saw only the provider's wording. Now the tokens are discarded, the profile shows as needing authorization, and the error names it and says to authorize it again in Bastion. A sign-in completed while the refused request was in flight is kept. Any other refusal, such as a server that is briefly down, still leaves the tokens in place for the next try.",
             ]),
         ]),
     ])
