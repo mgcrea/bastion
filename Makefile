@@ -651,21 +651,28 @@ audit-check: ## Prove an export signature survives a round trip, with no app and
 # so the path is known and CI, which has no checkout of the kit, fetches the pinned one.
 KIT_RESOLVED = apps/apple/Bastion.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 KIT_PACKAGES = apps/apple/.build/SourcePackages
-KIT_MODULE = apps/apple/.build/kit-module
+# One folder per compiler: a module built by one Swift cannot be imported by another, so an
+# Xcode update builds a fresh one rather than failing until somebody cleans.
+KIT_SWIFT := $(shell xcrun swiftc --version 2>&1 | head -1 | tr -dc 'a-zA-Z0-9.')
+KIT_MODULE = apps/apple/.build/kit-module/$(KIT_SWIFT)
+KIT_LIBRARY = $(KIT_MODULE)/libMCPKitWiring.a
 
-$(KIT_MODULE)/MCPKitWiring.swiftmodule: $(KIT_RESOLVED)
-	@mkdir -p $(KIT_MODULE)
+# The library is the target because it is written last: an interrupted build leaves no target
+# behind to look current, and a failed one removes what it wrote.
+$(KIT_LIBRARY): $(KIT_RESOLVED)
+	@rm -rf $(KIT_MODULE) && mkdir -p $(KIT_MODULE)
 	@xcodebuild -resolvePackageDependencies -project apps/apple/Bastion.xcodeproj -scheme Bastion \
 		-clonedSourcePackagesDirPath $(KIT_PACKAGES) > $(KIT_MODULE)/resolve.log 2>&1 \
-		|| { cat $(KIT_MODULE)/resolve.log; exit 1; }
+		|| { cat $(KIT_MODULE)/resolve.log; rm -rf $(KIT_MODULE); exit 1; }
 	@swiftc -O -enable-testing -swift-version 6 -parse-as-library -module-name MCPKitWiring \
 		-emit-module -emit-module-path $(KIT_MODULE)/MCPKitWiring.swiftmodule \
-		-emit-library -static -o $(KIT_MODULE)/libMCPKitWiring.a \
-		$(KIT_PACKAGES)/checkouts/swift-mcp-kit/Sources/MCPKitWiring/*.swift
+		-emit-library -static -o $(KIT_LIBRARY) \
+		$(KIT_PACKAGES)/checkouts/swift-mcp-kit/Sources/MCPKitWiring/*.swift \
+		|| { rm -rf $(KIT_MODULE); exit 1; }
 
-kit-wiring-module: $(KIT_MODULE)/MCPKitWiring.swiftmodule ## Build the pinned kit's MCPKitWiring for the swiftc checks
+kit-wiring-module: $(KIT_LIBRARY) ## Build the pinned kit's MCPKitWiring for the swiftc checks
 
-wiring-check: $(KIT_MODULE)/MCPKitWiring.swiftmodule ## Assert the config merge leaves other people's files alone
+wiring-check: $(KIT_LIBRARY) ## Assert the config merge leaves other people's files alone
 	@mkdir -p apps/apple/.build
 	@swiftc -O -I $(KIT_MODULE) -L $(KIT_MODULE) -lMCPKitWiring -o apps/apple/.build/wiring-check \
 		apps/apple/Bastion/ClientWiringMerge.swift \
